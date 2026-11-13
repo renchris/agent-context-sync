@@ -40078,6 +40078,8 @@ closing ` (see --help)` or its end, so blanks, quotes and that suffix inside a n
 --help)`. Lines an earlier run left in install.out are cut the same way. install.sh's own re-cut of a render
 (lane RB, §16.241) leaves a folder already ending in `<path>` as it is, so this render comes back byte for byte.
 Test: `test_a_missing_source_local_folder_is_cut_in_the_installer_section_c1299`.
+Amended 2026-11-13, §16.246 C1453: install.sh's fixed-word recut of this line runs only on another build's render,
+which keeps a name only where `_cut_path` could have printed it; this checkout's render comes back byte for byte.
 
 **The first-sync line keeps the images that wait on the OCR helper** (C1266 with C1260; ruling 122; dated line at
 §16.74 J39). Round 36's C1101 moved an image whose OCR helper is built but not working out of `refused without a
@@ -40190,6 +40192,9 @@ paths, and an older cut's forms),
 stub), `test_both_reports_cut_a_volume_past_a_skipped_home_and_a_provider_folder_in_any_case_ruling_120`,
 `test_the_shell_report_cuts_another_home_behind_a_volume_and_over_its_blanks` (the C1253 and C1285 rows) and
 `test_a_refused_source_local_folder_name_stays_out_of_the_report_c1278` (a twin, a marked row, a missing twin).
+Amended 2026-11-13, §16.246 C1453, C1480, C1481, C1435: `foreign_home_cut recut` still runs over every render; the
+fixed-word cuts run only when `report_build_other` (fail closed), keeping a name only when its last part is `<path>`
+and every earlier part is one `_cut_path` keeps.
 
 **Two folders that travel as one text are twins** (C1300; ruling 121; data integrity; `scripts/install.sh`). A
 newline in a name travels in the list's files as RS (0x1e, §16.231 C932), so a folder named with a newline and one
@@ -40961,6 +40966,42 @@ one. The legend, the guide's `<path>` row and the test that quotes it now say `a
 decomposed accent, and under the C locale for any accent (any character outside ASCII)`, in one commit, the closing
 parenthetical kept, which `test_the_guides_path_row_quotes_the_shell_reports_legend` reads to its first `)`. Tests:
 that test and the shell legend's in `test_install_oneshot.py`.
+
+**A folder's name prints in no spelling in the shell report, and the recut runs only on another build's render**
+(C1453 with C1480, C1481 and C1435; C1440; the shell halves of C1414, C1425, C1432, C1436 and C1439; ruling 126;
+privacy; data integrity; amends §16.240 C1299 and §16.241 C1237, dated lines there; `scripts/install.sh`).
+`report_recut "$other"` (`other` read once in `write_report` from `report_build_other`, which fails closed, and used by
+the split-lines branch too) always runs `foreign_home_cut recut`, which leaves a current render byte for byte; only
+with `other=1` does `report_words_cut` run, cutting the name after `is not an existing folder: ` (ending at the last
+` (see --help)` before the line's end, `;,.:`, ` | ` or ` · `, C1436's edge) and the name in a `--source-local <name>:
+<head>` refusal up to the last `: ` before one of `REFUSED_HEADS` (C1432; a test holds every `source_local_refused`
+call to them and the list to `setup_report._REFUSED_HEADS`). A name is kept only when its last part is `<path>` and
+every earlier part is empty, `~`, `.`, `..`, placeholders only, a `CUT_FIXED`, `CUT_DRIVE` or `CUT_HOME` word (one
+copy each, which `typed_note_cut` reads too, through ENVIRON) or a known app's folder after CloudStorage, bare or
+`<App>-<placeholder>` (`setup_report._PROVIDER_KEPT_RE`); `X<path>`, `.../X/<path>`, `<path> X` and
+`OneDrive-Fabrikam/<path>` are cut, and a bare `<path>` before ` |` or `;,.:` keeps what follows (C1480; C1435 and
+C1481 make worse True for a faithful port of `_cut_path`, which keeps an unregistered tenant). `foreign_home_cut`'s
+skip goes on from the run's last slash (`from = h`), so the shell and Python other-home cuts agree (C1440). The
+`source-local:` line prints `list_name`'s spelling (C1414). `redact_stream` holds agentsync's own verb (`AGENTSYNC_VERBS`,
+held equal to `setup_report.agentsync_verbs()`) whole after `agentsync `, unless a pair begins with it (C1425, makes
+worse True for a hyphen-edge rule). `add_forms` registers a folder's list spelling and its `text.safe_text` spelling
+(`safe_shown`, one report word or generic folder excepted) under its own placeholder (C1414, C1439); sources.toml's
+`\b` and `\f` escapes are read as their bytes, and the fuzzy match takes a list spelling's `\t`, `\n` and `\r` as
+separators. The shell still cuts every `$'...'` word whole to `<path>`, so doctor's fix reads `open ~/<path> in
+Finder once` there, where the agentsync report keeps the quoted word around its placeholders. Tests:
+`test_report_redaction.py::test_both_reports_print_a_folder_name_in_no_spelling_ruling_126` (each C0 control, DEL,
+each line break, each character `_LIST_ESCAPED_RE` matches and a blank, in the source-local line, doctor's detail and
+fix, each refusal head, the not-a-folder line and a friction row),
+`test_the_recut_keeps_only_a_name_cut_path_could_print_c1480_c1481_c1435`,
+`test_the_recut_takes_the_not_a_folder_names_edge_as_the_python_report_does_c1436`,
+`test_both_reports_hold_agentsyncs_own_verb_whole_c1425`,
+`test_the_checkouts_cut_leaves_a_current_python_render_byte_for_byte_c1237` (`~/Documents` and a provider
+`Projects` row, and an older render left alone with `other=0`), `_C1253_ROWS`' three C1440 rows;
+`test_install_oneshot.py::test_every_source_local_refusal_opens_with_a_head_both_reports_cut_after_c1432`,
+`test_the_shells_verbs_are_the_commands_cli_registers_c1425`, `test_the_typed_cuts_word_lists_are_the_shells_and_the_reports`,
+`test_the_source_local_line_prints_a_folder_in_list_spelling_c1414`;
+`test_install_help.py::test_each_refused_source_local_name_outside_cloudstorage_stays_out_of_every_render_c1432`
+(each head under ~/Projects, rendered by this checkout and by an older stub).
 
 ### 16.247 Round 38: --json documents, an empty source folder, names in doctor's lines, and a recording's kept page (2026-11-13, wave B13 round 38 lane B)
 

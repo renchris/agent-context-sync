@@ -7110,6 +7110,18 @@ _ROUND_37_B_PARAGRAPH_AMENDS = (
 """Round 37 lane B's dated lines no claim of §16.242 reads alone: C1261's at C701's review paragraph,
 C1246's beside C1301's at C933's and C1048's paragraphs (one paragraph's claim holds one line), and C1268's
 and C1271's in the dated block after §16.237's C1101 paragraph, beside C1257's and C1211's."""
+_ROUND_38_RB_PARAGRAPH_AMENDS = (
+    ("16.29", "| 4 config | `agentsync init`: it keeps every source and ensures the inbox.", "§16.246 C1405"),
+    ("16.300", "install.out and install.log are what the same list writes without `--json`", "§16.246 C1456"),
+    (
+        "16.300",
+        "- Success: one document on stdout, compact off a terminal and indented by two",
+        "§16.246 C1458",
+    ),
+)
+"""Round 38 lane RB's dated lines no claim reads: C1405's in §16.29's re-run table row, and C1456's and
+C1458's in §16.300.19's paragraph and §16.300.24's Success bullet, sections the CLI conventions wave
+numbers below §16.300."""
 _ROUND_32_B_PARAGRAPH_AMENDS = (
     ("16.200", "**C112, C125, C146, C155, C177, C178, C139, C141, C145, C210: status", "§16.215 C624"),
     ("16.205", "C381 (ruling 34): what governance/ keeps survives the folder's loss", "§16.215 C632"),
@@ -7344,6 +7356,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_36_B_PARAGRAPH_AMENDS,
         *_ROUND_37_B_PARAGRAPH_AMENDS,
         *_ROUND_35_RB_PARAGRAPH_AMENDS,
+        *_ROUND_38_RB_PARAGRAPH_AMENDS,
         *_REVIEW_BACKTEST_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)

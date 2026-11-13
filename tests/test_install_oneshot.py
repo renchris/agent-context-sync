@@ -2772,6 +2772,12 @@ _HOLD_LINES = {
     # no word boundary before "hold", and a hold with no "— set by": kept
     "withhold x (state): y — set by z": "withhold x (state): y — set by z",
     "hold x (state): no owner here": "hold x (state): no owner here",
+    # B13 round 38 C1443 (lane B's status line): the hold named under a [governance] that does not load
+    "[info] governance.hold — the config's own hold is not judged: [governance] does not load; see "
+    f"governance.config; hold all (state): Contoso v. Fabrikam matter — set by Jane Roe{_HOLD_SINCE}": (
+        "[info] governance.hold — the config's own hold is not judged: [governance] does not load; see "
+        f"governance.config; hold all (state){_HOLD_SINCE}{_HOLD_CUT}"
+    ),
 }
 
 
@@ -4075,13 +4081,42 @@ def test_the_typed_cuts_word_lists_are_the_shells_and_the_reports() -> None:
     """B13 round 32 C666: typed_note_cut's awk reads the fixed components, generic folders and home dirs from
     ENVIRON; each list is setup_report's set (generic_folder's and generic_home_dir's, which their own tests
     keep equal to the same sets)."""
-    [script] = re.findall(r"(?ms)^typed_note_cut\(\) \{\n(.*?)^\}$", INSTALL_SH.read_text(encoding="utf-8"))
-    [drive] = re.findall(r"(?m)^\t\tTYPED_DRIVE='(.*)' \\$", script)
-    [homes] = re.findall(r"(?m)^\t\tTYPED_HOME='(.*)' LC_ALL=C awk", script)
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    [script] = re.findall(r"(?ms)^typed_note_cut\(\) \{\n(.*?)^\}$", text)
+    assert 'TYPED_FIXED="$CUT_FIXED" TYPED_DRIVE="$CUT_DRIVE" TYPED_HOME="$CUT_HOME"' in script
+    # B13 round 38 ruling 126: one copy of each, which report_recut's awk reads too
+    [drive] = re.findall(r"(?m)^CUT_DRIVE='(.*)'$", text)
+    [homes] = re.findall(r"(?m)^CUT_HOME='(.*)'$", text)
     assert set(drive.split("|")) == set(setup_report._GENERIC_FOLDERS) and len(drive.split("|")) == 17
     assert set(homes.split("|")) == set(setup_report._GENERIC_HOME_DIRS)
-    [fixed] = re.findall(r"(?m)^\tTYPED_FIXED='(.*)' \\$", script)
+    [fixed] = re.findall(r"(?m)^CUT_FIXED='(.*)'$", text)
     assert set(fixed.split("|")) == set(setup_report._PATH_COMPONENTS)
+    [recut] = re.findall(r"(?ms)^report_words_cut\(\) \{\n(.*?)^\}$", text)
+    assert 'CUT_FIXED="$CUT_FIXED" CUT_DRIVE="$CUT_DRIVE" CUT_HOME="$CUT_HOME"' in recut
+    [apps] = re.findall(r"p\[i\] ~ /\^\(([A-Za-z|]+)\)\(-SharedLibraries\)", recut)
+    assert tuple(apps.split("|")) == setup_report._PROVIDER_APPS
+
+
+def test_every_source_local_refusal_opens_with_a_head_both_reports_cut_after_c1432() -> None:
+    """B13 round 38 C1432 (ruling 126; privacy): the Python report and install.sh's recut cut a refused
+    --source-local name up to the last `: ` before one of setup_report._REFUSED_HEADS, so every
+    source_local_refused call's words open with one of them, and the shell's REFUSED_HEADS is that list."""
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    [heads] = re.findall(r'(?m)^REFUSED_HEADS="(.*)"$', text)
+    assert tuple(heads.split("|")) == setup_report._REFUSED_HEADS
+    calls = re.findall(r'source_local_refused "\$\((?:[^()"]|"[^"]*")*\)" "([^"]*)"', text)
+    assert text.count("\tsource_local_refused ") == len(calls), calls
+    assert len(calls) >= 7, calls
+    for words in calls:
+        assert words.startswith(setup_report._REFUSED_HEADS), words
+
+
+def test_the_shells_verbs_are_the_commands_cli_registers_c1425() -> None:
+    """B13 round 38 C1425 (ruling 126): redact_stream holds agentsync's own verb whole after `agentsync `,
+    read from AGENTSYNC_VERBS, which is setup_report.agentsync_verbs(): every command cli.build_parser
+    registers, hidden ones included, longest first."""
+    [verbs] = re.findall(r'(?m)^AGENTSYNC_VERBS="(.*)"$', INSTALL_SH.read_text(encoding="utf-8"))
+    assert verbs.split("|") == list(setup_report.agentsync_verbs())
 
 
 def test_the_shell_report_cuts_a_path_in_another_home_whole(env: dict[str, str]) -> None:
@@ -4210,6 +4245,10 @@ _C1253_ROWS = (
     ("/Volumes/Backup/Users/Shared/a b/Users/olga/Fabrikam", "/Volumes/<path>"),
     ("/Volumes/A/Users/olga/f;x/Users/kim/g", "/Volumes/<path>;x/Users/kim/g"),
     ("/System/Volumes/Data/Users/Shared/x/Users/olga/y", "/System/Volumes/Data/Users/Shared/x/Users/olga/y"),
+    # B13 round 38 C1440 (ruling 126): the skip goes on from the run's last slash; a volume's <user> is cut
+    ("x Smith/Users//Users/olga/Contoso", "x Smith/Users//Users/<path>"),
+    ("/Volumes/Contoso/x/Users/Shared/Users/<user>/Fabrikam", "/Volumes/<path>"),
+    ("/Volumes/Users/Users/olga/Fabrikam", "/Volumes/<path>"),
 )
 # B13 round 37 ruling 120 (C1285): the provider folder after CloudStorage or opening "OneDrive - ", any case
 _C1285_ROWS = (
@@ -9916,6 +9955,20 @@ def test_source_local_still_takes_an_odd_name_with_no_look_alike_c1072(
     cp = install_sh({**env, "AGENTSYNC_INSTALL_DRY_RUN": "1"}, "--source-local", str(lib / name))
     assert "usage error" not in cp.stderr, cp.stderr
     assert f"source-local: {lib / name}" in cp.stdout, cp.stdout
+
+
+def test_the_source_local_line_prints_a_folder_in_list_spelling_c1414(env: dict[str, str]) -> None:
+    """B13 round 38 C1414 (ruling 126; privacy): install.sh's `source-local:` line printed the folder raw, so
+    an ESC sequence reached the terminal and install.out held a spelling no alias knew. It prints
+    list_name's spelling, as step 1's list and the refusals do: no control byte, `\t` for a tab."""
+    lib = _cloud(env) / "OneDrive-Contoso"
+    folder = lib / "Contoso\x1b[7mInverse\tTab"
+    folder.mkdir(parents=True)
+    cp = install_sh({**env, "AGENTSYNC_INSTALL_DRY_RUN": "1"}, "--source-local", str(folder))
+    assert "usage error" not in cp.stderr, cp.stderr
+    assert f"source-local: {lib}/Contoso?[7mInverse\\tTab" in cp.stdout.splitlines(), cp.stdout
+    line = next(x for x in cp.stdout.split("\n") if x.startswith("source-local: "))  # install.out is its tee
+    assert not re.search(r"[\x00-\x08\x0b-\x1f\x7f]", line), line
 
 
 def test_both_shell_readers_of_the_folder_list_take_an_escaped_synced_rows_whole_name_c1001(

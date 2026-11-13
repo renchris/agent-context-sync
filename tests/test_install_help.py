@@ -11,11 +11,13 @@ from pathlib import Path
 
 import pytest
 
+from agentsync import setup_report
 from test_install_oneshot import (  # noqa: F401  (env, wheel and folder are fixtures)
     ESCAPED_MARK,
     REPO,
     STUB_TOOL_PYTHON,
     _cloud,
+    _renderer_home,
     _write_exe,
     env,
     folder,
@@ -176,3 +178,33 @@ def test_a_refused_source_local_folder_name_stays_out_of_the_report_c1278(
     report = report_path(env).read_text(encoding="utf-8")
     assert "Board" not in report and "Minutes" not in report, report
     assert "--source-local <path>: " in report, report
+
+
+@pytest.mark.parametrize("renderer", ["checkout", "older"])
+@pytest.mark.parametrize("head", range(4))
+def test_each_refused_source_local_name_outside_cloudstorage_stays_out_of_every_render_c1432(
+    env: dict[str, str],  # noqa: F811
+    renderer: str,
+    head: int,
+) -> None:
+    """B13 round 38 C1432 (ruling 126; privacy): a refused --source-local name with a blank, outside
+    CloudStorage, was cut by the agentsync report's one-shell-word rule only to its first blank, so the rest
+    of the name printed after `<path>`. Each of the four refusal heads, for a folder under ~/Projects,
+    rendered by this checkout's agentsync and by an older one (cut again by this checkout), names no part of
+    the folder."""
+    env = _renderer_home(env, renderer)
+    projects = Path(env["HOME"]) / "Projects"
+    for name in ("Deals Alpha\nBoard", "Deals Alpha\\nBoard", "Deals Alpha\x01Bid", "Deals Alpha Kept"):
+        (projects / name).mkdir(parents=True)
+    arg = [
+        f"[synced] {projects}/Deals Alpha Kept",
+        str(projects / "Deals Alpha\nBoard"),
+        str(projects / "Deals Alpha\\nBoard"),
+        str(projects / "Deals Alpha?Bid"),
+    ][head]
+    cp = install_sh(env, "--source-local", arg)
+    assert cp.returncode == 2, cp.stdout + cp.stderr
+    assert setup_report._REFUSED_HEADS[head] in cp.stderr, cp.stderr
+    for path in (report_path(env), report_path(env).parent / "bring-back.md"):
+        text = path.read_text(encoding="utf-8")
+        assert "Deals" not in text and "Alpha" not in text and "Board" not in text, (path.name, text)

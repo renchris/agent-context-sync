@@ -14,11 +14,13 @@ import pytest
 
 from agentsync import cli, net, setup_report
 from agentsync.config import load_config
+from agentsync.text import safe_text
 from test_install_oneshot import (  # noqa: F401  (fixture)
     _C1253_ROWS,
     _C1285_ROWS,
     BASH32,
     INSTALL_SH,
+    _fuzzy_report,
     _shell_cut_stdout,
     _stub_id,
     _write_exe,
@@ -1115,14 +1117,21 @@ def test_both_reports_cut_a_volume_past_a_skipped_home_and_a_provider_folder_in_
     assert not wrong, wrong
 
 
-def _report_recut_harness(tmp_path: Path, report: Path) -> subprocess.CompletedProcess[bytes]:
-    """install.sh's report_recut over ``report`` (REPORT_PATH), with foreign_home_cut beside it."""
+def _report_recut_harness(tmp_path: Path, report: Path, other: int = 1) -> subprocess.CompletedProcess[bytes]:
+    """install.sh's report_recut over ``report`` (REPORT_PATH), with foreign_home_cut beside it; ``other``
+    1 for a render by another build, 0 for this checkout's (B13 round 38 C1453)."""
     text = INSTALL_SH.read_text(encoding="utf-8")
     fns = "\n".join(
-        m.group(0) for m in re.finditer(r"(?ms)^(?:foreign_home_cut|report_recut)\(\) \{\n.*?^\}$", text)
+        m.group(0)
+        for m in re.finditer(
+            r"(?ms)^(?:foreign_home_cut|report_recut|report_words_cut)\(\) \{[^\n]*\n.*?^\}$|"
+            r"^(?:CUT_FIXED|CUT_DRIVE|CUT_HOME|REFUSED_HEADS)=.*?$",
+            text,
+        )
     )
+    run = f"set -euo pipefail\n{fns}\nREPORT_PATH={shlex.quote(str(report))}\nreport_recut {other}"
     return subprocess.run(
-        [BASH32, "-c", f"set -euo pipefail\n{fns}\nREPORT_PATH={shlex.quote(str(report))}\nreport_recut"],
+        [BASH32, "-c", run],
         capture_output=True,
         check=False,
         env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "TMPDIR": str(tmp_path)},
@@ -1141,6 +1150,10 @@ def test_the_checkouts_cut_leaves_a_current_python_render_byte_for_byte_c1237(
         "# run=20261110T100000Z-4242 2026-11-10T10:00:00Z install.sh --source-local x\n"
         + "".join(f"{line}\n" for line, _cut in _RULING_102_LEAKS)
         + "usage error: --source-local is not an existing folder: ~/Projects/<path> (see --help)\n"
+        # B13 round 38 C1453 with C1481, C1435: names _cut_path keeps whole, which this checkout's cut leaves
+        + "usage error: --source-local is not an existing folder: ~/Documents (see --help)\n"
+        + "usage error: --source-local is not an existing folder: "
+        "~/Library/CloudStorage/OneDrive-Contoso/Projects (see --help)\n"
         # the lane's review: a cut volume before a later /users/, and a cut name before a stop byte
         + "cp /Volumes/Backup/x/Users/olga/y; https://graph.microsoft.com/v1.0/users/me/drive\n"
         + "see /Volumes/Backup/Users/olga/x) then api/users/42/x\n"
@@ -1151,7 +1164,8 @@ def test_the_checkouts_cut_leaves_a_current_python_render_byte_for_byte_c1237(
     report = tmp_path / "setup-report.md"
     report.write_text(text, encoding="utf-8")
     before = report.read_bytes()
-    cp = _report_recut_harness(tmp_path, report)
+    assert b"--source-local is not an existing folder: ~/Documents (see --help)" in before
+    cp = _report_recut_harness(tmp_path, report, other=0)
     assert cp.returncode == 0, cp.stderr
     assert report.read_bytes() == before
     # a Python cut's placeholders are no volume to the second cut, and a name already cut keeps what follows
@@ -1167,12 +1181,13 @@ def test_the_checkouts_cut_leaves_a_current_python_render_byte_for_byte_c1237(
     cp = _report_recut_harness(tmp_path, report)
     assert cp.returncode == 0, cp.stderr
     assert report.read_bytes() == kept
-    report.write_bytes(
+    older = (
         b"x /Volumes/<path>\xc2\xa0Drive/Users/olga/Fabrikam y\n"
         b"usage error: --source-local is not an existing folder: ~/Projects/acquisition-northwind"
         b" (see --help)\n"
         b"- last error: usage error: --source-local is not an existing folder: ~/Tailspin Merger\n"
     )
+    report.write_bytes(older)
     cp = _report_recut_harness(tmp_path, report)
     assert cp.returncode == 0, cp.stderr
     assert report.read_bytes() == (
@@ -1180,3 +1195,142 @@ def test_the_checkouts_cut_leaves_a_current_python_render_byte_for_byte_c1237(
         b"usage error: --source-local is not an existing folder: <path> (see --help)\n"
         b"- last error: usage error: --source-local is not an existing folder: <path>\n"
     )
+    # B13 round 38 C1453: this checkout's own render takes the other-home cut alone, never the fixed-word cut
+    report.write_bytes(older)
+    cp = _report_recut_harness(tmp_path, report, other=0)
+    assert cp.returncode == 0, cp.stderr
+    assert report.read_bytes() == older.replace(
+        b"/Volumes/<path>\xc2\xa0Drive/Users/olga/Fabrikam", b"/Volumes/<path>"
+    )
+
+
+_R126_CHARS = (
+    [chr(c) for c in range(1, 32) if c != 0x2F]
+    + [chr(c) for c in (0x7F, 0x85, 0x2028, 0x2029, *(c for c in range(0x80, 0xA0) if c != 0x85))]
+    + [chr(c) for c in (*range(0x200B, 0x2010), *range(0x202A, 0x202F), 0x2060, *range(0x2066, 0x206A))]
+    + [chr(c) for c in (0xFEFF, 0x061C, 0x20)]
+)
+"""Ruling 126's proof names (B13 round 38): each C0 control, DEL, each break str.splitlines() honours, each
+character _LIST_ESCAPED_RE matches, and a blank, each between two made-up words."""
+
+
+def _r126_lines(n: int, name: str) -> list[str]:
+    """Each line form ruling 126 names, for the folder ``name`` (source s<n>) under OneDrive-Contoso: the
+    source-local line, doctor's listable detail and fix, each refusal head, the not-a-folder line and a
+    friction row in safe_text's spelling."""
+    shown = setup_report._LIST_ESCAPED_RE.sub(lambda m: setup_report._LIST_ESCAPES.get(m.group(), "?"), name)
+    root = "~/Library/CloudStorage/OneDrive-Contoso"
+    ansi = setup_report._ansi_c_body(name, setup_report._DOCTOR_LETTERS)
+    return [
+        f"source-local: {root}/{shown}",
+        f"[warn] source.alpha.listable — {root}/{shown} is empty",
+        f"open ~/$'Library/CloudStorage/OneDrive-Contoso/{ansi}' in Finder once",
+        *(f"usage error: --source-local {root}/{shown}: {head}x" for head in setup_report._REFUSED_HEADS),
+        f"usage error: --source-local is not an existing folder: {root}/{shown} (see --help)",
+        f"saw {root}/{safe_text(name)}",
+    ]
+
+
+@pytest.mark.parametrize("group", range(0, len(_R126_CHARS), 12))
+def test_both_reports_print_a_folder_name_in_no_spelling_ruling_126(
+    env: dict[str, str],  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+    group: int,
+) -> None:
+    """B13 round 38 ruling 126 (C1414 with C1439, C1432; privacy; data integrity): install.sh's source-local
+    line printed a folder's name raw, doctor's listable detail and fix printed spellings no alias knew, and
+    safe_text's spelling (a format character dropped) was no pair, so a name holding a control, a break or a
+    hidden character printed in clear. Each proof name, configured, goes through the shell report and the
+    agentsync report in every line form, its list spelling, its `$'...'` word and its safe_text spelling: no
+    fragment of any name prints, and both reports print the same line."""
+    names = [f"Alder{n:02d}{ch}Birch{n:02d}" for n, ch in enumerate(_R126_CHARS)][group : group + 12]
+    said = " ;; ".join(line for n, name in enumerate(names) for line in _r126_lines(n, name))
+    shell, python = _fuzzy_report(env, monkeypatch, names, said)
+    leaks = [(who, line) for who, got in (("shell", shell), ("python", python)) for line in got.split(" ;; ")]
+    leaks = [(who, line) for who, line in leaks if re.search("Alder|Birch", line)]
+    assert not leaks, (len(leaks), leaks[:3], sorted({(w, x[x.index("Alder") :][:7]) for w, x in leaks}))
+    # the shell cuts every `$'...'` word whole, before its pairs, so doctor's fix reads `open ~/<path> ...`
+    # there, where the agentsync report keeps the word's quotes around its placeholders
+    pairs = list(zip(shell.split(" ;; "), python.split(" ;; "), strict=True))
+    fixes = [(a, b) for a, b in pairs if a.startswith("open ")]
+    assert fixes and all(a == "open ~/<path> in Finder once" for a, _b in fixes), fixes
+    assert all(
+        re.fullmatch(r"open ~/\$'Library/CloudStorage/OneDrive-<org-1>/<folder-\d+>' in Finder once", b)
+        for _a, b in fixes
+    )
+    wrong = [(a, b) for a, b in pairs if a != b and not a.startswith("open ")]
+    assert not wrong, (len(wrong), wrong[:6])
+
+
+@pytest.mark.parametrize(
+    ("said", "cut"),
+    [
+        # B13 round 38 C1480: a name is already cut only where _cut_path could have printed it
+        ("~/Projects/Northwind<path>", "<path>"),
+        ("~/Projects/Northwind/<path>", "<path>"),
+        ("<path> Northwind", "<path>"),
+        ("~/Projects/<path>", "~/Projects/<path>"),
+        # C1481, C1435: a provider folder only as a known app, bare or before placeholders
+        ("~/Library/CloudStorage/OneDrive-<org-1>/<path>", "~/Library/CloudStorage/OneDrive-<org-1>/<path>"),
+        ("~/Library/CloudStorage/Dropbox/<path>", "~/Library/CloudStorage/Dropbox/<path>"),
+        ("~/Library/CloudStorage/OneDrive-Fabrikam/<path>", "<path>"),
+        ("~/Library/CloudStorage/Fabrikam-<org-1>/<path>", "<path>"),
+        ("~/Library/CloudStorage/OneDrive-Fabrikam", "<path>"),
+        ("~/Documents", "<path>"),  # another build's whole-kept name: cut (the known over-cut)
+    ],
+)
+def test_the_recut_keeps_only_a_name_cut_path_could_print_c1480_c1481_c1435(
+    tmp_path: Path, said: str, cut: str
+) -> None:
+    """B13 round 38 C1480, C1481 and C1435 (ruling 126; makes worse True for a faithful port of _cut_path,
+    which keeps an unregistered tenant): another build's render kept any name ending in `<path>`, so
+    `Northwind<path>` printed a folder's name. There the recut keeps a name only when its last part is
+    `<path>` and every earlier part is one _cut_path keeps, a provider folder only as a known app; else the
+    name is `<path>`. In the not-a-folder line, and in a refusal of each head (C1432)."""
+    report = tmp_path / "setup-report.md"
+    lines = [f"usage error: --source-local is not an existing folder: {said} (see --help)"]
+    lines += [f"- usage error: --source-local {said}: {h}x" for h in setup_report._REFUSED_HEADS]
+    report.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
+    cp = _report_recut_harness(tmp_path, report)
+    assert cp.returncode == 0, cp.stderr
+    want = [f"usage error: --source-local is not an existing folder: {cut} (see --help)"]
+    want += [f"- usage error: --source-local {cut}: {h}x" for h in setup_report._REFUSED_HEADS]
+    assert report.read_text(encoding="utf-8").splitlines() == want
+
+
+def test_the_recut_takes_the_not_a_folder_names_edge_as_the_python_report_does_c1436(tmp_path: Path) -> None:
+    """B13 round 38 C1436 (ruling 126): the name ends at the last ` (see --help)` only before the line's end,
+    one of `;,.:`, ` | ` or ` · `; else at the line's end, as setup_report._NOT_A_FOLDER_RE reads it."""
+    report = tmp_path / "setup-report.md"
+    m = "--source-local is not an existing folder: "
+    report.write_text(
+        f"{m}~/Deals (see --help); retried\n{m}~/Deals (see --help) then ok\n"
+        f"| 2 | {m}~/Deals (see --help) | x |\n",
+        encoding="utf-8",
+    )
+    cp = _report_recut_harness(tmp_path, report)
+    assert cp.returncode == 0, cp.stderr
+    assert report.read_text(encoding="utf-8").splitlines() == [
+        f"{m}<path> (see --help); retried",
+        f"{m}<path>",
+        f"| 2 | {m}<path> (see --help) | x |",
+    ]
+
+
+@pytest.mark.parametrize("folders", [["Empty Project", "Project Alpha"], ["Project Alpha", "Empty Project"]])
+def test_both_reports_hold_agentsyncs_own_verb_whole_c1425(
+    env: dict[str, str],  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+    folders: list[str],
+) -> None:
+    """B13 round 38 C1425 (ruling 126; makes worse True for a hyphen-edge rule, which leaves
+    `empty-project-2026` in clear): a folder `Empty Project` matched across `exclude-empty project-alpha`,
+    so the command read `exclude-<folder-1>-alpha`, with a word of `Project Alpha` in clear. Both reports hold
+    agentsync's own verb whole after `agentsync `, its argument cut as its own value, the fuzzy edges kept."""
+    said = "~/.local/bin/agentsync exclude-empty project-alpha; sync empty-project-notes"
+    shell, python = _fuzzy_report(env, monkeypatch, folders, said)
+    assert shell == python, (shell, python)
+    assert re.fullmatch(
+        r"~/\.local/bin/agentsync exclude-empty <folder-\d>; sync <folder-\d>-notes", shell
+    ), shell
+    assert "alpha" not in shell.lower(), shell

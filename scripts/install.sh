@@ -2527,6 +2527,15 @@ generic_home_dir() {
 	esac
 	return 1
 }
+# agentsync's own verbs, longest first: setup_report.agentsync_verbs(), the commands cli.build_parser registers,
+# hidden ones included (a test keeps them equal); redact_stream holds one whole after `agentsync ` (C1425)
+AGENTSYNC_VERBS="accept-deletions|compact-history|uninstall-agent|exclude-empty|install-agent|install-skill|refresh-queue|curate-queue|setup-report|materialise|add-source|checkpoint|it-request|reconcile|discover|offboard|migrate|curate|doctor|logout|policy|status|whoami|adopt|graph|login|purge|help|hold|init|lint|sync"
+# _cut_path's word sets, as an awk reads them through ENVIRON (BSD awk takes no newline in -v): setup_report's
+# _PATH_COMPONENTS, _GENERIC_FOLDERS (generic_folder's words) and _GENERIC_HOME_DIRS (generic_home_dir's), a test
+# keeping each equal; typed_note_cut and report_recut read them (B13 round 32 C666, round 38 ruling 126)
+CUT_FIXED='Users|Library|Application|Support|CloudStorage|Volumes|Applications'
+CUT_DRIVE='Apps|Attachments|Desktop|Documents|Downloads|Microsoft Copilot Chat Files|Microsoft Teams Chat Files|Music|My Drive|Notebooks|Personal Vault|Pictures|Recordings|Shared|Shared Documents|Shared drives|Videos'
+CUT_HOME='applications|code|desktop|dev|development|documents|downloads|git|library|projects|repos|sites|source|src|work|workspace'
 # Whether a folder name is made of coding-agent product words only ("Copilot", "github-copilot"), as
 # setup_report._agent_words reads it: in lower case, split on runs of blanks, "_", "\" and "-", at least one
 # word and every word one of setup_report._AGENT_WORDS (a test keeps them equal). A folder only step 1's list
@@ -2731,9 +2740,10 @@ listed_folder_names() {
 # The path = "..." values of sources.toml, one a line, each read as a TOML basic string in one pass from the left
 # (so an escaped backslash before a t stays a backslash and a t). add-source writes them with json.dumps, so a
 # TAB in a folder name is the two characters \t: read raw, the fuzzy match took "\" as a separator and the name
-# printed in clear (B13 round 20 X75). A whitespace escape (\t, \n, \r, \b, \f, \u0009, \u000A, \u000D) is one
-# space, which the fuzzy match takes as any run of blanks and the pair format carries; another \uXXXX or
-# \UXXXXXXXX is its UTF-8 bytes (json.dumps writes only control characters so); \\ and \" are \ and ".
+# printed in clear (B13 round 20 X75). A whitespace escape (\t, \n, \r, \u0009, \u000A, \u000D) is one space,
+# which the fuzzy match takes as any run of blanks and the pair format carries (and its list spelling \t, \n or \r
+# as a separator); \b and \f are their bytes, which the list spelling shows as ? (B13 round 38 C1414); another
+# \uXXXX or \UXXXXXXXX is its UTF-8 bytes (json.dumps writes only control characters so); \\ and \" are \ and ".
 config_path_values() {
 	[ -f "$CONFIG" ] || return 0
 	LC_ALL=C awk '
@@ -2754,7 +2764,9 @@ config_path_values() {
 			while ((i = index(v, "\\")) > 0) {
 				out = out substr(v, 1, i - 1); e = substr(v, i + 1, 1); v = substr(v, i + 2)
 				x = "0123456789ABCDEFabcdef"
-				if (e ~ /^[tnrbf]$/) out = out " "
+				if (e ~ /^[tnr]$/) out = out " "
+				else if (e == "b") out = out "\010" # its byte, which the list spelling shows as ? (C1414)
+				else if (e == "f") out = out "\014"
 				else if (e == "u" && match(v, "^[" x "][" x "][" x "][" x "]") ||
 					e == "U" && match(v, "^[" x "][" x "][" x "][" x "][" x "][" x "][" x "][" x "]")) {
 					c = hex(substr(v, 1, RLENGTH)); v = substr(v, RLENGTH + 1)
@@ -3075,6 +3087,34 @@ redaction_pairs() {
 		for v in "$nfd" "$nfc" "$bare"; do
 			[ -z "$v" ] || [ "$v" = "$1" ] || emit_pair "$v" "$2" "${3:-}" utf8
 		done
+		# and as step 1's list, the source-local line and the refusals print it (list_name's escapes: \n, \t, \r,
+		# else ?), as setup_report.folder_spellings has it (B13 round 38 C1414, ruling 126); LIST_ESC_AWK is set
+		# before any report is written
+		if [ -n "${LIST_ESC_AWK:-}" ]; then
+			v="$(LIST_NAME="$1" LC_ALL=C awk "$LIST_ESC_AWK"'BEGIN { s = ENVIRON["LIST_NAME"]; gsub(/\n/, "\036", s); printf "%s", esc(s) }')"
+			[ -z "$v" ] || [ "$v" = "$1" ] || emit_pair "$v" "$2" "${3:-}" utf8
+		fi
+		# and as text.safe_text prints it, its blanks at either end gone, as setup_report._alias_escaped aliases
+		# it (B13 round 38 C1439, ruling 126): one word that is a report word or a generic folder is no pair
+		v="$(safe_shown "$1")"
+		case "$v" in "$1" | ? | "") return 0 ;; *[\ _-]*) ;; *) ! report_word "$(recase lower "$v")" && ! generic_folder "$v" || return 0 ;; esac
+		emit_pair "$v" "$2" "${3:-}" utf8
+	}
+	# TEXT as text.safe_text prints it: CSI and terminated OSC sequences, controls (a newline as \n), C1 controls,
+	# U+2028, U+2029, the tag and filler characters and every format (Cf) character agentsync's names hold
+	# dropped, byte-wise; its blanks at either end gone, as _alias_escaped strips it
+	safe_shown() {
+		SAFE_TEXT="$1" LC_ALL=C awk 'BEGIN {
+			s = ENVIRON["SAFE_TEXT"]
+			gsub(/(\033\[|\302\233)[0-?]*[ -\/]*[@-~]/, "", s)
+			gsub(/(\033\]|\302\235)[^\007\033]*(\007|\033\\|\302\234)/, "", s)
+			gsub(/\n/, "\\n", s)
+			gsub(/[\001-\037\177]|\302[\200-\237]|\342\200[\250\251]|\363\240[\200-\201][\200-\277]/, "", s)
+			gsub(/\341\205[\237\240]|\343\205\244|\357\276\240|\342\240\200/, "", s)
+			gsub(/\302\255|\330[\200-\205\234]|\333\235|\334\217|\341\240\216|\342\200[\213-\217\252-\256]|\342\201[\240-\244\246-\257]|\357\273\277|\357\277[\271-\273]/, "", s)
+			sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s)
+			printf "%s", s
+		}'
 	}
 	# A folder's or an organisation's pair is matched as the Python report's fuzzy mode matches it (B13 round 10
 	# L66): in any case and with any separator or none between its words, as a whole word (redact_stream's flag
@@ -4149,7 +4189,7 @@ redact_stream() {
 		LC_ALL=C sed -E -f <(gov_value_sed) | hold_cut |
 		REDACT_PAIRS="$(redaction_pairs | LC_ALL=C awk -F '\t' '{ k = $1; if ($3 == "f" || $3 == "j" || $3 == "o") gsub(/[ \t_\\-]/, "", k); print length(k) "\t" $0 }' |
 			LC_ALL=C sort -t "$(printf '\t')" -k1,1nr -s | LC_ALL=C cut -f 2-)" REPO_SLUG="$(repo_slug)" \
-		FIXED_PHRASES="$FIXED_CAPS_PHRASES|$FIXED_VALUE_PHRASES" LC_ALL=C awk '
+		FIXED_PHRASES="$FIXED_CAPS_PHRASES|$FIXED_VALUE_PHRASES" AGENTSYNC_VERBS="$AGENTSYNC_VERBS" LC_ALL=C awk '
 	# The line is kept as pieces, plain text or a placeholder (held): a later pair never matches inside a
 	# placeholder an earlier one wrote ("<name>" stays whole beside a folder named "name"), as in the Python
 	# report, which replaces in one pass. A held piece ends in ">" or "~", or is followed by no word character,
@@ -4196,7 +4236,9 @@ redact_stream() {
 		if (cur != "") tok[++nt] = cur
 		if (!nt) return
 		a = ""
-		for (i = 1; i <= nt; i++) a = a (i > 1 ? (jn ? "[ \t_\\\\-]+" : "[ \t_\\\\-]*") : "") letters(tok[i], 0, 0)
+		# the list spelling\047s \t, \n and \r between words are separators too, as the TAB, newline or return they
+		# stand for (B13 round 38 C1414: a whitespace escape in sources.toml is read as a space)
+		for (i = 1; i <= nt; i++) a = a (i > 1 ? (jn ? "([ \t_\\\\-]|\\\\[tnr])+" : "([ \t_\\\\-]|\\\\[tnr])*") : "") letters(tok[i], 0, 0)
 		if (jn && nt >= 2) { # "HoMe": a small letter, then the next word\047s capital, as written
 			b = ""
 			for (i = 1; i <= nt; i++) {
@@ -4279,7 +4321,16 @@ redact_stream() {
 		t = s; off = 0
 		while ((i = index(t, "agentsync")) > 0 && (!best || off + i < best)) {
 			# a pair of the word itself (a folder named agentsync) is no hold either, as in the Python report
-			if (!covered(s, off + i, 8)) { best = off + i; OL = 9; break }
+			if (!covered(s, off + i, 8)) {
+				best = off + i; OL = 9
+				# and agentsync\047s own verb after it, whole, unless a pair begins with that verb: then the
+				# pair is cut as before (setup_report keep_verb, B13 round 38 C1425, ruling 126)
+				if (substr(s, best + 9, 1) == " ") for (x = 1; x <= nv; x++) {
+					n = length(verb[x])
+					if (!(x in vblock) && substr(s, best + 10, n) == verb[x] && substr(s, best + 10 + n, 1) !~ /[A-Za-z0-9_-]/) { OL = 10 + n; break }
+				}
+				break
+			}
 			off += i; t = substr(t, i + 1)
 		}
 		return best
@@ -4335,6 +4386,11 @@ redact_stream() {
 			if (f[3] == "i" || f[3] == "h") lv[k] = tolower(f[1]) # a project folder: ignore_case, a whole word (B13 round 18 V46)
 			if (f[3] == "f" || f[3] == "j" || f[3] == "o") { fz[k] = 1; fuzzy(k, f[1], f[3] == "j"); og[k] = f[3] == "o" }
 			if (og[k]) { okey[k] = tolower(f[1]); gsub(/[ \t_\\-]/, "", okey[k]) }
+		}
+		nv = split(ENVIRON["AGENTSYNC_VERBS"], verb, "|") # longest first, as setup_report.agentsync_verbs
+		for (x = 1; x <= nv; x++) {
+			vn = verb[x]; gsub(/-/, "", vn)
+			for (k = 1; k <= np; k++) { pn = tolower(val[k]); gsub(/[ \t_\\-]/, "", pn); if (index(pn, vn) == 1) vblock[x] = 1 }
 		}
 		nh = split("# agentsync setup report|## Summary|## Agent friction log|## Environment|## Installer|" \
 			"## Configuration|## Doctor|## Status|## Background runs|## Recent errors", hd, "|")
@@ -4532,7 +4588,7 @@ foreign_home_cut() {
 			else if ((v = volume(s, i)) > 0) { ps = v; vol = 1 }
 			pre = (ps > 1) ? substr(s, ps - 1, 1) : substr(out, length(out), 1)
 			if (comp == "" || comp == "Shared" || comp == "<path>" || (comp == "<user>" && !vol) || pre ~ /[A-Za-z0-9_.-]/) {
-				from = h + 1; continue
+				from = h; continue # from the run\047s last slash: a /Users/ that starts there is read (B13 round 38 C1440)
 			}
 			out = out substr(s, 1, ps - 1) (vol ? "/Volumes/<path>" : "/Users/<path>")
 			if (pre != "" && index("\"\047`", pre) && (q = index(substr(s, h + 1), pre))) { s = substr(s, h + q); from = 1; continue }
@@ -4555,9 +4611,7 @@ foreign_home_cut() {
 # (BSD awk takes no newline in -v; generic_folder's and generic_home_dir's words, a test keeps them equal),
 # byte-wise.
 typed_note_cut() {
-	TYPED_FIXED='Users|Library|Application|Support|CloudStorage|Volumes|Applications' \
-		TYPED_DRIVE='Apps|Attachments|Desktop|Documents|Downloads|Microsoft Copilot Chat Files|Microsoft Teams Chat Files|Music|My Drive|Notebooks|Personal Vault|Pictures|Recordings|Shared|Shared Documents|Shared drives|Videos' \
-		TYPED_HOME='applications|code|desktop|dev|development|documents|downloads|git|library|projects|repos|sites|source|src|work|workspace' LC_ALL=C awk '
+	TYPED_FIXED="$CUT_FIXED" TYPED_DRIVE="$CUT_DRIVE" TYPED_HOME="$CUT_HOME" LC_ALL=C awk '
 	BEGIN {
 		n = split(ENVIRON["TYPED_FIXED"], w, "|"); for (i = 1; i <= n; i++) fixed[w[i]] = 1
 		n = split(ENVIRON["TYPED_DRIVE"], w, "|"); for (i = 1; i <= n; i++) drive[w[i]] = 1
@@ -6874,23 +6928,22 @@ report_new_marks() {
 	SPLIT_HOW="may not read $SPLIT_WHY"
 }
 # The report agentsync rendered, cut again by this checkout in place (B13 round 37 ruling 120, C1210, C1237): a path
-# in another home by foreign_home_cut recut, and the folder named after install.sh's own `is not an existing
-# folder: ` (up to its last ` (see --help)`, else the line's end) to <path> unless it ends in <path> already (C1299
-# with C1250). Never the whole redact_stream, whose pairs would cut the placeholders again. A current render comes
-# back byte for byte; 1 when the pass fails, so write_report falls back to the shell report, never an uncut one.
-report_recut() {
+# in another home by foreign_home_cut recut, always, which leaves a current render byte for byte. OTHER=1, a render
+# by another build (report_build_other, which fails closed), also takes the fixed-word cuts of install.sh's own
+# words: the folder after `is not an existing folder: ` (up to its last ` (see --help)` before the line's end,
+# `;,.:`, ` | ` or ` · `, else the line's end; C1299 with C1250, C1436) and the name in a `--source-local <name>:
+# <head>` refusal, up to the last `: ` before one of REFUSED_HEADS (C1432). Each name becomes <path> unless _cut_path
+# could have printed it: its last part `<path>` and every earlier part empty, `~`, `.`, `..`, placeholders only, a
+# CUT_FIXED, CUT_DRIVE or CUT_HOME word, or a known app's folder after CloudStorage, bare or `<App>-<placeholder>`
+# (never a literal tenant), so `X<path>`,
+# `.../X/<path>` and `<path> X` are cut. Never on this checkout's own render, whose _cut_path already chose the form
+# (B13 round 38 C1453 with C1480, C1481 and C1435, ruling 126; makes worse True for C1435 and C1481: a faithful
+# port of _cut_path keeps an unregistered tenant). Never the whole redact_stream, whose pairs would cut the
+# placeholders again. 1 when the pass fails, so write_report falls back to the shell report, never an uncut one.
+report_recut() { # OTHER
 	local tmp
 	tmp="$(mktemp "${REPORT_PATH%/*}/.report-cut.XXXXXX" 2>/dev/null)" || return 1
-	if foreign_home_cut recut <"$REPORT_PATH" | LC_ALL=C awk -v m="is not an existing folder: " -v t=" (see --help)" '
-		(i = index($0, m)) > 0 {
-			r = substr($0, i + length(m)); j = 0; o = 0; p = r
-			while ((x = index(p, t)) > 0) { j = o + x; o += x; p = substr(p, x + 1) }
-			name = j ? substr(r, 1, j - 1) : r; tail = j ? substr(r, j) : ""
-			# a name already cut ends in <path>, or is <path> before a stop byte (a table cell, a clause after it)
-			if (index(r, "<path>") == 1 && (length(r) == 6 || index(" \t\r\f\v\"\047`()[]{},;|", substr(r, 7, 1)))) { print; next }
-			if (length(name) < 6 || substr(name, length(name) - 5) != "<path>") { print substr($0, 1, i + length(m) - 1) "<path>" tail; next }
-		}
-		{ print }' >"$tmp" && [ -s "$tmp" ]; then
+	if foreign_home_cut recut <"$REPORT_PATH" | if [ "${1:-1}" -eq 1 ]; then report_words_cut; else cat; fi >"$tmp" && [ -s "$tmp" ]; then
 		if cmp -s "$tmp" "$REPORT_PATH"; then rm -f "$tmp"; return 0; fi
 		chmod 600 "$tmp" 2>/dev/null || true
 		mv -f "$tmp" "$REPORT_PATH" || { rm -f "$tmp"; return 1; }
@@ -6899,8 +6952,60 @@ report_recut() {
 		return 1
 	fi
 }
+# setup_report._REFUSED_HEADS: the words every source_local_refused call opens with (a test keeps them equal)
+REFUSED_HEADS="this is a row step 1 marked |step 1 shows this folder's name |its name is step 1's escaped form |this is how step 1 shows a folder "
+# report_recut's fixed-word cuts of another build's render, on stdin
+report_words_cut() {
+	CUT_FIXED="$CUT_FIXED" CUT_DRIVE="$CUT_DRIVE" CUT_HOME="$CUT_HOME" CUT_HEADS="$REFUSED_HEADS" LC_ALL=C awk \
+		-v m="is not an existing folder: " -v t=" (see --help)" -v sl="--source-local " '
+	BEGIN {
+		n = split(ENVIRON["CUT_FIXED"], w, "|"); for (i = 1; i <= n; i++) fixed[w[i]] = 1
+		n = split(ENVIRON["CUT_DRIVE"], w, "|"); for (i = 1; i <= n; i++) drive[w[i]] = 1
+		n = split(ENVIRON["CUT_HOME"], w, "|"); for (i = 1; i <= n; i++) home[w[i]] = 1
+		nh = split(ENVIRON["CUT_HEADS"], head, "|")
+	}
+	# a name _cut_path could have printed: its last part <path>, every earlier one a part it keeps
+	function known(name,    n, p, i) {
+		n = split(name, p, "/")
+		if (p[n] != "<path>") return 0
+		for (i = 1; i < n; i++) {
+			if (p[i] == "" || p[i] == "~" || p[i] == "." || p[i] == ".." || p[i] ~ /^(<[a-z]+(-[0-9]+)?>)+$/) continue
+			if ((p[i] in fixed) || (p[i] in drive) || (tolower(p[i]) in home)) continue
+			# setup_report._PROVIDER_KEPT_RE: a known app (_PROVIDER_APPS), bare or before placeholders only
+			if (i > 1 && p[i - 1] == "CloudStorage" && p[i] ~ /^(Box|Dropbox|Egnyte|GoogleDrive|OneDrive)(-SharedLibraries)?(-(<[a-z]+(-[0-9]+)?>)+)?$/) continue
+			return 0
+		}
+		return 1
+	}
+	# where the name after m ends: the last t followed by the end, one of ;,.: or " | " / " · ", else 0
+	function name_end(r,    o, x, p, a, e) {
+		o = 0; p = r; e = 0
+		while ((x = index(p, t)) > 0) {
+			o += x; a = substr(r, o + length(t))
+			if (a == "" || index(";,.:", substr(a, 1, 1)) || substr(a, 1, 3) == " | " || substr(a, 1, 4) == " \302\267 ") e = o
+			p = substr(p, x + 1)
+		}
+		return e
+	}
+	(i = index($0, m)) > 0 {
+		r = substr($0, i + length(m)); j = name_end(r)
+		# a bare <path> before a table cell or end-of-name punctuation is already cut: the rest is not its name
+		if (index(r, "<path>") == 1 && (length(r) == 6 || substr(r, 7, 2) == " |" || index(";,.:", substr(r, 7, 1)))) j = 7
+		name = j ? substr(r, 1, j - 1) : r; tail = j ? substr(r, j) : ""
+		if (!known(name)) $0 = substr($0, 1, i + length(m) - 1) "<path>" tail
+	}
+	(i = index($0, sl)) > 0 {
+		r = substr($0, i + length(sl)); e = 0
+		for (k = 1; k <= nh; k++) {
+			p = r; o = 0
+			while ((x = index(p, ": " head[k])) > 0) { o += x; if (o > e) e = o; p = substr(p, x + 1) }
+		}
+		if (e > 1 && !known(substr(r, 1, e - 1))) $0 = substr($0, 1, i + length(sl) - 1) "<path>" substr(r, e)
+	}
+	{ print }'
+}
 write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2 in a dry run
-	local rc="$1" bin out src=0 why="agentsync is not installed"
+	local rc="$1" bin out src=0 other=1 why="agentsync is not installed"
 	if [ "$DRY_RUN" -eq 1 ]; then
 		run "${AGENTSYNC:-agentsync}" setup-report --out "$REPORT_PATH" --config "$CONFIG"
 		return 2
@@ -6911,15 +7016,18 @@ write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2
 		# section 1's unread count by section 3's rule (B13 round 16 T24); an older agentsync counts by mode.
 		# AGENTSYNC_REPORT_RUN: the run's NEXT: line comes after the report, which counts it as still to come.
 		out="$(AGENTSYNC_REPORT_RUN="$RUN_ID" AGENTSYNC_REPORT_UNREAD_PATCHES="$(unread_patch_count)" with_timeout 120 "$bin" setup-report --out "$REPORT_PATH" --config "$CONFIG" </dev/null 2>&1)" || src=$?
+		# another build's render, read once for both branches below; a missing stamp is another build (C1453)
+		other=0
+		! report_build_other || other=1
 		# B13 round 37 ruling 120 (C1210, C1237): every render is cut again by this checkout, since the installed
 		# build may predate its cut, and a render by another build is replaced by the fallback when a line it
 		# reads holds a separator such a build splits a line on, whose tail no shell cut can follow, or a folder row
 		# in marks such a build may not strip (B13 round 38 C1447).
-		if [ "$src" -eq 0 ] && [ -s "$REPORT_PATH" ] && report_build_other && { report_split_lines || report_new_marks; }; then
+		if [ "$src" -eq 0 ] && [ -s "$REPORT_PATH" ] && [ "$other" -eq 1 ] && { report_split_lines || report_new_marks; }; then
 			warn "agentsync setup-report was not kept: $SPLIT_WHY"
 			rm -f "$REPORT_PATH" # never left in the report's place, should the fallback fail too
 			why="the installed agentsync, another build, $SPLIT_HOW"
-		elif [ "$src" -eq 0 ] && [ -s "$REPORT_PATH" ] && ! report_recut; then
+		elif [ "$src" -eq 0 ] && [ -s "$REPORT_PATH" ] && ! report_recut "$other"; then
 			warn "could not cut paths in another home from the agentsync setup-report"
 			rm -f "$REPORT_PATH"
 			why="this checkout could not cut the agentsync setup-report again"
@@ -10319,8 +10427,9 @@ if [ "$bad_total" -gt 5 ]; then
 elif [ "$bad_total" -gt 0 ]; then
 	# The person reads the name on stderr; the shell report words it without, since this folder is in no config
 	# for a pair to name it. The agentsync report cuts the name its install.out tail copies from stderr after
-	# `is not an existing folder: ` (B13 round 37 C1299 with C1250, lane RA), and report_recut cuts it again in
-	# a render by an older build (ruling 120).
+	# `is not an existing folder: ` by _cut_path (B13 round 37 C1299 with C1250, lane RA), and report_recut cuts it
+	# again only in a render by another build, unless _cut_path could have printed it, so this checkout's own render
+	# names one folder one way (ruling 120; round 38 C1453, ruling 126).
 	USAGE_ERROR_REPORTED="--source-local is not an existing folder: <path>"
 	usage_error "--source-local is not an existing folder: $(list_name "${BAD_FOLDERS[$bad_shown]}")"
 fi
@@ -10333,8 +10442,10 @@ log_start
 [ "$DRY_RUN" -eq 1 ] && say "dry run: nothing below is changed"
 say "source: $SOURCE ($SOURCE_KIND)"
 say "config: $CONFIG"
+# each folder in list_name's spelling, as step 1's list and the refusals show it: no control byte reaches the
+# terminal or install.out, and both reports alias that spelling (B13 round 38 C1414, ruling 126; privacy)
 for f in ${FOLDERS[@]+"${FOLDERS[@]}"}; do
-	say "source-local: $f"
+	say "source-local: $(list_name "$f")"
 done
 [ "$SIMULATE" -eq 0 ] || say "SIMULATED: AGENTSYNC_SIMULATE_LAUNCHD=1 (test only): install-agent, the kickstart and the wait are simulated"
 
