@@ -14644,12 +14644,12 @@ def test_a_step_install_sh_stopped_at_its_own_limit_is_never_an_outside_signal_c
     """B13 round 38 C1434: a first sync or status step install.sh's own watchdog stopped at its limit logs
     ``rc=143 result=failed note=timeout``, and the report read the rc alone: the step row said ``stopped by
     SIGTERM, rc 143 (timeout)``, the retry item ``from outside install.sh``, which was false, and the outcome
-    dropped the limit. Each reads ``stopped at its limit of <N>s, rc 143`` now, from the step's note, at each
-    call site; a TERM from outside keeps its words, and the stale lock a limit-stopped first sync leaves is
-    still expected (_signal_lock reads _rc_words, which is unchanged)."""
+    dropped the limit. Each reads ``stopped at its limit after <N>s, rc 143`` now, from the step's note, at
+    each call site; a TERM from outside keeps its words, and the stale lock a limit-stopped first sync leaves
+    is still expected (_signal_lock reads _rc_words, which is unchanged)."""
     log = fake_mac["setup"] / "install.log"
     write_friction(fake_mac, retry_friction())
-    limit = "stopped at its limit of 3600s, rc 143"
+    limit = "stopped at its limit after 3600s, rc 143"
     failed = install_run("2026-09-29T10:00:00Z", 1).replace(
         "step=first-sync seconds=34 rc=0 result=done note=converted-3-deferred-0",
         "step=first-sync seconds=3600 rc=143 result=failed note=timeout",
@@ -14671,7 +14671,7 @@ def test_a_step_install_sh_stopped_at_its_own_limit_is_never_an_outside_signal_c
     words, _counts = setup_report._sync_step_words(dict(first.step("first-sync") or {}))
     assert words == f"failed in 3600s, {limit}", words
     status = {"seconds": "900", "rc": "143", "result": "failed", "note": "timeout"}
-    assert setup_report._step_rc_words(status) == "stopped at its limit of 900s, rc 143"
+    assert setup_report._step_rc_words(status) == "stopped at its limit after 900s, rc 143"
     assert setup_report._step_rc_words({"rc": "143", "result": "failed"}) == "stopped by SIGTERM, rc 143"
     # the outcome of an attempt whose last run stopped so names the limit too
     log.write_text(LIST_RUN + failed, encoding="utf-8")

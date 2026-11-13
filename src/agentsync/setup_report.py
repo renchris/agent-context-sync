@@ -7013,14 +7013,15 @@ def _rc_words(rc: str) -> str:
 def _step_rc_words(fields: dict[str, str]) -> str:
     """One logged step's rc in words, as :func:`_rc_words` gives them, but a step install.sh stopped at its
     own limit (``note=timeout``: the first sync's or status's watchdog sent the TERM, ``rc=143``) reads
-    ``stopped at its limit of 3600s, rc 143``, never ``stopped by SIGTERM`` (B13 round 38 C1434: both reports
-    called the run's own limit an outside signal, and "from outside install.sh" was false). Read at each call
-    site, never inside :func:`_rc_words`: :func:`_signal_lock` reads that one, since a step stopped at its
-    limit is killed by the same SIGTERM and leaves the same stale lock."""
+    ``stopped at its limit after 3600s, rc 143``, never ``stopped by SIGTERM`` (B13 round 38 C1434: both
+    reports called the run's own limit an outside signal, and "from outside install.sh" was false). The
+    number is the step's own seconds, never the limit, which install.log does not log and a step runs past.
+    Read at each call site, never inside :func:`_rc_words`: :func:`_signal_lock` reads that one, since a step
+    stopped at its limit is killed by the same SIGTERM and leaves the same stale lock."""
     rc = fields.get("rc", "")
     if fields.get("note") == "timeout" and rc not in ("", "0"):
         secs = fields.get("seconds", "")
-        return f"stopped at its limit{f' of {secs}s' if secs.isdigit() else ''}, rc {rc}"
+        return f"stopped at its limit{f' after {secs}s' if secs.isdigit() else ''}, rc {rc}"
     return _rc_words(rc)
 
 

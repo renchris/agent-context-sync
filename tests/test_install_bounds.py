@@ -187,7 +187,8 @@ def test_a_hung_first_sync_stops_at_its_limit(
     )
     assert not re.search(r"Terminated: 15|Killed: 9", cp.stderr), cp.stderr
     report = _python_report(e, tmp_path)  # B13 round 38 C1434: its own limit, never an outside signal
-    assert "stopped at its limit of 2s, rc 143" in report and "from outside install.sh" not in report, report
+    assert re.search(r"stopped at its limit after \d+s, rc 143", report), report
+    assert "from outside install.sh" not in report, report
 
 
 @pytest.mark.parametrize("which", ["step 5", "closing"])
@@ -211,7 +212,9 @@ def test_a_hung_status_stops_at_its_limit(
         assert re.search(r" rc=143 result=failed note=timeout$", _step_line(e, "status")), install_log(e)
         assert last_line(cp).startswith("NEXT: agentsync status did not finish within 2s"), cp.stdout
         report = _python_report(e, tmp_path)  # B13 round 38 C1434
-        assert "stopped at its limit of 2s, rc 143" in report and "from outside install.sh" not in report
+        # the step's own seconds, which run past its 2 s limit on a slow runner (CI 43457821779 read 3)
+        assert re.search(r"stopped at its limit after \d+s, rc 143", report), report
+        assert "from outside install.sh" not in report, report
     else:  # the sync itself finished: the exit stays 0, and the report line keeps the rc (P14)
         assert cp.returncode == 0, cp.stdout + cp.stderr
         assert _step_line(e, "report").endswith(" closing_status=143"), install_log(e)

@@ -40809,11 +40809,13 @@ cases).
 `prior_signal_first_sync` and test_install_bounds.py's report assertions). A first sync or status step that hits its
 limit logs `rc=143 result=failed note=timeout`, and the report read the rc alone: the step row said `stopped by
 SIGTERM, rc 143 (timeout)`, the retry item added `from outside install.sh`, which was false, and the outcome dropped
-the limit. `setup_report._step_rc_words` reads the step's note and gives `stopped at its limit of <seconds>s, rc
+the limit. `setup_report._step_rc_words` reads the step's note and gives `stopped at its limit after <seconds>s, rc
 143`, at each call site (`_step_table`, `_reached`, `_run_end`, `_sync_step_words`, the Summary outcome,
 `_failed_at`), the `timeout` note itself dropped where those words carry it; `_rc_words` is unchanged, so
 `_signal_lock` still files the stale lock such a sync leaves as expected (a change inside it makes worse True). The
-closing status keeps its words: install.sh logs nothing that tells a limit from a signal there. Test:
+closing status keeps its words: install.sh logs nothing that tells a limit from a signal there. The number is the
+step's own seconds, never the limit: install.log logs no limit, and a step's seconds run past it (ci run 43457821779
+read `of 3s` under a 2 s limit, a limit the step never had), so the words say `after`, not `of`. Test:
 `test_a_step_install_sh_stopped_at_its_own_limit_is_never_an_outside_signal_c1434`.
 
 **An empty source folder's listable warn is expected** (ruling 130's report half, completing C1205; C1401 with C1408
@@ -41026,12 +41028,12 @@ this checkout's render, and a render with no Redaction section keeps the cut ren
 `test_report_redaction.py::test_a_recut_of_another_builds_render_says_so_under_its_redaction_section_c1406`.
 
 **A first sync stopped at install.sh's own limit keeps the next run's one re-run** (C1434's install.sh half; lane
-RA builds the report's words, `stopped at its limit of <n>s, rc 143`; `scripts/install.sh`). `prior_signal_first_sync`
+RA builds the report's words, `stopped at its limit after <n>s, rc 143`; `scripts/install.sh`). `prior_signal_first_sync`
 read a first sync's rc 143 as a signal from outside, so a run after one stopped at its own limit was told no further
 re-run was the agent's. A step=first-sync line with ` note=timeout` is no longer recorded there. Tests:
 `test_install_oneshot.py::test_a_second_signal_stopped_first_sync_offers_no_further_re_run[at-its-limit]`, and
 `test_install_bounds.py`'s two hung-step tests, which render this checkout's report from the run's install.log and
-find `stopped at its limit of 2s, rc 143` and no `from outside install.sh`.
+find `stopped at its limit after <n>s, rc 143` and no `from outside install.sh`.
 
 **The lane's review of round 38** (C1447, C1432, C1406, C1464; `scripts/install.sh`). A pasted `TWIN_MARK` row's
 refusal said `...marked <mark>: its name is step 1's escaped form ...`, whose second clause opens with a refusal head,

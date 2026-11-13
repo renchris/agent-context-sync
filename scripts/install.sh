@@ -4732,7 +4732,7 @@ prior_signal_first_sync() {
 		!(id in at) { order[++n] = id; at[id] = $1 }
 		index($0 " ", " step=list-folders ") { lists[id] = 1 }
 		# a first sync stopped at its own limit (note=timeout) is no signal from outside: it keeps the next run\047s one
-		# re-run (B13 round 38 C1434, lane RA\047s report words `stopped at its limit of <n>s, rc 143`)
+		# re-run (B13 round 38 C1434, lane RA\047s report words `stopped at its limit after <n>s, rc 143`)
 		index($0, " step=first-sync ") && $0 !~ / note=timeout( |$)/ && match($0, / rc=[0-9]+/) { fs[id] = substr($0, RSTART + 4, RLENGTH - 4) }
 		$3 == "end" && match($0, / rc=[0-9]+/) { rc[id] = substr($0, RSTART + 4, RLENGTH - 4) }
 		END {
