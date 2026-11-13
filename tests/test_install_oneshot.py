@@ -9558,6 +9558,13 @@ RENAME_NEXT = (
     "and go by what it prints (leaving it out is their choice, not the agent's)"
 )
 """The NEXT after a rename refusal: the person's rename, no folder named (B13 round 37 C1214)."""
+TWIN_NEXT = (
+    "NEXT: renaming one of the two folders is the person's, not a step for the agent, so show them the error "
+    f"and go on to the report; once they say one is renamed in its sync app, run {INSTALL_SH} --list-folders "
+    "again and go by what it prints (leaving it out is their choice, not the agent's)"
+)
+"""The NEXT after a refusal of two folders, a plain look-alike or a pasted twin row, whose error says
+"rename one of them": the choice of which is the person's (B13 round 38 C1415)."""
 
 
 def test_list_folders_shows_an_escaped_row_apart_from_its_look_alike_c1001(env: dict[str, str]) -> None:
@@ -9739,6 +9746,8 @@ def test_source_local_refuses_an_escaped_row_or_a_folder_with_a_look_alike_c1072
             "NEXT: leave that --source-local out: the folder it names already syncs, and a re-run keeps it; "
             "then run the corrected command"
         ), last_line(cp)
+    elif why in ("look-alike", "twin marked"):  # B13 round 38 C1415: one of the two, the person's choice
+        assert last_line(cp).startswith(TWIN_NEXT), last_line(cp)
     else:
         assert last_line(cp).startswith(RENAME_NEXT), last_line(cp)
     assert "Contoso" not in last_line(cp) and "Fabrikam" not in last_line(cp), "the NEXT names no folder"

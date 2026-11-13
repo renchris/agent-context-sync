@@ -10205,7 +10205,8 @@ fi
 # folder, but LAST_ERROR holds list_name's escaped spelling, which no redaction pair matches.
 # Each refusal is worded for its own row and says to run --list-folders again, never step 1's whole command, which
 # opens a new attempt (B13 round 37 ruling 121, C1239, C1213, C1229, C1275); its NEXT leaves the rename to the
-# person and names no folder (C1214). A row step 1 marked $TWIN_MARK or $ESCAPED_KEPT_MARK is refused pasted too,
+# person and names no folder (C1214); a refusal of two folders leaves the person the choice of which (TWIN_NEXT, B13
+# round 38 C1415). A row step 1 marked $TWIN_MARK or $ESCAPED_KEPT_MARK is refused pasted too,
 # and so is a row an earlier run marked in the words before B13 round 38 C1447, naming its own mark.
 again="then run $SELF --list-folders again"
 twin_tail="and it cannot be told apart from another folder there; rename it in its sync app, $again"
@@ -10214,6 +10215,9 @@ KEPT_NEXT="leave that --source-local out: the folder it names already syncs, and
 # whose spelling the agent chose, keeps the corrected-command NEXT (B13 round 38 C1407, makes worse True)
 MISSING_NEXT="no folder is at the path given: if that path is not exactly a row $SELF --list-folders printed, run the command again with that row's path; if it is, putting it back, syncing it to this Mac in its app, or naming another folder is the person's, not a step for the agent, so show them the error and go on to the report; once they say it is back, run $SELF --list-folders again and go by what it prints (leaving it out is their choice, not the agent's)"
 BAD_RELATIVE=0
+# a refusal of two folders, a plain look-alike or a pasted twin row, leaves the choice of which to rename to the
+# person, as its own error says "rename one of them" (B13 round 38 C1415)
+TWIN_NEXT="renaming one of the two folders is the person's, not a step for the agent, so show them the error and go on to the report; once they say one is renamed in its sync app, run $SELF --list-folders again and go by what it prints (leaving it out is their choice, not the agent's)"
 RENAME_NEXT="renaming that folder is the person's, not a step for the agent, so show them the error and go on to the report; once they say it is renamed in its sync app, run $SELF --list-folders again and go by what it prints (leaving it out is their choice, not the agent's)"
 source_local_refused() { # SHOWN-NAME WORDS [NEXT]
 	USAGE_ERROR_REPORTED="--source-local <path>: $2"
@@ -10236,7 +10240,7 @@ for f in ${SOURCE_LOCALS[@]+"${SOURCE_LOCALS[@]}"}; do
 		source_local_refused "$(pasted_row "$f" "$pm")" "this is a row step 1 marked $pm: its shown name is not the folder's own; rename it in its sync app, $again"
 		;;
 	*"$TWIN_MARK"*)
-		source_local_refused "$(pasted_row "$f" "$TWIN_MARK")" "this is a row step 1 marked $TWIN_MARK: its name is step 1's escaped form of another folder there; rename one of them in its sync app, $again"
+		source_local_refused "$(pasted_row "$f" "$TWIN_MARK")" "this is a row step 1 marked $TWIN_MARK: its name is step 1's escaped form of another folder there; rename one of them in its sync app, $again" "$TWIN_NEXT"
 		;;
 	*"$ESCAPED_KEPT_MARK"* | *"$ESCAPED_KEPT_MARK_OLD"*)
 		pm="$ESCAPED_KEPT_MARK"
@@ -10267,7 +10271,7 @@ for f in ${SOURCE_LOCALS[@]+"${SOURCE_LOCALS[@]}"}; do
 		if escaped_twin "$f" dir && name_escaped "$f"; then
 			source_local_refused "$(list_name "$f")" "step 1 shows this folder's name with a control character, $twin_tail"
 		elif escaped_twin "$f" dir; then
-			source_local_refused "$(list_name "$f")" "its name is step 1's escaped form of another folder there, whose name holds a control character; rename one of them in its sync app, $again"
+			source_local_refused "$(list_name "$f")" "its name is step 1's escaped form of another folder there, whose name holds a control character; rename one of them in its sync app, $again" "$TWIN_NEXT"
 		fi
 		FOLDERS+=("$f")
 	elif escaped_twin "$f"; then

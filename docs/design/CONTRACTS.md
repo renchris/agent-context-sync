@@ -40774,6 +40774,14 @@ finder's one person's NEXT for the branch is not taken. Test:
 `test_a_missing_source_local_folder_names_its_owner_c1407` (absolute, absolute beside a real folder, relative, and the
 three kept marks).
 
+**A refusal of two folders leaves the person the choice of which to rename** (C1415; `scripts/install.sh`). The
+look-alike refusal (`its name is step 1's escaped form of another folder there, ...; rename one of them in its sync
+app`) and a pasted `TWIN_MARK` row said `rename one of them`, while their NEXT, `RENAME_NEXT`, said `renaming that
+folder`. Both now take `TWIN_NEXT`: `renaming one of the two folders is the person's, not a step for the agent, so show
+them the error and go on to the report; once they say one is renamed in its sync app, run <installer> --list-folders
+again ...`. A pasted escaped row, a control-character member of a pair (`rename it`) and a path that is only step 1's
+escaped text keep `RENAME_NEXT`. Test: `test_source_local_refuses_an_escaped_row_or_a_folder_with_a_look_alike_c1072`.
+
 ### 16.247 Round 38: --json documents, an empty source folder, names in doctor's lines, and a recording's kept page (2026-11-13, wave B13 round 38 lane B)
 
 **Doctor's lines split at `\n` alone** (C1431; ruling 126; privacy). Status's `_Status.check_lines`, the report's
