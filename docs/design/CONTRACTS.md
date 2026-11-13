@@ -41250,7 +41250,21 @@ engine `engine_state` finds and says why the function stays: for tests/test_ocr.
 
 ### 16.249 Round 38: the v37 prompt, the retention promise and the guides (2026-11-13, wave B13 round 38 lane D)
 
-Reserved for round 38 lane D of B13.
+Round 38's lane D items (`docs/plans/bring-back-ocr.md`, "B13 round 38"; specs `round38/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's rulings 126 to 132 settle it). A dated line this round writes reads
+`Amended 2026-11-13, §16.249 C<n>`.
+
+**The guides say when compaction runs, never a deadline** (C1489, by §16.244 C1306; docs only). README.md's
+point-in-time paragraph said `agentsync sync` squashes the history "after `history_days` on its next full pass", and
+`docs/deploy/data-governance.md`'s table and its Bounded history bullet gave `history_days` alone, while
+`governance.compaction_due` starts a compaction only once a commit is older than `history_days +
+compaction_slack_days` (30 + 7 by default) and `cycle._retention` runs only in a reconcile whose land gate passes,
+returning on a failed due check, a hold (`SUSPENDED by hold`) or a failed compaction, as C1306 records. Both guides
+now say compaction is due once a commit is older than the sum, runs in the next reconcile (hourly by default) whose
+land gate passes, and is left by a hold, a blocked land gate or a failure, status saying due or overdue (overdue
+after `history_days` plus twice the slack, `compaction_state`); neither words the sum as a deadline for a body's age,
+the misreading C1306 corrected. Test: `test_the_guides_say_when_compaction_runs_never_a_deadline_c1489`, which reads
+each sentence and each claim from the code.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

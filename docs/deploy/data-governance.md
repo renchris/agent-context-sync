@@ -23,7 +23,7 @@ refuses to push to a remote that is not listed.
 
 | Location | Holds | Bounded by | Purge reaches it |
 |---|---|---|---|
-| `~/agent-context/docs/mirror/` + `.git` | converted markdown, one page per item, plus git history | compaction on `sync`'s full pass when due (`[governance] history_days`, default 30) | yes: history rewrite, reflog expiry, `gc --prune=now`, verified with `git cat-file -e` |
+| `~/agent-context/docs/mirror/` + `.git` | converted markdown, one page per item, plus git history | compaction, due once a commit is older than `history_days` + `compaction_slack_days` (30 + 7 by default) and run by the next reconcile (`sync`'s full pass) whose land gate passes; a hold or a failure leaves it (status: overdue) | yes: history rewrite, reflog expiry, `gc --prune=now`, verified with `git cat-file -e` |
 | `~/Library/Caches/agentsync` | converter outputs by content hash | GC after each complete enumeration | yes |
 | `~/Library/Application Support/agentsync/manifest.sqlite` | paths, ids, hashes, labels, cursors (0600); no content | tombstone reap, 180 days | yes (rows forgotten) |
 | `…/agentsync/staging`, `…/agentsync/teams/` | raw downloads (per cycle); Teams month stores | emptied each cycle; Teams rolls up by month | staging: n/a; Teams: yes |
@@ -49,7 +49,11 @@ is a copy that no purge reaches, so exclude it too.
   hint.
 - **Bounded history:** mirror history older than `history_days` is squashed into one snapshot and the dropped
   objects are pruned. This runs automatically on the full pass `agentsync sync` makes when one is due.
-  `agentsync status` warns when compaction is due and fails when it is overdue.
+  Compaction becomes due once a commit is older than `history_days` plus `compaction_slack_days` (7 by default),
+  and it then runs in the next reconcile whose land gate passes. A hold (see below), a blocked land gate or a failed
+  compaction skips it, and nothing here is a deadline for a body's age.
+  `agentsync status` warns when compaction is due and fails when it is overdue, after `history_days` plus twice
+  `compaction_slack_days`.
 - **Explicit purge:** `agentsync purge id=<stable_id> | path=<source glob> | docs=<docs glob> --reason
   {upstream-deleted,label-escalation,dlp-remediation,erasure-request,operator}` (add `--dry-run` first). It
   rewrites history in the repo and the published worktree, deletes cache entries and manifest rows, and writes one

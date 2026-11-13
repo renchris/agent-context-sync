@@ -122,8 +122,11 @@ is no `docs-source` folder; `docs/mirror/` holds the converted copy, and `docs/t
 ### Point-in-time archive (off by default)
 
 By default a file deleted at the source becomes a tombstone in `docs/mirror/`: the body is replaced, the old text
-stays only in git history, `agentsync sync` squashes that history after `history_days` on its next full pass, and
-the deletion queues a purge. Someone who keeps every note can turn that off in `sources.toml`:
+stays only in git history, and the deletion queues a purge. Once a commit is older than `history_days` plus
+`compaction_slack_days` (30 + 7 days by default), the next reconcile (`agentsync sync`'s full pass, hourly by
+default) whose land gate passes squashes every commit older than `history_days`. A hold, a blocked land gate, a
+failed compaction or a stopped install leaves the history in place, and `agentsync status` then shows compaction
+due or overdue. Someone who keeps every note can turn that off in `sources.toml`:
 
 ```toml
 [governance]

@@ -9736,6 +9736,70 @@ def test_compaction_runs_only_in_a_reconcile_whose_land_gate_passes_c1306() -> N
     assert 'f"{state}: {detail}"' in inspect.getsource(cli)
 
 
+def test_the_guides_say_when_compaction_runs_never_a_deadline_c1489() -> None:
+    """B13 round 38 C1489: README.md said `agentsync sync` squashes the history "after `history_days` on its
+    next full pass", and data-governance.md gave `history_days` alone, while a compaction becomes due only
+    once a commit is older than history_days + compaction_slack_days (30 + 7), runs in a reconcile whose land
+    gate passes, and a hold, a blocked gate or a failure leaves it. Both guides say so, read here against the
+    code, and neither words the sum as a deadline (C1306)."""
+    import dataclasses  # noqa: PLC0415
+
+    from agentsync import config, cycle, governance  # noqa: PLC0415
+
+    readme = " ".join(_page("README.md").split())
+    assert "squashes that history after `history_days` on its next full pass" not in readme
+    assert (
+        "Once a commit is older than `history_days` plus `compaction_slack_days` (30 + 7 days by default),"
+        " the next reconcile (`agentsync sync`'s full pass, hourly by default) whose land gate passes"
+        " squashes every commit older than `history_days`. A hold, a blocked land gate, a failed compaction"
+        " or a stopped install leaves the history in place, and `agentsync status` then shows compaction due"
+        " or overdue."
+    ) in readme
+    gov = " ".join(_page("docs/deploy/data-governance.md").split())
+    assert "compaction on `sync`'s full pass when due (`[governance] history_days`, default 30)" not in gov
+    assert (
+        "| compaction, due once a commit is older than `history_days` + `compaction_slack_days` (30 + 7 by"
+        " default) and run by the next reconcile (`sync`'s full pass) whose land gate passes; a hold or a"
+        " failure leaves it (status: overdue) |"
+    ) in gov
+    assert (
+        "Compaction becomes due once a commit is older than `history_days` plus `compaction_slack_days` (7 by"
+        " default), and it then runs in the next reconcile whose land gate passes. A hold (see below), a"
+        " blocked land gate or a failed compaction skips it, and nothing here is a deadline for a body's age."
+        " `agentsync status` warns when compaction is due and fails when it is overdue, after `history_days`"
+        " plus twice `compaction_slack_days`."
+    ) in gov
+    for text in (readme, gov):
+        assert "within 37 days" not in text and "after 37 days" not in text
+    # each claim, from the code: the sum starts it, with its defaults
+    fields = {f.name: f.default for f in dataclasses.fields(governance.GovernanceConfig)}
+    assert (fields["history_days"], fields["compaction_slack_days"]) == (30, 7)
+    due = inspect.getsource(governance.compaction_due)
+    assert "timedelta(days=gov.history_days + gov.compaction_slack_days)" in due
+    assert "compaction_slack_days=2 * gov.compaction_slack_days" in inspect.getsource(
+        governance.compaction_state
+    )
+    # it runs only in a reconcile, in the arm a passing land gate takes, and a hold or a failure returns
+    body = inspect.getsource(cycle._Cycle)
+    gate = body.index("blocked = any(f.blocking for f in self.findings)")
+    arm = body.index("if self.mode is CycleMode.RECONCILE:", gate)
+    assert body.index("else:", gate) < arm < body.index("commit_sha = self._retention(commit_sha)", arm)
+    retention = inspect.getsource(cycle._Cycle._retention)
+    hold = retention.index("SUSPENDED by hold")
+    assert retention.index("return commit_sha", hold) < retention.index("governance.compact_history(")
+    assert "compaction FAILED" in retention
+    assert "gov.history_days if keep_days is None else keep_days" in inspect.getsource(
+        governance.compact_history
+    )
+    defaults = {f.name: f.default for f in dataclasses.fields(config.Config)}
+    assert defaults["reconcile_interval_s"] == 3600
+    section = " ".join(_contracts_section("### 16.249 ", "### 16.300 ").split())
+    assert (
+        "**The guides say when compaction runs, never a deadline** (C1489, by §16.244 C1306; docs only)."
+        in (section)
+    )
+
+
 def test_section_16_26_names_the_cycles_one_look_through_engine_state_c1270() -> None:
     """B13 round 37 C1270: §16.26 said `_Cycle.__init__` asks `ocr.engine(...)` once (`cycle._cycle_ocr`) and
     its test list named `_cycle_ocr`, but round 36's C1101 made it `_cycle_ocr_state` over
