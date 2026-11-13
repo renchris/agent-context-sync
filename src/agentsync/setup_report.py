@@ -153,6 +153,7 @@ from agentsync.config import (
     load_config,
 )
 from agentsync.materialise import file_provider_marker
+from agentsync.model import SourceKind
 from agentsync.ops.lock import LockInfo, SingleWriterLock, Stage
 from agentsync.paths import (
     TEMPORARY_ROOTS,
@@ -15026,6 +15027,34 @@ _SIGNAL_LOCK_WORDS = "left by the first sync a signal stopped; the next sync bre
 """The expected bucket of doctor's stale ``lock`` warn that a signal-stopped first sync left
 (:func:`_signal_lock`)."""
 
+_EMPTY_FOLDER_DETAIL = "lists 0 entries (the folder is empty)"
+"""``doctor.EMPTY_FOLDER_DETAIL`` (lane B, B13 round 38 C1401; a test holds the two equal once doctor has it):
+the tail of a ``source.<id>.listable`` [warn]'s detail for an empty source folder outside every File Provider
+domain, cloud or local non-inbox."""
+_EMPTY_FOLDER_WORDS = "an empty folder chosen as a source: pause it or fill it"
+"""The expected bucket of that warn (B13 round 38 ruling 130, completing C1205; C1401 with C1408 and
+C1427)."""
+
+
+def _empty_source_warn(c: Config | None, name: str, detail: str) -> bool:
+    """Whether doctor's ``name`` [warn] with ``detail`` is a configured live non-inbox source's
+    ``source.<id>.listable`` warn whose detail, before its ``(fix: ...)``, ends in doctor's empty-folder words
+    (``doctor.EMPTY_FOLDER_DETAIL``, or :data:`_EMPTY_FOLDER_DETAIL` from a build without it). Keyed on the
+    check and that detail, never the fix, as doctor printed it (J52): such a warn is expected, so an empty
+    source folder makes unexpected 0 (B13 round 38 ruling 130)."""
+    if c is None or not (name.startswith("source.") and name.endswith(".listable")):
+        return False
+    sid = name[len("source.") : -len(".listable")]
+    if not any(src.id == sid and src.is_live and src.kind is not SourceKind.INBOX for src in c.sources):
+        return False
+    try:
+        from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are
+
+        said = str(getattr(doctor, "EMPTY_FOLDER_DETAIL", _EMPTY_FOLDER_DETAIL))
+    except Exception:  # the report's own copy
+        said = _EMPTY_FOLDER_DETAIL
+    return re.search(rf" {re.escape(said)}(?: \(fix: .*)?$", detail) is not None
+
 
 def _signal_lock(c: Config | None, runs: Sequence[InstallRun]) -> bool:
     """Whether the lock's body, by the report's own read and with no process holding it, is the one a first
@@ -15529,6 +15558,8 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
             and _signal_lock(r.config, runs)
         ):  # B13 round 32 C616 (ruling 66): a held or silent holder's warn stays unexpected
             why = _SIGNAL_LOCK_WORDS
+        if why is None and tag == "warn" and _empty_source_warn(r.config, name, detail):  # ruling 130
+            why = _EMPTY_FOLDER_WORDS
         late = _HELPER_LATE_RE.match(detail) if tag == "warn" and name in _HELPER_CHECKS else None
         if why is not None:
             expected.setdefault(why, []).append(name)

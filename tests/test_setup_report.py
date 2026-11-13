@@ -70,7 +70,7 @@ from agentsync.convert.recording import RecordingConverter
 from agentsync.convert.registry import Registry
 from agentsync.errors import ConfigError
 from agentsync.manifest import Manifest
-from agentsync.model import CycleMode, PassKind
+from agentsync.model import CycleMode, PassKind, SourceKind
 from agentsync.ops import doctor, launchd
 from agentsync.paths import TEMPORARY_ROOTS, expand, is_temporary
 from conftest import zone
@@ -8773,6 +8773,48 @@ def test_a_stale_lock_a_signal_stopped_first_sync_left_is_expected_c616(fake_mac
     assert setup_report._SIGNAL_LOCK_WORDS == (
         "left by the first sync a signal stopped; the next sync breaks it and runs full passes"
     )
+
+
+def test_an_empty_source_folders_listable_warn_is_expected_ruling_130(fake_mac: dict[str, Path]) -> None:
+    """B13 round 38 ruling 130 (C1401 with C1408 and C1427, completing C1205): an empty source folder outside
+    every File Provider domain keeps doctor's [warn] (an [ok] would hide an empty mount point or a wrong
+    path), now with a pause-or-check fix, and the report filed it unexpected. A ``source.<id>.listable`` warn
+    of a configured live non-inbox source whose detail ends in doctor's empty-folder words is expected, keyed
+    on the check and that detail, never the fix; an inbox's, an unknown id's, and another listable detail
+    stay unexpected."""
+    from agentsync.ops import doctor  # noqa: PLC0415
+
+    assert getattr(doctor, "EMPTY_FOLDER_DETAIL", setup_report._EMPTY_FOLDER_DETAIL) == (
+        setup_report._EMPTY_FOLDER_DETAIL
+    )
+    cfg = fake_mac["config"]
+    config = load_config(cfg)
+    live = next(src.id for src in config.sources if src.kind is not SourceKind.INBOX)
+    inbox = next((src.id for src in config.sources if src.kind is SourceKind.INBOX), "inbox")
+    empty = f"~/Library/CloudStorage/<folder> {setup_report._EMPTY_FOLDER_DETAIL}"
+    fix = ' (fix: if ~/x is meant to be empty, set state = "paused" in [[source]] id = "x"; else check ~/x)'
+
+    def sort(name: str, detail: str) -> setup_report._DoctorSort:
+        r = setup_report._Run(cfg, setup_report.ReportHooks(), 12.0)
+        r.facts.doctor_problems = [("warn", name, detail)]
+        return setup_report._sort_doctor(r, [])
+
+    for detail in (empty + fix, empty):
+        got = sort(f"source.{live}.listable", detail)
+        assert got.expected == {setup_report._EMPTY_FOLDER_WORDS: [f"source.{live}.listable"]}, got
+        assert got.unexpected == [], got
+    for name, detail in (
+        (f"source.{inbox}.listable", empty + fix),
+        ("source.contoso-gone.listable", empty + fix),
+        (
+            f"source.{live}.listable",
+            "~/x lists 0 entries (a File Provider folder that has not been enumerated)",
+        ),
+        (f"source.{live}.sentinel", empty + fix),
+    ):
+        got = sort(name, detail)
+        assert got.expected == {} and got.unexpected == [f"{name} warn"], (name, got)
+    assert setup_report._EMPTY_FOLDER_WORDS == "an empty folder chosen as a source: pause it or fill it"
 
 
 @pytest.mark.usefixtures("clean_doctor")

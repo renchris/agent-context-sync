@@ -40801,6 +40801,16 @@ the limit. `setup_report._step_rc_words` reads the step's note and gives `stoppe
 closing status keeps its words: install.sh logs nothing that tells a limit from a signal there. Test:
 `test_a_step_install_sh_stopped_at_its_own_limit_is_never_an_outside_signal_c1434`.
 
+**An empty source folder's listable warn is expected** (ruling 130's report half, completing C1205; C1401 with C1408
+and C1427, lane B's doctor half in §16.247). Doctor keeps the [warn] for an empty source folder outside every File
+Provider domain and gives it a pause-or-check fix, and the report filed it unexpected. `setup_report._sort_doctor`
+files a `source.<id>.listable` [warn] of a configured live non-inbox source whose detail, before its `(fix: ...)`,
+ends in `doctor.EMPTY_FOLDER_DETAIL` (`lists 0 entries (the folder is empty)`; the report's own copy for a build
+without it, a test holding the two equal) under expected, `an empty folder chosen as a source: pause it or fill it`,
+keyed on the check and that detail, never the fix, so unexpected is 0; Doctor's line keeps its fix (C1408's listing
+key not taken: the report follows what doctor printed, J52). Test:
+`test_an_empty_source_folders_listable_warn_is_expected_ruling_130`.
+
 ### 16.246 Round 38: the installer: the recut only over another build's render, the hidden-character marks, and the stopped copy's lines (2026-11-13, wave B13 round 38 lane RB)
 
 A dated line this round writes in another section reads `Amended <date>, §16.246 C<n>: ...`.
