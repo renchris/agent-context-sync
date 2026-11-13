@@ -40300,6 +40300,12 @@ then working again), `::test_an_unchanged_image_keeps_its_ocr_page_past_the_file
 `::test_an_online_only_image_keeps_its_ocr_page_unread_while_the_helper_fails_c1286` (a `materialise PATH` run
 names the evicted image: nothing fetched, the page kept, the row `DATALESS`).
 
+Amended 2026-11-13, §16.247 C1442: "an image" here is an image or a recording, and "made by `image-ocr`" reads "made by
+`image-ocr` or `recording-av`" (`cycle._OCR_KEPT_CONVERTERS`): C1268 gives a recording waiting on a failed OCR helper the
+OCR-down words while the media helper is ready, so `_keeps_ocr_page` keeps its page and transcript under the same gates.
+A recording whose media helper is not ready (`recordings_wait_ocr` false) gets no OCR-down words, so a touch still
+gives it the `no converter for <suffix>` stub.
+
 **QUARANTINE.tsv follows an image's OCR-down page** (C1211 with C1204, C1238, C1259, C1269; ruling 122; amends
 §16.237 C1101). While the OCR helper fails, an image's page says `publish.OCR_DOWN_REASON` and sends the reader to
 `_sync/QUARANTINE.tsv`, whose row said `no converter for .png`, the words C1101 took off the page. `Publisher.write_quarantine`
@@ -40691,6 +40697,18 @@ splits install.out. Tests: `test_cli.py::test_doctor_lines_split_at_a_newline_al
 piece of the name prints, each listable and volume FAIL is one line ending in its fix) and
 `::test_the_reports_evidence_damage_line_splits_at_a_newline_alone_c1431` (the state folder under a folder holding
 each: the state_dir.manifest FAIL is one line naming the whole path).
+
+**A recording keeps its page while the OCR helper fails** (C1442; ruling 127; data integrity; amends §16.242 C1286).
+C1268 gives a recording waiting on a failed OCR helper the OCR-down words while the media helper is ready
+(`recordings_wait_ocr`), so `Cycle._keeps_ocr_page` passed its `ocr_waits` gate for one, then declined it because its
+outputs were not made by `image-ocr`: a recording whose mtime alone moved during the outage lost its page and its
+transcript to the OCR-down stub until the helper worked again, and was counted as waiting for it. The converter test
+now takes `cycle._OCR_KEPT_CONVERTERS`, the image's and the recording's converter ids; every other gate stands (no
+label rule, live outputs all OK and intact, the canonical hash, `TOUCHED_NOT_CHANGED`). A recording whose media helper
+is not ready keeps the `no converter for <suffix>` stub on a touch, as before. Test:
+`test_cycle.py::test_an_unchanged_recording_keeps_its_page_while_the_ocr_helper_fails_c1442` (the rec fixture, the
+helper failed with `media.probe` ready and an mtime-only touch: the page byte for byte, the row `TOUCHED_NOT_CHANGED`,
+nothing counted; with the helper back, no piece is read again).
 
 ### 16.248 Round 38: the converters: a zero-byte file never takes an older build's cached answer (2026-11-13, wave B13 round 38 lane E)
 

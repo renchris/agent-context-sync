@@ -1032,6 +1032,11 @@ def _newest_run_trailer(repo: Path) -> int:
     return max((int(v) for v in out.split() if v.isdigit()), default=0)
 
 
+_OCR_KEPT_CONVERTERS = frozenset({ImageConverter.converter_id, RecordingConverter.converter_id})
+"""The converters whose pages :meth:`Cycle._keeps_ocr_page` keeps while the OCR helper fails: the image's,
+and the recording's, whose read needs the OCR helper too (B13 round 37 C1286; round 38 C1442)."""
+
+
 def _pages_intact(repo: Path, outputs: Sequence[OutputRow]) -> bool:
     """True when the item has live pages and every one exists and hashes to its ``outputs`` row."""
     live = [o for o in outputs if o.status is not OutputStatus.TOMBSTONE]
@@ -5928,22 +5933,25 @@ class _Cycle:
         refused: ConversionResult,
         acc: _SourceAcc,
     ) -> bool:
-        """True when ``row`` is an image whose OCR helper fails (``refused`` is its ``no converter`` refusal
-        while :attr:`Publisher.ocr_down`) and whose page OCR made of it stands: the page is kept, nothing is
-        published.  Without this, an unchanged image whose mtime moved during the outage lost its OCR text
-        to the OCR-down stub until the helper worked again (B13 round 37 C1286).
+        """True when ``row`` is an image, or a recording while the media helper is ready, whose OCR helper
+        fails (``refused`` is its ``no converter`` refusal while :attr:`Publisher.ocr_down`) and whose page
+        OCR made of it stands: the page is kept, nothing is published.  Without this, an unchanged image whose
+        mtime moved during the outage lost its OCR text to the OCR-down stub until the helper worked again
+        (B13 round 37 C1286), and a recording its transcript (B13 round 38 C1442, ruling 127: C1268 gave it
+        the OCR-down words, so it is kept under the same gates).  A recording whose media helper is not ready
+        (``recordings_wait_ocr`` false) gets no OCR-down words and so is never kept here.
 
         Only with no label rule on (:meth:`Publisher.ocr_waits`; one withholds an image whatever the engine
-        does), live outputs all OK, intact and made by the image converter, and a row that still holds its
-        canonical hash (a row a re-screen forgot is never kept).  An image whose read needs a download keeps
-        the page unread and is settled as ``_keeps_page`` settles it.  An image on this Mac is read through
-        ``arm`` with a probe budget of its own (no download, and none of the source's ``max_files``: a cycle
-        past its file cap must not cost the image its page, nor this read take a later one's place), its
-        canonical hash and the suppression lists checked as ``_after_fetch`` does, and the page is kept only
-        when ``classify_content`` says TOUCHED_NOT_CHANGED.  One evicted since the walk is never hydrated to
-        compare: its page is kept unread, as a download case.  A drop the inbox duplicate rule refuses is
-        left to that rule.  Any other fetch or hash error, or changed bytes, returns False: the caller
-        publishes the OCR-down stub, whose stored reason keeps ``no converter for <suffix>``."""
+        does), live outputs all OK, intact and made by the image or the recording converter, and a row that
+        still holds its canonical hash (a row a re-screen forgot is never kept).  An image whose read needs a
+        download keeps the page unread and is settled as ``_keeps_page`` settles it.  An image on this Mac is
+        read through ``arm`` with a probe budget of its own (no download, and none of the source's
+        ``max_files``: a cycle past its file cap must not cost the image its page, nor this read take a later
+        one's place), its canonical hash and the suppression lists checked as ``_after_fetch`` does, and the
+        page is kept only when ``classify_content`` says TOUCHED_NOT_CHANGED.  One evicted since the walk is
+        never hydrated to compare: its page is kept unread, as a download case.  A drop the inbox duplicate
+        rule refuses is left to that rule.  Any other fetch or hash error, or changed bytes, returns False:
+        the caller publishes the OCR-down stub, whose stored reason keeps ``no converter for <suffix>``."""
         suffix = Path(row.name).suffix.lower()
         if not self.publisher.ocr_waits(refused.reason, suffix, local=True) or row.canonical_sha256 is None:
             return False
@@ -5954,7 +5962,7 @@ class _Cycle:
         if (
             not live
             or any(o.status is not OutputStatus.OK for o in live)
-            or any(o.converter_id != ImageConverter.converter_id for o in live)
+            or any(o.converter_id not in _OCR_KEPT_CONVERTERS for o in live)
             or not _pages_intact(self.repo, outs)
         ):
             return False
@@ -6071,7 +6079,8 @@ class _Cycle:
             self.manifest.set_state(sid, stable, row.state, None)  # re-decided below: only a new refusal
         refused = self._no_converter(src, row)
         if refused is not None:  # no bytes are needed to refuse a type: never download it
-            # an image whose OCR helper fails keeps the page OCR made of its unchanged bytes (C1286)
+            # an image (or a recording, C1442) whose OCR helper fails keeps the page OCR made of its unchanged
+            # bytes (C1286)
             if (
                 not self._keeps_ocr_page(src, arm, row, refused, acc)
                 and not self._keeps_page(row, acc)

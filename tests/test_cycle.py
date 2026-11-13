@@ -7218,6 +7218,36 @@ def test_manifest_damage_inside_a_recordings_read_stops_the_sync_c843(
     assert called and doctor.recorded_unreadable(config.state_paths.db) is not None
 
 
+def test_an_unchanged_recording_keeps_its_page_while_the_ocr_helper_fails_c1442(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 38 C1442 (ruling 127; data integrity): C1268 gave a recording waiting on a failed OCR helper
+    the OCR-down words while the media helper is ready, but C1286's keep path took only the image converter's
+    pages, so a recording whose mtime alone moved during the outage lost its transcript to the OCR-down stub.
+    It is kept under the image's gates: the page byte for byte, the row settled, nothing counted, and once the
+    helper works the next cycle reads no piece again."""
+    config = config_with(tmp_path, meetings)
+    recording = stub_recording(meetings / MEETING, 10)
+    assert run(config).exit_code == 0
+    path = config.docs_repo / slug.mirror_rel_path(SID, MEETING)
+    before = path.read_bytes()
+    fm, body = _recording_page(config, MEETING)
+    assert fm["status"] == "current" and "SCREEN Contoso review" in body, fm
+    _fail_ocr(monkeypatch)
+    monkeypatch.setattr(cycle_mod.media, "probe", lambda _c, _d: ("ready", ""))
+    _touch(recording)
+    report = run(config)
+    assert report.exit_code == 0
+    assert path.read_bytes() == before
+    row = _row(config, MEETING)
+    assert row.last_verdict is Verdict.TOUCHED_NOT_CHANGED and row.state is RowState.LIVE, row
+    assert sum(s.ocr_unread + s.refused_unread for s in report.sources) == 0, report.sources
+    _use_ocr(monkeypatch, tmp_path)
+    rec.worked.clear()
+    assert run(config).exit_code == 0
+    assert path.read_bytes() == before and rec.worked == []
+
+
 def test_an_interactive_sync_starts_no_recording_and_prints_the_count(
     tmp_path: Path, meetings: Path, rec: Rec
 ) -> None:
