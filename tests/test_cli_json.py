@@ -414,3 +414,39 @@ def test_the_json_help_is_true_under_every_command_c1445(
     shown = " ".join(capsys.readouterr().out.split())  # argparse wraps help text
     assert " ".join(cli.JSON_HELP.split()) in shown, shown
     assert not any(f" {v} " in f" {cli.JSON_HELP} " for v in CLI_SURFACE["visible"]), cli.JSON_HELP
+
+
+@pytest.mark.parametrize("flags", [[], ["--device-code"]], ids=["browser", "device code"])
+@pytest.mark.parametrize("verb", [["graph", "login"], ["login"]], ids=["graph login", "login"])
+def test_login_under_json_is_a_usage_error_before_any_sign_in_c1441(
+    initialised: Config,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    flags: list[str],
+    verb: list[str],
+) -> None:
+    """B13 round 38 C1441 with C1485 (ruling 128, makes worse True): ``graph login --json`` sent the device
+    code and the no-browser URL through text output JSON mode keeps quiet, then waited on a sign-in nobody
+    could make. Printing the steps on stderr would break the one error line a --json caller reads, so login
+    under --json is a usage error before MsalAuth is built: empty stdout, one error line, exit 2, a ``next``
+    without --json that keeps --device-code and the config. logout keeps its one document."""
+    built: list[object] = []
+
+    class Refused(FakeAuth):
+        def __init__(self, settings: Any) -> None:
+            built.append(settings)
+            super().__init__(settings)
+
+    monkeypatch.setattr(graph_auth, "MsalAuth", Refused)
+    FakeAuth.calls, FakeAuth.blocked = [], False
+    cfg = _graph_config(initialised)
+    rc, error = _error([*verb, *flags, "--config", cfg], capsys)
+    assert rc == cli.EXIT_USAGE and built == [] and FakeAuth.calls == [], (rc, built)
+    assert error["reason"] == "usage" and error["message"] == cli.LOGIN_NEEDS_TEXT, error
+    (step,) = error["next"]
+    assert step["argv"][1:] == ["graph", "login", *flags, "--config", cfg], step
+    assert "--json" not in step["command"], step
+    rc, doc, err = _doc(["logout", "--config", cfg], capsys)
+    assert rc == cli.EXIT_OK and doc == {"outcome": "signed_out"} and err == "", (doc, err)
+    assert cli.main([*verb, "--config", cfg]) == cli.EXIT_OK  # without --json the person signs in
+    assert "signing in through the macOS broker" in capsys.readouterr().out

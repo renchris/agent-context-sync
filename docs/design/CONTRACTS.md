@@ -40838,6 +40838,18 @@ before, and a SIG_IGN or SIG_DFL parent, or a thread other than the main one, is
 `test_gate_slot_plugin.py::test_an_interrupt_inside_the_helpers_spawn_terminates_the_helper_c1461` (every Popen of the
 inner run takes 3 s after its exec, the interrupt lands inside it: the helper's TERM trap runs and the run ends red).
 
+**`graph login --json` is a usage error before any sign-in** (C1441 with C1485; ruling 128, makes worse True).
+`graph login --json` (and `login`, and either with `--device-code`) passed its sign-in steps to `_out`, which JSON
+mode keeps quiet, so the device code and the no-browser URL never printed and the run waited on a sign-in nobody could
+make. Printing them on stderr instead would break the contract that a --json run's stderr is one error line, so login
+under --json is refused before any config loads or `MsalAuth` is built: `cli.LOGIN_NEEDS_TEXT`, `graph login needs a
+person and prints its sign-in steps as text: run it without --json`, as one `usage` error line with `status:
+action_required`, an empty stdout and exit 2; its `next` is `graph login` without --json, keeping `--device-code` and
+the `--config` the person gave (`_config_tail`). logout is not interactive and now prints its one document,
+`{"outcome": "signed_out"}`. Test: `test_cli_json.py::test_login_under_json_is_a_usage_error_before_any_sign_in_c1441`
+(`graph login` and `login`, with and without `--device-code`: nothing built, the error line and its `next`; logout's
+document; without --json the sign-in runs).
+
 ### 16.248 Round 38: the converters: a zero-byte file never takes an older build's cached answer (2026-11-13, wave B13 round 38 lane E)
 
 Round 38's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 38"; specs `round38/items/C<n>.md`, the

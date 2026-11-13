@@ -4223,10 +4223,27 @@ def _cmd_migrate(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+LOGIN_NEEDS_TEXT = "graph login needs a person and prints its sign-in steps as text: run it without --json"
+"""``graph login --json``'s refusal (B13 round 38 C1441 with C1485, ruling 128): the browser's and the device
+code's steps are text for a person, which JSON mode keeps off stdout and stderr, so the run waited on a code
+nobody saw; and printed, they would break the one error line a --json caller reads."""
+
+
 def _cmd_graph(args: argparse.Namespace) -> int:
+    action: str = args.action
+    if action == "login" and clio.json_mode():
+        # a usage error before any config loads or MsalAuth is built: one error line, empty stdout, exit 2
+        again = f"{loop.BIN} graph login{' --device-code' if args.device_code else ''}{_config_tail(args)}"
+        clio.error_doc(
+            clio.Reason.usage,
+            LOGIN_NEEDS_TEXT,
+            status="action_required",
+            next=[{"command": again, "argv": _argv(again)}],
+            user_action_required=True,
+        )
+        return EXIT_USAGE
     config = _config(args)
     auth = graph_auth.MsalAuth(graph_auth.settings_from_config(config))
-    action: str = args.action
     if action == "login":
         status = auth.login_device_code(_out) if args.device_code else auth.login(_out)
         _out(
@@ -4237,6 +4254,8 @@ def _cmd_graph(args: argparse.Namespace) -> int:
     elif action == "logout":
         auth.logout()
         _out("signed out: cached Graph tokens removed")
+        if clio.json_mode():  # its one document (B13 round 38 C1485)
+            clio.emit({"outcome": "signed_out"})
     elif action == "whoami":
         status = auth.status()
         who = status.username if status.signed_in else "not signed in"
