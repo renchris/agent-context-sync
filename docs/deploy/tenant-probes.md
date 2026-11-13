@@ -51,6 +51,8 @@ line off a terminal, indented on one) and stderr nothing; `warnings` lists any w
 - `--dry-run --json`: `"outcome": "planned"`, each probe's requests and limits, `authority`, `requestedScopes` and
   `interpreter`; it writes nothing.
 - `--help --json` and `--version --json`: one document each, without reading the config or starting Python.
+  `--version --json` is `{"version": "<commit>"}`, the first 12 hex digits, or `{"version": null}` when the commit
+  cannot be read.
   `--selftest --json` is a usage error.
 - A failure: stdout is empty and stderr is one line, `{"status": "error", "reason": …, "message": …, "report":
   {"path": …}}`, with `report` only when one was written. `reason` is one of `usage`, `not_signed_in`,

@@ -40830,6 +40830,12 @@ its finally, so a passing run failed and a re-run passed it, read as load. `_kil
 `test_install_signals.py::test_a_stopped_runs_cleanup_takes_eperm_from_a_group_already_gone_c1462`. The
 `test_cli_modes.py` half (the free space in a width test) is the CLI conventions wave's.
 
+**tenant-probes' --version --json is null for a commit it cannot read** (C1458; amends §16.300.24, dated line there;
+`scripts/tenant-probes.sh`). It printed the string `"unknown"` where install.sh's `--version --json` prints `null`,
+the known-absent value §16.300 names. The value is built once (`null`, or the quoted 12-hex commit `git_head_file`
+prints) for the compact and indented forms; the text form keeps `unknown`. docs/deploy/tenant-probes.md's JSON
+section says so. Test: `test_tenant_probes.py::test_version_json_is_null_for_a_commit_it_cannot_read_c1458`.
+
 ### 16.247 Round 38: --json documents, an empty source folder, names in doctor's lines, and a recording's kept page (2026-11-13, wave B13 round 38 lane B)
 
 **Doctor's lines split at `\n` alone** (C1431; ruling 126; privacy). Status's `_Status.check_lines`, the report's
@@ -41648,7 +41654,8 @@ deprecation warning becomes a `warnings` entry instead of a stderr line. The ref
 - Success: one document on stdout, compact off a terminal and indented by two on one, non-ASCII escaped, stderr
   empty. A real run is `{"report":{"path"},"outcome":"created","probes":[…]}`, built from records collected beside
   each `emit` (the markdown is never parsed); `--dry-run --json` is `"outcome":"planned"` with each probe's requests,
-  `authority`, `requestedScopes` and `interpreter`, and writes nothing. `--version --json` is `{"version":…}`;
+  `authority`, `requestedScopes` and `interpreter`, and writes nothing. `--version --json` is `{"version":…}`
+(**Amended 2026-11-13, §16.246 C1458:** `{"version":null}` for a commit it cannot read, as install.sh's has it);
   `--help --json` is `{"usage","options","text"}`, built by awk from the help text with no config, interpreter or
   network. `--selftest --json` is a usage error (exit 2).
 - Failure: stdout empty and exactly one stderr line, `{"status":"error","reason","message"}` plus `report.path`

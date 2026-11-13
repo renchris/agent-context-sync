@@ -226,12 +226,15 @@ done
 
 if [ "$SHOW_VERSION" = 1 ]; then
 	commit="$(git_head_file "$repo")"
+	# a commit it cannot read is null in JSON, as install.sh's --version --json has it (B13 round 38 C1458);
+	# git_head_file prints hex only, so the value needs no escaping
+	if [ -n "$commit" ]; then v="\"$commit\""; else v=null; fi
 	if [ "$JSON" = 0 ]; then
 		printf '%s\n' "${commit:-unknown}"
 	elif [ -t 1 ]; then
-		printf '{\n  "version": "%s"\n}\n' "${commit:-unknown}"
+		printf '{\n  "version": %s\n}\n' "$v"
 	else
-		printf '{"version":"%s"}\n' "${commit:-unknown}"
+		printf '{"version":%s}\n' "$v"
 	fi
 	exit 0
 fi

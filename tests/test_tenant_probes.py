@@ -1051,6 +1051,18 @@ def test_version_prints_one_value_and_exits_0(tmp_path: Path, layout: str, print
     assert not git_ran.exists()
 
 
+@pytest.mark.parametrize(("layout", "value"), [("detached", SHA[:12]), ("none", None), ("garbage", None)])
+def test_version_json_is_null_for_a_commit_it_cannot_read_c1458(
+    tmp_path: Path, layout: str, value: str | None
+) -> None:
+    """B13 round 38 C1458: for a commit it could not read, `--version --json` printed the string "unknown",
+    where install.sh's prints null, the known-absent value §16.300 names. The text form keeps `unknown`."""
+    repo = _checkout(tmp_path, layout)
+    proc = _run(tmp_path, "--version", "--json", script=repo / "scripts" / "tenant-probes.sh")
+    assert (proc.returncode, proc.stderr) == (0, ""), proc.stderr
+    assert _one_line_doc(proc.stdout) == {"version": value}
+
+
 def test_help_word_matches_dash_h(tmp_path: Path) -> None:
     dash_h = _run(tmp_path, "-h")
     assert dash_h.returncode == 0
