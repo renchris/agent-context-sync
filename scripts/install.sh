@@ -7610,7 +7610,8 @@ older_report_rewrite() { # MODE
 		# the Summary doctor line\047s heartbeat warns whose Doctor line says deletions held, out of its unexpected
 		# list and into the current renderer\047s not-judged part for a Loop line never read, before unexpected (C1109\047s
 		# words, a stopped copy\047s: no idle tail), the counts fixed as stop_bucket fixes them; its bracket words are
-		# the caller\047s: nsw for a spent budget, "it did not finish in time" for a cut status (B13 round 37 C1221, C1223)
+		# the caller\047s: nsw for a spent budget, "it did not finish in time" for a cut status (B13 round 37 C1221, C1223),
+		# and the Loop line\047s own NEXT bracket when only that read was cut (B13 round 38 ruling 123, C1409)
 		function hb_move(line, why,    k, p, i, j, a, m, items, moved, nm, out, put) {
 			k = split(substr(line, 11), p, " \302\267 "); moved = ""; nm = 0
 			for (i = 2; i <= k; i++) if (p[i] ~ /^unexpected [0-9]+: /) {
@@ -7630,6 +7631,29 @@ older_report_rewrite() { # MODE
 			}
 			return out
 		}
+		# the Summary doctor line\047s helper warns whose Doctor line is ed901cd3\047s probe time-out, out of its
+		# unexpected list and into the current renderer\047s not-judged part for a helper that did not answer
+		# (setup_report._helper_late_head, a stopped copy\047s words), after any Loop part and before unexpected
+		# (B13 round 38 ruling 123, C1410; never swiftc\047s build time-out, and no head-note sentence)
+		function late_move(line,    k, p, i, j, a, m, items, moved, nm, out, put) {
+			k = split(substr(line, 11), p, " \302\267 "); moved = ""; nm = 0
+			for (i = 2; i <= k; i++) if (p[i] ~ /^unexpected [0-9]+: /) {
+				m = split(substr(p[i], index(p[i], ": ") + 2), a, ", "); items = ""
+				for (j = 1; j <= m; j++) {
+					if (a[j] in latek) moved = moved (nm++ ? ", " : "") a[j]
+					else items = items (items == "" ? "" : ", ") a[j]
+				}
+				p[i] = "unexpected " (substr(p[i], 12) - nm) (items == "" ? "" : ": " items)
+				break
+			}
+			if (!nm) return line
+			out = "- doctor: " p[1]; put = 0
+			for (i = 2; i <= k; i++) {
+				if (!put && p[i] ~ /^unexpected [0-9]+/) { out = out " \302\267 not judged (the " latewho " did not answer in time: " notsent ") " nm ": " moved; put = 1 }
+				out = out " \302\267 " p[i]
+			}
+			return out
+		}
 		FNR == 1 { sec = "" }
 		NR == FNR {
 			if (index($0, "## ") == 1) sec = $0
@@ -7645,6 +7669,14 @@ older_report_rewrite() { # MODE
 			# wrote: a probe after it was skipped too, the budget only shrinking (C1224, C1225)
 			if (!envskip && sec == "## Environment" && index($0, " exited 124: skipped: the report\047s time budget is used up")) envskip = FNR
 			if (sec == "## Doctor" && $0 ~ /^\[warn\] heartbeat\./ && index($0, "deletions held")) { split($0, hw, " "); hbk["heartbeat." substr(hw[2], 11) " warn"] = 1 }
+			# the Loop line\047s NEXT read cut while status was read (a Loop state, never unknown or not read):
+			# its own bracket, for hb_move (C1409)
+			if (sec == "## Summary" && index($0, "- Loop: ") == 1 && index($0, "- Loop: unknown") != 1 && index($0, "- Loop: not read") != 1 && match($0, /; NEXT: not read \(it did not finish in time(: a sync held the state file)?\)/)) { nextcut = 1; nextwhy = substr($0, RSTART + 18, RLENGTH - 19) }
+			# a helper whose --version probe ed901cd3 timed out, in its exact words only (C1410)
+			if (sec == "## Doctor" && ($0 == "[warn] media \342\200\224 media helper: not working (the media helper ran out of time)" || $0 == "[warn] ocr \342\200\224 on-device OCR is not working: the OCR helper ran out of time" || $0 == "[warn] speech \342\200\224 speech: failed (the speech helper ran out of time)")) {
+				lh = $0; sub(/^.*\(?the /, "", lh); sub(/ ran out of time\)?$/, "", lh)
+				split($0, hw, " "); latek[hw[2] " warn"] = 1; latewho = latewho (latewho == "" ? "" : " and the ") lh
+			}
 			# the jobs whose line is a cut read at exit 124, for the Summary line before it (C916)
 			if (cp && sec == "## Background runs" && match($0, /^- [^ ]+\.(poll|reconcile): /) && bg_cut(substr($0, RLENGTH + 1)) != "") {
 				bgj = substr($0, 3, RLENGTH - 4); sub(/^.*\./, "", bgj); bgcut[bgj] = 1
@@ -7791,6 +7823,8 @@ older_report_rewrite() { # MODE
 		}
 		cp && spentst && !det && !fence && sec == "## Summary" && index($0, "- doctor: ") == 1 { $0 = hb_move($0, nsw) }
 		cp && cutst && !spentst && !det && !fence && sec == "## Summary" && index($0, "- doctor: ") == 1 { $0 = hb_move($0, "it did not finish in time") }
+		cp && nextcut && !spentst && !cutst && !det && !fence && sec == "## Summary" && index($0, "- doctor: ") == 1 { $0 = hb_move($0, nextwhy) }
+		cp && latewho != "" && !det && !fence && sec == "## Summary" && index($0, "- doctor: ") == 1 { $0 = late_move($0) }
 		# the stop of step 1 (B13 round 16 T11): its cause, as a renderer from N31 on writes it, and the turns
 		# v10\047s "ran (step 1))" reads "ran, in step 1" since 92b5fd13 (B13 round 17 U81)
 		s1cause != "" && sec == "## Summary" && index($0, "- **outcome: failed at step 1** (computed: no install run: only install.sh --list-folders ran") == 1 && !index($0, "; it stopped: ") && ends($0, ")") {

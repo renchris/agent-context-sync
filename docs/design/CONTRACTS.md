@@ -40255,6 +40255,8 @@ and gitleaks words), `test_a_spent_copy_whose_earlier_probes_ran_keeps_its_xcode
 `test_the_real_report_of_a_stopped_copy_invites_no_bring_back` (C1248) and
 `test_a_stopped_copy_names_the_build_that_rendered_it_c1215`; `test_a_current_or_uncut_copy_keeps_its_spent_budget_words_c1108`
 still holds a current render byte for byte.
+Amended 2026-11-13, §16.246 C1409, C1410: a copy whose Loop line's own NEXT read was cut moves its heartbeat warn by
+that bracket's words, and a helper probe ed901cd3 timed out moves into the not-judged part (ruling 123).
 
 ### 16.242 Round 37: OCR-down image pages, a hold with no scope, simultaneous stops, and git's lookup at the deadline (2026-11-10, wave B13 round 37 lane B)
 
@@ -40736,6 +40738,24 @@ with no [warn] line after it. `empty_grant_status`, one `LC_ALL=C` sed over the 
 order does not promise (C1426's form not taken). Tests (`tests/test_install_next_line.py`):
 `test_the_shells_empty_root_pointer_is_loops_two_strings_c1438` and
 `test_install_points_an_empty_roots_wait_at_status_not_at_a_line_below_c1438`.
+
+**A stopped copy an older build rendered moves a heartbeat warn and a late helper's warn only on proof in its own
+text** (C1409, C1410; ruling 123; amends §16.241 C1223; `scripts/install.sh` `older_report_rewrite`, copy mode only).
+An ed901cd3 copy whose status was read but whose Loop line's own NEXT read was cut (`- Loop: ...; NEXT: not read (it
+did not finish in time)`, or its `: a sync held the state file` form) kept a heartbeat warn that holds deletions under
+unexpected, since `hb_move` ran only under `spentst` or `cutst`. The first pass now sets `nextcut` from that bracket,
+and under `!spentst && !cutst` `hb_move` takes the bracket's own words, as `_loop_unread_head` writes them with no idle
+tail; a spent or cut status keeps its own words, so the rule fires once (C1409, makes worse True for its OCR half:
+`speech: failed (the speech helper ran out of time)` is what the current renderer writes for that probe, so it
+stays). A copy whose helper `--version` probe the pause cut filed `[warn] media — media helper: not working (the media
+helper ran out of time)` as unexpected: in ed901cd3's three exact probe-time-out forms only (media, ocr, speech; never
+`swiftc ran out of time building the ...`), `late_move` moves each such warn into `not judged (the <helper>[ and the
+<helper>] did not answer in time: this copy is not for sending) N: ...`, `_helper_late_head`'s stopped-copy words,
+after any Loop part and before unexpected; no head-note sentence is added, since that copy's Summary says nothing was
+cut off (C1410, makes worse True for the finder's sentence). Tests:
+`test_a_stopped_copy_whose_loop_next_read_was_cut_moves_its_heartbeat_warn_c1409` (with the spent and cut-status forms
+kept) and `test_a_stopped_copy_whose_helper_probe_the_pause_cut_files_it_not_judged_c1410` (one and two helpers, and a
+swiftc warn kept unexpected).
 
 ### 16.247 Round 38: --json documents, an empty source folder, names in doctor's lines, and a recording's kept page (2026-11-13, wave B13 round 38 lane B)
 

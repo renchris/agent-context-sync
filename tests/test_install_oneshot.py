@@ -20655,6 +20655,82 @@ def test_a_stopped_copy_whose_status_was_cut_takes_todays_words_c1223(
     ) in lines, lines
 
 
+@pytest.mark.parametrize("form", ["next-cut", "busy", "spent", "cut-status"])
+def test_a_stopped_copy_whose_loop_next_read_was_cut_moves_its_heartbeat_warn_c1409(
+    env: dict[str, str], tmp_path: Path, form: str
+) -> None:
+    """B13 round 38 ruling 123 (C1409): an ed901cd3 copy whose status was read but whose Loop line's NEXT read
+    was cut kept a heartbeat warn that holds deletions under unexpected, since the move keyed only on a spent
+    or cut Status line. The Loop line's own bracket now sets it, in the current renderer's words (no idle
+    tail), and a spent or cut status keeps its own words, so the rule fires once."""
+    copy = _spent_copy("old", status="- loop: synced")
+    copy[4] = {
+        "next-cut": "- Loop: baseline drafted; NEXT: not read (it did not finish in time)",
+        "busy": "- Loop: baseline drafted; NEXT: not read (it did not finish in time: a sync held the state "
+        "file)",
+    }.get(form, copy[4])
+    if form == "spent":
+        copy[-2] = _STATUS_SPENT
+    if form == "cut-status":
+        copy[-2] = "_This section failed: TimeoutError: did not finish within 20.0s_"
+    lines = _stopped_copy_of(env, tmp_path, "\n".join(copy)).splitlines()
+    why = {
+        "next-cut": "it did not finish in time",
+        "busy": "it did not finish in time: a sync held the state file",
+        "spent": "its NEXT was not started: the report's time budget was used up",
+        "cut-status": "it did not finish in time",
+    }[form]
+    want = (
+        f"- doctor: 0 FAIL, 2 warn (54 checks) {_DOT} expected 1: logs warn {_DOT} not judged (the Loop line "
+        f"was not read: {why}) 1: heartbeat.<folder-1> warn {_DOT} unexpected 1: tcc warn"
+    )
+    assert [x for x in lines if x.startswith("- doctor: ")] == [want], lines
+
+
+_HELPER_OF = {"media": "media", "ocr": "OCR", "speech": "speech"}
+
+
+@pytest.mark.parametrize("helper", ["media", "ocr", "speech", "two", "swiftc"])
+def test_a_stopped_copy_whose_helper_probe_the_pause_cut_files_it_not_judged_c1410(
+    env: dict[str, str], tmp_path: Path, helper: str
+) -> None:
+    """B13 round 38 ruling 123 (C1410): an ed901cd3 copy whose helper --version probe the pause cut said `not
+    working (the media helper ran out of time)` and filed it unexpected. In ed901cd3's exact probe-time-out
+    words, the warn moves into the current renderer's not-judged part for a helper that did not answer, in a
+    stopped copy's words, after a Loop part; a swiftc build time-out stays unexpected, and no head-note
+    sentence is added."""
+    late = {
+        "media": "[warn] media \u2014 media helper: not working (the media helper ran out of time)",
+        "ocr": "[warn] ocr \u2014 on-device OCR is not working: the OCR helper ran out of time",
+        "speech": "[warn] speech \u2014 speech: failed (the speech helper ran out of time)",
+        "swiftc": "[warn] media \u2014 media helper: not working (swiftc ran out of time building the media "
+        "helper)",
+    }
+    rows = [late["ocr"], late["media"]] if helper == "two" else [late[helper]]
+    names = [r.split(" ")[1] for r in rows]
+    copy = _spent_copy("old", status="_This section failed: TimeoutError: did not finish within 20.0s_")
+    copy[5] = (
+        f"- doctor: 0 FAIL, {2 + len(rows)} warn (54 checks) {_DOT} expected 1: logs warn {_DOT} unexpected "
+        f"{2 + len(rows)}: heartbeat.<folder-1> warn, " + ", ".join(f"{n} warn" for n in names) + ", tcc warn"
+    )
+    at = copy.index("## Status")
+    copy[at - 1 : at - 1] = rows
+    lines = _stopped_copy_of(env, tmp_path, "\n".join(copy)).splitlines()
+    loop = "not judged (the Loop line was not read: it did not finish in time) 1: heartbeat.<folder-1> warn"
+    if helper == "swiftc":
+        tail = f"{_DOT} unexpected 2: media warn, tcc warn"
+    else:
+        who = " and the ".join(f"{_HELPER_OF[n]} helper" for n in names)
+        tail = (
+            f"{_DOT} not judged (the {who} did not answer in time: this copy is not for sending) "
+            f"{len(rows)}: " + ", ".join(f"{n} warn" for n in names) + f" {_DOT} unexpected 1: tcc warn"
+        )
+    want = f"- doctor: 0 FAIL, {2 + len(rows)} warn (54 checks) {_DOT} expected 1: logs warn {_DOT} {loop} "
+    want += tail
+    assert [x for x in lines if x.startswith("- doctor: ")] == [want], lines
+    assert not any("cut off before it finished" in x for x in lines[:3]), lines[:3]
+
+
 def _install_log_runs(env: dict[str, str], kinds: str) -> None:
     """An install.log of one run for each letter of ``kinds``: L a --list-folders run, I an install run, A a
     --list-folders run with no step line (one before fb9305f01, or one killed), which the renderer counts as
