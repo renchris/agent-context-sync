@@ -59,11 +59,11 @@
 #                           organization's OneDrive folder, keeps exit 0, and the NEXT: names it: step 2's
 #                           status names its fix. A folder whose name holds a control character, a bidi
 #                           control or a zero-width character is shown escaped (\n, \t, \r, else ?) after
-#                           "[name holds a control character: rename it to sync it] " ("[name holds a control
-#                           character] " before a synced one), and a folder whose name reads as such a row's
-#                           after "[name reads as another folder there: rename one of them to sync it] ";
-#                           --source-local refuses each such row, and a folder it cannot show apart from
-#                           another, until the folder is renamed
+#                           "[name holds a hidden or control character: rename it to sync it] " ("[name holds
+#                           a hidden or control character] " before a synced one), and a folder whose name
+#                           reads as such a row's after "[name reads as another folder there: rename one of
+#                           them to sync it] "; --source-local refuses each such row, and a folder it cannot
+#                           show apart from another, until the folder is renamed
 #   -a, --all               with --list-folders: list every folder, with no "(N more)" line (the time limits
 #                           and the depth of 2 still hold)
 #   -n, --limit NUMBER      with --list-folders: list at most NUMBER folders (1 or more; default 200), then
@@ -2682,14 +2682,15 @@ FIXED_VALUE_PHRASES+="|because a label rule could not parse or open its label da
 # hyphen) for redact_stream; the %q form too, since install.log quotes paths that way.
 # The folder paths step 1's lists wrote to install.out ("$cs/<provider>/<name>[/<name>]"), less their
 # marks: what redaction_pairs registers from the lists, and what the legend reads (B13 round 9 K45). An escaped
-# row opens with $ESCAPED_MARK, then may carry another mark: both go (B13 round 36 C1001).
+# row opens with $ESCAPED_MARK, then may carry another mark: both go (B13 round 36 C1001). Each first mark's words
+# before B13 round 38 C1447 (`holds a control character`) still go, since install.out keeps every run's rows.
 listed_folder_lines() {
 	local cs="$HOME/Library/CloudStorage" line
 	[ -f "$INSTALL_OUT" ] && [ ! -L "$INSTALL_OUT" ] || return 0
 	while IFS= read -r line; do
 		case "$line" in "$cs"/*/*) printf '%s\n' "$line" ;; esac
 	done < <(LC_ALL=C awk '/^# run=/ { list = ($0 ~ / install[.]sh( .*)? --list-folders( |$)/); next }
-		list { sub(/^\[name (holds a control character(: rename it to sync it)?|reads as another folder there: rename one of them to sync it)\] /, "")
+		list { sub(/^\[name (holds a (hidden or )?control character(: rename it to sync it)?|reads as another folder there: rename one of them to sync it)\] /, "")
 			sub(/^\[(synced|inside a synced folder|contains a synced folder)\] /, ""); print }' "$INSTALL_OUT" 2>/dev/null)
 }
 # Each name part of those paths, as folder_parts reads them: "skip<TAB><name>" for one it does not register
@@ -6832,16 +6833,26 @@ report_build_other() {
 # 0, with SPLIT_WHY set, when install.out or friction.md holds a code point an agentsync before B13 round 37 C1249
 # splits a line on (U+2028, U+2029, U+0085, or the bytes 0x1C to 0x1E): that build cuts the line's head alone.
 SPLIT_WHY=""
+SPLIT_HOW=""
 report_split_lines() {
 	local f
 	for f in "$INSTALL_OUT" "$(friction_file)"; do
 		[ -f "$f" ] || continue
 		if LC_ALL=C grep -q -e $'\xe2\x80\xa8' -e $'\xe2\x80\xa9' -e $'\xc2\x85' -e $'[\x1c-\x1e]' "$f" 2>/dev/null; then
 			SPLIT_WHY="a Unicode line or paragraph separator, a next-line character or an information separator in ${f##*/}"
+			SPLIT_HOW="splits a line that holds $SPLIT_WHY"
 			return 0
 		fi
 	done
 	return 1
+}
+# 0, with SPLIT_WHY set, when install.out holds a row step 1 marked in the words of B13 round 38 C1447 (ruling 129):
+# an agentsync before it strips only the older marks, so it reads no folder name from that row and cuts none.
+report_new_marks() {
+	[ -f "$INSTALL_OUT" ] && [ ! -L "$INSTALL_OUT" ] || return 1
+	LC_ALL=C grep -qF -e "$ESCAPED_MARK" -e "$ESCAPED_KEPT_MARK" "$INSTALL_OUT" 2>/dev/null || return 1
+	SPLIT_WHY="a folder row marked $ESCAPED_KEPT_MARK in ${INSTALL_OUT##*/}"
+	SPLIT_HOW="may not read $SPLIT_WHY"
 }
 # The report agentsync rendered, cut again by this checkout in place (B13 round 37 ruling 120, C1210, C1237): a path
 # in another home by foreign_home_cut recut, and the folder named after install.sh's own `is not an existing
@@ -6883,11 +6894,12 @@ write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2
 		out="$(AGENTSYNC_REPORT_RUN="$RUN_ID" AGENTSYNC_REPORT_UNREAD_PATCHES="$(unread_patch_count)" with_timeout 120 "$bin" setup-report --out "$REPORT_PATH" --config "$CONFIG" </dev/null 2>&1)" || src=$?
 		# B13 round 37 ruling 120 (C1210, C1237): every render is cut again by this checkout, since the installed
 		# build may predate its cut, and a render by another build is replaced by the fallback when a line it
-		# reads holds a separator such a build splits a line on, whose tail no shell cut can follow.
-		if [ "$src" -eq 0 ] && [ -s "$REPORT_PATH" ] && report_build_other && report_split_lines; then
+		# reads holds a separator such a build splits a line on, whose tail no shell cut can follow, or a folder row
+		# in marks such a build may not strip (B13 round 38 C1447).
+		if [ "$src" -eq 0 ] && [ -s "$REPORT_PATH" ] && report_build_other && { report_split_lines || report_new_marks; }; then
 			warn "agentsync setup-report was not kept: $SPLIT_WHY"
 			rm -f "$REPORT_PATH" # never left in the report's place, should the fallback fail too
-			why="the installed agentsync, another build, splits a line that holds $SPLIT_WHY"
+			why="the installed agentsync, another build, $SPLIT_HOW"
 		elif [ "$src" -eq 0 ] && [ -s "$REPORT_PATH" ] && ! report_recut; then
 			warn "could not cut paths in another home from the agentsync setup-report"
 			rm -f "$REPORT_PATH"
@@ -8510,14 +8522,20 @@ INSIDE_MARK="[inside a synced folder]"
 CONTAINS_MARK="[contains a synced folder]"
 # A row list_shown printed with a control character escaped opens with this mark, before any other: two
 # folders can show as one escaped text, so such a row is never a folder to paste (B13 round 36 C1001, C1072)
-ESCAPED_MARK="[name holds a control character: rename it to sync it]"
+# B13 round 38 C1447 (ruling 129): the escaped form covers the line separators (since fad8817a5) and, since
+# 8528ea2a4, bidi and zero-width characters, none of them a control character, so the words say "hidden or
+# control"; $ESCAPED_MARK_OLD and $ESCAPED_KEPT_MARK_OLD, the words before it, are still read in install.out and
+# refused when pasted.
+ESCAPED_MARK="[name holds a hidden or control character: rename it to sync it]"
+ESCAPED_MARK_OLD="[name holds a control character: rename it to sync it]"
 # A row with no control character whose name is another folder's escaped form there (a literal \n or ?, beside a
 # folder named with a newline or another control character) opens with this mark in the same slot, so both rows
 # of such a pair are marked and neither is choosable (B13 round 37 ruling 121, C1242, C1308, C1201, C1213, C1229)
 TWIN_MARK="[name reads as another folder there: rename one of them to sync it]"
 # An escaped row the config already keeps ([synced] or [inside a synced folder]) opens with this one instead,
 # ESCAPED_MARK's opening words with no rename, since that folder already syncs (C1202, C1236)
-ESCAPED_KEPT_MARK="[name holds a control character]"
+ESCAPED_KEPT_MARK="[name holds a hidden or control character]"
+ESCAPED_KEPT_MARK_OLD="[name holds a control character]"
 # The folders the config already syncs (see "Folders already synced" in the header), read by the interpreter
 # $1: prints their number, then how many of them the file $2 (one folder path per line) does not hold, then
 # each of those as "$SYNCED_MARK <path>" (the path the config has, sorted), then each line of the file, with
@@ -10153,7 +10171,8 @@ fi
 # folder, but LAST_ERROR holds list_name's escaped spelling, which no redaction pair matches.
 # Each refusal is worded for its own row and says to run --list-folders again, never step 1's whole command, which
 # opens a new attempt (B13 round 37 ruling 121, C1239, C1213, C1229, C1275); its NEXT leaves the rename to the
-# person and names no folder (C1214). A row step 1 marked $TWIN_MARK or $ESCAPED_KEPT_MARK is refused pasted too.
+# person and names no folder (C1214). A row step 1 marked $TWIN_MARK or $ESCAPED_KEPT_MARK is refused pasted too,
+# and so is a row an earlier run marked in the words before B13 round 38 C1447, naming its own mark.
 again="then run $SELF --list-folders again"
 twin_tail="and it cannot be told apart from another folder there; rename it in its sync app, $again"
 RENAME_NEXT="renaming that folder is the person's, not a step for the agent, so show them the error and go on to the report; once they say it is renamed in its sync app, run $SELF --list-folders again and go by what it prints (leaving it out is their choice, not the agent's)"
@@ -10172,14 +10191,18 @@ pasted_row() { # ROW MARK: the row's path, with its marks gone, as list_plain sh
 }
 for f in ${SOURCE_LOCALS[@]+"${SOURCE_LOCALS[@]}"}; do
 	case "$f" in
-	*"$ESCAPED_MARK"*)
-		source_local_refused "$(pasted_row "$f" "$ESCAPED_MARK")" "this is a row step 1 marked $ESCAPED_MARK: its shown name is not the folder's own; rename it in its sync app, $again"
+	*"$ESCAPED_MARK"* | *"$ESCAPED_MARK_OLD"*)
+		pm="$ESCAPED_MARK"
+		case "$f" in *"$ESCAPED_MARK_OLD"*) pm="$ESCAPED_MARK_OLD" ;; esac
+		source_local_refused "$(pasted_row "$f" "$pm")" "this is a row step 1 marked $pm: its shown name is not the folder's own; rename it in its sync app, $again"
 		;;
 	*"$TWIN_MARK"*)
 		source_local_refused "$(pasted_row "$f" "$TWIN_MARK")" "this is a row step 1 marked $TWIN_MARK: its name is step 1's escaped form of another folder there; rename one of them in its sync app, $again"
 		;;
-	*"$ESCAPED_KEPT_MARK"*)
-		source_local_refused "$(pasted_row "$f" "$ESCAPED_KEPT_MARK")" "this is a row step 1 marked $ESCAPED_KEPT_MARK: that folder already syncs, so paste nothing for it" \
+	*"$ESCAPED_KEPT_MARK"* | *"$ESCAPED_KEPT_MARK_OLD"*)
+		pm="$ESCAPED_KEPT_MARK"
+		case "$f" in *"$ESCAPED_KEPT_MARK_OLD"*) pm="$ESCAPED_KEPT_MARK_OLD" ;; esac
+		source_local_refused "$(pasted_row "$f" "$pm")" "this is a row step 1 marked $pm: that folder already syncs, so paste nothing for it" \
 			"leave that --source-local out: the folder it names already syncs, and a re-run keeps it; then run the corrected command"
 		;;
 	esac

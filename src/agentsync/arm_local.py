@@ -144,10 +144,12 @@ class _KnownStat(Protocol):
     def created_ns(self) -> int | None: ...
 
 
-ESCAPED_KEPT_MARK = "[name holds a control character]"
+ESCAPED_KEPT_MARK = "[name holds a hidden or control character]"
 """install.sh's ``$ESCAPED_KEPT_MARK``: step 1's mark for a kept row ([synced] or [inside a synced folder])
 whose name it prints escaped (B13 round 37 ruling 121). Every folder a walk names lies inside a synced source,
-so it is the mark that folder's row would carry (C1244)."""
+so it is the mark that folder's row would carry (C1244). "hidden or control" since B13 round 38 C1447: the
+escaped form also covers the line separators and, since 8528ea2a4, bidi and zero-width characters, none of
+them a control character."""
 
 _LIST_ESCAPES = {"\n": "\\n", "\x1e": "\\n", "\t": "\\t", "\r": "\\r"}
 _LIST_ESCAPED_RE = re.compile("[\x00-\x1f\x7f-\x9f\u200b-\u200f\u2028-\u202e\u2060\u2066-\u2069\ufeff\u061c]")

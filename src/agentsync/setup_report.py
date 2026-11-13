@@ -4264,17 +4264,22 @@ _LIST_RUN_RE = re.compile(r"^# run=\S+ \S+ install\.sh(?: .*)? --list-folders(?:
 
 
 _LIST_MARKS = (
-    "[name holds a control character: rename it to sync it] ",
+    "[name holds a hidden or control character: rename it to sync it] ",
     "[name reads as another folder there: rename one of them to sync it] ",
+    "[name holds a hidden or control character] ",
+    "[name holds a control character: rename it to sync it] ",
     "[name holds a control character] ",
     "[synced] ",
     "[inside a synced folder] ",
     "[contains a synced folder] ",
 )
-"""install.sh's ``ESCAPED_MARK``, ``TWIN_MARK``, ``ESCAPED_KEPT_MARK``, ``SYNCED_MARK``, ``INSIDE_MARK`` and
-``CONTAINS_MARK``, each with the space the folder list puts after it (a test holds them equal to
-install.sh's). A row opens with at most one of the first three, then may carry one of the others, so they are
-stripped in this order (B13 round 36 C1001; round 37 ruling 121, lane RB)."""
+"""install.sh's ``ESCAPED_MARK``, ``TWIN_MARK``, ``ESCAPED_KEPT_MARK``, ``ESCAPED_MARK_OLD``,
+``ESCAPED_KEPT_MARK_OLD``, ``SYNCED_MARK``, ``INSIDE_MARK`` and ``CONTAINS_MARK``, each with the space the
+folder list puts after it (a test holds them equal to install.sh's). A row opens with at most one of the
+first five, then may carry one of the others, so they are stripped in this order (B13 round 36 C1001; round
+37 ruling 121, lane RB). The two ``_OLD`` marks are the escaped marks' words before B13 round 38 C1447
+(ruling 129): install.out keeps every run's rows, so a row an earlier installer marked still registers its
+folder."""
 
 
 def listed_folder_names(text: str, home: str) -> tuple[bool, list[tuple[str, int, str]]]:

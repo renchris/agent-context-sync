@@ -24601,16 +24601,25 @@ def test_both_readers_of_the_folder_list_strip_every_mark_install_sh_prints() ->
         for name in ("ESCAPED_MARK", "TWIN_MARK", "ESCAPED_KEPT_MARK")
     ]
     escaped = firsts[0]
+    olds = [
+        re.findall(rf'^{name}_OLD="(\[[^"]+\])"$', script, flags=re.M)[0]
+        for name in ("ESCAPED_MARK", "ESCAPED_KEPT_MARK")
+    ]
     marks = re.findall(r'^(?:SYNCED|INSIDE|CONTAINS)_MARK="(\[[^"]+\])"', script, flags=re.M)
     assert len(marks) == 3 and len(re.findall(r'^[A-Z_]+_MARK="', script, flags=re.M)) == 6, marks
     assert setup_report._LIST_MARKS[:3] == tuple(f"{m} " for m in firsts)
-    assert sorted(setup_report._LIST_MARKS[3:]) == sorted(f"{m} " for m in marks)
+    assert setup_report._LIST_MARKS[3:5] == tuple(f"{m} " for m in olds)
+    assert sorted(setup_report._LIST_MARKS[5:]) == sorted(f"{m} " for m in marks)
     [first] = re.findall(r"list \{ sub\(/\^\\\[name \((.*)\)\\\] /, \"\"\)\n", script)
-    alternation = re.fullmatch(r"holds a control character\(: rename it to sync it\)\?\|(.*)", first)
+    alternation = re.fullmatch(
+        r"holds a \(hidden or \)\?control character\(: rename it to sync it\)\?\|(.*)", first
+    )
     assert alternation is not None, first
-    assert {f"name holds a control character{tail}" for tail in ("", ": rename it to sync it")} | {
-        f"name {alternation.group(1)}"
-    } == {m.strip("[]") for m in firsts}, first
+    assert {
+        f"name holds a {how}control character{tail}"
+        for how in ("", "hidden or ")
+        for tail in ("", ": rename it to sync it")
+    } | {f"name {alternation.group(1)}"} == {m.strip("[]") for m in (*firsts, *olds)}, first
     [awk] = re.findall(r"^\t+sub\(/\^\\\[\(([^)]*)\)\\\] /", script, flags=re.M)
     assert sorted(awk.split("|")) == sorted(m.strip("[]") for m in marks), awk
     home = "/Users/contoso"
@@ -24623,6 +24632,32 @@ def test_both_readers_of_the_folder_list_strip_every_mark_install_sh_prints() ->
             True,
             [("OneDrive-Contoso", 2, "Look\\nAlike")],
         )
+
+
+def test_both_wordings_of_the_escaped_marks_register_their_folders_c1447() -> None:
+    """B13 round 38 C1447 (ruling 129): the escaped marks say `hidden or control character` since the escaped
+    form covers bidi and zero-width characters, while install.out keeps every run's rows, so a row an earlier
+    installer marked in the old words is still stripped: one install.out holding both registers both
+    folders."""
+    home = "/Users/contoso"
+    cs = f"{home}/Library/CloudStorage/OneDrive-Contoso"
+    text = (
+        "# run=1 2026-11-10T10:00:00Z install.sh --list-folders\n"
+        f"[name holds a control character: rename it to sync it] {cs}/Old one\\nTwo\n"
+        f"[name holds a control character] [synced] {cs}/Old kept\\tTab\n"
+        "# run=2 2026-11-13T10:00:00Z install.sh --list-folders\n"
+        f"[name holds a hidden or control character: rename it to sync it] {cs}/New?one\n"
+        f"[name holds a hidden or control character] [inside a synced folder] {cs}/New kept\\nTwo\n"
+    )
+    assert setup_report.listed_folder_names(text, home) == (
+        True,
+        [
+            ("OneDrive-Contoso", 2, "Old one\\nTwo"),
+            ("OneDrive-Contoso", 2, "Old kept\\tTab"),
+            ("OneDrive-Contoso", 2, "New?one"),
+            ("OneDrive-Contoso", 2, "New kept\\nTwo"),
+        ],
+    )
 
 
 def test_a_listing_that_did_not_finish_takes_step_1s_list_or_makes_the_report_private(

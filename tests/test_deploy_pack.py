@@ -3736,13 +3736,13 @@ branch's name can carry a work name, and the agent adds nothing and runs no repo
 command."""
 
 
-ESCAPED_ROW_MARK = "[name holds a control character: rename it to sync it]"
+ESCAPED_ROW_MARK = "[name holds a hidden or control character: rename it to sync it]"
 """The mark --list-folders writes, with one space, before a folder row it shows escaped (lane RB's
 ESCAPED_MARK, B13 round 36 ruling 113)."""
 TWIN_ROW_MARK = "[name reads as another folder there: rename one of them to sync it]"
 """The mark before a plain row whose name is another folder's escaped form there (lane RB's TWIN_MARK, B13
 round 37 ruling 121)."""
-KEPT_ROW_MARK = "[name holds a control character]"
+KEPT_ROW_MARK = "[name holds a hidden or control character]"
 """The mark before an escaped row already kept, [synced] or [inside a synced folder] (lane RB's
 ESCAPED_KEPT_MARK, B13 round 37 ruling 121)."""
 V36_RENAME = (

@@ -39417,6 +39417,9 @@ Amended 2026-11-10, §16.244 C1307: "no `$'...'` form offered" holds for a refus
 suggest no `$'...'` spelling. The installer's own commands for a folder with a control character and no look-alike, the
 lost-block `one --source-local` and a NEXT's re-run (`ORIG_SHOWN`), carry `shown_arg`'s `$'...'` form of the real path,
 which bash decodes to that folder, as `test_list_folders_names_the_real_folder_in_the_add_back_command_c1001` reads.
+Amended 2026-11-13, §16.246 C1447: `ESCAPED_MARK` reads `[name holds a hidden or control character: rename it
+to sync it]` since the escaped form also covers separator, bidi and zero-width characters; both readers still take
+the words above from an earlier run's rows in install.out.
 
 **The shell report cuts a path in another home whole whatever byte sits in it, as the agentsync report does**
 (C1016, C1064, and the shell halves of C1017, C1018, C1069 and C1123, on lane RA's table; ruling 112; privacy; data
@@ -40219,6 +40222,8 @@ alternation and `_LIST_MARKS`, its three first marks before the others, with the
 NEXT), `test_source_local_names_the_clash_for_a_shown_name_that_is_no_folder_c1002` (a tab folder and two folders
 that show as one text among them), `test_both_shell_readers_of_the_folder_list_take_an_escaped_synced_rows_whole_name_c1001`
 and `test_both_readers_of_the_folder_list_strip_every_mark_install_sh_prints`.
+Amended 2026-11-13, §16.246 C1447: `ESCAPED_KEPT_MARK` reads `[name holds a hidden or control character]`
+(ruling 129); a row an earlier run marked with the words above is still read and still refused when pasted.
 
 **A stopped copy an older build rendered is rewritten only on proof in its own text** (C1221, C1222, C1223, C1224,
 C1225, C1226, C1248, C1215; ruling 123; amends §16.235 C1109, §16.236 C1108 and §16.236 C1103; `scripts/install.sh`).
@@ -40691,7 +40696,26 @@ Reserved for round 38 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round
 
 ### 16.246 Round 38: the installer: the recut only over another build's render, the hidden-character marks, and the stopped copy's lines (2026-11-13, wave B13 round 38 lane RB)
 
-Reserved for round 38 lane RB of B13.
+A dated line this round writes in another section reads `Amended <date>, §16.246 C<n>: ...`.
+
+**The escaped marks say a hidden or control character, and both wordings are read** (C1447; ruling 129; amends
+§16.236 C1001 and §16.241 C1202; `scripts/install.sh`, `src/agentsync/arm_local.py`, `src/agentsync/setup_report.py`).
+The escaped form covers the C1 controls and the line and paragraph separators (U+0080 to U+009F, U+2028, U+2029,
+since fad8817a5, §16.236 C1072) and, since 8528ea2a4, only the bidi and zero-width characters (U+200B, U+202E,
+U+2060, U+FEFF, U+061C), format characters, not controls, so `ESCAPED_MARK` and
+`ESCAPED_KEPT_MARK` read `[name holds a hidden or control character: rename it to sync it]` and `[name holds a hidden
+or control character]`, in install.sh, its header, `arm_local.ESCAPED_KEPT_MARK` and the guides' quotes. install.out
+keeps every run's rows, so the old words stay registered: `ESCAPED_MARK_OLD` and `ESCAPED_KEPT_MARK_OLD` hold them,
+`listed_folder_lines`' first sub() reads `holds a (hidden or )?control character`, `setup_report._LIST_MARKS` lists
+the new marks before the old, and --source-local refuses a pasted old-wording row in its own mark's words. A render by
+another build, which may strip only the old words and so cut no name from a new row, takes the shell fallback when
+install.out holds a new-wording row (`report_new_marks`), as C1249's separators do. Rename-only would have dropped an
+earlier run's rows from redaction (makes worse True). Tests:
+`test_both_wordings_of_the_escaped_marks_register_their_folders_c1447`,
+`test_the_shell_reader_of_the_folder_list_takes_both_wordings_of_the_escaped_marks_c1447`,
+`test_a_new_wording_row_in_install_out_takes_the_fallback_over_another_builds_render_c1447`,
+`test_source_local_refuses_an_escaped_row_or_a_folder_with_a_look_alike_c1072` (two old-wording rows) and
+`test_both_readers_of_the_folder_list_strip_every_mark_install_sh_prints`.
 
 ### 16.247 Round 38: --json documents, an empty source folder, names in doctor's lines, and a recording's kept page (2026-11-13, wave B13 round 38 lane B)
 

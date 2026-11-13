@@ -28,7 +28,7 @@ from test_install_oneshot import (  # noqa: F401  (fixtures)
     steps,
 )
 
-ESCAPED_MARK = "[name holds a control character: rename it to sync it]"
+ESCAPED_MARK = "[name holds a hidden or control character: rename it to sync it]"
 """install.sh's ``ESCAPED_MARK``, as test_install_oneshot pins it."""
 
 PAST = re.compile(r"; (\d+) folders? past the first (\d+) (?:are|is) not listed: \S+ --list-folders --all$")

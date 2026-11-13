@@ -9523,12 +9523,16 @@ def test_list_folders_marks_a_synced_folder_with_a_newline_in_its_name_c932(
     assert install_log(env)[-2].endswith(" synced=2 gone=1"), install_log(env)
 
 
-ESCAPED_MARK = "[name holds a control character: rename it to sync it]"
+ESCAPED_MARK = "[name holds a hidden or control character: rename it to sync it]"
 """install.sh's ``ESCAPED_MARK``: an escaped row of step 1's list opens with it and a space (B13 round 36)."""
 TWIN_MARK = "[name reads as another folder there: rename one of them to sync it]"
 """install.sh's ``TWIN_MARK``: a plain row whose name is another folder's escaped form there (round 37)."""
-ESCAPED_KEPT_MARK = "[name holds a control character]"
+ESCAPED_KEPT_MARK = "[name holds a hidden or control character]"
 """install.sh's ``ESCAPED_KEPT_MARK``: an escaped row the config already keeps (B13 round 37 C1202)."""
+ESCAPED_MARK_OLD = "[name holds a control character: rename it to sync it]"
+ESCAPED_KEPT_MARK_OLD = "[name holds a control character]"
+"""The two escaped marks' words before B13 round 38 C1447 (ruling 129), still read in install.out and refused
+when pasted: install.sh's ``ESCAPED_MARK_OLD`` and ``ESCAPED_KEPT_MARK_OLD``."""
 
 AGAIN = f"then run {INSTALL_SH} --list-folders again"
 """How each rename refusal ends: --list-folders again, never step 1's whole command (B13 round 37 C1275)."""
@@ -9676,6 +9680,8 @@ def test_list_folders_names_the_real_folder_in_the_add_back_command_c1001(
         (f"{TWIN_MARK} <lib>/Contoso\\nLine two", "twin marked"),
         (f"{ESCAPED_KEPT_MARK} [synced] <lib>/Contoso\\nLine two", "kept marked"),
         (f"{TWIN_MARK} [contains a synced folder] <lib>/Contoso\\nLine two", "twin marked"),
+        (f"{ESCAPED_MARK_OLD} <lib>/Contoso\\nLine two", "marked before C1447"),  # B13 round 38 C1447
+        (f"{ESCAPED_KEPT_MARK_OLD} [synced] <lib>/Contoso\\nLine two", "kept marked before C1447"),
         ("<lib>/Contoso\x01x//", "twin"),  # the review: a trailing // names the same folder
         ("<lib>/Contoso\nLine two", "twin"),
         ("<lib>/Contoso\\nLine two", "look-alike"),
@@ -9698,7 +9704,15 @@ def test_source_local_refuses_an_escaped_row_or_a_folder_with_a_look_alike_c1072
     cp = install_sh(env, "--source-local", given.replace("<lib>", str(lib)))
     assert cp.returncode == 2, cp.stdout + cp.stderr
     shown = given.replace("<lib>", str(lib))
-    for mark in (ESCAPED_MARK, TWIN_MARK, ESCAPED_KEPT_MARK, "[synced]", "[contains a synced folder]"):
+    for mark in (
+        ESCAPED_MARK,
+        ESCAPED_MARK_OLD,
+        TWIN_MARK,
+        ESCAPED_KEPT_MARK,
+        ESCAPED_KEPT_MARK_OLD,
+        "[synced]",
+        "[contains a synced folder]",
+    ):
         shown = shown.removeprefix(f"{mark} ")
     shown = shown.replace("\n", "\\n").replace("\x01", "?")
     words = {
@@ -9711,11 +9725,15 @@ def test_source_local_refuses_an_escaped_row_or_a_folder_with_a_look_alike_c1072
         f"another folder there; rename one of them in its sync app, {AGAIN}",
         "kept marked": f"this is a row step 1 marked {ESCAPED_KEPT_MARK}: that folder already syncs, so "
         "paste nothing for it",
+        "marked before C1447": f"this is a row step 1 marked {ESCAPED_MARK_OLD}: its shown name is not the "
+        f"folder's own; rename it in its sync app, {AGAIN}",
+        "kept marked before C1447": f"this is a row step 1 marked {ESCAPED_KEPT_MARK_OLD}: that folder "
+        "already syncs, so paste nothing for it",
     }[why]
     assert cp.stderr.splitlines()[0] == f"usage error: --source-local {shown}: {words} (see --help)", (
         cp.stderr
     )
-    if why == "kept marked":
+    if why.startswith("kept marked"):
         assert last_line(cp).startswith(
             "NEXT: leave that --source-local out: the folder it names already syncs, and a re-run keeps it; "
             "then run the corrected command"
@@ -9849,6 +9867,42 @@ def test_both_shell_readers_of_the_folder_list_take_an_escaped_synced_rows_whole
         "keep\tTab\\there",
         "keep\tLook\\nAlike",
         "keep\tKept\\tTab",
+    ], cp.stdout
+
+
+def test_the_shell_reader_of_the_folder_list_takes_both_wordings_of_the_escaped_marks_c1447(
+    tmp_path: Path,
+) -> None:
+    """B13 round 38 C1447 (ruling 129): the escaped marks say `hidden or control character` now, and
+    install.out keeps every run's rows, so listed_folder_lines strips a row an earlier installer marked in the
+    old words as well as a new one: one install.out holding both registers both folders' whole names."""
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    helpers = "\n".join(m.group(0) for m in SHELL_HELPER_FNS.finditer(text))
+    home = tmp_path / "home"
+    cs = home / "Library" / "CloudStorage" / "OneDrive-Contoso"
+    out = tmp_path / "install.out"
+    out.write_text(
+        "# run=1 2026-11-10T10:00:00Z install.sh --list-folders\n"
+        f"{ESCAPED_MARK_OLD} {cs}/Old one\\nTwo\n"
+        f"{ESCAPED_KEPT_MARK_OLD} [synced] {cs}/Old kept\\tTab\n"
+        "# run=2 2026-11-13T10:00:00Z install.sh --list-folders\n"
+        f"{ESCAPED_MARK} {cs}/New?one\n"
+        f"{ESCAPED_KEPT_MARK} [inside a synced folder] {cs}/New kept\\nTwo\n",
+        encoding="utf-8",
+    )
+    cp = subprocess.run(
+        [BASH32, "-c", "\n".join([helpers, "listed_folder_lines"])],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={"HOME": str(home), "PATH": "/usr/bin:/bin", "INSTALL_OUT": str(out)},
+    )
+    assert (cp.returncode, cp.stderr) == (0, ""), cp.stderr
+    assert cp.stdout.splitlines() == [
+        f"{cs}/Old one\\nTwo",
+        f"{cs}/Old kept\\tTab",
+        f"{cs}/New?one",
+        f"{cs}/New kept\\nTwo",
     ], cp.stdout
 
 
@@ -17167,6 +17221,37 @@ def test_a_line_break_an_older_build_splits_on_takes_the_fallback_report_c1210(
         )
         assert "older stub render" not in text, "the stub's render is replaced"
     assert "Tailspin" not in text and "contoso2" not in text, text
+
+
+@pytest.mark.parametrize("same", [False, True])
+def test_a_new_wording_row_in_install_out_takes_the_fallback_over_another_builds_render_c1447(
+    env: dict[str, str], same: bool
+) -> None:
+    """B13 round 38 C1447 (ruling 129): an agentsync before the new escaped marks strips only the old words,
+    so it reads no folder from a row this checkout marked and cuts none of its name. A render by another build
+    is replaced by the shell fallback when install.out holds such a row, as for C1249's separators; this
+    build's render, which strips both wordings, is kept."""
+    env = _renderer_home(env, "older", stamp=_checkout_head() if same else "0123456789ab" * 3)
+    cs = Path(env["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso"
+    out = Path(env["HOME"]) / "agent-context" / "setup" / "install.out"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(
+        f"# run=1 2026-11-13T10:00:00Z install.sh --list-folders\n{ESCAPED_MARK} {cs}/Tailspin\u200bPlans\n",
+        encoding="utf-8",
+    )
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    text = report_path(env).read_text(encoding="utf-8")
+    if same:
+        assert "(agentsync setup-report)" in cp.stdout and "older stub render" in text, cp.stdout
+    else:
+        assert (
+            "(shell fallback: the installed agentsync, another build, may not read a folder row marked "
+            f"{ESCAPED_KEPT_MARK} in install.out)"
+        ) in cp.stdout, cp.stdout
+        assert "warning: agentsync setup-report was not kept: a folder row marked" in cp.stderr, cp.stderr
+        assert "older stub render" not in text, "the stub's render is replaced"
+        assert "Tailspin" not in text, text
 
 
 def test_a_failed_cut_of_the_agentsync_report_takes_the_fallback_report_c1237(
