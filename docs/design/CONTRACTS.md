@@ -40658,6 +40658,26 @@ report. Lane B's C1302 commit runs it through `deadline.run`; each passage takes
 saying so, and `_CatFile` stays the one program outside it. Test:
 `test_every_dated_line_from_round_11_on_is_held_by_a_test`, through two rows in `_ROUND_37_D_PARAGRAPH_AMENDS`.
 
+### 16.245 Round 38: the report: one set of name spellings, cuts at verb and line edges, and recordings waiting on OCR (2026-11-13, wave B13 round 38 lane RA)
+
+Reserved for round 38 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 38").
+
+### 16.246 Round 38: the installer: the recut only over another build's render, the hidden-character marks, and the stopped copy's lines (2026-11-13, wave B13 round 38 lane RB)
+
+Reserved for round 38 lane RB of B13.
+
+### 16.247 Round 38: --json documents, an empty source folder, names in doctor's lines, and a recording's kept page (2026-11-13, wave B13 round 38 lane B)
+
+Reserved for round 38 lane B of B13.
+
+### 16.248 Round 38: the converters: a zero-byte file never takes an older build's cached answer (2026-11-13, wave B13 round 38 lane E)
+
+Reserved for round 38 lane E of B13.
+
+### 16.249 Round 38: the v37 prompt, the retention promise and the guides (2026-11-13, wave B13 round 38 lane D)
+
+Reserved for round 38 lane D of B13.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units

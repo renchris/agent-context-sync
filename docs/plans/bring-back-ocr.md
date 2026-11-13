@@ -2654,6 +2654,50 @@ with the harvest list in `round38/tools/harvest-lead.txt`, on this section's lan
 and up, prompt v36 (v35's block from `3acd0c1e`), outputs `round38/`. The stop rule names Codex and Gemini: a clean
 round without Gemini goes to the operator before the loop closes.
 
+### B13 round 38: v36 rehearsal, cross-lane review, harvest, Codex beside Claude; Gemini not run (2026-11-13)
+
+Run `wf_d29d03be-7c1` on `702fcff5` (BASE `e9cf4411`), codex-only, 111 agents with no errors: 85 confirmed (0 turns,
+21 wrongs, 64 small), 9 refuted (C1423, C1429, C1430, C1472, C1474, C1475, C1476, C1478, C1482). All six rehearsal
+scenarios passed on the role's path with no turn. Ten items are data integrity, most of them privacy: install.sh's
+source-local line and doctor's listable line and fix printed a folder's name raw (C1414 with C1439), the Doctor
+section still split a line at breaks `str.splitlines()` honours, so C1249's fix was incomplete (C1431), a refused
+--source-local name with a blank reached the report (C1432), a cut landed inside an agentsync verb (C1425), and
+install.sh's recut kept any name ending in `<path>`, rewrote a current render and named one folder two ways (C1453
+with C1480, C1481 and C1435). A recording waiting on the OCR helper was classed "no converter" in the report while
+QUARANTINE.tsv said it waits (C1433 with C1451, C1487, C1490). Four wrongs are in the CLI conventions wave's landed
+`--json` code (C1441 with C1485, C1484, C1486), built by lane B at that wave's lead's request. Since `8528ea2a` the
+escaped mark also covers hidden characters, so its words change (C1447), and the prompt goes to v37 in lane D's one
+commit with C1402's reflow; round 39 rehearses v37. Codex's five finders ran and its second opinion gave 21
+opinions, none disputed. Gemini did not run: the allow rule for `~/.claude/scripts/agy-review.sh` is still the
+operator's (backlog `8ed9dae0fbc0`). A triage workflow (`wf_cecbb44c-3f4`) placed every item once.
+
+Lead rulings for round 38 (in `lanes/COMMON37.md`, mirrored in `docs/lanes/COMMON.md`): (126) a folder's name prints
+in no spelling in either report and never raw on a terminal, both reports cut the same spellings at the same edges,
+and install.sh's recut runs only over another build's render, completing rulings 112 and 120; (127) a recording
+waiting on a failed OCR helper is classed by its page wherever it is counted, completing ruling 122; (128) under
+--json, stdout holds one document and stderr only the error document, and every `next` runs against the install the
+person chose; (129) a mark's words are true for every row it opens and the prompt quotes each mark whole on one line,
+amending ruling 121 and taking the prompt to v37; (130) an empty source folder outside every File Provider domain is a
+[warn] with a fix that the report files as expected, completing C1205; (131) a pointer names a line only where that
+line is; (132) a zero-byte file is never served an older build's cached answer, completing C1304's fifth step. The
+calls under 90% are filed with their courses kept: decision `73df9a3bf5ca` (conviction 70), veto window to
+2026-11-15. C1491 with C1457, C1468 and C1479 (tenant-probes.md's exit 78 row, round 37's C1305) stays the CLI
+conventions wave's: its lead confirmed the commit is next in its queue; if that wave closes with the row still wrong,
+lane D builds it in round 39. C1462's `test_cli_modes.py` half and the CLI plan's superseded quotes (C1459 with C1469)
+went to that wave's lead.
+
+Convergence: confirmed as before, then 76, then 90, then 86, then 98, then 85; turns as before, then 0, then 0, then 5
+(4 of them the kit's), then 2, then 0; wrongs as before, then 17, then 23, then 10, then 19, then 21.
+
+Lanes (`--account auto`, CONTRACTS §16.245 to §16.249, plain `scripts/ship-land.sh` with the repo's own lock shared with
+the CLI conventions wave, scratch under `round38/`, back-channel pane 3 or its successor): RA 14 (C1425, C1432, C1439
+first: privacy, whose spellings go to lanes RB and B first; then the OCR-waiting recordings), RB 23 (C1480, C1481,
+C1453, C1435, C1440 first: the recut; then C1447's marks, whose words go to lane D first), B 19 (C1414 and C1431
+first, on lane RA's sha; C1442, C1486; the CLI wave's `--json` items last), E 4 (C1450 with C1488, C1466, C1467), D 6
+(the v37 commit: C1402 and C1447's prompt half; C1489, C1460 with C1473, C1455 with C1492). The lead holds 19: round
+39's kit (C1411 with C1422, C1412, C1413, C1416, C1417, C1418, C1419, C1420 with C1424 and C1470, C1477), C1471's
+housekeeping, and the hand-offs above (C1491 with C1457, C1468 and C1479; C1459 with C1469).
+
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be
