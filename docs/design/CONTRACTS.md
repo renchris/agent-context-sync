@@ -40795,6 +40795,13 @@ a test cut short marks nothing and none runs once the time is spent. Step 2's re
 `test_list_folders_marks_a_look_alike_another_provider_listed_while_one_was_denied_c1464` and
 `test_list_folders_tests_no_kept_look_alike_under_a_provider_still_asking_c1464`.
 
+**A twin whose escaped member is past the list's limit is still marked** (C1463; a test). Round 37's note held that a
+cap could never cut a pair's escaped member and keep its plain one, since a control character sorts first; a
+multibyte member (U+2028) sorts after `?` in C and UTF-8 order alike, so `--list-folders --limit 2` over `Alpha`,
+`Contoso?x` and `Contoso<U+2028>x` lists the plain row inside the cap and the escaped one past it. `list_twins` reads
+the whole parent, so the plain row is marked `TWIN_MARK`; no code changes. Test:
+`test_list_folders_marks_a_twin_whose_escaped_member_is_past_the_limit_c1463`.
+
 ### 16.247 Round 38: --json documents, an empty source folder, names in doctor's lines, and a recording's kept page (2026-11-13, wave B13 round 38 lane B)
 
 **Doctor's lines split at `\n` alone** (C1431; ruling 126; privacy). Status's `_Status.check_lines`, the report's

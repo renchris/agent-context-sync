@@ -9590,6 +9590,22 @@ def test_list_folders_shows_an_escaped_row_apart_from_its_look_alike_c1001(env: 
     assert len(set(rows)) == 5, rows
 
 
+def test_list_folders_marks_a_twin_whose_escaped_member_is_past_the_limit_c1463(env: dict[str, str]) -> None:
+    """B13 round 38 C1463: round 37's note said a cap could never cut a pair's escaped member and keep its
+    plain one, since a control character sorts first; a multibyte one (here U+2028) sorts after `?` in C and
+    UTF-8 order alike. With the escaped member past --limit, the plain row is still marked, from list_twins'
+    read of the whole parent, never of the rows inside the cap."""
+    lib = _cloud(env) / "OneDrive-Fabrikam"
+    for n in ("Alpha", "Contoso?x", "Contoso\u2028x"):
+        (lib / n).mkdir(parents=True)
+    cp = install_sh(env, "--list-folders", "--limit", "2")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    out = cp.stdout.splitlines()
+    assert f"{TWIN_MARK} {lib}/Contoso?x" in out, out
+    assert not any(line.startswith(ESCAPED_MARK) for line in out), out
+    assert "(1 more)" in out, out
+
+
 def test_list_folders_marks_both_rows_of_a_pair_and_tells_no_kept_row_to_rename_ruling_121(
     env: dict[str, str],
 ) -> None:
