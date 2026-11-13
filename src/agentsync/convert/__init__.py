@@ -140,7 +140,8 @@ def convert_file(
 
     No converter -> status REFUSED ("no converter for <suffix>"). Cache hit on the action key -> cached result
     (``from_cache=True``). Converter raises UnreadableSourceError -> UNREADABLE; any other exception -> FAILED
-    with the reason; OK results are stored write-once. Units never empty for OK.
+    with the reason; OK results are stored write-once. Units never empty for OK. A staged file of zero bytes
+    neither reads nor writes the cache (B13 round 38 C1466): it is converted every time, which costs nothing.
 
     A recording that is not finished (``RecordingNotFinished``: its work allowance ran out, or a piece passed
     its deadline) is re-raised: it is never a FAILED or cached result, and the cycle lets it wait.
@@ -232,8 +233,12 @@ def convert_file(
     refusal = _label_refusal(registry, src, name)
     if refusal is not None:
         return make(ConversionStatus.REFUSED, reason=refusal)
+    # Zero bytes skip the cache both ways: every zero-byte file of a suffix shares one key, and an older
+    # build's cached answer for it must never be served (B13 round 38 C1466, ruling 132). Converting nothing
+    # costs nothing; an unreadable size reads as not empty.
+    empty = _zero_bytes(src)
     try:
-        cached = cache.get(key)
+        cached = None if empty else cache.get(key)
     except Exception as exc:  # a cache fault must never fail the file; convert instead
         log.warning("converter cache read failed for %s: %s", key, _reason(exc))
         cached = None
@@ -298,11 +303,21 @@ def convert_file(
             log.warning("converter %s broke its contract on %s: %s", conv.converter_id, name, problem)
             return make(ConversionStatus.FAILED, reason=f"{CONVERSION_FAILED}: {problem}")
         result = make(ConversionStatus.OK, units=units)
+    if empty:
+        return result
     try:
         cache.put(result)
     except Exception as exc:  # disk full, permissions: the result is still good for this cycle
         log.warning("converter cache write failed for %s: %s", key, _reason(exc))
     return result
+
+
+def _zero_bytes(src: Path) -> bool:
+    """Whether the staged file holds no bytes; a size that cannot be read is not empty (C1466)."""
+    try:
+        return src.stat().st_size == 0
+    except OSError:
+        return False
 
 
 def _label_refusal(registry: Registry, src: Path, name: str) -> str | None:

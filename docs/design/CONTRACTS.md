@@ -40475,6 +40475,10 @@ converts, and the settled row keeps its class).
 Amended 2026-11-13, §16.248 C1450, C1488: the `Not built here` sentence is built: an Office package name or a `.msg`
 carries `empty_screen: 1` in its action key's options, so its key moved once and an older build's `not-ooxml` or
 `not-msg` answer is never served to a new zero-byte file.
+Amended 2026-11-13, §16.248 C1466: and `convert_file` neither reads nor writes the cache for a staged file of zero
+bytes, so no answer cached for zero bytes under a key a build still uses is served either. A zero-byte file converted
+from now on has no cache entry, so a damaged page of one (a text type's page; a stub never was) is fetched again
+rather than rendered again from the cache.
 
 **A test kills its helper through the helper's own Popen, never a bare pid** (C1272; `tests/test_ocr.py`). The C961
 test's `finally` (C1036's red-run cleanup) sent SIGKILL to the helper's bare pid after its green path had asserted
@@ -40705,6 +40709,22 @@ bytes change (C930's ruling). Tests:
 (six suffixes: an older build's sync caches `not-ooxml` or `not-msg` under a key without the option; a new zero-byte
 file is then `empty` under another options hash, a real `.pptx` or `.potx` converts, and the settled row keeps its
 class) and `test_convert_family.py::test_only_an_office_name_or_msg_carries_the_empty_screen_option_c1450`.
+
+**Zero bytes skip the cache both ways** (C1466; `agentsync.convert`; amends §16.243 C1304). Every zero-byte file of
+a suffix shares one canonical hash, so whatever answer a build once cached for zero bytes under a key still in use
+was served to every new one, whatever the converter says today; C1450's option moves today's keys, and this guards
+the next change of answer too. `convert_file` reads the staged file's size after the label refusal (a size that
+cannot be read is not empty) and, for 0, skips `cache.get` and `cache.put`: the file is converted each time, which
+costs nothing, and nothing is stored. The size, not the canonical hash, which reaches a bytes hash by other paths;
+not in `ConverterCache.get`, which sees only the key. No `outdated` rule reads it, so a stub an older build settled
+keeps its class until its bytes change. `_republish_from_cache` is unchanged; it renders only an `ok` page again
+(a damaged stub was always fetched again), and a zero-byte text file's page (C930: still a page) converted from now
+on has no entry, so a damaged copy of it is fetched again (`Verdict.MAYBE_CHANGED`) rather than rendered again, a
+rare path at the cost of one fetch. Tests:
+`test_convert_family.py::test_a_zero_byte_file_is_never_served_a_cached_answer_under_its_own_key_c1466` (`.docx` and
+`.msg`: the older answer seeded under today's key; a new zero-byte file is `empty` under that same key, the old
+entry stays, a real `.docx` converts, and the settled row keeps its class) and
+`test_convert_family.py::test_convert_file_neither_reads_nor_writes_the_cache_for_zero_bytes_c1466`.
 
 ### 16.249 Round 38: the v37 prompt, the retention promise and the guides (2026-11-13, wave B13 round 38 lane D)
 

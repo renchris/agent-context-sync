@@ -324,9 +324,9 @@ def test_a_zero_byte_vtt_after_an_older_builds_cached_result_is_empty_c1304(
     assert _row(config, "Contoso earlier.vtt").state_reason == vtt_mod._NOT_VTT, "settled: kept, no re-read"
 
 
-def _older_zero_byte_answers(old: pytest.MonkeyPatch) -> None:
+def _older_zero_byte_answers(old: pytest.MonkeyPatch, *, older_key: bool = True) -> None:
     """The build before C930: a zero-byte Office name is ``not-ooxml`` and a zero-byte ``.msg`` ``not-msg``,
-    both cached UNREADABLE, under a key with no ``empty_screen``."""
+    both cached UNREADABLE, under a key with no ``empty_screen`` (``older_key``) or under today's."""
     screen, msg_convert = policy_mod.screen_file, msg_mod.MsgConverter.convert
 
     def older_screen(path: Path, *, name: str, policy: policy_mod.PolicyConfig):  # type: ignore[no-untyped-def]
@@ -344,7 +344,9 @@ def _older_zero_byte_answers(old: pytest.MonkeyPatch) -> None:
 
     old.setattr(policy_mod, "screen_file", older_screen)
     old.setattr(msg_mod.MsgConverter, "convert", older_msg)
-    old.setattr(convert_pkg, "_identity", older_identity)
+    if older_key:
+        old.setattr(convert_pkg, "_identity", older_identity)
+    old.setattr(convert_pkg, "_zero_bytes", lambda src: False)  # nor did it skip the cache for zero bytes
 
 
 def _options_hash(config, name: str) -> str | None:  # type: ignore[no-untyped-def]
@@ -396,6 +398,78 @@ def test_a_zero_byte_office_file_or_msg_after_an_older_builds_cached_result_is_e
     if real is not None:
         assert _row(config, f"Contoso real{suffix}").state is RowState.LIVE, "a real file still converts"
     assert _row(config, f"Contoso earlier{suffix}").state_reason == older, "settled: kept, no re-read"
+
+
+@pytest.mark.parametrize(("suffix", "older"), [(".docx", NOT_OOXML_REASON), (".msg", NOT_MSG_REASON)])
+def test_a_zero_byte_file_is_never_served_a_cached_answer_under_its_own_key_c1466(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, suffix: str, older: str
+) -> None:
+    """B13 round 38 C1466 (ruling 132): an answer cached for zero bytes under the key a build still uses was
+    served to every new zero-byte file of the suffix (one canonical hash), whatever the converter says today.
+    ``convert_file`` skips the cache get and put for a staged file of size 0, after the label refusal: a new
+    zero-byte file is ``empty`` though the older answer sits under its very key, nothing new is cached for it,
+    a real file still converts, and the row the older build settled keeps its class (no re-read)."""
+    config, src = make_env(tmp_path)
+    with monkeypatch.context() as old:  # the older answer, under today's key (empty_screen included)
+        _older_zero_byte_answers(old, older_key=False)
+        (src / f"Contoso earlier{suffix}").write_bytes(b"")
+        assert run(config).exit_code == 0
+    assert _row(config, f"Contoso earlier{suffix}").state_reason == older
+    with Manifest(config.state_paths.db) as m:
+        (seeded,) = m.outputs_for("src", item_id(config, f"Contoso earlier{suffix}"))
+    (src / f"Contoso zero{suffix}").write_bytes(b"")
+    if suffix == ".docx":
+        word_package(src / "Contoso real.docx")
+    assert run(config).exit_code == 0
+    row = _row(config, f"Contoso zero{suffix}")
+    assert row.state is RowState.QUARANTINED and row.state_reason == policy_mod.EMPTY_OUTPUT_REASON
+    assert quarantine_class(row.state_reason) == "empty"
+    with Manifest(config.state_paths.db) as m:
+        (out,) = m.outputs_for("src", item_id(config, f"Contoso zero{suffix}"))
+    assert out.action_key == seeded.action_key, (
+        "the same key: only the zero-byte skip keeps the old answer out"
+    )
+    assert ConverterCache(config.cache_dir).get(out.action_key).reason == older, "the old entry stays"
+    if suffix == ".docx":
+        assert _row(config, "Contoso real.docx").state is RowState.LIVE, "a real file still converts"
+    assert _row(config, f"Contoso earlier{suffix}").state_reason == older, "settled: kept, no re-read"
+
+
+def test_convert_file_neither_reads_nor_writes_the_cache_for_zero_bytes_c1466(tmp_path: Path) -> None:
+    """B13 round 38 C1466: a zero-byte staged file is converted every time and never cached, while the same
+    name over real bytes is cached as before."""
+    reg = Registry.default(ConvertConfig())
+    cache = ConverterCache(tmp_path / "cache")
+    calls: list[str] = []
+    real_get, real_put = cache.get, cache.put
+    cache.get = lambda key: calls.append("get") or real_get(key)  # type: ignore[method-assign]
+    cache.put = lambda result: calls.append("put") or real_put(result)  # type: ignore[method-assign]
+    zero = tmp_path / "zero.txt"
+    zero.write_bytes(b"")
+    digest = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    for _ in range(2):
+        result = convert_file(
+            zero,
+            name="Contoso zero.txt",
+            content_sha256=digest,
+            canonical_sha256=digest,
+            registry=reg,
+            cache=cache,
+        )
+        assert not result.from_cache
+    assert calls == []
+    full = tmp_path / "full.txt"
+    full.write_bytes(b"Contoso notes\n")
+    digest = "a" * 64
+    convert_file(
+        full,
+        name="Contoso full.txt",
+        content_sha256=digest,
+        canonical_sha256=digest,
+        registry=reg,
+        cache=cache,
+    )
+    assert calls == ["get", "put"]
 
 
 @pytest.mark.parametrize(
