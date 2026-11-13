@@ -15161,13 +15161,20 @@ _SPLITLINES_BREAKS = ("\r", "\v", "\f", "\x1c", "\x1d", "\x1e", "\x85", "\u2028"
 
 @pytest.mark.parametrize("brk", _SPLITLINES_BREAKS, ids=[f"U+{ord(c):04X}" for c in _SPLITLINES_BREAKS])
 def test_doctor_lines_split_at_a_newline_alone_through_the_real_report_hooks_c1431(
-    initialised: Config, tmp_path: Path, local_source_dir: Path, capsys: pytest.CaptureFixture[str], brk: str
+    initialised: Config,
+    tmp_path: Path,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    brk: str,
 ) -> None:
     """B13 round 38 C1431 (ruling 126; privacy): the report's Doctor hook and status split doctor's text with
     ``str.splitlines()``, so a source folder ``Contoso<break>Merger Board`` that went missing printed its
     listable and volume FAILs in two pieces and ``Merger Board does not exist`` in clear on a line of its own.
     Both now split at ``\\n`` alone: each FAIL is one line ending in its fix, and no piece of the name
     prints."""
+    # two doctor runs are compared below: free disk space must not move between them (C1462's race)
+    monkeypatch.setattr(doctor, "_disk_free", lambda _anchor: 8 << 30)
     gone = tmp_path / f"Contoso{brk}Merger Board"
     shutil.copytree(local_source_dir, gone)
     cfg = str(initialised.config_path)
