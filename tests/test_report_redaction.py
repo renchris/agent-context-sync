@@ -1124,8 +1124,8 @@ def _report_recut_harness(tmp_path: Path, report: Path, other: int = 1) -> subpr
     fns = "\n".join(
         m.group(0)
         for m in re.finditer(
-            r"(?ms)^(?:foreign_home_cut|report_recut|report_words_cut)\(\) \{[^\n]*\n.*?^\}$|"
-            r"^(?:CUT_FIXED|CUT_DRIVE|CUT_HOME|REFUSED_HEADS)=.*?$",
+            r"(?ms)^(?:foreign_home_cut|report_recut|report_words_cut|recut_note)\(\) \{[^\n]*\n.*?^\}$|"
+            r"^(?:CUT_FIXED|CUT_DRIVE|CUT_HOME|REFUSED_HEADS|RECUT_NOTE)=.*?$",
             text,
         )
     )
@@ -1334,3 +1334,35 @@ def test_both_reports_hold_agentsyncs_own_verb_whole_c1425(
         r"~/\.local/bin/agentsync exclude-empty <folder-\d>; sync <folder-\d>-notes", shell
     ), shell
     assert "alpha" not in shell.lower(), shell
+
+
+def test_a_recut_of_another_builds_render_says_so_under_its_redaction_section_c1406(tmp_path: Path) -> None:
+    """B13 round 38 C1406 (ruling 126): another build's render that this checkout's recut changed showed
+    `/Users/<path>` and `<path>` its own legend neither names nor counts. One line right after its
+    `Placeholders used:` line says so, with the count of cuts the passes made, the totals line unchanged;
+    written once, never on this checkout's render, and never beside one already there."""
+    report = tmp_path / "setup-report.md"
+    older = (
+        "# agentsync setup report\n\n## Friction\n\n"
+        "saw /Users/dana.contoso/Fabrikam/notes.txt\n"
+        "usage error: --source-local is not an existing folder: ~/Tailspin Merger (see --help)\n\n"
+        "## Redaction\n\n3 replacements of 2 values (folder).\nPlaceholders used: <folder-N>.\n"
+        "Send it: privately.\n"
+    )
+    report.write_text(older, encoding="utf-8")
+    cp = _report_recut_harness(tmp_path, report)
+    assert cp.returncode == 0, cp.stderr
+    lines = report.read_text(encoding="utf-8").splitlines()
+    at = lines.index("Placeholders used: <folder-N>.")
+    assert lines[at + 1].startswith(
+        "This checkout's installer cut this report again after the installed agentsync"
+    ), lines
+    assert lines[at + 1].endswith("these 2 cut(s) are not counted above."), lines[at + 1]
+    assert lines[at - 1] == "3 replacements of 2 values (folder).", "the totals line is the render's own"
+    assert "saw /Users/<path>" in lines and "Fabrikam" not in report.read_text(encoding="utf-8")
+    once = report.read_bytes()
+    assert _report_recut_harness(tmp_path, report).returncode == 0
+    assert report.read_bytes() == once, "a second pass adds nothing"
+    report.write_text(older, encoding="utf-8")
+    assert _report_recut_harness(tmp_path, report, other=0).returncode == 0
+    assert "This checkout's installer" not in report.read_text(encoding="utf-8"), "never on its own render"

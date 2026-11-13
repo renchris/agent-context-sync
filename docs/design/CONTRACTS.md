@@ -41003,6 +41003,18 @@ fix, each refusal head, the not-a-folder line and a friction row),
 `test_install_help.py::test_each_refused_source_local_name_outside_cloudstorage_stays_out_of_every_render_c1432`
 (each head under ~/Projects, rendered by this checkout and by an older stub).
 
+**A recut that changed another build's render says so under its Redaction section** (C1406; ruling 126;
+`scripts/install.sh`). A render by an older build showed the recut's `/Users/<path>` and `<path>`, which its own
+legend neither names nor counts. `foreign_home_cut` and `report_words_cut` count their cuts (`CUT_COUNT`, a file
+each), and when the recut of another build's render changed it, `recut_note` writes one line right after the
+render's `Placeholders used:` line (else at the end of its `## Redaction` section): `This checkout's installer cut
+this report again after the installed agentsync wrote it: <path> stands for a path in another home, cut whole to
+/Users/<path> (/Volumes/<path> behind a volume), or a folder install.sh itself named in a refusal or an "is not an
+existing folder:" line; these N cut(s) are not counted above.`, N the passes' own count. The totals line stays the
+render's; the line is written once (never beside one already there, and a second pass changes nothing), never on
+this checkout's render, and a render with no Redaction section keeps the cut render without it. Test:
+`test_report_redaction.py::test_a_recut_of_another_builds_render_says_so_under_its_redaction_section_c1406`.
+
 ### 16.247 Round 38: --json documents, an empty source folder, names in doctor's lines, and a recording's kept page (2026-11-13, wave B13 round 38 lane B)
 
 **Doctor's lines split at `\n` alone** (C1431; ruling 126; privacy). Status's `_Status.check_lines`, the report's

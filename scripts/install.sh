@@ -4570,7 +4570,7 @@ foreign_home_cut() {
 				out = out substr(s, 1, j + 14); s = substr(s, j + 15); continue
 			}
 			k = rest(s, upto(s, j + 15, 1), "")
-			out = out substr(s, 1, j + 14); s = substr(s, k)
+			out = out substr(s, 1, j + 14); s = substr(s, k); ncut++
 		}
 		return out s
 	}
@@ -4590,12 +4590,14 @@ foreign_home_cut() {
 			if (comp == "" || comp == "Shared" || comp == "<path>" || (comp == "<user>" && !vol) || pre ~ /[A-Za-z0-9_.-]/) {
 				from = h; continue # from the run\047s last slash: a /Users/ that starts there is read (B13 round 38 C1440)
 			}
-			out = out substr(s, 1, ps - 1) (vol ? "/Volumes/<path>" : "/Users/<path>")
+			out = out substr(s, 1, ps - 1) (vol ? "/Volumes/<path>" : "/Users/<path>"); ncut++
 			if (pre != "" && index("\"\047`", pre) && (q = index(substr(s, h + 1), pre))) { s = substr(s, h + q); from = 1; continue }
 			s = substr(s, rest(s, k, comp)); from = 1
 		}
 		print out s
-	}'
+	}
+	# with CUT_COUNT set, how many cuts this pass made, for report_recut\047s note (B13 round 38 C1406)
+	END { if (ENVIRON["CUT_COUNT"] != "") printf "%d\n", ncut > ENVIRON["CUT_COUNT"] }'
 }
 # add-source's and init's note, `added source '<id>' to <file> (<typed>, stored as <stored>):` and its inbox twin
 # `added inbox source '<id>' (<typed>, stored as <stored>):`, read by its structure after every pair has run, as
@@ -6941,16 +6943,40 @@ report_new_marks() {
 # port of _cut_path keeps an unregistered tenant). Never the whole redact_stream, whose pairs would cut the
 # placeholders again. 1 when the pass fails, so write_report falls back to the shell report, never an uncut one.
 report_recut() { # OTHER
-	local tmp
+	local tmp n1=0 n2=0
 	tmp="$(mktemp "${REPORT_PATH%/*}/.report-cut.XXXXXX" 2>/dev/null)" || return 1
-	if foreign_home_cut recut <"$REPORT_PATH" | if [ "${1:-1}" -eq 1 ]; then report_words_cut; else cat; fi >"$tmp" && [ -s "$tmp" ]; then
-		if cmp -s "$tmp" "$REPORT_PATH"; then rm -f "$tmp"; return 0; fi
+	if CUT_COUNT="$tmp.n1" foreign_home_cut recut <"$REPORT_PATH" |
+		if [ "${1:-1}" -eq 1 ]; then CUT_COUNT="$tmp.n2" report_words_cut; else cat; fi >"$tmp" && [ -s "$tmp" ]; then
+		if cmp -s "$tmp" "$REPORT_PATH"; then rm -f "$tmp" "$tmp.n1" "$tmp.n2"; return 0; fi
+		read -r n1 <"$tmp.n1" 2>/dev/null || n1=0
+		read -r n2 <"$tmp.n2" 2>/dev/null || n2=0
+		rm -f "$tmp.n1" "$tmp.n2"
+		[ "${1:-1}" -ne 1 ] || recut_note "$tmp" $((n1 + n2)) || true # the cut render stays, note or not
 		chmod 600 "$tmp" 2>/dev/null || true
 		mv -f "$tmp" "$REPORT_PATH" || { rm -f "$tmp"; return 1; }
 	else
-		rm -f "$tmp"
+		rm -f "$tmp" "$tmp.n1" "$tmp.n2"
 		return 1
 	fi
+}
+# One line under another build's Redaction section, right after its "Placeholders used:" line (else at the section's
+# end), saying this checkout cut the render again and how many cuts the passes made, which that section's own
+# counts leave out; once, never beside one already there (B13 round 38 C1406). FILE N; 1 when it cannot write it.
+RECUT_NOTE="This checkout's installer cut this report again after the installed agentsync wrote it"
+recut_note() {
+	local out
+	[ "$2" -gt 0 ] && ! LC_ALL=C grep -qF "$RECUT_NOTE" "$1" || return 0
+	out="$(mktemp "$1.note.XXXXXX" 2>/dev/null)" || return 1
+	if NOTE="$RECUT_NOTE: <path> stands for a path in another home, cut whole to /Users/<path> (/Volumes/<path> behind a volume), or a folder install.sh itself named in a refusal or an \`is not an existing folder:\` line; these $2 cut(s) are not counted above." LC_ALL=C awk '
+		function put() { if (!done) { print ENVIRON["NOTE"]; done = 1 } }
+		/^## / { if (sec && !done) put(); sec = ($0 == "## Redaction") }
+		{ print }
+		sec && index($0, "Placeholders used:") == 1 { put() }
+		END { if (sec) put(); exit !done }' "$1" >"$out" && mv -f "$out" "$1"; then
+		return 0
+	fi
+	rm -f "$out"
+	return 1
 }
 # setup_report._REFUSED_HEADS: the words every source_local_refused call opens with (a test keeps them equal)
 REFUSED_HEADS="this is a row step 1 marked |step 1 shows this folder's name |its name is step 1's escaped form |this is how step 1 shows a folder "
@@ -6992,7 +7018,7 @@ report_words_cut() {
 		# a bare <path> before a table cell or end-of-name punctuation is already cut: the rest is not its name
 		if (index(r, "<path>") == 1 && (length(r) == 6 || substr(r, 7, 2) == " |" || index(";,.:", substr(r, 7, 1)))) j = 7
 		name = j ? substr(r, 1, j - 1) : r; tail = j ? substr(r, j) : ""
-		if (!known(name)) $0 = substr($0, 1, i + length(m) - 1) "<path>" tail
+		if (!known(name)) { $0 = substr($0, 1, i + length(m) - 1) "<path>" tail; ncut++ }
 	}
 	(i = index($0, sl)) > 0 {
 		r = substr($0, i + length(sl)); e = 0
@@ -7000,9 +7026,10 @@ report_words_cut() {
 			p = r; o = 0
 			while ((x = index(p, ": " head[k])) > 0) { o += x; if (o > e) e = o; p = substr(p, x + 1) }
 		}
-		if (e > 1 && !known(substr(r, 1, e - 1))) $0 = substr($0, 1, i + length(sl) - 1) "<path>" substr(r, e)
+		if (e > 1 && !known(substr(r, 1, e - 1))) { $0 = substr($0, 1, i + length(sl) - 1) "<path>" substr(r, e); ncut++ }
 	}
-	{ print }'
+	{ print }
+	END { if (ENVIRON["CUT_COUNT"] != "") printf "%d\n", ncut > ENVIRON["CUT_COUNT"] }'
 }
 write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2 in a dry run
 	local rc="$1" bin out src=0 other=1 why="agentsync is not installed"
