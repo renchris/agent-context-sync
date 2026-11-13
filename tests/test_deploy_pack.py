@@ -3914,6 +3914,39 @@ def test_the_guides_name_every_mark_a_folder_row_opens_with_c1280() -> None:
         assert "is such a folder already kept: nothing to rename and nothing to paste" in text
 
 
+def test_the_guides_name_every_character_the_list_escapes_c1455() -> None:
+    """B13 round 38 C1455 with C1492: both guides said the escape mark's row shows "any other control
+    character as `?`", while install.sh's `escd` (widened by 8528ea2a4) also writes U+2028, U+2029 and the
+    bidi and zero-width characters as `?`, none of them a control character, and maps the record separator
+    0x1E to a backslash-n. The guides name them, gated on the installer still escaping them, and C1280's
+    paragraph takes a dated line with the code points."""
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    [escd] = re.findall(r"^function escd\(s\) \{ return s ~ /(.*)/ \}$", script, flags=re.MULTILINE)
+    for part in (r"\342\200[\213-\217\250-\256]", r"\342\201[\240\246-\251]", r"\357\273\277", r"\330\234"):
+        assert part in escd, part
+    assert r'if (c == "\036") o = o "\\n"' in script
+    said = (
+        r"a carriage return as `\r`, and any other control character, a line or paragraph separator, or an"
+        r" invisible bidi or zero-width character as `?`; a name holding the record separator, 0x1E, shows it"
+        r" as `\n` too), so the row is not the folder's own name"
+    )
+    guide = " ".join(_page("docs/deploy/README.md").split())
+    page = " ".join(_feedback_page().split())
+    bullet = page.split("A sync reads the whole tree under a synced folder.", 1)[1].split(" - ", 1)[0]
+    for text in (guide, bullet):
+        assert said in text
+        assert r"a carriage return as `\r`, any other control character as `?`)" not in text
+    c1280 = " ".join(
+        _contracts_section("**The guides name every mark a folder row opens with**", "\n\n").split()
+    )
+    assert (
+        "Amended 2026-11-13, §16.249 C1455: since 8528ea2a4 (§16.300.18) the escaped form also writes the C1"
+        " controls, U+2028 and U+2029, the bidi controls (U+200E, U+200F, U+202A-U+202E, U+2066-U+2069,"
+        " U+061C) and the zero-width characters (U+200B-U+200D, U+2060, U+FEFF) as `?`, and a name holding"
+        r" the record separator 0x1E shows it as `\n`"
+    ) in c1280
+
+
 def test_the_dollar_quote_sentences_name_the_installers_own_commands_c1307() -> None:
     """B13 round 37 C1307: §16.236 said "no `$'...'` form offered" and §16.239 that --source-local "offers
     no `$'...'` form", while the no-twin lost-block clause and a NEXT's re-run print shown_arg's `$'...'`
