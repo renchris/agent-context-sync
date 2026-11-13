@@ -20,7 +20,7 @@ from agentsync.graph import discover
 from agentsync.graph.drive import DiscoveredScope
 from agentsync.manifest import Manifest
 from agentsync.model import SourceKind
-from test_cli import FakeAuth, _graph_config
+from test_cli import FakeAuth, _graph_config, _hold_and_queue_dlp
 from test_contracts import CLI_SURFACE
 
 _POSITIONALS = {"add-source": ["src"], "accept-deletions": ["src"], "adopt": ["src"], "purge": ["src"]}
@@ -310,3 +310,51 @@ def test_discover_json_shape(
     assert rc == human == cli.EXIT_FAILED and err == ""  # incomplete: the failures ride in the document
     assert doc["scopes"][0]["driveId"] == "b!abc" and "[[source]]" in doc["toml"]
     assert doc["complete"] is False and doc["failures"][0]["status"] == 403
+
+
+def _strings(value: object) -> list[str]:
+    """Every string a JSON value holds, keys aside."""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [s for v in value.values() for s in _strings(v)]
+    if isinstance(value, list):
+        return [s for v in value for s in _strings(v)]
+    return []
+
+
+@pytest.mark.parametrize("case", ["a missing source folder", "a lost hold and queue"])
+def test_status_document_points_at_checks_entries_by_id_c1448(
+    initialised: Config, tmp_path: Path, local_source_dir: Path, capsys: pytest.CaptureFixture[str], case: str
+) -> None:
+    """B13 round 38 C1448 (ruling 128): ``status --json``'s next, waitingOnYou and warnings carried the text
+    view's pointers at a [FAIL] line "below", which a document does not have. The document names the checks
+    entry by its id, the person's form keeping "not a step for the agent", while the text view keeps its own
+    words byte for byte."""
+    cfg = str(initialised.config_path)
+    if case == "a missing source folder":
+        gone = tmp_path / "Contoso Board"
+        shutil.copytree(local_source_dir, gone)
+        assert cli.main(["add-source", str(gone), "--config", cfg]) == cli.EXIT_OK
+        _synced(initialised, capsys)
+        shutil.rmtree(gone)
+    else:
+        cfg, root, _page = _hold_and_queue_dlp(initialised, capsys)
+        governance.governance_dir(root).rename(root / "governance.kept")
+    capsys.readouterr()
+    assert cli.main(["status", "--config", cfg]) == cli.EXIT_FAILED
+    text = capsys.readouterr().out
+    rc, doc, _err = _doc(["status", "--config", cfg], capsys)
+    assert rc == cli.EXIT_FAILED
+    said = _strings({k: doc["status"][k] for k in ("next", "waitingOnYou", "warnings")})
+    assert said and not [s for s in said if "below" in s], said
+    failed = {c["id"] for c in doc["status"]["checks"] if not c["ok"] and c["severity"] == "error"}
+    lead = doc["status"]["next"][0]["when"]
+    assert lead.startswith("the ") and lead.split(" ", 2)[1] in failed, lead
+    persons = "its fix in its checks entry is the person's, not a step for the agent: show it to them"
+    assert lead.endswith(persons), lead
+    assert "[FAIL] line below is the person's, not a step for the agent" in text, text
+    if case == "a lost hold and queue":
+        (wait,) = doc["status"]["waitingOnYou"]
+        assert wait.endswith("the governance.hold entry in checks gives the person's fix"), wait
+        assert "the governance.hold [FAIL] line below gives the person's fix" in text, text

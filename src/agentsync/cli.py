@@ -2143,12 +2143,14 @@ class _Status:
     """What ``status`` prints, in order (KISS K08a): the loop's NEXT / WAITING ON YOU / note lines, the one
     loop line, every check (doctor's ``[FAIL] name — detail (fix: ...)`` lines, byte for byte), then the
     detail lines (lock, holds, queued purges, retention, launcher events, last runs, each source with its
-    breaker, the policy)."""
+    breaker, the policy). ``doc_loop``: the loop lines as ``status --json``'s document gives them, each
+    pointer at a line "below" naming its checks entry by id (B13 round 38 C1448)."""
 
     loop: tuple[str, ...]
     line: str
     checks: tuple[doctor.CheckResult, ...]
     detail: tuple[str, ...]
+    doc_loop: tuple[str, ...]
 
     @property
     def failed(self) -> bool:
@@ -2166,7 +2168,7 @@ class _Status:
             {"id": r.name, "ok": r.ok, "severity": r.severity.value, "message": r.detail, "fix": r.fix}
             for r in self.checks
         ]
-        return {"status": {"checks": checks, **_loop_doc(self.loop)}}
+        return {"status": {"checks": checks, **_loop_doc(self.doc_loop)}}
 
 
 def _fail_step(result: doctor.CheckResult) -> str:
@@ -2180,13 +2182,43 @@ def _fail_step(result: doctor.CheckResult) -> str:
     D48). "not a step for the
     agent" stays: the setup report counts a person's stop by it."""
     if doctor.is_persons_fix(result.fix):
-        return (
-            f"the {result.name} check failed: its fix on the [FAIL] line below is the person's, not a step "
-            "for the agent: show it to them"
-        )
+        return f"the {result.name} check failed: {_PERSONS_FIX_BELOW}"
     if result.fix:
-        return f"the {result.name} check failed: do what the fix on its [FAIL] line below says"
-    return f"the {result.name} check failed: its [FAIL] line below says why"
+        return f"the {result.name} check failed: {_FIX_BELOW}"
+    return f"the {result.name} check failed: {_WHY_BELOW}"
+
+
+_PERSONS_FIX_BELOW = (
+    "its fix on the [FAIL] line below is the person's, not a step for the agent: show it to them"
+)
+_FIX_BELOW = "do what the fix on its [FAIL] line below says"
+_WHY_BELOW = "its [FAIL] line below says why"
+_DOCUMENT_FORMS = (
+    (
+        _PERSONS_FIX_BELOW,
+        "its fix in its checks entry is the person's, not a step for the agent: show it to them",
+    ),
+    (_FIX_BELOW, "do what the fix in its checks entry says"),
+    (_WHY_BELOW, "its checks entry says why"),
+    (loop.QUEUE_REFUSED_NOTE_STATUS, loop.QUEUE_REFUSED_NOTE_DOC),
+    *governance.LOST_HOLD_WAITS_DOC.items(),
+)
+"""Each pointer status's text view gives at a line "below" and the form ``status --json``'s document gives in
+its place, naming the checks entry by its id: a document has no "below" (B13 round 38 C1448; ruling 128). The
+text view keeps its own words byte for byte, and the person's form keeps "not a step for the agent", which
+the setup report counts."""
+
+
+def _document_form(line: str, sids: Sequence[str]) -> str:
+    """Status's loop line ``line`` as its document gives it (:data:`_DOCUMENT_FORMS`, and
+    ``loop.EMPTY_ROOT_GRANT_DOC`` for each source id in ``sids``)."""
+    for below, entry in _DOCUMENT_FORMS:
+        line = line.replace(below, entry)
+    for sid in sids:
+        line = line.replace(
+            loop.EMPTY_ROOT_GRANT_BELOW.format(sid=sid), loop.EMPTY_ROOT_GRANT_DOC.format(sid=sid)
+        )
+    return line
 
 
 def _blocks_install(result: doctor.CheckResult) -> bool:
@@ -2472,7 +2504,7 @@ def _state_stop_first(config: Config, checks: Sequence[doctor.CheckResult]) -> s
         agents = _chmod_beside_persons(checks)
         if agents is not None:  # the agent's chmod first, as install.sh's NEXT gives it (B13 round 35 C911)
             return (
-                f"the {agents.name} check failed: do what the fix on its [FAIL] line below says, "
+                f"the {agents.name} check failed: {_FIX_BELOW}, "
                 f"then show the person the {fail.name} [FAIL] line: its fix is theirs"
             )
     return _fail_step(fail)
@@ -2805,7 +2837,10 @@ def _build_status_once(config: Config, *, brief: bool = False) -> _Status:
     if not (brief or hint_off):
         detail = _guarded("status", lambda: _status_lines(config), refused="governance.config", config=config)
         detail += _guarded("policy", lambda: _policy_lines(config), config=config)
-    return _Status(tuple(next_lines), _loop_line(config), tuple(checks), tuple(detail))
+    # the document's form of each line: its checks entry by id, never a line "below" (B13 round 38 C1448)
+    sids = [src.id for src in config.sources]
+    doc_loop = tuple(_document_form(ln, sids) for ln in next_lines)
+    return _Status(tuple(next_lines), _loop_line(config), tuple(checks), tuple(detail), doc_loop)
 
 
 def _cmd_status(args: argparse.Namespace, *, brief: bool = False) -> int:

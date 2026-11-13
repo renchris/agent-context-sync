@@ -299,6 +299,9 @@ prints (since C958 a [governance] that does not load prints that line too, so it
 QUEUE_REFUSED_NOTE_STATUS = f"{QUEUE_REFUSED_BARE}: the governance.purge_queue [FAIL] line below says why"
 """:data:`QUEUE_REFUSED_NOTE` in status's own output, which prints that [FAIL] line: never "run status" to a
 reader of status (B13 round 35 C959, ruling 109)."""
+QUEUE_REFUSED_NOTE_DOC = f"{QUEUE_REFUSED_BARE}: the governance.purge_queue entry in checks says why"
+""":data:`QUEUE_REFUSED_NOTE_STATUS` in ``status --json``'s document, which has no line "below": the checks
+entry by its id (B13 round 38 C1448; ruling 128)."""
 
 EMPTY_ROOT_GRANT_STATUS = (
     f"`{BIN} status`'s source.{{sid}}.listable [warn] line names the folder and the Python"
@@ -310,6 +313,8 @@ grant, so the pointer names status, where that line prints (B13 round 37 C1243, 
 EMPTY_ROOT_GRANT_BELOW = "the source.{sid}.listable [warn] line below names the folder and the Python"
 """:data:`EMPTY_ROOT_GRANT_STATUS` in status's own output, which prints its checks below the WAITING lines:
 never "run status" to a reader of status (B13 round 37 C1243, C1258; ruling 109)."""
+EMPTY_ROOT_GRANT_DOC = "the source.{sid}.listable entry in checks names the folder and the Python"
+""":data:`EMPTY_ROOT_GRANT_BELOW` in ``status --json``'s document (B13 round 38 C1448; ruling 128)."""
 
 
 def _stops(stopped: str | Sequence[str] | None) -> tuple[str, ...]:

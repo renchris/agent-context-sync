@@ -40788,6 +40788,20 @@ the clause and the time survive, the reason and owner are cut, the [info] status
 both-reports row. Test: `test_cli.py::test_a_state_hold_is_named_while_governance_does_not_load_c1247` (the clause
 first, and `setup_report._cut_holds` keeping it and `since`, cutting the reason and owner).
 
+**status's document names a checks entry by id, never a line below** (C1448; ruling 128, makes worse True). `status
+--json`'s `next`, `waitingOnYou` and `warnings` were built from the text view's loop lines, so they carried its
+pointers at a line "below" (`its fix on the [FAIL] line below is the person's`, `do what the fix on its [FAIL] line
+below says`, `its [FAIL] line below says why`, `loop.QUEUE_REFUSED_NOTE_STATUS`, `loop.EMPTY_ROOT_GRANT_BELOW`, both
+`governance.LOST_HOLD_WAITS_STATUS` forms), which a document does not have. `_build_status_once` derives `doc_loop`
+from the same lines through one map, `cli._DOCUMENT_FORMS` (with `loop.QUEUE_REFUSED_NOTE_DOC` and
+`governance.LOST_HOLD_WAITS_DOC`) and `loop.EMPTY_ROOT_GRANT_DOC` per source, and
+`_Status.document()` reads it: each pointer names `the <id> entry in checks` (or `its checks entry`), the person's form
+keeping `not a step for the agent`, which the setup report counts. Only the document changes: the text view keeps its
+words byte for byte, and the sync's forms (`run status`) are never substituted, since they send a reader of status to
+status (ruling 109). Test: `test_cli_json.py::test_status_document_points_at_checks_entries_by_id_c1448` (a missing
+source folder and a lost hold and queue: no `below` in the three lists, NEXT names a failing check's id and the
+person's words, the text view still says `below`).
+
 ### 16.248 Round 38: the converters: a zero-byte file never takes an older build's cached answer (2026-11-13, wave B13 round 38 lane E)
 
 Round 38's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 38"; specs `round38/items/C<n>.md`, the

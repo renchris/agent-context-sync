@@ -1690,6 +1690,15 @@ LOST_HOLD_WAITS_STATUS = {
     LOST_HOLD_WAIT_GOVGONE: LOST_HOLD_WAIT_GOVGONE_STATUS,
 }
 """Each sync form of the lost-hold wait and the form status prints in its place (C613)."""
+LOST_HOLD_WAITS_DOC = {
+    st: st.replace(
+        "the governance.hold [FAIL] line below gives the person's fix",
+        "the governance.hold entry in checks gives the person's fix",
+    )
+    for st in LOST_HOLD_WAITS_STATUS.values()
+}
+"""Each status form of the lost-hold wait and the form ``status --json``'s document gives in its place: the
+document has no line "below", so it names the checks entry by its id (B13 round 38 C1448; ruling 128)."""
 
 
 def lost_hold_wait(state_dir: Path) -> str:
