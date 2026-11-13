@@ -40224,6 +40224,8 @@ that show as one text among them), `test_both_shell_readers_of_the_folder_list_t
 and `test_both_readers_of_the_folder_list_strip_every_mark_install_sh_prints`.
 Amended 2026-11-13, §16.246 C1447: `ESCAPED_KEPT_MARK` reads `[name holds a hidden or control character]`
 (ruling 129); a row an earlier run marked with the words above is still read and still refused when pasted.
+Amended 2026-11-13, §16.246 C1464: `list_twins` runs while a provider is denied or asking too, skipping kept rows,
+each test bounded by the list's deadline.
 
 **A stopped copy an older build rendered is rewritten only on proof in its own text** (C1221, C1222, C1223, C1224,
 C1225, C1226, C1248, C1215; ruling 123; amends §16.235 C1109, §16.236 C1108 and §16.236 C1103; `scripts/install.sh`).
@@ -40781,6 +40783,17 @@ folder`. Both now take `TWIN_NEXT`: `renaming one of the two folders is the pers
 them the error and go on to the report; once they say one is renamed in its sync app, run <installer> --list-folders
 again ...`. A pasted escaped row, a control-character member of a pair (`rename it`) and a path that is only step 1's
 escaped text keep `RENAME_NEXT`. Test: `test_source_local_refuses_an_escaped_row_or_a_folder_with_a_look_alike_c1072`.
+
+**A look-alike another provider listed is marked while one provider is denied or asking** (C1464; amends §16.241
+C1229; `scripts/install.sh`). `list_twins` was skipped whenever any provider was denied or still asking, so a plain
+look-alike in a provider that did list showed unmarked and step 2 then refused it. The guard is gone; `list_twins`
+itself is safe instead: it skips kept rows (`[synced]`, `[inside a synced folder]`), the only rows that can sit under
+a provider never listed and rows `list_shown` never marks, and runs each `escaped_twin` test under `with_timeout`
+with the time left before list_folders' deadline (`TWIN_DEADLINE`, else `LIST_TIMEOUT`), its output to /dev/null, so
+a test cut short marks nothing and none runs once the time is spent. Step 2's refusal keeps its unbounded
+`escaped_twin`, which fails closed. Tests:
+`test_list_folders_marks_a_look_alike_another_provider_listed_while_one_was_denied_c1464` and
+`test_list_folders_tests_no_kept_look_alike_under_a_provider_still_asking_c1464`.
 
 ### 16.247 Round 38: --json documents, an empty source folder, names in doctor's lines, and a recording's kept page (2026-11-13, wave B13 round 38 lane B)
 

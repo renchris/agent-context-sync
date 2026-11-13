@@ -12112,6 +12112,49 @@ def test_list_folders_names_a_synced_folder_of_the_provider_that_was_denied(env:
     assert install_log(env)[-2].endswith(" result=failed note=denied synced=1")
 
 
+def test_list_folders_marks_a_look_alike_another_provider_listed_while_one_was_denied_c1464(
+    env: dict[str, str],
+) -> None:
+    """B13 round 38 C1464: list_twins was skipped while any provider was denied or still asking, so a plain
+    look-alike a provider that did list showed unmarked, and step 2 then refused it. It now runs then too:
+    both rows of the Dropbox pair are marked, the denied list's exit 4 unchanged."""
+    cs = _cloud(env)
+    for d in ("OneDrive-Contoso/FY26 Projects", "Dropbox/Contoso?x", "Dropbox/Contoso\x01x"):
+        (cs / d).mkdir(parents=True)
+    _write_exe(Path(env["PATH"].split(":")[0]) / "find", STUB_FIND_EPERM)
+    cp = install_sh(env, "--list-folders")
+    assert cp.returncode == 4, cp.stdout + cp.stderr
+    assert sorted(cp.stdout.splitlines()[:-1]) == sorted(
+        [f"{ESCAPED_MARK} {cs}/Dropbox/Contoso?x", f"{TWIN_MARK} {cs}/Dropbox/Contoso?x"]
+    ), cp.stdout
+
+
+def test_list_folders_tests_no_kept_look_alike_under_a_provider_still_asking_c1464(
+    env: dict[str, str],
+) -> None:
+    """B13 round 38 C1464: with the guard gone, a kept row under a provider still asking is never tested for
+    a twin (list_shown never marks it, and its parent's find would wait on the same prompt), and every test
+    runs under the list's deadline, so the list still ends near AGENTSYNC_LIST_TOTAL_SECONDS."""
+    cs = _cloud(env)
+    (cs / "OneDrive-Contoso" / "Contoso?x").mkdir(parents=True)
+    _write_config(env, local_source_table("cx", cs / "OneDrive-Contoso" / "Contoso?x"))
+    _tool_python(env)
+    _write_exe(
+        Path(env["PATH"].split(":")[0]) / "find",
+        '#!/bin/bash\nfor a in "$@"; do case "$a" in */OneDrive-*) exec sleep 60 ;; esac; done\n'
+        'exec /usr/bin/find "$@"\n',
+    )
+    t0 = time.monotonic()
+    cp = install_sh(
+        {**env, "AGENTSYNC_LIST_TIMEOUT": "1", "AGENTSYNC_LIST_TOTAL_SECONDS": "3"},
+        "--list-folders",
+        timeout=60,
+    )
+    assert cp.returncode == 4, cp.stdout + cp.stderr
+    assert time.monotonic() - t0 < 30, "the list waits on no twin test past its deadline"
+    assert TWIN_MARK not in cp.stdout, cp.stdout
+
+
 # ---- a re-run on a Mac that is already set up, with the real agentsync (field report 2026-10-07) ----------
 
 STUB_UV_REAL = """#!/bin/bash

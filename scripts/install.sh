@@ -9326,12 +9326,18 @@ list_shown() { # rows on stdin [TWINS: a file of the rows list_twins found]
 # The rows on stdin (marks allowed) whose bare path has no control character but holds a \ or a ?, and has a twin
 # by escaped_twin's own dir test over its whole parent, the test step 2 runs, never over the listed rows alone: the
 # plain rows list_shown marks $TWIN_MARK (B13 round 37 ruling 121, C1229, C1242). Only such a name lists its parent.
+# Read under a denied or asking provider too, so a look-alike another provider listed is marked: a kept row, the
+# only kind that can sit under a provider never listed, is skipped (list_shown never marks it), and each test runs
+# under the time left before list_folders' $TWIN_DEADLINE (else $LIST_TIMEOUT), a test cut short marking nothing
+# and none run once it is spent (B13 round 38 C1464). Step 2's refusal keeps its unbounded escaped_twin.
 list_twins() {
-	local p
+	local p t end="${TWIN_DEADLINE:-$((SECONDS + LIST_TIMEOUT))}"
 	while IFS= read -r p; do
-		! escaped_twin "$p" dir </dev/null || printf '%s\n' "$p"
+		t=$((end - SECONDS))
+		[ "$t" -gt 0 ] || break
+		! with_timeout "$t" escaped_twin "$p" dir </dev/null >/dev/null 2>&1 || printf '%s\n' "$p"
 	done < <(LC_ALL=C awk -v synced="$SYNCED_MARK " -v inside="$INSIDE_MARK " -v contains="$CONTAINS_MARK " \
-		"$LIST_ESC_AWK"'{ s = bare($0); if (!escd(s) && (index(s, "\\") || index(s, "?"))) print s }')
+		"$LIST_ESC_AWK"'{ s = bare($0); if (!kept($0) && !escd(s) && (index(s, "\\") || index(s, "?"))) print s }')
 }
 list_plain() { # rows on stdin, escaped as list_shown escapes them, with no mark
 	LC_ALL=C awk -v mark="" "$LIST_ESC_AWK"'{ print shown($0) }'
@@ -9387,6 +9393,7 @@ list_name() { # PATH: as list_plain shows it, for an error
 list_folders() {
 	local cs="$HOME/Library/CloudStorage" tmp e label rc total providers=0 denied="" asking="" term max=200
 	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks marks synced="" unlisted="" unread="" kept="" built
+	local TWIN_DEADLINE=$((SECONDS + LIST_TOTAL)) # list_twins' bound, the same as deadline (C1464)
 	local line missing=0 gone=0 gonepaths="" others=0 other="" libs=0 libpaths="" apps="" tokens="" tok="" stuck=0 more=""
 	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vreal="" vplain="" vtail="" vlog="" cerr="" ctail="" clog="" stail="" crole="" clink="" cunread="" lwhat="" lfix="" lfact="" lown="" chbmode="" cshort="" cmis="" cmisread="" sfix="" cside="" codd="" fnoun="" stopsat="" chold=""
 	step_start list-folders
@@ -9544,10 +9551,8 @@ list_folders() {
 			fi
 			say "already synced on this Mac: $sn (marked $SYNCED_MARK below: first $first, then the list)"
 		fi
-		# not read while a provider was denied or is still asking, as the gone check below is not: its find over a
-		# parent could wait on the same prompt, past LIST_TOTAL (the lane's review)
-		: >"$tmp/twins"
-		[ -n "$denied$asking" ] || tail -n +3 "$tmp/marked" | list_twins >"$tmp/twins"
+		# read while a provider was denied or is still asking too, bounded by the list's deadline (C1464)
+		tail -n +3 "$tmp/marked" | list_twins >"$tmp/twins"
 		tail -n +3 "$tmp/marked" | list_shown "$tmp/twins"
 		# A synced folder under CloudStorage that is not on disk, decided by its provider folder as doctor decides
 		# it: that folder gone with no other folder of its app beside it, or there and listing nothing, means the
@@ -9597,8 +9602,7 @@ list_folders() {
 			esac
 		done <"$tmp/marked"
 	else
-		: >"$tmp/twins"
-		[ -n "$denied$asking" ] || list_twins <"$tmp/shown" >"$tmp/twins"
+		list_twins <"$tmp/shown" >"$tmp/twins"
 		list_shown "$tmp/twins" <"$tmp/shown"
 	fi
 	[ "$total" -le "$max" ] || say "($((total - max)) more)"
