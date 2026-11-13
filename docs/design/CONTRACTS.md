@@ -40811,6 +40811,12 @@ keyed on the check and that detail, never the fix, so unexpected is 0; Doctor's 
 key not taken: the report follows what doctor printed, J52). Test:
 `test_an_empty_source_folders_listable_warn_is_expected_ruling_130`.
 
+**A config step that ran over an existing config reads `done`** (C1405 with C1421's report half; lane RB's
+install.sh logs `result=done note=exists`, §16.246). The report needs no new code: the Installer row reads `done
+(exists: kept 2, added 0)` and an older log's `skipped note=exists` renders as before, and `_done`'s docstring now
+covers an `init` over the existing sources.toml, which adds 0 folders, so every count reads the two tokens alike.
+Test: `test_a_config_step_that_ran_over_an_existing_config_reads_done_c1405`.
+
 ### 16.246 Round 38: the installer: the recut only over another build's render, the hidden-character marks, and the stopped copy's lines (2026-11-13, wave B13 round 38 lane RB)
 
 A dated line this round writes in another section reads `Amended <date>, §16.246 C<n>: ...`.

@@ -5743,6 +5743,31 @@ def test_the_install_line_says_a_first_sync_that_did_not_run_c1404(tmp_path: Pat
     assert f"({head} · first-sync 34s)" in line("seconds=34 rc=0 result=done")
 
 
+def test_a_config_step_that_ran_over_an_existing_config_reads_done_c1405(tmp_path: Path) -> None:
+    """B13 round 38 C1405 with C1421 (lane RB's install.sh logs ``result=done note=exists``: ``init`` ran
+    over the existing sources.toml and ensured the inbox): the Installer table's row reads ``done (exists:
+    kept 2, added 0)``, and an older log's ``skipped note=exists`` still renders as it did; the folders line
+    reads the same for both, counting neither as an add."""
+    run = "20261011T100000Z-4242"
+    for result in ("done", "skipped"):
+        log = tmp_path / f"install-{result}.log"
+        log.write_text(
+            f"2026-10-11T10:00:00Z run={run} start install.sh commit=0123456789ab kind=checkout args=\n"
+            f"2026-10-11T10:00:04Z run={run} step=config seconds=4 rc=0 result={result} note=exists "
+            "kept=2 added=0\n"
+            f"2026-10-11T10:00:40Z run={run} step=first-sync seconds=36 rc=0 result=done\n"
+            f"2026-10-11T10:00:40Z run={run} end rc=0 seconds=40\n",
+            encoding="utf-8",
+        )
+        runs = setup_report.read_install_runs(log)
+        table = "\n".join(setup_report._step_table(list(runs[-1].steps)))
+        assert re.search(rf"\| config +\| +4 \| {result} \(exists: kept 2, added 0\) +\|", table), table
+        assert setup_report._done(runs[-1]) is (result == "done")
+        assert setup_report._chained_folders_line(runs, [], gone="", scoped=True) == (
+            "- folders: kept the 2 already synced (none added) · 0 named with --source-local (install.log)"
+        )
+
+
 def test_the_install_line_says_what_the_agentsync_steps_seconds_held(tmp_path: Path) -> None:
     """install.sh notes on its step=agentsync line what it saw of the background sync's lock; the Summary
     carries that note, so a 59 s step reads as a wait, not a slow uv (B13 round 2 R34). Other steps' notes

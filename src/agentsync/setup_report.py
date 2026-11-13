@@ -16851,10 +16851,13 @@ def _kept_added(run: InstallRun) -> tuple[int | None, int | None]:
 
 
 def _done(run: InstallRun) -> bool:
-    """Whether the run's config step wrote sources.toml (``result=done``); an exit 1 at a later step, status
-    for one, leaves what it wrote. So does a config step that failed after add-source wrote a folder's block,
-    which install.sh logs ``note=added-then-refused`` (B13 round 17 U40: the config loads, but agentsync
-    refuses a value in it, and the block stays)."""
+    """Whether the run's config step ran (``result=done``): it wrote sources.toml, or, since B13 round 38
+    C1405 with C1421 (install.sh logs ``done note=exists``, lane RB), ran ``init`` over the existing one,
+    which ensures the inbox and adds 0 folders, so it writes no folder's block; an exit 1 at a later step,
+    status for one, leaves what it wrote. So does a config step that failed after add-source wrote a folder's
+    block, which install.sh logs ``note=added-then-refused`` (B13 round 17 U40: the config loads, but
+    agentsync refuses a value in it, and the block stays). An older log's ``skipped note=exists`` reads the
+    same in every count, since that step added 0."""
     step = run.step("config") or {}
     return step.get("result") == "done" or step.get("note") == "added-then-refused"
 
