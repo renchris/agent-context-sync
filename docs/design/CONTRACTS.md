@@ -13723,6 +13723,9 @@ needs no pair: `redact_stream` makes every `$'..'` word `<path>` first.
 - The shell legend says "a name every OneDrive or Google Drive has, such as Documents, only where it stands as a
   whole word" and "every word bash wrote in its dollar-quote form, which install.log uses for a name with a
   curly apostrophe, an en dash or an accent" (R7).
+  Amended 2026-11-13, §16.246 C1493: the legend now ends `a curly apostrophe, an en dash or a decomposed accent, and
+  under the C locale for any accent (any character outside ASCII)`: under the Mac's UTF-8 locale bash 3.2 writes a
+  precomposed accent plain.
 - `test_headings_redaction_and_runtime` asserts `<library-1>` from install.log's args in the Installer section,
   not from Doctor, which a loaded machine timed out (R45).
 
@@ -40835,6 +40838,15 @@ its finally, so a passing run failed and a re-run passed it, read as load. `_kil
 the known-absent value §16.300 names. The value is built once (`null`, or the quoted 12-hex commit `git_head_file`
 prints) for the compact and indented forms; the text form keeps `unknown`. docs/deploy/tenant-probes.md's JSON
 section says so. Test: `test_tenant_probes.py::test_version_json_is_null_for_a_commit_it_cannot_read_c1458`.
+
+**The shell legend says which accents install.log dollar-quotes** (C1493, makes worse True for a change of the legend
+alone; amends §16.46 R7, dated line there; `scripts/install.sh`, `docs/deploy/setup-feedback.md`). The `<path>` legend
+said install.log dollar-quotes a name with `an accent (under the C locale, any character outside ASCII)`, but under the
+Mac's en_US.UTF-8 locale bash 3.2's `printf %q` writes a precomposed accent plain and dollar-quotes only a decomposed
+one. The legend, the guide's `<path>` row and the test that quotes it now say `a curly apostrophe, an en dash or a
+decomposed accent, and under the C locale for any accent (any character outside ASCII)`, in one commit, the closing
+parenthetical kept, which `test_the_guides_path_row_quotes_the_shell_reports_legend` reads to its first `)`. Tests:
+that test and the shell legend's in `test_install_oneshot.py`.
 
 ### 16.247 Round 38: --json documents, an empty source folder, names in doctor's lines, and a recording's kept page (2026-11-13, wave B13 round 38 lane B)
 

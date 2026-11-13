@@ -3733,9 +3733,9 @@ def test_the_shell_report_reads_past_a_dollar_quoted_install_log_word(
     item = {i.split(":", 1)[0].lstrip("- "): " ".join(i.split()) for i in items}
     assert item["<path>"].endswith(
         "and every word bash wrote in its dollar-quote form ($'...'), which install.log uses for a name with "
-        "a tab or another control character, a curly apostrophe, an en dash or an accent (under the C "
-        "locale, any character outside ASCII)"
-    ), "the Redaction text is not itself redacted, and reads plainly (B13 R7)"
+        "a tab or another control character, a curly apostrophe, an en dash or a decomposed accent, and "
+        "under the C locale for any accent (any character outside ASCII)"
+    ), "the Redaction text is not itself redacted, and reads plainly (B13 R7; round 38 C1493)"
 
     # B13 round 11 M3: no name every drive has is in this report, so its rule is not explained
     assert "such as Documents" not in item["<folder-N>"], item["<folder-N>"]

@@ -6088,7 +6088,8 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 		say "  holds =, or that is an option, a URL, a path of its own or a number like 3/14; a blank right after this home ends"
 		say "  it, so another home named as this one and a blank keeps what follows); and every word bash wrote in its"
 		say "  dollar-quote form (\$'...'), which install.log uses for a name with a tab or another control character, a curly"
-		say "  apostrophe, an en dash or an accent (under the C locale, any character outside ASCII)"
+		say "  apostrophe, an en dash or a decomposed accent, and under the C locale for any accent (any character outside"
+		say "  ASCII)"
 		;;
 	esac
 	# as setup_report._LEGEND words them (B13 round 16 T3, round 17 U93)
