@@ -16326,7 +16326,8 @@ prints it (B13 round 32 C636; ruling 67)."""
 @functools.cache
 def _empty_root_grant_re() -> re.Pattern[str] | None:
     """The empty-root wait's grant pointer, the sync's form (``loop.EMPTY_ROOT_GRANT_STATUS``, naming
-    `` `~/.local/bin/agentsync status` ``) or status's (``loop.EMPTY_ROOT_GRANT_BELOW``), any source id; None
+    `` `~/.local/bin/agentsync status` ``) or status's (``loop.EMPTY_ROOT_GRANT_BELOW``), any source id, with
+    the `` (`` and ``)`` around it, so a pointer dropped leaves no empty bracket (B13 round 38 C1437); None
     when loop cannot be imported or lacks the forms (the report must import even if it is broken)."""
     try:
         from agentsync import loop  # noqa: PLC0415 - lazy, as the Loop line's other reads
@@ -16337,7 +16338,8 @@ def _empty_root_grant_re() -> re.Pattern[str] | None:
     parts = [form.split("{sid}") for form in forms]
     return re.compile(
         "|".join(
-            f"{re.escape(head)}(?P<sid{n}>\\S+?){re.escape(tail)}" for n, (head, tail) in enumerate(parts)
+            f"{re.escape(' (' + head)}(?P<sid{n}>\\S+?){re.escape(tail + ')')}"
+            for n, (head, tail) in enumerate(parts)
         )
     )
 
@@ -16347,19 +16349,27 @@ _EMPTY_ROOT_GRANT_IN_DOCTOR = "Doctor's source.{sid}.listable [warn] line names 
 [warn] line: the report holds that line (B13 round 37 C1258, built with lane RA's review; ruling 67's
 pattern, as :data:`_LOST_HOLD_IN_DOCTOR`)."""
 _EMPTY_ROOT_GRANT_IN_STATUS = "status's source.{sid}.listable [warn] line names the folder and the Python"
-"""The pointer when Doctor's section does not print that line: status's, with no path, since the Loop line
-copies no command's ``~/`` path (a fix is never copied; B13 round 37 C1258)."""
+"""The pointer when Doctor was cut off, did not run or had no hook, so its section may not hold that line:
+status's, with no path, since the Loop line copies no command's ``~/`` path (a fix is never copied; B13 round
+37 C1258). When Doctor ran in full and printed no such [warn], there is no pointer, as status drops it when
+its own checks print none (B13 round 38 C1437, ruling 131)."""
 
 
 def _empty_root_grant_in_report(r: _Run, line: str) -> str:
-    """``line`` with each empty-root grant pointer naming the line the report prints, per source: Doctor's
-    source.<id>.listable [warn] line when its section prints it, else status's, path-free (B13 round 37
-    C1258; lane RA's review)."""
+    """``line`` with each empty-root grant pointer naming a line where that line is, per source (B13 round 37
+    C1258; lane RA's review; B13 round 38 C1437, ruling 131): Doctor's source.<id>.listable [warn] line when
+    its section prints it; no pointer, and no bracket, when Doctor ran in full (``facts.doctor`` read) and
+    printed none, as status drops it then (the folder filled since the sync, say); status's, path-free, only
+    when Doctor was cut off, did not run or had no hook."""
 
     def swap(m: re.Match[str]) -> str:
         sid = next(g for g in m.groups() if g is not None)
         shown = any(t == "warn" and n == f"source.{sid}.listable" for t, n, _ in r.facts.doctor_problems)
-        return (_EMPTY_ROOT_GRANT_IN_DOCTOR if shown else _EMPTY_ROOT_GRANT_IN_STATUS).format(sid=sid)
+        if shown:
+            return f" ({_EMPTY_ROOT_GRANT_IN_DOCTOR.format(sid=sid)})"
+        if r.facts.doctor is not None:
+            return ""
+        return f" ({_EMPTY_ROOT_GRANT_IN_STATUS.format(sid=sid)})"
 
     rx = _empty_root_grant_re()
     return line if rx is None else rx.sub(swap, line)

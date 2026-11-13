@@ -12602,24 +12602,32 @@ def test_a_doctor_fail_is_the_loop_lines_next_and_no_friction_log_hides_the_it_d
     assert "IT draft" not in summary, "no friction log reads as v7, which has no IT request step"
 
 
-@pytest.mark.parametrize("shown", [True, False], ids=["doctor-shows-the-warn", "no-warn-shown"])
-def test_the_loop_lines_empty_root_grant_names_the_line_the_report_prints_c1258(shown: bool) -> None:
+@pytest.mark.parametrize("case", ["doctor-shows-the-warn", "doctor-in-full-no-warn", "doctor-cut"])
+def test_the_loop_lines_empty_root_grant_names_the_line_the_report_prints_c1258(case: str) -> None:
     """B13 round 37 C1258 (built with lane RA's review): the empty-root wait's grant names
     `` `~/.local/bin/agentsync status` ``'s listable [warn] line in sync and STATE.md, and status's own line
     below it in status. The Loop line copies the wait: it names Doctor's line when Doctor's section prints
-    it, else status's, with no ``~/`` path either way (a fix is never copied)."""
+    it, with no ``~/`` path (a fix is never copied). B13 round 38 C1437 (ruling 131): when Doctor ran in full
+    and printed no such [warn], status prints none either, so the line names none, with no empty ``()``;
+    status's line is named only when Doctor was cut off, did not run or had no hook."""
     grant = "grant Full Disk Access to agentsync's Python ({})"
     line = "WAITING ON YOU: the folder of contoso-plans itself lists 0 entries: " + "; ".join(
         grant.format(form.format(sid="contoso-plans"))
         for form in (loop.EMPTY_ROOT_GRANT_STATUS, loop.EMPTY_ROOT_GRANT_BELOW)
     )
+    shown = case == "doctor-shows-the-warn"
     problems = [("warn", "source.contoso-plans.listable", "lists 0 entries")] if shown else []
-    run = types.SimpleNamespace(facts=types.SimpleNamespace(doctor_problems=problems))
+    doctor = None if case == "doctor-cut" else Counter(ok=12, warn=int(shown))
+    run = types.SimpleNamespace(facts=types.SimpleNamespace(doctor_problems=problems, doctor=doctor))
     out = setup_report._empty_root_grant_in_report(run, line)  # type: ignore[arg-type]
+    assert "~/" not in out and "below" not in out, out
+    if case == "doctor-in-full-no-warn":
+        assert out.count("grant Full Disk Access to agentsync's Python;") == 1, out
+        assert out.endswith("grant Full Disk Access to agentsync's Python") and "(" not in out, out
+        return
     whose = "Doctor's" if shown else "status's"
     pointer = f"{whose} source.contoso-plans.listable [warn] line names the folder and the Python"
     assert out.count(grant.format(pointer)) == 2, out
-    assert "~/" not in out and "below" not in out, out
 
 
 def test_v6_every_logged_question_and_click_is_beyond_the_expected_ones(

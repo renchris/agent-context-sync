@@ -40781,6 +40781,15 @@ comma (round 12 N33); every other step keeps its bare seconds, since install.sh 
 that ran (`exists`) and an agentsync step already current (dropping or marking them makes worse True). Test:
 `test_the_install_line_says_a_first_sync_that_did_not_run_c1404`.
 
+**The Loop line's empty-root grant names a line only where that line is** (C1437; ruling 131, with lane RB's C1438).
+The report took status's form of the pointer whenever Doctor's section printed no `source.<id>.listable` [warn], but
+with Doctor run in full and no such warn (the folder filled since the sync), status drops the pointer too, so the
+Loop line named a line that did not exist. `_empty_root_grant_in_report` now has three outcomes: Doctor's form when
+Doctor prints that warn; no pointer, and no empty `()` (`_empty_root_grant_re` takes the ` (` and `)` around it),
+when Doctor ran in full (`facts.doctor` read) and printed none; status's form only when Doctor was cut off, did not
+run or had no hook. Test: `test_the_loop_lines_empty_root_grant_names_the_line_the_report_prints_c1258` (three
+cases).
+
 ### 16.246 Round 38: the installer: the recut only over another build's render, the hidden-character marks, and the stopped copy's lines (2026-11-13, wave B13 round 38 lane RB)
 
 A dated line this round writes in another section reads `Amended <date>, §16.246 C<n>: ...`.
