@@ -25983,7 +25983,8 @@ after a job took 49:59. **Amended 2026-10-26, §16.207 C372:** the bound is now 
 `timeout-minutes` in ci.yml, raised from 60 after a job took 51:10. **Amended 2026-10-28, §16.212 C571:** the bound
 is now well under the ci job's 80 minutes, `timeout-minutes` in ci.yml, raised from 70 after a job took 59:43.
 **Amended 2026-11-10, §16.244 C1290:** the bound is now well under the ci job's 90 minutes, `timeout-minutes` in
-ci.yml, raised from 80 after a job took 66:14.
+ci.yml, raised from 80 after a job took 66:14. **Amended 2026-11-13, §16.249 C1460:** the bound is now well under the ci job's
+100 minutes, `timeout-minutes` in ci.yml, raised from 90 after a job took 75:09.
 
 ### 16.145 Round 19: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 19 lane D)
 
@@ -41265,6 +41266,21 @@ land gate passes, and is left by a hold, a blocked land gate or a failure, statu
 after `history_days` plus twice the slack, `compaction_state`); neither words the sum as a deadline for a body's age,
 the misreading C1306 corrected. Test: `test_the_guides_say_when_compaction_runs_never_a_deadline_c1489`, which reads
 each sentence and each claim from the code.
+
+**CI's time is the time of round 37's jobs, and its limit is 100** (C1460 with C1473; CLAUDE.md, `docs/lanes/COMMON.md`,
+ci.yml; dated line at §16.144 W70). The twenty-three ci jobs on main from feedd8ef to 248e6a0a (read back with `gh run
+view --json jobs`) were all green on attempt 1 and took 50:20 to 75:09, twelve past 60 and three past 70; the slowest,
+1cc27a89, ran pytest's step for 73:47 at 8035 tests, past the `about 18 to 67 minutes` CLAUDE.md gave and only 14:51
+under the limit of 90, about the 13:46 that made C1290 raise 80 to 90. Runs waited 38:17 (19b1f575), 35:43
+(63a12d0c) and 31:16 (c2ab2d12) for a macOS runner. C1473's own range, 41:17 to 75:09, took e6577c15's job, round
+36's last, as the low; the twenty-three start at 50:20. CLAUDE.md gives `about 18 to 76 minutes` with the
+twenty-three and the three waits named, COMMON.md says `18 to 76 minutes a run (the slowest, 75:09, in round 37)` with
+this round's id, and `timeout-minutes` is 100, not the 95 the finder proposed: 24:51 above 75:09 and 24 above the
+head of 76, so the check that the limit stays at least 20 above the head holds unchanged, and runs that grew about 9
+minutes in one round keep room. C1290's sentence keeps the 90 it set, and `tests/test_convert_recording.py`'s
+docstring names 100, as does a dated line on §16.144's W70 paragraph. A higher limit only lets a hung job run 10
+minutes longer; a runner wait still does not count against it. Tests: `test_claude_md_gives_cis_time_and_its_limit`
+and `test_the_recording_tests_limit_names_cis_own_limit`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

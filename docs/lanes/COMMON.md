@@ -1569,7 +1569,7 @@ tests (`gh run view <id> --log-failed`), then wait for the owner's fix. Pass `--
 ended red on tests your diff does not touch and your lane does not own, with the run id in your commit body or result
 note and the owner messaged; never for exit 9: a run that lost its hosted runner is rerun (`gh run rerun <id>
 --failed`) and waited for, never landed past (round 31 C569). The lane that landed a test that is red on CI
-owns its fix until main is green, even after other lanes land on top. CI takes 18 to 67 minutes a run (the slowest, 66:14, in round 36), and a run can wait over an hour for a macOS runner first (63:27 in round 31); its limit is 90 (W80, round 21 Y68, round 22 Z67, round 23 A74, round 24 B98, round 25 D83, round 28 I99, round 29 C207, round 30 C372, round 31 C571, round 32 C662, round 35 C985, round 37 C1290).
+owns its fix until main is green, even after other lanes land on top. CI takes 18 to 76 minutes a run (the slowest, 75:09, in round 37), and a run can wait over an hour for a macOS runner first (63:27 in round 31); its limit is 100 (W80, round 21 Y68, round 22 Z67, round 23 A74, round 24 B98, round 25 D83, round 28 I99, round 29 C207, round 30 C372, round 31 C571, round 32 C662, round 35 C985, round 37 C1290, round 38 C1460).
 
 Makes things worse: 19 round 38 items carry "a fix makes things worse? True" (C1401, C1407, C1409, C1410, C1413,
 C1418, C1425, C1428, C1435, C1436, C1441, C1447, C1448, C1461, C1470, C1477, C1481, C1493, C1494). For each, the
