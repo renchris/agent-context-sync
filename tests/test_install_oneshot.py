@@ -16839,14 +16839,16 @@ def test_a_ticker_trap_whose_kill_fails_still_says_whether_it_printed() -> None:
     for function, said, want in (
         ("start_pandoc_once", 1, 3),
         ("start_pandoc_once", 0, 0),
-        ("watchdog", 1, 0),
+        # the watchdog's trap exits "$fired": 3 once its limit fired, else 0 (B13 round 38 C1494)
+        ("watchdog", 1, 3),
+        ("watchdog", 0, 0),
     ):
         harness = "\n".join(
             [
                 "set -euo pipefail",
                 "ready=$(mktemp)",
                 'rm -f "$ready"',
-                f'( s="" said={said}',
+                f'( s="" said={said} fired={3 if said else 0}',
                 f"  {_trap_line(function)}",
                 '  : > "$ready"',
                 "  while :; do :; done ) &",

@@ -2019,9 +2019,13 @@ json_goes_with() { # OPTION
 # sleep ends, and drops one that lands in the child before its trap is set: one sleep of the whole limit then
 # kept the caller silent for all of it (B13 round 16 T80, the CI timeout of --list-folders). A failed kill of a
 # sleep already reaped is no error under set -e (T41, T79).
+# At the limit it sends TERM, gives PID 15 s (agentsync's own stop of a build tool takes up to 10) and then KILLs
+# it, PID alone, never its descendants, whose own stop agentsync runs (B13 Q73, C963), and exits 3 from then on,
+# even when ended in its grace, so a command that swallowed the TERM is still reported stopped (B13 round 38
+# C1494, makes worse True for a kill of the tree). Ended before its limit, it exits 0.
 watchdog() { # LIMIT PID
-	local s="" n="$1" # slices, not a deadline on $SECONDS, which turns at whole seconds: never early
-	trap 'kill "$s" 2>/dev/null || :; exit 0' TERM
+	local s="" n="$1" fired=0 # slices, not a deadline on $SECONDS, which turns at whole seconds: never early
+	trap 'kill "$s" 2>/dev/null || :; exit "$fired"' TERM
 	while [ "$n" -gt 0 ] && kill -0 "$2" 2>/dev/null; do
 		sleep 1 &
 		s=$!
@@ -2029,9 +2033,22 @@ watchdog() { # LIMIT PID
 		s="" # reaped: the trap must not kill a pid the system may have given another process
 		n=$((n - 1))
 	done
-	! kill -0 "$2" 2>/dev/null || kill "$2"
+	kill -0 "$2" 2>/dev/null || exit 0
+	fired=3
+	kill "$2" 2>/dev/null || exit 3
+	n=15
+	while [ "$n" -gt 0 ] && kill -0 "$2" 2>/dev/null; do
+		sleep 1 &
+		s=$!
+		wait "$s"
+		s=""
+		n=$((n - 1))
+	done
+	! kill -0 "$2" 2>/dev/null || kill -KILL "$2" 2>/dev/null || :
+	exit 3
 }
-# Run a command for at most $1 seconds (bash 3.2 and macOS have no timeout(1)); its status, 143 if killed.
+# Run a command for at most $1 seconds, plus watchdog's grace for one that outlives a TERM (bash 3.2 and macOS
+# have no timeout(1)); its status, 143 whenever its limit fired.
 # The command's stderr is the caller's (through fd 4); this shell's own goes nowhere while it waits, since
 # bash prints a job line ("line N: <pid> Terminated: 15 <the command>") for a child a signal killed, even one
 # that died before the wait.
@@ -2045,7 +2062,7 @@ with_timeout() {
 		wd=$!
 		wait "$pid" || rc=$?
 		kill "$wd" || true
-		wait "$wd" || true
+		wait "$wd" || [ $? -ne 3 ] || rc=143 # stopped at its limit, whatever it then exited with (C1494)
 	} 4>&2 2>/dev/null
 	return "$rc"
 }
@@ -11749,7 +11766,7 @@ start_pandoc_once() {
 	WAIT_WATCHDOG=$wd
 	wait "$pid" 2>/dev/null || rc=$?
 	kill "$WAIT_TICKER" "$wd" 2>/dev/null || true
-	wait "$wd" 2>/dev/null || true
+	wait "$wd" 2>/dev/null || [ $? -ne 3 ] || rc=143 # its limit fired, as in with_timeout (C1494)
 	wait "$WAIT_TICKER" 2>/dev/null || [ $? -ne 3 ] || shown=1
 	WAIT_TICKER="" WAIT_WATCHDOG=""
 	if [ "$rc" -ne 0 ] && [ $((SECONDS - t0)) -ge "$PANDOC_START_SECONDS" ]; then

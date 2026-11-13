@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import shlex
 import signal
 import subprocess
 import sys
@@ -24,6 +25,7 @@ from test_install_oneshot import (
     BASH32,
     INSTALL_SH,
     STUB_AGENTSYNC,
+    _shell_function,
     calls,
     env,  # noqa: F401 - the fixture
     folder,  # noqa: F401 - the fixture
@@ -238,3 +240,35 @@ def test_an_unreadable_launchd_print_is_not_reported_as_not_loaded(
     assert f"error: no background run exited 0 within 1s (last exit: none; state: {state})\n" in cp.stderr, (
         cp.stderr
     )
+
+
+@pytest.mark.parametrize(
+    ("command", "want", "least", "most"),
+    [
+        ("exec sleep 30", 143, 1, 12),  # a plain child: the TERM ends it at the limit
+        ("trap '' TERM; sleep 3; exit 0", 143, 2, 14),  # swallows the TERM and exits 0 in the grace
+        ("trap '' TERM; exec sleep 60", 143, 15, 45),  # never ends: KILLed after the grace
+        ("exit 7", 7, 0, 5),  # done before its limit: its own status
+    ],
+)
+def test_with_timeout_bounds_a_child_that_outlives_its_term_and_reports_it_stopped_c1494(
+    command: str, want: int, least: float, most: float
+) -> None:
+    """B13 round 38 C1494 (makes worse True for a kill of the descendant tree): with_timeout sent one TERM
+    at its limit and then waited with no bound, and returned the child's own status, so a child that ignored
+    the TERM ran on and one that swallowed it and exited 0 read as a success. Its watchdog now gives the pid
+    15 s after the TERM, then KILLs that pid alone, and a limit that fired returns 143 whatever the child then
+    exited with."""
+    script = "\n".join(
+        [
+            _shell_function("watchdog"),
+            _shell_function("with_timeout"),
+            f"with_timeout 1 /bin/sh -c {shlex.quote(command)} >/dev/null 2>&1",
+            'echo "rc=$?"',
+        ]
+    )
+    t0 = time.monotonic()
+    cp = subprocess.run([BASH32, "-c", script], capture_output=True, text=True, check=False, timeout=90)
+    took = time.monotonic() - t0
+    assert cp.stdout.strip() == f"rc={want}", cp.stdout + cp.stderr
+    assert least <= took <= most, took

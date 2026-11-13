@@ -40802,6 +40802,17 @@ multibyte member (U+2028) sorts after `?` in C and UTF-8 order alike, so `--list
 the whole parent, so the plain row is marked `TWIN_MARK`; no code changes. Test:
 `test_list_folders_marks_a_twin_whose_escaped_member_is_past_the_limit_c1463`.
 
+**A command past its limit is stopped and reported stopped** (C1494, makes worse True for a kill of the descendant
+tree; `scripts/install.sh` `watchdog`, `with_timeout`, `start_pandoc_once`). The watchdog sent one TERM at the limit,
+and `with_timeout` then waited with no bound and returned the child's own status: a child that ignored the TERM ran
+on, and one that swallowed it and exited 0 read as a success. At the limit the watchdog now sends TERM, gives the pid
+15 s in 1 s slices (agentsync's own stop of a build tool takes up to 10), then KILLs that pid alone, and exits 3 from
+the TERM on, even when ended during its grace; `with_timeout` and `start_pandoc_once` return 143 whenever it exited 3,
+so `at_limit`'s 143 test still classifies every stop. Its descendants are never signalled: agentsync's build watcher
+outlives agentsync to stop swiftc's and SwiftPM's process groups (B13 Q73, C963), which a tree kill would orphan.
+Test: `test_install_signals.py::test_with_timeout_bounds_a_child_that_outlives_its_term_and_reports_it_stopped_c1494`
+(a plain child, one that swallows the TERM and exits 0, one KILLed after the grace, and one done in time).
+
 ### 16.247 Round 38: --json documents, an empty source folder, names in doctor's lines, and a recording's kept page (2026-11-13, wave B13 round 38 lane B)
 
 **Doctor's lines split at `\n` alone** (C1431; ruling 126; privacy). Status's `_Status.check_lines`, the report's
