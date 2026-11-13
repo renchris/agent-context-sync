@@ -359,12 +359,19 @@ def _argv(command: str) -> list[str]:
     return [str(Path(argv[0]).expanduser()), *argv[1:]] if argv else []
 
 
+_PLACEHOLDER = re.compile(r"<[^<>\s][^<>]*>")
+"""A ``<word>`` the caller fills in, such as ``add-source "<folder>"``'s (B13 round 38 C1444)."""
+
+
 def _step(text: str) -> dict[str, object]:
     """One ``next`` entry of a JSON document: the first command ``text`` quotes, as typed and as an argv, and
-    ``text`` itself as ``when``. A step that quotes no command has a null command and an empty argv."""
+    ``text`` itself as ``when``. A step that quotes no command has a null command and an empty argv; one whose
+    command holds a ``<placeholder>`` keeps it as typed with an empty argv, since running it would pass the
+    placeholder itself (``add-source "<folder>"`` added a folder named ``<folder>``; B13 round 38 C1444)."""
     found = _COMMAND_SPAN.search(text)
     command = found.group(1) if found else None
-    return {"command": command, "argv": _argv(command) if command else [], "when": text}
+    argv = _argv(command) if command is not None and not _PLACEHOLDER.search(command) else []
+    return {"command": command, "argv": argv, "when": text}
 
 
 def _loop_doc(lines: Sequence[str]) -> dict[str, object]:

@@ -40802,6 +40802,13 @@ status (ruling 109). Test: `test_cli_json.py::test_status_document_points_at_che
 source folder and a lost hold and queue: no `below` in the three lists, NEXT names a failing check's id and the
 person's words, the text view still says `below`).
 
+**A `next` command holding a placeholder has no argv** (C1444; ruling 128). With no docs repo, status's NEXT quotes
+`~/.local/bin/agentsync add-source "<folder>"`, and `cli._step` gave its document the argv `[..., "add-source",
+"<folder>"]`, so a caller that ran `next[0].argv` as given added a folder named `<folder>`. A command that holds a
+`<word>` placeholder (`cli._PLACEHOLDER`) keeps its text as `command` with argv `[]`; a null command stays for a step
+that quotes none, and a runnable command keeps its argv. §16.300.6's `next` sentence says so. Test:
+`test_cli_json.py::test_a_next_command_with_a_placeholder_has_no_argv_c1444`.
+
 ### 16.248 Round 38: the converters: a zero-byte file never takes an older build's cached answer (2026-11-13, wave B13 round 38 lane E)
 
 Round 38's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 38"; specs `round38/items/C<n>.md`, the
@@ -41049,7 +41056,8 @@ own (§16.10). Without it, every byte of stdout and stderr and every exit code i
   "blocking"}], "next", "waitingOnYou", "warnings"}`. `sync --json` prints `{"run": {"id", "mode", "commit",
   "sources"}, "outcome": "committed" | "unchanged", "next", "waitingOnYou", "warnings"}`. `next` is
   `[{"command", "argv", "when"}]` from the loop's NEXT lines (`cli._loop_doc`, the lines the text view prints), with
-  `~` expanded in argv and a null command for a step that quotes none; it ignores AGENTSYNC_NO_NEXT_HINT. An empty
+  `~` expanded in argv and a null command for a step that quotes none; argv is `[]` for a command that carries a
+  `<placeholder>` the caller fills from `when` (C1444); it ignores AGENTSYNC_NO_NEXT_HINT. An empty
   list is `[]` and a known-absent value `null`.
 
 U-B5's part, the documents for every other command. Each mutation's `next` is `[{"command", "argv"}]` naming the

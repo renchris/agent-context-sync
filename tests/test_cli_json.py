@@ -358,3 +358,20 @@ def test_status_document_points_at_checks_entries_by_id_c1448(
         (wait,) = doc["status"]["waitingOnYou"]
         assert wait.endswith("the governance.hold entry in checks gives the person's fix"), wait
         assert "the governance.hold [FAIL] line below gives the person's fix" in text, text
+
+
+def test_a_next_command_with_a_placeholder_has_no_argv_c1444(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 38 C1444 (ruling 128): with no docs repo, status's NEXT quotes `add-source "<folder>"`, and
+    the document's argv carried the placeholder as the folder, so a caller that ran ``next[0].argv`` as given
+    added a folder named ``<folder>``. A command holding a ``<placeholder>`` keeps its text, with argv []."""
+    cfg = str(initialised.config_path)
+    shutil.rmtree(initialised.docs_repo)
+    capsys.readouterr()
+    cli.main(["status", "--config", cfg, "--json"])
+    doc = json.loads(capsys.readouterr().out)["status"]
+    (step,) = [s for s in doc["next"] if s["command"] and "add-source" in s["command"]]
+    assert '"<folder>"' in step["command"] and step["argv"] == [], step
+    assert cli._step("run `~/.local/bin/agentsync sync` now")["argv"][1:] == ["sync"]
+    assert cli._step("no command here") == {"command": None, "argv": [], "when": "no command here"}
