@@ -1438,7 +1438,7 @@ SIGNAL_AGAIN = (
 )
 
 
-@pytest.mark.parametrize("before", ["sync-alone", "whole-run", "older-attempt"])
+@pytest.mark.parametrize("before", ["sync-alone", "whole-run", "older-attempt", "at-its-limit"])
 def test_a_second_signal_stopped_first_sync_offers_no_further_re_run(
     env: dict[str, str], folder: Path, wheel: Path, before: str
 ) -> None:
@@ -1461,10 +1461,12 @@ def test_a_second_signal_stopped_first_sync_offers_no_further_re_run(
     else:
         setup.mkdir(parents=True)
         end = "143" if before == "whole-run" else "1"
+        # B13 round 38 C1434: a first sync stopped at install.sh's own limit is no outside signal
+        step = "rc=143 result=failed note=timeout" if before == "at-its-limit" else "rc=137 result=failed"
         (setup / "install.log").write_text(
             "2026-10-20T01:00:00Z run=20261020T010000Z-7 start install.sh compat=10 commit=- kind=- source=- "
             "args=-\n"
-            "2026-10-20T01:05:00Z run=20261020T010000Z-7 step=first-sync seconds=300 rc=137 result=failed\n"
+            f"2026-10-20T01:05:00Z run=20261020T010000Z-7 step=first-sync seconds=300 {step}\n"
             f"2026-10-20T01:05:01Z run=20261020T010000Z-7 end rc={end}\n"
         )
         if before == "older-attempt":  # an attempt that began after that run: its stop is another attempt's

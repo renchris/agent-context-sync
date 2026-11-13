@@ -41015,6 +41015,14 @@ render's; the line is written once (never beside one already there, and a second
 this checkout's render, and a render with no Redaction section keeps the cut render without it. Test:
 `test_report_redaction.py::test_a_recut_of_another_builds_render_says_so_under_its_redaction_section_c1406`.
 
+**A first sync stopped at install.sh's own limit keeps the next run's one re-run** (C1434's install.sh half; lane
+RA builds the report's words, `stopped at its limit of <n>s, rc 143`; `scripts/install.sh`). `prior_signal_first_sync`
+read a first sync's rc 143 as a signal from outside, so a run after one stopped at its own limit was told no further
+re-run was the agent's. A step=first-sync line with ` note=timeout` is no longer recorded there. Tests:
+`test_install_oneshot.py::test_a_second_signal_stopped_first_sync_offers_no_further_re_run[at-its-limit]`, and
+`test_install_bounds.py`'s two hung-step tests, which render this checkout's report from the run's install.log and
+find `stopped at its limit of 2s, rc 143` and no `from outside install.sh`.
+
 ### 16.247 Round 38: --json documents, an empty source folder, names in doctor's lines, and a recording's kept page (2026-11-13, wave B13 round 38 lane B)
 
 **Doctor's lines split at `\n` alone** (C1431; ruling 126; privacy). Status's `_Status.check_lines`, the report's

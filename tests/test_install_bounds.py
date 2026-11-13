@@ -153,6 +153,22 @@ def _step_line(e: dict[str, str], step: str) -> str:
     return next(ln for ln in install_log(e) if f" step={step} " in ln)
 
 
+def _python_report(e: dict[str, str], tmp_path: Path) -> str:
+    """The setup report this checkout's agentsync renders from ``e``'s install.log (B13 round 38 C1434)."""
+    out = tmp_path / "python-report.md"
+    cfg = Path(e["HOME"]) / "agent-context" / "sources.toml"
+    cp = subprocess.run(
+        [sys.executable, "-m", "agentsync", "setup-report", "--out", str(out), "--config", str(cfg)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**e, "AGENTSYNC_OCR": "0", "AGENTSYNC_TM_EXCLUDE": "0"},
+        timeout=300,
+    )
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    return out.read_text(encoding="utf-8")
+
+
 def test_a_hung_first_sync_stops_at_its_limit(
     env: dict[str, str],  # noqa: F811
     folder: Path,  # noqa: F811
@@ -170,6 +186,8 @@ def test_a_hung_first_sync_stops_at_its_limit(
         cp.stdout
     )
     assert not re.search(r"Terminated: 15|Killed: 9", cp.stderr), cp.stderr
+    report = _python_report(e, tmp_path)  # B13 round 38 C1434: its own limit, never an outside signal
+    assert "stopped at its limit of 2s, rc 143" in report and "from outside install.sh" not in report, report
 
 
 @pytest.mark.parametrize("which", ["step 5", "closing"])
@@ -192,6 +210,8 @@ def test_a_hung_status_stops_at_its_limit(
         assert cp.returncode == 1, cp.stdout + cp.stderr
         assert re.search(r" rc=143 result=failed note=timeout$", _step_line(e, "status")), install_log(e)
         assert last_line(cp).startswith("NEXT: agentsync status did not finish within 2s"), cp.stdout
+        report = _python_report(e, tmp_path)  # B13 round 38 C1434
+        assert "stopped at its limit of 2s, rc 143" in report and "from outside install.sh" not in report
     else:  # the sync itself finished: the exit stays 0, and the report line keeps the rc (P14)
         assert cp.returncode == 0, cp.stdout + cp.stderr
         assert _step_line(e, "report").endswith(" closing_status=143"), install_log(e)
