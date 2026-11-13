@@ -40682,6 +40682,10 @@ will paste; `CUT_OFF_TOLD` names no version and is unchanged. Tests:
 refusals' `--list-folders again`), `test_only_the_closed_prompt_copy_path_reruns_step_1_after_its_log_start_c1275`,
 `test_readme_lets_a_nexts_own_add_back_command_take_a_marked_folder_c1309`,
 `test_the_prompt_text_changes_only_with_its_version`, `test_readme_prompt_compat_matches_the_installer`.
+Amended 2026-11-13, §16.249 C1402: the prompt is v37. Step 1 quotes install.sh's marks as lane RB's C1447 words
+them, `[name holds a hidden or control character: rename it to sync it]` and `[name holds a hidden or control
+character]` (ruling 129), and every mark the block quotes sits whole on one line of it. No step moves, so v37 is read
+with v7's layout too.
 
 **The guides name every mark a folder row opens with** (C1280; ruling 121; docs only). docs/deploy/README.md, which the
 prompt says explains every step, and setup-feedback.md's folder-list bullet named only `[synced]`, `[inside a synced
@@ -41281,6 +41285,25 @@ minutes in one round keep room. C1290's sentence keeps the 90 it set, and `tests
 docstring names 100, as does a dated line on §16.144's W70 paragraph. A higher limit only lets a hung job run 10
 minutes longer; a runner wait still does not count against it. Tests: `test_claude_md_gives_cis_time_and_its_limit`
 and `test_the_recording_tests_limit_names_cis_own_limit`.
+
+**Setup prompt v37: step 1 quotes each mark whole, in the words install.sh prints** (C1402 with lane RB's C1447, ruling
+129; amends §16.244 C1275). Since 8528ea2a4 the folder list also escapes bidi, zero-width and separator characters,
+so lane RB's C1447 commit words `ESCAPED_MARK` and `ESCAPED_KEPT_MARK` `[name holds a hidden or control character:
+rename it to sync it]` and `[name holds a hidden or control character]`, and v36's step 1 quoted the old words. v36
+also split `[name reads as another folder there: rename one of them to sync it]` across two of the block's lines, so
+the prompt's copy was not byte-equal to the row it matches, though the joined text held it (C1402). That reflow could
+not ship alone: install.sh's header asks a version bump for any change to the prompt's text, and the block's digest
+pins it. Step 1 now quotes the new marks, and its sentences are reflowed so that each mark it quotes, the twin mark,
+[synced] and [inside a synced folder] included, sits whole on one line of the block. Version 37 everywhere the bump
+list names it (README block and its digest in `PROMPT`, `prompt v37` in step 1's `--log-start` and its
+`setup-prompt-compat 37`, `SETUP_PROMPT_COMPAT`, `setup_report.PROMPT_VERSION`, the form's placeholder, the version
+pins in tests/test_install_oneshot.py and tests/test_setup_report.py, setup-feedback.md's version lines and K61);
+`CUT_OFF_TOLD` names no version and is unchanged. The commit rides on lane RB's C1447 commit, since
+`test_readme_step1_says_a_marked_row_cannot_be_chosen` ties the block's marks to install.sh's constants, and both land
+in one run. Tests: `test_every_mark_the_prompt_quotes_sits_whole_on_one_block_line_c1402` (every `*_MARK` constant
+the block quotes, read from install.sh, whole on one block line, and no block line leaving a bracket open), with the
+joined-text assertions of `test_readme_step1_says_a_marked_row_cannot_be_chosen` kept,
+`test_the_prompt_text_changes_only_with_its_version`, `test_readme_prompt_compat_matches_the_installer`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

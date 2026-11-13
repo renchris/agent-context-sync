@@ -1192,7 +1192,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (36, "5c8aa8b23fb8a9761e45930d855c1940ddce02f094c00a6ef6cdd91ecc1acfde")
+PROMPT = (37, "fe64a6d3331f605b55acfd0c5c1d1aaeabd4414b0334c367161f1a5adb4c1812")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -3803,6 +3803,32 @@ def test_readme_step1_says_a_marked_row_cannot_be_chosen() -> None:
     assert "rename one of them in its sync app, $again" in script
     assert "that folder already syncs, so paste nothing for it" in script
     assert "then run step 1 again" not in script
+
+
+def test_every_mark_the_prompt_quotes_sits_whole_on_one_block_line_c1402() -> None:
+    """B13 round 38 C1402 (ruling 129, prompt v37): v36's step 1 split `[name reads as another folder there:
+    rename one of them to sync it]` across two of the block's lines, so the prompt's copy was not byte-equal
+    to the row install.sh prints, though the joined text held it (the joined-text assertions of
+    :func:`test_readme_step1_says_a_marked_row_cannot_be_chosen` stay). Every mark constant install.sh's
+    --list-folders writes that the block quotes, [synced] and [inside a synced folder] included, sits whole on
+    one line of the block, and no line of the block opens a bracket it does not close, so no later mark can
+    split either."""
+    block = _one_prompt_block()
+    lines = block.splitlines()
+    joined = " ".join(block.split())
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    marks = dict(re.findall(r'^([A-Z_]+_MARK)="(\[[^"]*\])"', script, flags=re.MULTILINE))
+    assert {"SYNCED_MARK", "INSIDE_MARK", "ESCAPED_MARK", "TWIN_MARK", "ESCAPED_KEPT_MARK"} <= set(marks)
+    quoted = {name for name, mark in marks.items() if mark in joined}
+    assert quoted == {"SYNCED_MARK", "INSIDE_MARK", "ESCAPED_MARK", "TWIN_MARK", "ESCAPED_KEPT_MARK"}
+    for name in sorted(quoted):
+        assert any(marks[name] in line for line in lines), f"{name} is split across the block's lines"
+    for line in lines:
+        depth = 0
+        for char in line:
+            depth += {"[": 1, "]": -1}.get(char, 0)
+            assert depth >= 0, line
+        assert depth == 0, f"a bracket the line does not close: {line}"
 
 
 def test_only_the_closed_prompt_copy_path_reruns_step_1_after_its_log_start_c1275() -> None:
@@ -7913,7 +7939,7 @@ def test_the_guides_give_the_speech_helpers_swift_floor() -> None:
     assert f"Where developer tools with Swift {floor} or later are installed" in it_request
     assert "this Mac's Swift {installed} is older than the Swift {needed}" in speech.TOOLS_TOO_OLD
     prompt = readme[readme.index("Set up agentsync on this Mac (setup prompt") :]
-    assert "Swift" not in prompt[: prompt.index("prompt v36, <agent> and a colon")], "the prompt stays v36"
+    assert "Swift" not in prompt[: prompt.index("prompt v37, <agent> and a colon")], "the prompt stays v37"
 
 
 def test_the_records_page_says_purge_stops_over_a_lost_manifest() -> None:
