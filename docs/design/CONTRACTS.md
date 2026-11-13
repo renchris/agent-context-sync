@@ -40823,6 +40823,13 @@ same. The usage error's own message, `--json works with --list-folders --version
 `test_install_json.py::test_the_help_says_what_json_goes_with_and_names_the_rows_mark_c1456_c1483` (each refused
 mode exits 2, `--version --json` exits 0).
 
+**A stopped run's test cleanup takes EPERM from a group already gone** (C1462's install half; a test). The signal
+tests' `_stopped_run` let the PermissionError macOS raises for a process group whose members exited unreaped escape
+its finally, so a passing run failed and a re-run passed it, read as load. `_kill_left` suppresses
+`PermissionError` beside `ProcessLookupError` for the group and the first sync. Test:
+`test_install_signals.py::test_a_stopped_runs_cleanup_takes_eperm_from_a_group_already_gone_c1462`. The
+`test_cli_modes.py` half (the free space in a width test) is the CLI conventions wave's.
+
 ### 16.247 Round 38: --json documents, an empty source folder, names in doctor's lines, and a recording's kept page (2026-11-13, wave B13 round 38 lane B)
 
 **Doctor's lines split at `\n` alone** (C1431; ruling 126; privacy). Status's `_Status.check_lines`, the report's

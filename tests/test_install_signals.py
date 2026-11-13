@@ -106,12 +106,33 @@ def _stopped_run(
         os.kill(proc.pid, sig)
         stdout, stderr = proc.communicate(timeout=60)
     finally:
-        with contextlib.suppress(ProcessLookupError):
-            os.killpg(proc.pid, signal.SIGKILL)
-        if pid:
-            with contextlib.suppress(ProcessLookupError):
-                os.kill(pid, signal.SIGKILL)
+        _kill_left(proc.pid, pid)
     return proc.returncode, stdout, stderr, pid, sent
+
+
+def _kill_left(group: int, pid: int) -> None:
+    """KILL what a stopped run left: its process group and the first sync. macOS returns EPERM for a group
+    whose members have all exited but are not yet reaped, which is gone too (B13 round 38 C1462)."""
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(group, signal.SIGKILL)
+    if pid:
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.kill(pid, signal.SIGKILL)
+
+
+def test_a_stopped_runs_cleanup_takes_eperm_from_a_group_already_gone_c1462(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """B13 round 38 C1462: a stopped run's cleanup let the PermissionError macOS raises for a group whose
+    members exited unreaped escape its finally, failing a test whose run had passed; a re-run passed it, so
+    the gate read a race as load. The cleanup takes EPERM as it takes ESRCH."""
+
+    def refused(*_args: object) -> None:
+        raise PermissionError(1, "Operation not permitted")
+
+    monkeypatch.setattr(os, "killpg", refused)
+    monkeypatch.setattr(os, "kill", refused)
+    _kill_left(2**22 + 1, 2**22 + 3)
 
 
 def _gone_by(pid: int, deadline: float) -> bool:
