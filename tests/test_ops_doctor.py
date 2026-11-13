@@ -32,6 +32,7 @@ from typing import NoReturn
 import pytest
 
 from agentsync import arm_local, cli, gitops, governance, lints, net, setup_report
+from agentsync import loop as loop_mod
 from agentsync.config import RETIRE_ADVICE, Config, local_source_table, parse_config
 from agentsync.convert import media, ocr, speech
 from agentsync.convert import pandoc as pandoc_mod
@@ -2579,7 +2580,60 @@ def test_an_empty_cloud_folder_outside_a_file_provider_domain_reads_as_empty_as_
         assert listable.fix is not None and "Finder" in listable.fix
     else:
         assert listable.detail == f"{root} lists 0 entries (the folder is empty)", listable.detail
-        assert listable.fix is None
+        assert listable.detail.endswith(doctor.EMPTY_FOLDER_DETAIL)
+        # B13 round 38 ruling 130 (C1401, C1408, C1427): a [warn] still, with the pause-or-check fix
+        assert listable.fix == _empty_folder_words(sample_config, root), listable.fix
+
+
+def _empty_folder_words(config: Config, root: Path) -> str:
+    """Ruling 130's fix for the empty folder ``root`` of source ``local-fixture``, spelled out."""
+    word = "~/" + shlex.quote(str(root.relative_to(Path.home())))
+    shown = doctor._shown(config.config_path)
+    pause = f'set state = "paused" in [[source]] id = "local-fixture" in {shown}'
+    return f"if {word} is meant to be empty, {pause}; else check that {word} is the folder you meant"
+
+
+def test_an_empty_cloud_inbox_outside_a_domain_is_never_told_to_pause_c1401(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 38 ruling 130 keeps the inbox branches: an empty inbox under a sync app's folder outside
+    every File Provider domain keeps its [warn] with no fix, never the pause step (an inbox is never paused,
+    C938)."""
+    monkeypatch.setattr(arm_local, "_is_domain", lambda provider: False)
+    root = Path.home() / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Drop"
+    root.mkdir(parents=True)
+    src = dataclasses.replace(sample_config.sources[0], kind=SourceKind.INBOX, path=root, sentinel=None)
+    listable = by_name(doctor._check_local_source(sample_config, src, Path(sys.executable)))[
+        "source.local-fixture.listable"
+    ]
+    assert not listable.ok and listable.detail.endswith(doctor.EMPTY_FOLDER_DETAIL), listable
+    assert listable.fix is None, listable.fix
+
+
+@pytest.mark.parametrize("where", ["Projects", "Volumes-like mount"])
+def test_an_empty_local_folder_keeps_its_warn_with_the_pause_or_check_fix_c1401(
+    sample_config: Config, where: str
+) -> None:
+    """B13 round 38 C1401 with C1408 and C1427 (ruling 130): an empty local non-inbox source folder got a
+    [warn] with no fix, which the report filed as unexpected. It stays a [warn] (an [ok] would hide an empty
+    mount point or a wrong path) and takes the cloud case's fix: pause it if it is meant to be empty, else
+    check the path, with no Finder step, no grant and no Full Disk Access, and the pause words are
+    loop.empty_root_fix's own."""
+    root = Path.home() / where / "Contoso Empty"
+    root.mkdir(parents=True)
+    src = dataclasses.replace(sample_config.sources[0], kind=SourceKind.LOCAL, path=root, sentinel=None)
+    listable = by_name(doctor._check_local_source(sample_config, src, Path(sys.executable)))[
+        "source.local-fixture.listable"
+    ]
+    assert not listable.ok and listable.severity is doctor.Severity.WARN
+    assert listable.detail == f"{root} {doctor.EMPTY_FOLDER_DETAIL}", listable.detail
+    assert listable.fix == _empty_folder_words(sample_config, root), listable.fix
+    assert "Full Disk Access" not in listable.fix and "Finder" not in listable.fix
+    shown = doctor._shown(sample_config.config_path)
+    pause = loop_mod.pause_clause("local-fixture", shown)
+    assert pause in listable.fix
+    cloud = loop_mod.empty_root_fix("local-fixture", inbox=False, root="r", config_shown=shown, grant="g")
+    assert pause in cloud
 
 
 def test_only_the_kept_inbox_is_called_the_drop_folder(sample_config: Config, tmp_path: Path) -> None:

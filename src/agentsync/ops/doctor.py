@@ -52,7 +52,15 @@ from agentsync.cycle import (
 from agentsync.errors import AgentSyncError, ConfigError, ConversionError, ManifestOpenError
 from agentsync.graph import auth as graph_auth
 from agentsync.it_request import org_of
-from agentsync.loop import BIN, INSTALL_SH, NO_NEXT_HINT_ENV, _shown, empty_cloud_folders_held, empty_root_fix
+from agentsync.loop import (
+    BIN,
+    INSTALL_SH,
+    NO_NEXT_HINT_ENV,
+    _shown,
+    empty_cloud_folders_held,
+    empty_folder_fix,
+    empty_root_fix,
+)
 from agentsync.manifest import (
     LOST_MANIFEST,
     LOST_MANIFEST_EMPTY_UNREAD,
@@ -2954,6 +2962,13 @@ def provider_state(provider: Path, *, timeout: float | None = None) -> ProviderS
     return "other-account" if others else "signed-out"
 
 
+EMPTY_FOLDER_DETAIL = "lists 0 entries (the folder is empty)"
+"""The tail of a ``source.<id>.listable`` [warn] detail for an empty folder outside every File Provider
+domain, cloud or local, never an inbox (``<root> lists 0 entries (the folder is empty)``). Its fix is
+``loop.empty_folder_fix``'s; the setup report files the warn as expected by this tail, never by the fix (B13
+round 38 ruling 130)."""
+
+
 def _empty_root_fix(config: Config, src: SourceConfig, root: Path, image: Path) -> str:
     """The fix for a cloud source root that lists 0 entries: Finder first, then each remedy on what Finder
     shows. A folder that is empty there too and is meant to be is paused, never sent to Full Disk Access,
@@ -3007,19 +3022,23 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
             # doctor calls it plainly empty, with no Finder-and-grant fix the walk never asks for (B13 round
             # 37 C1205); look_fix and sync_app stay keyed on ``cloud``, as it still sits under a sync app
             unknown = cloud and arm_local.zero_children_unknown(root)
-            why = (
-                "a File Provider folder that has not been enumerated, or a TCC denial reading as empty"
-                if unknown
-                else "the folder is empty"
-            )
-            out.append(
-                _bad(
-                    f"{base}.listable",
-                    f"{root} lists 0 entries ({why})",
-                    Severity.WARN,
-                    fix=_empty_root_fix(config, src, root, image) if unknown else None,
+            if unknown:
+                detail = (
+                    "lists 0 entries (a File Provider folder that has not been enumerated, or a TCC denial "
+                    "reading as empty)"
                 )
-            )
+                fix = _empty_root_fix(config, src, root, image)
+            else:
+                # B13 round 38 ruling 130 (C1401, C1408, C1427): a [warn] still, since an [ok] hides an empty
+                # mount point or a wrong path, now with the fix the report files as expected
+                detail = EMPTY_FOLDER_DETAIL
+                # never a pause for an inbox (C938): a cloud inbox outside a domain keeps the bare [warn]
+                fix = None
+                if src.kind is not SourceKind.INBOX:
+                    fix = empty_folder_fix(
+                        src.id, root=_shell_path(root), config_shown=_shown(config.config_path)
+                    )
+            out.append(_bad(f"{base}.listable", f"{root} {detail}", Severity.WARN, fix=fix))
         else:
             out.append(_ok(f"{base}.listable", f"{root} is listable"))
     except CallTimedOutError:

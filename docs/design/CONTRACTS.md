@@ -40400,6 +40400,11 @@ inbox argument keeps its computed value, with a comment that it is never true to
 
 **Doctor and the walk agree on an empty cloud folder outside a File Provider domain** (C1205). An empty folder under `~/Library/CloudStorage` outside every File Provider domain got doctor's `source.<id>.listable` warn `a File Provider folder that has not been enumerated, or a TCC denial reading as empty` and its Finder-and-grant fix (`_empty_root_fix`), while the walk read it as complete and stored no empty root, so no wait explained the warn. `doctor._check_local_source` now takes the walk's own test, lane E's `arm_local.zero_children_unknown` (whose commit also moved the sentinel line onto it): outside a domain the line is the plain `<root> lists 0 entries (the folder is empty)` warn with no fix, as for a local folder; `look_fix` and the sync-app words stay keyed on the cloud path. Test: `test_ops_doctor.py::test_an_empty_cloud_folder_outside_a_file_provider_domain_reads_as_empty_as_the_walk_does_c1205` (outside and inside a domain, each beside the walk's own `empty_cloud_root`).
 
+Amended 2026-11-13, §16.247 C1401: "with no fix, as for a local folder" reads "with the fix
+`loop.empty_folder_fix` gives, as for a local non-inbox folder": `if <root> is meant to be empty, set state = "paused"
+in [[source]] id = "<id>" in <sources.toml>; else check that <root> is the folder you meant`, still a [warn], and the
+setup report files it as expected by `doctor.EMPTY_FOLDER_DETAIL` (ruling 130).
+
 **xcrun's git lookup starts nothing after the report's cut** (C1302 with C1277; ruling 117 extended: a closed start
 gate or a passed deadline starts no child, and `deadline.end_children` ends a running one; lane D writes C1049's dated line on this commit).
 `gitops._xcrun_git` ran `xcrun --find git` with a plain `subprocess.run`, reached by
@@ -40737,6 +40742,25 @@ LIVE. The keep path never changes the row's state, so the row stays quarantined 
 `test_cycle.py::test_an_unchanged_image_keeps_its_unreadable_ocr_page_while_the_helper_fails_c1403` (a too-small and a
 no-text image: the page byte for byte, the row `TOUCHED_NOT_CHANGED` and QUARANTINED, nothing counted; then working
 again, the page unchanged).
+
+**An empty source folder outside every File Provider domain keeps its [warn] and gets a fix** (C1401 with C1408 and
+C1427; ruling 130; amends §16.242 C1205). Outside a domain, cloud or local, an empty non-inbox source folder got the
+[warn] `<root> lists 0 entries (the folder is empty)` with no fix, which the setup report filed as unexpected. It stays
+a [warn], since an [ok] or [info] would hide an empty mount point or a wrong path (C1427's [ok] and C1401's [info] are
+not taken), and takes `loop.empty_folder_fix`: `if <root> is meant to be empty, set state = "paused" in [[source]] id
+= "<id>" in <sources.toml>; else check that <root> is the folder you meant`, `<root>` one shell word through
+`_shell_path`, with no Finder step, no grant and no Full Disk Access step, as the walk reads the folder as complete.
+Its pause words come from `loop.pause_clause`, which `loop.empty_root_fix` (the in-domain fix and the loop's wait)
+shares. The in-domain warn and the inbox's [ok] are unchanged, and an empty cloud inbox outside a domain keeps its
+[warn] with no fix: an inbox is never told to pause (C938;
+`::test_an_empty_cloud_inbox_outside_a_domain_is_never_told_to_pause_c1401`). The detail's tail is exported as
+`doctor.EMPTY_FOLDER_DETAIL`, by which lane RA's report files the [warn] of a configured live non-inbox source under
+expected (`an empty folder chosen as a source: pause it or fill it`), keyed on the check and the detail, never the fix
+(C1408's listing key is not taken: the report follows what doctor printed). Tests:
+`test_ops_doctor.py::test_an_empty_cloud_folder_outside_a_file_provider_domain_reads_as_empty_as_the_walk_does_c1205`
+(outside a domain: the detail ends in the constant and the fix is the words above) and
+`::test_an_empty_local_folder_keeps_its_warn_with_the_pause_or_check_fix_c1401` (two local folders: a [warn] with that
+fix, no Finder or Full Disk Access words, the pause words `loop.empty_root_fix`'s own).
 
 ### 16.248 Round 38: the converters: a zero-byte file never takes an older build's cached answer (2026-11-13, wave B13 round 38 lane E)
 

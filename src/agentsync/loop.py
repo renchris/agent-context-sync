@@ -335,8 +335,25 @@ def empty_root_fix(sid: str, *, inbox: bool, root: str, config_shown: str, grant
     granted = f"if Finder shows files: {grant}"
     if inbox:
         return f"{finder}; {granted}"
-    pause = f'set state = "paused" in [[source]] id = "{sid}" in {config_shown}'
-    return f"{finder}; if it is empty there too and is meant to be, {pause}; {granted}"
+    return (
+        f"{finder}; if it is empty there too and is meant to be, {pause_clause(sid, config_shown)}; {granted}"
+    )
+
+
+def pause_clause(sid: str, config_shown: str) -> str:
+    """The words that pause source ``sid`` in the config shown as ``config_shown``: one form for
+    :func:`empty_root_fix` and :func:`empty_folder_fix` (B13 round 38 ruling 130)."""
+    return f'set state = "paused" in [[source]] id = "{sid}" in {config_shown}'
+
+
+def empty_folder_fix(sid: str, *, root: str, config_shown: str) -> str:
+    """The fix for doctor's ``source.<id>.listable`` [warn] on an empty folder outside every File Provider
+    domain, cloud or local, never an inbox: the walk reads it as complete, so no Finder step and no grant;
+    paused if it is meant to be empty, else checked as the folder meant (``root`` as one shell word; B13 round
+    38 C1401 with C1408 and C1427, ruling 130). It stays a [warn]: an [ok] would hide an empty mount point or
+    a wrong path."""
+    pause = pause_clause(sid, config_shown)
+    return f"if {root} is meant to be empty, {pause}; else check that {root} is the folder you meant"
 
 
 def _empty_root_wait(config: Config, sid: str) -> str:
