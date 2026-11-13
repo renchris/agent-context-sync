@@ -4792,7 +4792,8 @@ _RULING_112_KEPT = ("x/volumes/Backup/Users/olga/y", "cp /volumes/usb/a /tmp/y")
 
 def _separator_lines() -> list[tuple[str, str]]:
     """B13 round 36 ruling 112's proof, as ``(line, cut)``: every separator byte (each code point 1 to 127 but
-    ``/`` and the newline, each ``str.isspace()`` one, U+200B and U+FEFF) in each slot (a volume name, a
+    ``/`` and the newline, each ``str.isspace()`` one, U+200B and U+FEFF, and since B13 round 38 ruling 126
+    each one ``arm_local._LIST_ESCAPED_RE`` matches) in each slot (a volume name, a
     provider folder's name, right after this login, inside another login, between two words after it), with
     each prefix (the provider folder's too, B13 round 37 C1285) as written, lowercase and uppercase, and the
     line both reports print for HOME /Users/dana and the login dana. ``olga``, ``Fabrikam`` and ``Contoso``
@@ -4802,6 +4803,10 @@ def _separator_lines() -> list[tuple[str, str]]:
     table = setup_report._CUT_BYTES
     chars = [chr(c) for c in range(1, 128) if chr(c) not in "/\n"]
     chars += [chr(c) for c in range(128, 0x110000) if chr(c).isspace()] + ["\u200b", "\ufeff"]
+    # B13 round 38 ruling 126: and each other character step 1's list escapes (a C1 control, the bidi and
+    # zero-width ones), each a path byte in both reports
+    chars += [chr(c) for c in range(128, 0x10000) if arm_local._LIST_ESCAPED_RE.fullmatch(chr(c))]
+    chars = list(dict.fromkeys(chars))
     ends = table["end"] + table["stop"]
 
     def cases(prefix: str) -> list[str]:
@@ -4988,6 +4993,23 @@ def test_a_missing_source_local_folder_is_cut_in_the_installer_section_c1299(
         for end in (" (see --help)", ""):
             assert setup_report._redact_lines(red, [said + folder + end]) == said + cut + end
     assert red.counts["path"] == 8
+    # B13 round 38 C1436 (ruling 126): the name ends at `` (see --help)`` only before the line's end,
+    # ``;,.:``, `` | `` or `` · ``, so a friction row or a Summary item that goes on after it keeps its own
+    # words
+    folder = "/Users/dana/Projects/Tailspin Merger"
+    for line, shown in (
+        (  # the words after it are the agent's own, redacted as any friction text is
+            f"10:00 | step 1 | error | {said}{folder} (see --help); retried with ~/Q3 | ran |",
+            f"10:00 | step 1 | error | {said}~/Projects/<path> (see --help); retried with ~/Q3 | ran |",
+        ),
+        (
+            f"- 10:00 · step 1 · {said}{folder} (see --help) · ran the list again",
+            f"- 10:00 · step 1 · {said}~/Projects/<path> (see --help) · ran the list again",
+        ),
+        (f"{said}{folder} (see --help)x (see --help)", f"{said}~/Projects/<path> (see --help)"),
+        (f"{said}{folder} (see --help) and more", f"{said}~/Projects/<path>"),
+    ):
+        assert setup_report._redact_lines(red, [line]) == shown, line
     home = str(Path.home())
     cloud = f"{home}/Library/CloudStorage/OneDrive-{ORG}"
     folders = (f"{cloud}/Northwind Secret Plan", f"{home}/Projects/tailspin-merger")
@@ -5002,6 +5024,271 @@ def test_a_missing_source_local_folder_is_cut_in_the_installer_section_c1299(
     assert f"{said}~/Library/CloudStorage/OneDrive-<org-1>/<path> (see --help)" in installer, installer
     assert f"{said}~/Projects/<path> (see --help)" in installer
     assert not re.search("(?i)northwind|tailspin", text)
+
+
+def test_agentsyncs_own_verbs_are_held_whole_after_agentsync_c1425() -> None:
+    """B13 round 38 C1425 (ruling 126; makes worse True for an edge rule): a folder ``Empty Project`` beside a
+    source ``Project Alpha`` turned ``agentsync exclude-empty project-alpha`` into
+    ``exclude-<folder-N>-alpha``, a command no one can run with a word of the second name in clear.
+    agentsync's own verbs, read from the commands cli.py registers, hidden ones included, are held whole
+    after ``agentsync ``, in either registration order, so the argument is its own folder's placeholder; the
+    fuzzy edges are unchanged, so ``empty-project-2026`` is still cut, and a folder whose name begins with a
+    verb is not held."""
+    import argparse  # noqa: PLC0415
+
+    (registered,) = [
+        a.choices for a in cli.build_parser()._actions if isinstance(a, argparse._SubParsersAction)
+    ]
+    assert set(setup_report.agentsync_verbs()) == set(registered)
+    assert {"exclude-empty", "checkpoint", "materialise"} <= set(registered)  # hidden ones too
+    line = (
+        "run `~/.local/bin/agentsync exclude-empty project-alpha`, `agentsync accept-deletions empty-project`"
+    )
+    for order in (("Empty Project", "Project Alpha"), ("Project Alpha", "Empty Project")):
+        red = setup_report.Redactor()
+        for folder in order:
+            red.add("folder", folder, fuzzy=True)
+        alpha, empty = red.redact("Project Alpha"), red.redact("Empty Project")
+        assert {alpha, empty} == {"<folder-1>", "<folder-2>"}, order
+        assert red.redact(line) == (
+            f"run `~/.local/bin/agentsync exclude-empty {alpha}`, `agentsync accept-deletions {empty}`"
+        ), order
+        assert red.redact("sync empty-project-notes") == f"sync {empty}-notes"
+        assert (
+            red.redact("x/OneDrive-Contoso/empty-project-2026/x.md")
+            == f"x/OneDrive-Contoso/{empty}-2026/x.md"
+        )
+    red = setup_report.Redactor()
+    red.add("folder", "Exclude Empty Vault", fuzzy=True)
+    assert red.redact("agentsync exclude-empty-vault now") == "agentsync <folder-1> now"
+    assert red.redact("agentsync exclude-empty <source-1>") == "agentsync exclude-empty <source-1>"
+
+
+def _doctor_word(name: str) -> str:
+    """Lane B's doctor ``$'...'`` body (C1414): an ESC as ``\\e``, a TAB as ``\\t``, a ``\\`` and a ``'``
+    behind a ``\\``, every other character arm_local's list escapes as the octal of each UTF-8 byte;
+    written here from that rule, never from setup_report's helper."""
+    out = []
+    for ch in name:
+        if ch == "\x1b":
+            out.append("\\e")
+        elif ch == "\t":
+            out.append("\\t")
+        elif ch in "\\'":
+            out.append("\\" + ch)
+        elif arm_local._LIST_ESCAPED_RE.fullmatch(ch):
+            out.append("".join(f"\\{b:03o}" for b in ch.encode("utf-8")))
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def _printf_word(name: str) -> str:
+    """macOS's bash ``printf %q`` of ``name`` under LC_ALL=C, as install.sh writes it."""
+    return subprocess.run(
+        ["/bin/bash", "-c", 'printf %q "$1"', "_", name],
+        env={"LC_ALL": "C", "PATH": "/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+
+
+_RULING_126_CHARS = (
+    *(chr(c) for c in range(1, 32)),
+    "\x7f",
+    *(c for c in _LINE_BREAKS if c not in map(chr, range(32))),
+    *(chr(c) for c in range(0x80, 0x10000) if arm_local._LIST_ESCAPED_RE.fullmatch(chr(c))),
+)
+"""B13 round 38 ruling 126's proof: each C0 control, DEL, each break ``str.splitlines()`` honours and each
+character ``arm_local._LIST_ESCAPED_RE`` matches."""
+
+
+def _ruling_126_lines(name: str) -> list[str]:
+    """``name``'s folder under OneDrive-Contoso in each line form a report prints it in (ruling 126): the
+    ``source-local:`` line and doctor's ``source.<id>.listable`` detail in step 1's list spelling, doctor's
+    fix and install.sh's command in their ``$'...'`` words, an adopt error in safe_text's spelling, a JSON
+    echo, and a friction row holding the list spelling. Each prints ``<folder-N>`` where the name stands."""
+    from agentsync.text import safe_text  # noqa: PLC0415
+
+    listed = arm_local.list_shown_name(name).removeprefix(arm_local.ESCAPED_KEPT_MARK + " ")
+    cloud = "Library/CloudStorage/OneDrive-Contoso"
+    word = _doctor_word(name)
+    return [
+        f"source-local: ~/{cloud}/{listed}",
+        f"[warn] source.zq.listable — ~/{cloud}/{listed} is empty; check ~/{cloud}/{listed} opens in Finder",
+        f"fix: open ~/$'{cloud}/{word}' in Finder once; chmod u+rx ~/$'{cloud}/{word}'",
+        f"chmod u+rx ~/{cloud}/{_printf_word(name)}",
+        f"error: adopt: ~/{cloud}/{safe_text(name)}/nope is not a directory",
+        f'path = "~/{cloud}/{json.dumps(name, ensure_ascii=False)[1:-1]}"',
+        f"10:00 | step 2 | error | ~/{cloud}/{listed} would not list | ran it again |",
+    ]
+
+
+def test_a_folder_name_prints_in_no_spelling_ruling_126() -> None:
+    """B13 round 38 ruling 126 (C1414, C1439; privacy; data integrity): install.sh's ``source-local:`` line
+    and doctor's details print a folder in step 1's list spelling, doctor's fix commands and install.sh in a
+    ``$'...'`` word, and the CLI's errors in safe_text's spelling, which drops a format character: the report
+    aliased only the JSON-escaped one, so each other spelling printed the name. For a name holding each
+    character of :data:`_RULING_126_CHARS`, every form prints the folder's placeholder and no fragment of
+    the name; a name safe_text prints as one word the report prints is never aliased, and the report goes
+    private only (C1439)."""
+    from agentsync.text import safe_text  # noqa: PLC0415
+
+    assert len(_RULING_126_CHARS) > 60
+    wrong = []
+    for c in _RULING_126_CHARS:
+        name = f"Zephyr{c}Quarry Vault"
+        red = setup_report.Redactor()
+        red.add("home", str(Path.home()))
+        red.add("org", ORG, fuzzy=True)
+        red.add("folder", name, fuzzy=True)
+        setup_report._alias_escaped(red, name)
+        for line in _ruling_126_lines(name):
+            got = red.redact(line)
+            if re.search("(?i)zephyr|quarry|vault", got) or "<folder-1>" not in got:
+                wrong.append((hex(ord(c)), line, got))
+        assert not red.private_only, hex(ord(c))
+    assert not wrong, (len(wrong), wrong[:6])
+    # the round 38 review: a SharedLibraries library and a folder only a listing names take every spelling
+    # too, and an accented name in printf %q's LC_ALL=C form, every non-ASCII byte in octal
+    for c in ("\x1b", "\t", "\u2028", "\u200b", "\u202e", "\x85"):
+        for how in ("library", "listed"):
+            name = f"Zephyr{c}Quarry Vault"
+            red = setup_report.Redactor()
+            red.add("home", str(Path.home()))
+            if how == "library":
+                red.add("library", name, fuzzy=True)
+                setup_report._alias_escaped(red, name)
+            else:
+                setup_report._add_listed(red, [("OneDrive-Contoso", 1, name)])
+            for line in _ruling_126_lines(name):
+                got = red.redact(line)
+                assert not re.search("(?i)zephyr|quarry|vault", got), (how, hex(ord(c)), line, got)
+    red = setup_report.Redactor()
+    name = "Caf\u00e9\x1b[7mQuarry Vault"
+    red.add("folder", name, fuzzy=True)
+    setup_report._alias_escaped(red, name)
+    got = red.redact(f"chmod u+rx ~/Library/CloudStorage/OneDrive-Contoso/{_printf_word(name)}")
+    assert not re.search("(?i)caf|quarry|vault", got), got
+    for c in ("\u200b", "\u202e", "\u2066", "\ufeff"):  # C1439's adopt error, the verifier's own row
+        red = setup_report.Redactor()
+        name = f"Client{c}Alpha Board"
+        red.add("folder", name, fuzzy=True)
+        setup_report._alias_escaped(red, name)
+        shown = safe_text(f"~/Library/CloudStorage/OneDrive-Contoso/{name}/nope")
+        assert red.redact(f"error: adopt: {shown} is not a directory") == (
+            "error: adopt: ~/Library/CloudStorage/OneDrive-Contoso/<folder-1>/nope is not a directory"
+        )
+    red = setup_report.Redactor()
+    red.add("folder", "\u200bStatus", fuzzy=True)
+    setup_report._alias_escaped(red, "\u200bStatus")
+    assert red.redact("## Status\nStatus: ok") == "## Status\nStatus: ok"
+    assert red.private_only
+
+
+def test_a_folder_name_prints_in_no_spelling_through_the_report_ruling_126(fake_mac: dict[str, Path]) -> None:
+    """B13 round 38 ruling 126 through build_report: synced folders whose names hold an ESC and a tab, a line
+    separator, a zero-width space and a right-to-left override, added with add-source, then named in each
+    line form (:func:`_ruling_126_lines`) in install.out and the friction log, and refused with each of
+    install.sh's refusal heads (C1432): the report holds no fragment of a name, no raw control byte, and the
+    refusals cut to ``<path>``."""
+    home = Path.home()
+    cfg = fake_mac["config"]
+    names = (
+        "Zephyr\x1b[7mQuarry\tVault",
+        "Zephyr\u2028Quarry Vault",
+        "Zephyr\u200bQuarry Vault",
+        "Zephyr\u202eQuarry",
+    )
+    for name in names:
+        folder = home / "Library" / "CloudStorage" / f"OneDrive-{ORG}" / name
+        folder.mkdir(parents=True)
+        assert cli.main(["add-source", str(folder), "--config", str(cfg)]) == 0
+    lines = [line for name in names for line in _ruling_126_lines(name)]
+    deals = f"{home}/Projects/Deals/Zephyr Quarry\\nVault"
+    refusals = [
+        f"usage error: --source-local {deals}: {head}rest of the words (see --help)"
+        for head in setup_report._REFUSED_HEADS
+    ]
+    (fake_mac["setup"] / "install.out").write_text(
+        "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh\n"
+        + "\n".join([*lines, *refusals])
+        + "\n",
+        encoding="utf-8",
+    )
+    head = V6_HAPPY.rstrip("\n").split("\n")
+    write_friction(
+        fake_mac, "\n".join([*head, *(f"10:00 | step 1 | error | {ln} | ran it |" for ln in lines)]) + "\n"
+    )
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    assert not re.search("(?i)zephyr|quarry|vault", text), [
+        ln for ln in text.splitlines() if re.search("(?i)zephyr|quarry|vault", ln)
+    ][:6]
+    assert not re.search("[\x00-\x08\x0b-\x1f\x7f]", text)
+    installer = section(text, "Installer")
+    for head_words in setup_report._REFUSED_HEADS:
+        assert f"usage error: --source-local ~/Projects/<path>: {head_words}rest of the words" in installer, (
+            installer
+        )
+
+
+def test_a_refused_pasted_row_is_cut_whole_at_the_last_refusal_head_c1432() -> None:
+    """B13 round 38 C1432 (ruling 126; privacy): install.sh refuses a pasted row or a twin with ``usage error:
+    --source-local <name>: <head> ...``, and the report read only the shell word after ``--source-local``,
+    so a name with a blank outside CloudStorage printed its rest after ``<path>``. The name runs to the LAST
+    ``: `` before one of setup_report._REFUSED_HEADS, so a name holding a head is still cut whole; the shell
+    report's ``<path>`` form comes back as it is, and each cut is counted."""
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    for head in setup_report._REFUSED_HEADS:
+        for name, cut in (
+            ("/Users/dana/Projects/Deals/Tailspin Merger\\nQ3", "~/Projects/<path>"),
+            ("/Users/dana/Projects/Deals/Tailspin Merger?Q3", "~/Projects/<path>"),
+            (f"/Users/dana/Projects/A: {setup_report._REFUSED_HEADS[1]}B", "~/Projects/<path>"),
+            ("<path>", "<path>"),
+        ):
+            line = f"usage error: --source-local {name}: {head}words; rename it (see --help)"
+            assert setup_report._redact_lines(red, [line]) == (
+                f"usage error: --source-local {cut}: {head}words; rename it (see --help)"
+            ), line
+    assert red.counts["path"] == 3 * len(setup_report._REFUSED_HEADS)
+
+
+def test_the_provider_folder_is_kept_only_as_a_placeholder_and_a_volume_head_overlaps_c1481_c1440() -> None:
+    """B13 round 38 C1481 (ruling 126; makes worse True for a faithful port): _cut_path kept any folder after
+    ``CloudStorage``, so a tenant no value registered printed as ``OneDrive-Fabrikam``; it keeps only
+    ``<Provider>-<placeholder>``, as install.sh's recut does. C1440: behind a volume ``<user>`` is a login
+    like any other, as the shell cuts it, and a volume's /Users/ heads are found overlapping, so
+    ``/Volumes/Users/Users/olga`` is cut."""
+    for kept in (
+        "~/Library/CloudStorage/OneDrive-<org-1>",
+        "~/Library/CloudStorage/OneDrive-SharedLibraries-<org-1>/<library-1>",
+        "~/Library/CloudStorage/Dropbox/<folder-1>",  # an app's bare name holds no tenant
+        "~/Library/CloudStorage/GoogleDrive-<email-1>",
+        "~/Documents",
+        "~/Projects",
+        "~/src",
+    ):
+        assert setup_report._cut_path(kept) == kept
+    assert (
+        setup_report._cut_path("~/Library/CloudStorage/OneDrive-Fabrikam/x")
+        == "~/Library/CloudStorage/<path>"
+    )
+    assert setup_report._cut_path("~/Library/CloudStorage/Fabrikam") == "~/Library/CloudStorage/<path>"
+    assert (
+        setup_report._cut_path("~/Library/CloudStorage/Fabrikam-<org-1>") == "~/Library/CloudStorage/<path>"
+    )
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    red.add("user", "dana")
+    for line, cut in (
+        ("x Smith/Users//Users/olga/Contoso", "x Smith/Users//Users/<path>"),
+        ("/Volumes/Contoso/x/Users/Shared/Users/<user>/Fabrikam", "/Volumes/<path>"),
+        ("/Volumes/Users/Users/olga/Fabrikam", "/Volumes/<path>"),
+        ('"/Volumes/Contoso/Users/<user>/Fabrikam"', '"/Volumes/<path>"'),
+    ):
+        assert red.redact(line) == cut, line
 
 
 def test_agentsyncs_own_inbox_is_never_cut_as_a_typed_folder_c1123() -> None:

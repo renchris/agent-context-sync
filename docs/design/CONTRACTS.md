@@ -40701,7 +40701,53 @@ saying so, and `_CatFile` stays the one program outside it. Test:
 
 ### 16.245 Round 38: the report: one set of name spellings, cuts at verb and line edges, and recordings waiting on OCR (2026-11-13, wave B13 round 38 lane RA)
 
-Reserved for round 38 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 38").
+Lane RA of B13 round 38 (`docs/plans/bring-back-ocr.md`, "B13 round 38"): ruling 126's Python half (privacy; data
+integrity), ruling 127's report half and the report's other words.
+
+**A folder's name prints in no spelling the report does not know** (C1414's aliases, C1439; ruling 126; privacy).
+install.sh's `source-local:` line and doctor's `source.<id>.listable` details print a folder in step 1's list
+spelling (`\t`, `\n`, `\r`, `?` for any other character `arm_local._LIST_ESCAPED_RE` matches), doctor's fix commands
+and install.sh's `printf %q` write it in a `$'...'` word, and the CLI's errors print it through `safe_text`, which
+drops a format character: the report aliased only the JSON-escaped spelling, so each other one printed the name.
+`setup_report._alias_escaped`, which every folder and library registration calls (a SharedLibraries library and a
+folder only a listing names among them), now also aliases each spelling
+`setup_report.folder_spellings` gives (the list spelling, doctor's `$'...'` body with an ESC as `\e`, a TAB as `\t`
+and every other escaped character as the octal of its UTF-8 bytes, and `printf %q`'s with `\E` and `\e`, in a UTF-8
+locale and under `LC_ALL=C`, where every non-ASCII byte is octal too), and the
+`safe_text` spelling with its JSON escape; a `safe_text` spelling that is one word the report prints, or a generic
+folder, is never aliased, and `Redactor.word_named_shown` makes that report private only. Test:
+`test_a_folder_name_prints_in_no_spelling_ruling_126` (each C0 control, DEL, each break `str.splitlines()` honours
+and each character `_LIST_ESCAPED_RE` matches, in each line form) and its `build_report` twin
+`test_a_folder_name_prints_in_no_spelling_through_the_report_ruling_126`; `_separator_lines()` takes each
+`_LIST_ESCAPED_RE` character as a path byte, and both reports still agree on every slot.
+
+**agentsync's own verbs are held whole after `agentsync `** (C1425; ruling 126; makes worse True for an edge rule).
+A folder `Empty Project` beside a source `Project Alpha` turned `agentsync exclude-empty project-alpha` into
+`exclude-<folder-N>-alpha`. `Redactor._compile` holds each verb `setup_report.agentsync_verbs` reads from the
+commands `cli.build_parser` registers, hidden ones included (none when cli does not import), after `agentsync `, with
+keep_path's `unless` guard against a value whose `_norm` begins with the verb's; the fuzzy edges are unchanged, so
+`empty-project-2026` is still cut (an edge rule would leave it in clear). Test:
+`test_agentsyncs_own_verbs_are_held_whole_after_agentsync_c1425` (both registration orders).
+
+**A refused `--source-local` name is cut whole** (C1432 with C1436; ruling 126; privacy). install.sh refuses a
+pasted row or a twin with `usage error: --source-local <name>: <head> ...`, and the report cut only the shell word
+after `--source-local `, so a name with a blank outside CloudStorage printed its rest after `<path>`.
+`setup_report._REFUSED_HEADS` holds the four words every `source_local_refused` call opens with, and
+`_SOURCE_LOCAL_REFUSED_RE` takes the name to the LAST `: ` before one of them (greedy, so a name holding a head is cut
+whole), after `Redactor.redact` and before `_SOURCE_LOCAL_RE`, through `_cut_path`, counted; the shell report's
+`<path>` comes back as it is. C1299's not-a-folder name now ends at its last ` (see --help)` only before the line's
+end, one of `;,.:`, ` | ` or ` · `, else at the line's end (C1436, makes worse True for a first-match cut: a friction
+row's own words after it were cut). Tests: `test_a_refused_pasted_row_is_cut_whole_at_the_last_refusal_head_c1432`,
+`test_a_missing_source_local_folder_is_cut_in_the_installer_section_c1299`.
+
+**The provider folder is kept only as a placeholder, and a volume's home heads overlap** (C1481, C1440; ruling 126;
+privacy). `_cut_path` kept any folder after `CloudStorage`, so a tenant no value registered printed as
+`OneDrive-Fabrikam`; it keeps it only as `_PROVIDER_KEPT_RE` reads it, a known app's bare name (`Dropbox`) or that
+name, `-SharedLibraries` for a library, and placeholders only (`OneDrive-<org-1>`), never a literal word beside them,
+the rule install.sh's recut takes (lane RB, §16.246). Behind a volume `_VOLUME_HEAD` treats `<user>` as any login, as the shell's cut does,
+and `_VOLUME_HOME_RE` finds every head, overlapping, so `/Volumes/Users/Users/olga/x` is cut. Test:
+`test_the_provider_folder_is_kept_only_as_a_placeholder_and_a_volume_head_overlaps_c1481_c1440`; the both-reports
+rows are lane RB's.
 
 ### 16.246 Round 38: the installer: the recut only over another build's render, the hidden-character marks, and the stopped copy's lines (2026-11-13, wave B13 round 38 lane RB)
 
