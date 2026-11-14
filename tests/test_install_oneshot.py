@@ -22954,7 +22954,9 @@ def test_the_shell_report_redacts_a_project_folder_and_a_vanished_sources_folder
         "<folder-5> | <folder-6>",
     ], cp.stdout + cp.stderr
     # the writer's own lines: every folder registered, in each quoting, so none shows
-    assert "~/Projects/<folder-3>" in shown[4] and "/OneDrive-Fabrikam/<folder-2>" in shown[4], shown[4]
+    # an add-back word under an unregistered tenant keeps no tenant (B13 round 39 C1626, as C1634's _cut_path)
+    assert "~/Projects/<folder-3>" in shown[4] and "~/Library/CloudStorage/<path>" in shown[4], shown[4]
+    assert "Fabrikam" not in shown[4] and "Fabrikam" not in shown[5], shown[4:6]
     assert "~/Projects/<folder-5>" in shown[5] and "~/Projects/<folder-6>" in shown[5], shown[5]
     for clear in ("Bids", "Launch", "Plans", "Delta", "Q4", "plan", "Wow"):
         assert clear not in "\n".join(shown[4:]), cp.stdout
@@ -23168,9 +23170,9 @@ def test_a_folder_named_agentsync_is_redacted_in_the_shell_report(env: dict[str,
     named.mkdir(parents=True)
     assert install_sh({**env, "STUB_UV_INSTALL_RC": "2"}, "--source-local", str(named)).returncode == 1
     text = report_path(env).read_text()
-    assert "OneDrive-<org-1>/agentsync" not in text and re.search(r"OneDrive-<org-1>/<folder-\d+>", text), (
-        text
-    )
+    # its argument names no configured folder, so it keeps only its provider folder (B13 round 39 C1601)
+    assert "OneDrive-<org-1>/agentsync" not in text and "OneDrive-<org-1>/<path>" in text, text
+    assert re.search(r"<folder-\d+>", text), "the word agentsync is the folder's pair, never held"
 
 
 def test_the_shell_report_redacts_a_git_url_rewrite_host_and_path(env: dict[str, str]) -> None:

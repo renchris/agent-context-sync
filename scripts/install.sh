@@ -4695,7 +4695,8 @@ foreign_home_cut() {
 # one the cut has not seen. The word lists through ENVIRON
 # (BSD awk takes no newline in -v; generic_folder's and generic_home_dir's words, a test keeps them equal),
 # byte-wise.
-typed_note_cut() { # [PAIRS CONFIGURED]: redact_stream's pairs and the configured folders' CloudStorage parts
+# [PAIRS CONFIGURED]: redact_stream's pairs and the configured folders' CloudStorage parts (B13 round 39 C1601).
+typed_note_cut() {
 	TYPED_FIXED="$CUT_FIXED" TYPED_DRIVE="$CUT_DRIVE" TYPED_HOME="$CUT_HOME" TYPED_KEPT="$CUT_PROVIDER_KEPT" \
 		TYPED_CHECK="${1:+1}" TYPED_PAIRS="${1:-}" TYPED_CFG="${2:-}" LC_ALL=C awk '
 	function norm(v) { v = tolower(v); gsub(/[ \t_\\-]/, "", v); return v }

@@ -703,7 +703,8 @@ def test_the_shell_report_matches_a_name_logged_in_utf8_and_reported_in_c(
     if where == "loose":
         assert "args=--source-local <path>\n" in text
     else:
-        assert re.search(r"OneDrive-<org-1>/<folder-\d+>\n", text), text
+        # in no config: its args= word keeps only its provider folder (B13 round 39 C1601)
+        assert "args=--source-local ~/Library/CloudStorage/OneDrive-<org-1>/<path>\n" in text, text
 
 
 # ---- the Redaction section's "Send it" sentence (R23) ------------------------------------------------------
@@ -1278,7 +1279,6 @@ def _r126_lines(n: int, name: str) -> list[str]:
 @pytest.mark.parametrize("group", range(0, len(_R126_CHARS), 12))
 def test_both_reports_print_a_folder_name_in_no_spelling_ruling_126(
     env: dict[str, str],  # noqa: F811
-    monkeypatch: pytest.MonkeyPatch,
     group: int,
 ) -> None:
     """B13 round 38 ruling 126 (C1414 with C1439, C1432; privacy; data integrity): install.sh's source-local
@@ -1286,16 +1286,21 @@ def test_both_reports_print_a_folder_name_in_no_spelling_ruling_126(
     safe_text's spelling (a format character dropped) was no pair, so a name holding a control, a break or a
     hidden character printed in clear. Each proof name, configured, goes through the shell report and the
     agentsync report in every line form, its list spelling, its `$'...'` word and its safe_text spelling: no
-    fragment of any name prints, and both reports print the same line, doctor's fix included (C1656)."""
+    fragment of any name prints, and both reports print the same line, doctor's fix included (C1656).
+
+    B13 round 39 ruling 133: one friction row a form, read from both real reports (``_both_reports``), since
+    both now cut the not-a-folder and refusal lines by their structure, which a line joining twelve names
+    runs together."""
     names = [f"Alder{n:02d}{ch}Birch{n:02d}" for n, ch in enumerate(_R126_CHARS)][group : group + 12]
-    said = " ;; ".join(line for n, name in enumerate(names) for line in _r126_lines(n, name))
-    shell, python = _fuzzy_report(env, monkeypatch, names, said)
-    leaks = [(who, line) for who, got in (("shell", shell), ("python", python)) for line in got.split(" ;; ")]
+    said = [line for n, name in enumerate(names) for line in _r126_lines(n, name)]
+    shell, python, _sp, _pp = _both_reports(env, names, said, "C")
+    assert len(shell) == len(python) == len(said), (len(shell), len(python), len(said))
+    leaks = [(who, line) for who, got in (("shell", shell), ("python", python)) for line in got]
     leaks = [(who, line) for who, line in leaks if re.search("Alder|Birch", line)]
     assert not leaks, (len(leaks), leaks[:3], sorted({(w, x[x.index("Alder") :][:7]) for w, x in leaks}))
     # B13 round 39 C1656 (ruling 134): both reports cut every `$'...'` word whole, so doctor's fix reads
     # `open ~/<path> in Finder once` in each, and every line form, the fix line included, is the same line
-    pairs = list(zip(shell.split(" ;; "), python.split(" ;; "), strict=True))
+    pairs = list(zip(shell, python, strict=True))
     fixes = [(a, b) for a, b in pairs if a.startswith("open ")]
     assert fixes and all(a == b == "open ~/<path> in Finder once" for a, b in fixes), fixes
     wrong = [(a, b) for a, b in pairs if a != b]
