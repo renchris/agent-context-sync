@@ -17569,20 +17569,29 @@ def test_a_line_break_an_older_build_splits_on_takes_the_fallback_report_c1210(
     assert "Tailspin" not in text and "contoso2" not in text, text
 
 
+_FIVE_MARKS = ("ESCAPED_MARK", "ESCAPED_KEPT_MARK", "TWIN_MARK", "ESCAPED_MARK_OLD", "ESCAPED_KEPT_MARK_OLD")
+
+
+@pytest.mark.parametrize("mark", _FIVE_MARKS)
 @pytest.mark.parametrize("same", [False, True])
 def test_a_new_wording_row_in_install_out_takes_the_fallback_over_another_builds_render_c1447(
-    env: dict[str, str], same: bool
+    env: dict[str, str], same: bool, mark: str
 ) -> None:
     """B13 round 38 C1447 (ruling 129): an agentsync before the new escaped marks strips only the old words,
     so it reads no folder from a row this checkout marked and cuts none of its name. A render by another build
     is replaced by the shell fallback when install.out holds such a row, as for C1249's separators; this
-    build's render, which strips both wordings, is kept."""
+    build's render, which strips both wordings, is kept.
+
+    B13 round 39 ruling 135 (C1655 with C1630): the same holds for a row opened by any of the five marks an
+    older build may not strip (the twin mark and the words before C1447 too), read at a row's start in a
+    --list-folders run, and the warning names the mark it found."""
     env = _renderer_home(env, "older", stamp=_checkout_head() if same else "0123456789ab" * 3)
     cs = Path(env["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso"
     out = Path(env["HOME"]) / "agent-context" / "setup" / "install.out"
     out.parent.mkdir(parents=True, exist_ok=True)
+    marked = globals()[mark]
     out.write_text(
-        f"# run=1 2026-11-13T10:00:00Z install.sh --list-folders\n{ESCAPED_MARK} {cs}/Tailspin\u200bPlans\n",
+        f"# run=1 2026-11-13T10:00:00Z install.sh --list-folders\n{marked} {cs}/Tailspin\u200bPlans\n",
         encoding="utf-8",
     )
     cp = install_sh(env, "--report-only")
@@ -17593,11 +17602,55 @@ def test_a_new_wording_row_in_install_out_takes_the_fallback_over_another_builds
     else:
         assert (
             "(shell fallback: the installed agentsync, another build, may not read a folder row marked "
-            f"{ESCAPED_KEPT_MARK} in install.out)"
+            f"{marked} in install.out)"
         ) in cp.stdout, cp.stdout
         assert "warning: agentsync setup-report was not kept: a folder row marked" in cp.stderr, cp.stderr
         assert "older stub render" not in text, "the stub's render is replaced"
         assert "Tailspin" not in text, text
+
+
+def test_a_mark_outside_a_list_row_keeps_another_builds_render_c1630(env: dict[str, str]) -> None:
+    """B13 round 39 C1630 (ruling 135): a mark read anywhere in install.out made a warning that quotes it,
+    or a row of a run that was no --list-folders, take the fallback; a row counts only where
+    listed_folder_lines reads one, at the start of a --list-folders run's line."""
+    env = _renderer_home(env, "older", stamp="0123456789ab" * 3)
+    out = Path(env["HOME"]) / "agent-context" / "setup" / "install.out"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(
+        "# run=1 2026-11-13T10:00:00Z install.sh --list-folders\n"
+        f"warning: a row marked {ESCAPED_MARK} cannot be pasted\n"
+        "# run=2 2026-11-13T10:01:00Z install.sh --report-only\n"
+        f"{TWIN_MARK} ~/Library/CloudStorage/OneDrive-Contoso/Alpha\n",
+        encoding="utf-8",
+    )
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert "(agentsync setup-report)" in cp.stdout, cp.stdout
+
+
+def test_a_twin_past_the_list_limit_keeps_its_name_out_of_an_older_render_c1655(env: dict[str, str]) -> None:
+    """B13 round 39 C1655 (ruling 135; privacy; data integrity): a twin pair past `--list-folders --limit 2`
+    left a TWIN_MARK row in install.out; once the plain twin was renamed, an older installed build's render
+    kept that row, which it cannot strip, and printed the escaped twin's name. Its render now falls back to
+    install.sh's own report, which names no folder from it."""
+    lib = Path(env["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso"
+    for name in ("Alpha", "Northwind?x", "Northwind\u2028x"):
+        (lib / name).mkdir(parents=True)
+    listed = install_sh(env, "--list-folders", "--limit", "2")
+    assert listed.returncode in (0, 3), listed.stdout + listed.stderr
+    out = Path(env["HOME"]) / "agent-context" / "setup" / "install.out"
+    assert TWIN_MARK in out.read_text(encoding="utf-8"), out.read_text(encoding="utf-8")
+    (lib / "Northwind?x").rename(lib / "Beta")
+    env = _renderer_home(env, "older", stamp="0123456789ab" * 3)
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert (
+        "(shell fallback: the installed agentsync, another build, may not read a folder row marked"
+        in cp.stdout
+    )
+    for path in (report_path(env), report_path(env).parent / "bring-back.md"):
+        if path.exists():
+            assert "Northwind" not in path.read_text(encoding="utf-8"), path
 
 
 def test_a_failed_cut_of_the_agentsync_report_takes_the_fallback_report_c1237(

@@ -7041,12 +7041,21 @@ report_split_lines() {
 	done
 	return 1
 }
-# 0, with SPLIT_WHY set, when install.out holds a row step 1 marked in the words of B13 round 38 C1447 (ruling 129):
-# an agentsync before it strips only the older marks, so it reads no folder name from that row and cuts none.
+# 0, with SPLIT_WHY set, when install.out holds a row step 1 marked with any mark an older agentsync may not strip:
+# the words of B13 round 38 C1447 (ruling 129), the twin mark of round 37 (bab9deb6c) and the words before C1447,
+# which an earlier run of the same attempt leaves there. Such a build reads no folder name from that row and cuts
+# none. Each is read at the start of a row of a --list-folders run, as listed_folder_lines reads it, so a warning
+# copied into install.out is no row, and SPLIT_WHY names the mark found, the longer before the kept (B13 round 39
+# ruling 135, C1655 with C1630).
 report_new_marks() {
+	local m
 	[ -f "$INSTALL_OUT" ] && [ ! -L "$INSTALL_OUT" ] || return 1
-	LC_ALL=C grep -qF -e "$ESCAPED_MARK" -e "$ESCAPED_KEPT_MARK" "$INSTALL_OUT" 2>/dev/null || return 1
-	SPLIT_WHY="a folder row marked $ESCAPED_KEPT_MARK in ${INSTALL_OUT##*/}"
+	m="$(M1="$ESCAPED_MARK" M2="$ESCAPED_KEPT_MARK" M3="$TWIN_MARK" M4="$ESCAPED_MARK_OLD" M5="$ESCAPED_KEPT_MARK_OLD" \
+		LC_ALL=C awk '/^# run=/ { list = ($0 ~ / install[.]sh( .*)? --list-folders( |$)/); next }
+		list { for (i = 1; i <= 5; i++) if (index($0, ENVIRON["M" i] " ") == 1) { print ENVIRON["M" i]; exit } }' \
+		"$INSTALL_OUT" 2>/dev/null)" || m=""
+	[ -n "$m" ] || return 1
+	SPLIT_WHY="a folder row marked $m in ${INSTALL_OUT##*/}"
 	SPLIT_HOW="may not read $SPLIT_WHY"
 }
 # The report agentsync rendered, cut again by this checkout in place (B13 round 37 ruling 120, C1210, C1237): a path

@@ -41573,6 +41573,20 @@ word `report_word` or `output_word` knows makes it private only, with the same t
 zero-width and a word-joiner `Status` private, a zero-width `Documents` and `Quokka` public, under `LC_ALL=C` and
 `en_US.UTF-8`).
 
+**Another build's render is kept only when it can read every marked row** (C1655 with C1630; ruling 135; privacy;
+data integrity; `scripts/install.sh`). `report_new_marks` fell back to install.sh's own report only for a row opened
+by `ESCAPED_MARK` or `ESCAPED_KEPT_MARK`, so a twin pair past `--list-folders --limit 2` left a `TWIN_MARK` row
+(bab9deb6c, round 37) that an older build cannot strip, and once the plain twin was renamed that build's render
+printed the escaped twin's name; and its `SPLIT_WHY` always named `ESCAPED_KEPT_MARK`, and a mark quoted anywhere in
+install.out counted. It now reads each of `ESCAPED_MARK`, `ESCAPED_KEPT_MARK`, `TWIN_MARK`, `ESCAPED_MARK_OLD` and
+`ESCAPED_KEPT_MARK_OLD` at the start of a row of a `--list-folders` run, as `listed_folder_lines` reads them, the longer
+before the kept, and `SPLIT_WHY` names the one found (`a folder row marked <mark> in install.out`); a render this
+checkout's build wrote is still kept. Tests:
+`test_install_oneshot.py::test_a_new_wording_row_in_install_out_takes_the_fallback_over_another_builds_render_c1447` (over the five marks, another build's render replaced and this build's
+kept), `test_a_mark_outside_a_list_row_keeps_another_builds_render_c1630` and
+`test_a_twin_past_the_list_limit_keeps_its_name_out_of_an_older_render_c1655` (C1655's reproduction: no folder word
+in setup-report.md or bring-back.md, `shell fallback` on stdout).
+
 ### 16.252 Round 39: --fields and log records follow the document, names in doctor's lines, and a recording kept during an OCR outage (2026-11-14, wave B13 round 39 lane B)
 
 Round 39's lane B items (`docs/plans/bring-back-ocr.md`, "B13 round 39"; specs `round39/items/C<n>.md`, the
