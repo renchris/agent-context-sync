@@ -40337,7 +40337,6 @@ A recording whose media helper is not ready (`recordings_wait_ocr` false) gets n
 gives it the `no converter for <suffix>` stub. And (C1403) "the row's live outputs are all OK" reads "all OK, or an
 OCR-made unreadable stub (a QUARANTINED output on a QUARANTINED row)": an image whose page OCR made says `unreadable`
 keeps that page while the helper fails, and the row stays quarantined, as QUARANTINE.tsv says.
-
 Amended 2026-11-14, §16.252 C1641, C1679: "under the same gates" reads "under the same gates but the label rule: one
 never withholds a recording, so `_ocr_wait_eligible` lets it wait, and keeps it, under one too", and a recording is
 never read here: whatever the mode, its page is kept unread and its row left waiting for the recording pass
