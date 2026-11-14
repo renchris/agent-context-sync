@@ -41468,6 +41468,17 @@ linear) is lane RA's C1658. Test: `test_cli_json.py::test_status_documents_tcc_m
 (each clause through a real `status --json`: the entry ends in its document form, no checks message says `below` or
 `above`, and the text view still ends in the clause).
 
+**The ok compaction line names the compacted root when it is the one old commit** (C1678's code half; lane D's
+item, its guide words §16.254's). `governance.compaction_due` is never due over a lone old root (`len(old) > 1` or
+one with a parent), and a compaction's new root keeps the base commit's date, so about a week after every compaction
+`compaction_state`'s ok line said `no commit older than 37 days (history_days 30 + slack)` while `git log` showed an
+older commit. With no compaction due and a commit older than `history_days + compaction_slack_days` (only the root
+can be), the line reads `nothing older than <N days> but the root snapshot the last compaction left (history_days
+<H> + slack)`; with none, it is unchanged, so S26's count noun stands. `compaction_due`'s body, which lane D's and
+C1489's tests read, is unchanged; `governance._lone_old_root` asks the second question. Test:
+`test_governance.py::test_the_ok_compaction_line_names_the_compacted_root_when_it_is_the_one_old_commit_c1678` (a
+compacted history: the new root older than 37 days, nothing due, the new words; ten days earlier, the old ones).
+
 ### 16.253 Round 39: the converters: the empty-file screen, a zero-byte recording, and a table's page cap (2026-11-14, wave B13 round 39 lane E)
 
 Reserved for round 39 lane E of B13.

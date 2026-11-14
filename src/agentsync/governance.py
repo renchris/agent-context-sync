@@ -6356,6 +6356,17 @@ def compaction_due(repo: Path, gov: GovernanceConfig, *, now: datetime | None = 
     return len(old) > 1 or any(ps for sha, ps, _ in graph if sha in old)
 
 
+def _lone_old_root(repo: Path, days: int, now: datetime | None) -> bool:
+    """True when history holds a commit older than ``days`` though :func:`compaction_due` says none is due:
+    the one old commit is a root, as the snapshot the last compaction left keeps its old date (B13 round 39
+    C1678)."""
+    repo = expand(repo)
+    if not (repo / ".git").exists():
+        return False
+    cutoff = int((_now(now) - timedelta(days=days)).timestamp())
+    return any(ts < cutoff for _sha, _ps, ts in _commit_graph(repo, []))
+
+
 def compaction_state(repo: Path, gov: GovernanceConfig, *, now: datetime | None = None) -> tuple[str, str]:
     """``("ok" | "due" | "overdue", one line)`` for doctor / status / STATE.md (C15 section 9 item 39).
 
@@ -6366,6 +6377,11 @@ def compaction_state(repo: Path, gov: GovernanceConfig, *, now: datetime | None 
         return "ok", ARCHIVE_KEEPS_HISTORY
     span = gov.history_days + gov.compaction_slack_days
     if not compaction_due(repo, gov, now=now):
+        if _lone_old_root(repo, span, now):  # never "no commit", which git log would contradict (C1678)
+            return "ok", (
+                f"nothing older than {plural(span, 'day')} but the root snapshot the last compaction left "
+                f"(history_days {gov.history_days} + slack)"
+            )
         return "ok", f"no commit older than {plural(span, 'day')} (history_days {gov.history_days} + slack)"
     late = dataclasses.replace(gov, compaction_slack_days=2 * gov.compaction_slack_days)
     if compaction_due(repo, late, now=now):

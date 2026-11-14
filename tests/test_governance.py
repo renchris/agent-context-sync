@@ -2191,6 +2191,29 @@ def test_the_compaction_line_takes_its_noun_from_the_day_count(tmp_docs_repo: Pa
         assert state == "ok" and said in line and "(s)" not in line, line
 
 
+def test_the_ok_compaction_line_names_the_compacted_root_when_it_is_the_one_old_commit_c1678(
+    tmp_path: Path, tmp_docs_repo: Path, tmp_state_dir: Path
+) -> None:
+    """B13 round 39 C1678: a compaction leaves a root snapshot that keeps its old date, and a lone old root
+    is never due, so after it doctor's governance line said "no commit older than 37 days" while git log
+    showed an older commit. That ok line names the root; with no old commit at all it is unchanged."""
+    repo = tmp_docs_repo
+    _dated_repo(repo)
+    gv.compact_history(make_config(tmp_path, repo, tmp_state_dir), now=NOW)
+    root = git(repo, "rev-list", "--max-parents=0", "HEAD").split()
+    stamp = int(git(repo, "log", "-1", "--format=%ct", root[0]).strip())
+    assert len(root) == 1 and stamp < (NOW - timedelta(days=37)).timestamp()
+    state, line = gv.compaction_state(repo, gv.GovernanceConfig(), now=NOW)
+    assert state == "ok" and not gv.compaction_due(repo, gv.GovernanceConfig(), now=NOW)
+    assert line == (
+        "nothing older than 37 days but the root snapshot the last compaction left (history_days 30 + slack)"
+    ), line
+    assert gv.compaction_state(repo, gv.GovernanceConfig(), now=NOW - timedelta(days=10)) == (
+        "ok",
+        "no commit older than 37 days (history_days 30 + slack)",
+    )
+
+
 @pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
 def test_an_audit_trail_this_account_cannot_open_changes_no_hold_and_queues_no_purge(tmp_path: Path) -> None:
     """B13 round 23 A79: set_hold, release_hold and enqueue_purge wrote holds.json or the queue and then
