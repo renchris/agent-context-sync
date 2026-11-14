@@ -20806,6 +20806,43 @@ def test_a_spent_copy_whose_earlier_probes_ran_keeps_its_xcode_and_gitleaks_word
     ) in lines, lines
 
 
+@pytest.mark.parametrize("probes", ["skipped", "measured"])
+def test_a_spent_copy_says_launchctl_print_was_skipped_only_after_a_skipped_probe_c1610(
+    env: dict[str, str], tmp_path: Path, probes: str
+) -> None:
+    """B13 round 39 C1610 (makes worse True for a spentst key): an ed901cd3 copy whose budget ran out before
+    sw_vers said launchctl print `did not answer in time`, though only doctor moves the deadline and it runs
+    after Background runs, so that read was skipped too. An Environment probe skipped above keys the spent
+    words, as ruling 123's Xcode rule does; with the earlier probes measured, a spent Status proves nothing
+    about launchctl print, and a real time-out keeps its words."""
+    copy = _spent_copy("old")
+    if probes == "measured":  # the C1224 shape
+        copy[9] = "- macOS: 15.1 (24B83)"
+        copy[10] = "- MDM enrollment (`profiles status -type enrollment`): not enrolled"
+        copy[12] = "- uv: ~/.local/bin/uv 0.9.0"
+    at = copy.index("## Doctor")
+    copy[at:at] = [
+        "## Background runs",
+        "",
+        "- com.agentsync.poll: not installed (no plist, not loaded: launchctl print exited 124)",
+        "- com.agentsync.reconcile: plist present · NOT loaded (launchctl print exited 124; "
+        "`~/.local/bin/agentsync install-agent` loads it)",
+        "",
+    ]
+    lines = _stopped_copy_of(env, tmp_path, "\n".join(copy)).splitlines()
+    if probes == "skipped":
+        why = f"{_SPENT_LIMIT} launchctl print ran"
+    else:
+        why = "launchctl print did not answer in time"
+    want = [
+        f"- com.agentsync.poll: not measured ({why}; plist absent)",
+        f"- com.agentsync.reconcile: not measured ({why}; plist present)",
+    ]
+    assert [w for w in want if w not in lines] == [], lines
+    if probes == "skipped":
+        assert not [ln for ln in lines if "did not answer in time" in ln and "launchctl" in ln], lines
+
+
 def test_the_doctor_brackets_older_builds_wrote_take_todays_words_c1221_c1222(
     env: dict[str, str], tmp_path: Path
 ) -> None:

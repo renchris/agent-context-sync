@@ -7945,6 +7945,12 @@ older_report_rewrite() { # MODE
 			$0 = "- Xcode Command Line Tools: not measured (the report\047s time limit was used up before xcode-select -p ran)"
 		}
 		cp && !det && !fence && sec == "## Environment" && $0 == "- Xcode Command Line Tools: not installed (xcode-select -p exited 124)" { $0 = "- Xcode Command Line Tools: not measured (xcode-select -p did not answer in time)" }
+		# an Environment probe the budget skipped proves launchctl print, read after it, was skipped too: only
+		# doctor moves the deadline, and it runs last. Keyed on envskip alone, never spentst: a spent Status
+		# may follow a real launchctl time-out, which keeps its words (B13 round 39 C1610, as ruling 123)
+		cp && envskip && envskip < FNR && !det && !fence && sec == "## Background runs" && match($0, /^- [^ ]+\.(poll|reconcile): /) && (j = bg_cut(substr($0, RLENGTH + 1))) != "" {
+			$0 = substr($0, 1, RLENGTH) "not measured (the report\047s time limit was used up before launchctl print ran; plist " j ")"
+		}
 		cp && !det && !fence && sec == "## Background runs" && match($0, /^- [^ ]+\.(poll|reconcile): /) && (j = bg_cut(substr($0, RLENGTH + 1))) != "" {
 			$0 = substr($0, 1, RLENGTH) "not measured (launchctl print did not answer in time; plist " j ")"
 		}
