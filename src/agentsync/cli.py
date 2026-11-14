@@ -555,9 +555,12 @@ def _loop_doc(lines: Sequence[str]) -> dict[str, object]:
 
 
 def _config_tail(args: argparse.Namespace) -> str:
-    """`` --config <path>`` as the person gave it, else nothing: every command a handler prints for a re-run
-    runs against the install the person chose (R249; B13 round 38 C1486, ruling 128: offboard's recovery
-    command dropped it, so with two configs naming one docs repo it removed the default install's config)."""
+    """`` --config <path>`` as the person gave it, else nothing: every command a handler builds with it
+    (the inspect ``next`` of a mutation, a recovery command such as offboard's, a ``graph login`` next) runs
+    against the install the person chose (R249; B13 round 38 C1486, ruling 128: offboard's recovery command
+    dropped it, so with two configs naming one docs repo it removed the default install's config). The fixed
+    state-stop NEXT steps (``STATE_REFUSED_STEP``, ``STATE_MISPLACED_STEP``, ``STATE_MISPLACED_COMMAND_STEP``,
+    ``HEARTBEAT_REFUSED_STEP``) do not take it and still name a bare ``status`` (B13 round 39 C1644)."""
     config = getattr(args, "config", None)
     return f" --config {shlex.quote(str(config))}" if config is not None else ""
 

@@ -2999,9 +2999,10 @@ def provider_state(provider: Path, *, timeout: float | None = None) -> ProviderS
 
 EMPTY_FOLDER_DETAIL = "lists 0 entries (the folder is empty)"
 """The tail of a ``source.<id>.listable`` [warn] detail for an empty folder outside every File Provider
-domain, cloud or local, never an inbox (``<root> lists 0 entries (the folder is empty)``). Its fix is
-``loop.empty_folder_fix``'s; the setup report files the warn as expected by this tail, never by the fix (B13
-round 38 ruling 130)."""
+domain, cloud or local (``<root> lists 0 entries (the folder is empty)``); an empty local inbox is an [ok]
+instead, but a cloud inbox outside a domain gets this tail too. Its fix, for any source but an inbox, is
+``loop.empty_folder_fix``'s; an inbox gets none, since an inbox is never told to pause (C938). The setup
+report files the warn as expected by this tail, never by the fix (B13 round 38 ruling 130; round 39 C1644)."""
 
 
 def _empty_root_fix(config: Config, src: SourceConfig, root: Path, image: Path) -> str:

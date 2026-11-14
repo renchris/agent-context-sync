@@ -41433,6 +41433,24 @@ with the helper back, no piece read and the row `OUTPUT_UNCHANGED`) and
 outage: two cycles, POLL and interactive, fetch nothing and keep the old page; the first cycle with the helper back
 publishes the new text).
 
+**C1431's split is guarded by a check that still holds a raw break** (C1642; tests only). Since C1414 list-spells a
+missing folder's details, no real check in C1431's real-hooks test held a raw break, so the test passed with
+`doctor.format_lines` back on `str.splitlines()` and left status's `_Status.check_lines` and the report's Doctor hook
+unguarded (measured: 9 of 9 cases passed with the fix reverted). A patched check whose detail holds the raw break
+now goes through both; the real-hooks test stays, for its end-to-end redaction. Test:
+`test_cli.py::test_a_check_holding_a_raw_break_is_one_line_in_status_and_the_reports_doctor_hook_c1642` (each of
+C1431's nine code points: one `[FAIL]` line naming the whole name and ending in its fix from the hook, one line
+from `check_lines`; red with `splitlines()`).
+
+**Three docstrings say what the code does** (C1644; docstrings only). `_keeps_ocr_page` said a label rule stops it,
+while a recording waits and is kept under one (with C1641 above); `doctor.EMPTY_FOLDER_DETAIL` said `never an inbox`,
+while a cloud inbox outside a domain gets the tail and only the fix leaves an inbox out (C938, C1401); and
+`cli._config_tail` said every command printed for a re-run takes the tail, while `STATE_REFUSED_STEP`,
+`STATE_MISPLACED_STEP`, `STATE_MISPLACED_COMMAND_STEP` and `HEARTBEAT_REFUSED_STEP` name a bare `status`. Each now
+says so; the steps are unchanged (giving them `--config` makes them functions of args, a change of its own). Test:
+`test_cli.py::test_three_docstrings_say_what_the_code_does_c1644` (each docstring's words, and no `--config` in the
+four steps).
+
 ### 16.253 Round 39: the converters: the empty-file screen, a zero-byte recording, and a table's page cap (2026-11-14, wave B13 round 39 lane E)
 
 Reserved for round 39 lane E of B13.

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import ast
 import dataclasses
 import errno
 import functools
 import hashlib
+import inspect
 import json
 import logging
 import os
@@ -15194,6 +15196,65 @@ def test_doctor_lines_split_at_a_newline_alone_through_the_real_report_hooks_c14
     joined = doctor.format_results(list(cli._status_checks(config, offline=True)))
     assert cli._report_hooks().doctor(config) == joined.split("\n")
     assert doctor.format_lines([]) == []
+
+
+@pytest.mark.parametrize("brk", _SPLITLINES_BREAKS, ids=[f"U+{ord(c):04X}" for c in _SPLITLINES_BREAKS])
+def test_a_check_holding_a_raw_break_is_one_line_in_status_and_the_reports_doctor_hook_c1642(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, brk: str
+) -> None:
+    """B13 round 39 C1642: since C1414 list-spells a missing folder's details, no real check in the C1431
+    test above carries a raw break, so it passed with ``format_lines`` back on ``str.splitlines()``, leaving
+    status's ``check_lines`` and the report's Doctor hook unguarded. A patched check whose detail holds the
+    raw break goes through both: one line each, the name whole, ending in its fix."""
+    monkeypatch.setattr(doctor, "_disk_free", lambda _anchor: 8 << 30)
+    config = load_config(initialised.config_path)
+    raw = doctor.CheckResult(
+        "source.contoso.listable",
+        False,
+        f"~/Contoso{brk}Merger Board does not exist",
+        doctor.Severity.ERROR,
+        fix='fix path in [[source]] id = "contoso"',
+    )
+    real = cli._status_checks
+    monkeypatch.setattr(cli, "_status_checks", lambda *a, **k: [*real(*a, **k), raw])
+    lines = cli._report_hooks().doctor(config)
+    fails = [ln for ln in lines if ln.startswith("[FAIL] source.contoso.listable ")]
+    assert len(fails) == 1 and f"Contoso{brk}Merger Board" in fails[0] and fails[0].endswith(")"), lines
+    st = cli._Status((), "", (raw,), (), ())
+    assert st.check_lines() == doctor.format_results([raw]).split("\n") and len(st.check_lines()) == 1
+
+
+def _attribute_doc(module: Any, name: str) -> str:
+    """The docstring under a module attribute ``name = ...`` (the string statement right after it)."""
+    body = ast.parse(inspect.getsource(module)).body
+    for at, node in enumerate(body[:-1]):
+        targets = node.targets if isinstance(node, ast.Assign) else []
+        if any(isinstance(t, ast.Name) and t.id == name for t in targets):
+            doc = body[at + 1]
+            assert isinstance(doc, ast.Expr) and isinstance(doc.value, ast.Constant)
+            return " ".join(str(doc.value.value).split())
+    raise AssertionError(name)
+
+
+def test_three_docstrings_say_what_the_code_does_c1644() -> None:
+    """B13 round 39 C1644: ``_keeps_ocr_page`` said a label rule stops it, but one never withholds a
+    recording, which waits and is kept under one too; ``EMPTY_FOLDER_DETAIL`` said never an inbox, but a cloud
+    inbox outside a domain gets the tail (only the fix leaves an inbox out); ``_config_tail`` said every
+    re-run command takes the tail, but the fixed state-stop NEXT steps name a bare ``status``."""
+    keeps = " ".join((inspect.getdoc(cycle_mod._Cycle._keeps_ocr_page) or "").split())
+    assert "for a recording, under a label rule too" in keeps and "Only with no label rule" not in keeps
+    empty = _attribute_doc(doctor, "EMPTY_FOLDER_DETAIL")
+    assert "never an inbox" not in empty and "a cloud inbox outside a domain gets this tail too" in empty
+    tail = " ".join((inspect.getdoc(cli._config_tail) or "").split())
+    assert "every command a handler prints" not in tail, tail
+    steps = (
+        "STATE_REFUSED_STEP",
+        "STATE_MISPLACED_STEP",
+        "STATE_MISPLACED_COMMAND_STEP",
+        "HEARTBEAT_REFUSED_STEP",
+    )
+    for step in steps:
+        assert step in tail and "--config" not in getattr(cli, step), step
 
 
 @pytest.mark.parametrize("brk", _SPLITLINES_BREAKS, ids=[f"U+{ord(c):04X}" for c in _SPLITLINES_BREAKS])
