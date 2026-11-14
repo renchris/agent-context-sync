@@ -3202,9 +3202,7 @@ def _check_sources(config: Config) -> list[CheckResult]:
             out.append(unfinished(f"source.{src.id}", exc))
     if any(s.is_live and s.path is not None and is_cloud_path(s.path) for s in local):
         if _in_launchd_job(config):
-            out.append(
-                _ok("tcc", f"checked inside the LaunchAgent ({image}): results above are authoritative")
-            )
+            out.append(_ok("tcc", f"checked inside the LaunchAgent ({image}): {TCC_RESULTS_ABOVE}"))
         else:
             try:
                 launcher = _find_launcher()
@@ -3232,10 +3230,22 @@ def _check_sources(config: Config) -> list[CheckResult]:
                     _ok(
                         "tcc",
                         f"cloud roots were listed with this terminal's privacy grants; the LaunchAgent runs "
-                        f"{subject} and needs its own (the launcher and tcc.* lines below report it)",
+                        f"{subject} and needs its own {TCC_LINES_BELOW}",
                     )
                 )
     return out
+
+
+TCC_LINES_BELOW = "(the launcher and tcc.* lines below report it)"
+"""The ok ``tcc`` detail's pointer at the lines after it, true in the text view, where the launcher and
+``tcc.<id>`` checks follow the sources group (B13 round 39 C1657)."""
+TCC_LINES_DOC = "(the launcher and tcc.* entries in checks report it)"
+""":data:`TCC_LINES_BELOW` as ``status --json``'s checks message gives it: a document has no "below"
+(``cli._CHECK_DOCUMENT_FORMS``; C1448's rule for the loop lines, B13 round 39 C1657)."""
+TCC_RESULTS_ABOVE = "results above are authoritative"
+"""The ok ``tcc`` detail inside the LaunchAgent, pointing at the lines before it in the text view."""
+TCC_RESULTS_DOC = "the entries before it in checks are authoritative"
+""":data:`TCC_RESULTS_ABOVE` as the document's checks message gives it (B13 round 39 C1657)."""
 
 
 def _check_materialise(config: Config) -> list[CheckResult]:

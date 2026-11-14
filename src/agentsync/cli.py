@@ -2360,7 +2360,13 @@ class _Status:
     def document(self) -> dict[str, object]:
         """``status --json``: every check, and the loop lines the text view prints, as data."""
         checks = [
-            {"id": r.name, "ok": r.ok, "severity": r.severity.value, "message": r.detail, "fix": r.fix}
+            {
+                "id": r.name,
+                "ok": r.ok,
+                "severity": r.severity.value,
+                "message": _check_document_form(r.detail),
+                "fix": r.fix,
+            }
             for r in self.checks
         ]
         return {"status": {"checks": checks, **_loop_doc(self.doc_loop)}}
@@ -2402,6 +2408,22 @@ _DOCUMENT_FORMS = (
 its place, naming the checks entry by its id: a document has no "below" (B13 round 38 C1448; ruling 128). The
 text view keeps its own words byte for byte, and the person's form keeps "not a step for the agent", which
 the setup report counts."""
+
+
+_CHECK_DOCUMENT_FORMS = (
+    (doctor.TCC_LINES_BELOW, doctor.TCC_LINES_DOC),
+    (doctor.TCC_RESULTS_ABOVE, doctor.TCC_RESULTS_DOC),
+)
+"""Each pointer a check's detail gives at the lines after or before it in the text view, and the form
+``status --json``'s checks message gives in its place, as :data:`_DOCUMENT_FORMS` maps the loop's lines:
+doctor's detail and the text view keep their words byte for byte (B13 round 39 C1657 with C1664's H3)."""
+
+
+def _check_document_form(detail: str) -> str:
+    """A check's detail as ``status --json``'s checks message gives it (:data:`_CHECK_DOCUMENT_FORMS`)."""
+    for text, entry in _CHECK_DOCUMENT_FORMS:
+        detail = detail.replace(text, entry)
+    return detail
 
 
 def _document_form(line: str, sids: Sequence[str]) -> str:

@@ -41194,6 +41194,10 @@ status (ruling 109). Test: `test_cli_json.py::test_status_document_points_at_che
 source folder and a lost hold and queue: no `below` in the three lists, NEXT names a failing check's id and the
 person's words, the text view still says `below`).
 
+Amended 2026-11-14, §16.252 C1657: the checks entries take the same rule: each `message` is the check's detail with
+`cli._CHECK_DOCUMENT_FORMS` applied (`doctor.TCC_LINES_BELOW` and `doctor.TCC_RESULTS_ABOVE` to their `_DOC` forms),
+so no entry points at a line below or above.
+
 **A `next` command holding a placeholder has no argv** (C1444; ruling 128). With no docs repo, status's NEXT quotes
 `~/.local/bin/agentsync add-source "<folder>"`, and `cli._step` gave its document the argv `[..., "add-source",
 "<folder>"]`, so a caller that ran `next[0].argv` as given added a folder named `<folder>`. A command that holds a
@@ -41450,6 +41454,19 @@ while a cloud inbox outside a domain gets the tail and only the fix leaves an in
 says so; the steps are unchanged (giving them `--config` makes them functions of args, a change of its own). Test:
 `test_cli.py::test_three_docstrings_say_what_the_code_does_c1644` (each docstring's words, and no `--config` in the
 four steps).
+
+**status's checks entries name the entries in checks, never a line below** (C1657 with C1664's H3, one defect from
+two finders, built once; ruling 128; amends §16.247 C1448). C1448 mapped the loop's pointers, but `_Status.document()`
+put each check's detail into its entry's `message` verbatim, so the ok `tcc` entry of a live cloud root listed
+outside a LaunchAgent said `(the launcher and tcc.* lines below report it)`, and the one inside the LaunchAgent
+`results above are authoritative`: lines a document does not have. The clauses are `doctor.TCC_LINES_BELOW` and
+`doctor.TCC_RESULTS_ABOVE`, and `cli._CHECK_DOCUMENT_FORMS` maps them, beside `_DOCUMENT_FORMS`, to
+`doctor.TCC_LINES_DOC`, `(the launcher and tcc.* entries in checks report it)`, and `doctor.TCC_RESULTS_DOC`, `the
+entries before it in checks are authoritative`. Only the document changes: `CheckResult.detail`, the text view and
+F2's words stay byte for byte, and `fix` is never rewritten. C1664's H4 (the refused `--source-local` cut made
+linear) is lane RA's C1658. Test: `test_cli_json.py::test_status_documents_tcc_message_points_at_checks_entries_c1657`
+(each clause through a real `status --json`: the entry ends in its document form, no checks message says `below` or
+`above`, and the text view still ends in the clause).
 
 ### 16.253 Round 39: the converters: the empty-file screen, a zero-byte recording, and a table's page cap (2026-11-14, wave B13 round 39 lane E)
 

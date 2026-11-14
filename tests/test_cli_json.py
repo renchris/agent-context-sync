@@ -23,6 +23,7 @@ from agentsync.graph import discover
 from agentsync.graph.drive import DiscoveredScope
 from agentsync.manifest import Manifest
 from agentsync.model import SourceKind
+from agentsync.ops import doctor
 from test_cli import FakeAuth, _graph_config, _hold_and_queue_dlp
 from test_contracts import CLI_SURFACE
 
@@ -361,6 +362,42 @@ def test_status_document_points_at_checks_entries_by_id_c1448(
         (wait,) = doc["status"]["waitingOnYou"]
         assert wait.endswith("the governance.hold entry in checks gives the person's fix"), wait
         assert "the governance.hold [FAIL] line below gives the person's fix" in text, text
+
+
+@pytest.mark.parametrize(
+    ("text", "entry"),
+    [
+        (doctor.TCC_LINES_BELOW, doctor.TCC_LINES_DOC),
+        (doctor.TCC_RESULTS_ABOVE, doctor.TCC_RESULTS_DOC),
+    ],
+)
+def test_status_documents_tcc_message_points_at_checks_entries_c1657(
+    initialised: Config,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    text: str,
+    entry: str,
+) -> None:
+    """B13 round 39 C1657 with C1664's H3 (ruling 128): C1448 mapped the loop's pointers at a line "below",
+    but ``status --json``'s checks entries took each detail verbatim, so the ok ``tcc`` entry still said
+    ``the launcher and tcc.* lines below report it`` (or, inside the LaunchAgent, ``results above``), lines a
+    document does not have. The checks message names the entries in checks; doctor's detail and the text
+    view keep their words byte for byte."""
+    tcc = doctor._ok("tcc", f"cloud roots were listed with this terminal's grants; it needs its own {text}")
+    real = cli._status_checks
+    monkeypatch.setattr(cli, "_status_checks", lambda *a, **k: [*real(*a, **k), tcc])
+    cfg = str(initialised.config_path)
+    capsys.readouterr()
+    cli.main(["status", "--config", cfg])
+    view = capsys.readouterr().out
+    assert [ln for ln in view.splitlines() if ln.startswith("[ok  ] tcc ") and ln.endswith(tcc.detail)], view
+    _rc, doc, _err = _doc(["status", "--config", cfg], capsys)
+    (message,) = [c["message"] for c in doc["status"]["checks"] if c["id"] == "tcc"]
+    assert message == tcc.detail.replace(text, entry) and message.endswith(entry), message
+    messages = [c["message"] for c in doc["status"]["checks"]]
+    assert not [m for m in messages if " below" in m or " above" in m], messages
+    st = cli._Status((), "", (tcc,), (), ())
+    assert any(ln.endswith(text) for ln in st.lines()) and tcc.detail.endswith(text)
 
 
 def test_a_next_command_with_a_placeholder_has_no_argv_c1444(
