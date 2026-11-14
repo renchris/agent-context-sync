@@ -3985,6 +3985,41 @@ def test_the_escape_set_is_credited_to_the_commit_that_added_it_c1651() -> None:
     assert "**The escape set's credit is the commit that added it** (C1651; docs only)." in section
 
 
+def test_c1464s_bound_holds_only_while_a_provider_is_denied_or_asking_c1654() -> None:
+    """B13 round 39 C1654: C1464's paragraph and its dated line at §16.241 C1229 said every `list_twins` test
+    is bounded by the list's deadline, while the lane's review made it unbounded when no provider is denied or
+    asking. Both say so now, and each case is read from install.sh: list_folders' empty `TWIN_DEADLINE`, set
+    only when a provider is denied or asking, the unbounded test when the end is empty, and `LIST_TIMEOUT`
+    when `TWIN_DEADLINE` is unset."""
+    script = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    twins = script[script.index("list_twins() {") : script.index("\nlist_plain() {")]
+    assert 'end="${TWIN_DEADLINE-$((SECONDS + LIST_TIMEOUT))}"' in twins
+    unbounded = twins.index('if [ -z "$end" ]; then')
+    bare = twins.index('! escaped_twin "$p" dir </dev/null', unbounded)
+    assert bare < twins.index("with_timeout", unbounded)
+    assert '\tlocal TWIN_DEADLINE="" #' in script
+    assert script.count('[ -z "$denied$asking" ] || TWIN_DEADLINE=$deadline') == 2
+    c1229 = " ".join(
+        _contracts_section("Amended 2026-11-13, §16.246 C1464: `list_twins` runs while", "\n\n").split()
+    )
+    assert c1229.startswith(
+        "Amended 2026-11-13, §16.246 C1464: `list_twins` runs while a provider is denied or asking too,"
+        " skipping kept rows, each test bounded by the list's deadline while a provider is denied or asking,"
+        " unbounded otherwise as before C1464 (the lane's review, §16.246)."
+    )
+    c1464 = " ".join(
+        _contracts_section("**A look-alike another provider listed is marked while one", "\n\n").split()
+    )
+    assert "(`TWIN_DEADLINE`, else `LIST_TIMEOUT`)" not in c1464
+    assert (
+        "and, while a provider is denied or asking, runs each `escaped_twin` test under `with_timeout` with"
+        " the time left before list_folders' deadline (`TWIN_DEADLINE`; `LIST_TIMEOUT` when list_twins runs"
+        " outside list_folders), its output to /dev/null, so a test cut short marks nothing and none runs"
+        " once the time is spent; when no provider is denied or asking, list_folders leaves `TWIN_DEADLINE`"
+        " empty and each test runs unbounded, as before C1464 (the lane's review, below)."
+    ) in c1464
+
+
 def test_the_dollar_quote_sentences_name_the_installers_own_commands_c1307() -> None:
     """B13 round 37 C1307: §16.236 said "no `$'...'` form offered" and §16.239 that --source-local "offers
     no `$'...'` form", while the no-twin lost-block clause and a NEXT's re-run print shown_arg's `$'...'`

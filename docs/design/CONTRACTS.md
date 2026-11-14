@@ -40245,7 +40245,8 @@ and `test_both_readers_of_the_folder_list_strip_every_mark_install_sh_prints`.
 Amended 2026-11-13, §16.246 C1447: `ESCAPED_KEPT_MARK` reads `[name holds a hidden or control character]`
 (ruling 129); a row an earlier run marked with the words above is still read and still refused when pasted.
 Amended 2026-11-13, §16.246 C1464: `list_twins` runs while a provider is denied or asking too, skipping kept rows,
-each test bounded by the list's deadline.
+each test bounded by the list's deadline while a provider is denied or asking, unbounded otherwise as before C1464
+(the lane's review, §16.246).
 
 **A stopped copy an older build rendered is rewritten only on proof in its own text** (C1221, C1222, C1223, C1224,
 C1225, C1226, C1248, C1215; ruling 123; amends §16.235 C1109, §16.236 C1108 and §16.236 C1103; `scripts/install.sh`).
@@ -40926,9 +40927,11 @@ escaped text keep `RENAME_NEXT`. Test: `test_source_local_refuses_an_escaped_row
 C1229; `scripts/install.sh`). `list_twins` was skipped whenever any provider was denied or still asking, so a plain
 look-alike in a provider that did list showed unmarked and step 2 then refused it. The guard is gone; `list_twins`
 itself is safe instead: it skips kept rows (`[synced]`, `[inside a synced folder]`), the only rows that can sit under
-a provider never listed and rows `list_shown` never marks, and runs each `escaped_twin` test under `with_timeout`
-with the time left before list_folders' deadline (`TWIN_DEADLINE`, else `LIST_TIMEOUT`), its output to /dev/null, so
-a test cut short marks nothing and none runs once the time is spent. Step 2's refusal keeps its unbounded
+a provider never listed and rows `list_shown` never marks, and, while a provider is denied or asking, runs each
+`escaped_twin` test under `with_timeout` with the time left before list_folders' deadline (`TWIN_DEADLINE`;
+`LIST_TIMEOUT` when list_twins runs outside list_folders), its output to /dev/null, so a test cut short marks nothing
+and none runs once the time is spent; when no provider is denied or asking, list_folders leaves `TWIN_DEADLINE` empty
+and each test runs unbounded, as before C1464 (the lane's review, below). Step 2's refusal keeps its unbounded
 `escaped_twin`, which fails closed. Tests:
 `test_list_folders_marks_a_look_alike_another_provider_listed_while_one_was_denied_c1464` and
 `test_list_folders_tests_no_kept_look_alike_under_a_provider_still_asking_c1464`.
@@ -41428,6 +41431,16 @@ in place, since each credit was a fact about the code, not a decision of its rou
 `ESCAPED_MARK` gives the same credit; it is lane RB's file this round, which corrects it. Tests:
 `test_the_escape_set_is_credited_to_the_commit_that_added_it_c1651`, with
 `test_the_guides_name_every_character_the_list_escapes_c1455`, which holds C1280's line to `escd`.
+
+**C1464's bound holds only while a provider is denied or asking** (C1654; docs only). C1464's paragraph at §16.246
+and its dated line at §16.241 C1229 said every `escaped_twin` test of `list_twins` is bounded by the list's deadline,
+while the lane's review at the end of §16.246 made it unbounded when no provider is denied or asking: list_folders
+declares `TWIN_DEADLINE` empty and sets it from its deadline only when one is, and `list_twins` runs the test with
+no `with_timeout` when its end is empty. Both now say the bound holds while a provider is denied or asking, unbounded
+otherwise as before C1464, and the paragraph keeps `LIST_TIMEOUT` for a list_twins call outside list_folders, where
+`TWIN_DEADLINE` is unset. Each is corrected in place, the code unchanged: install.sh's comment above `list_twins`
+already says so. Test: `test_c1464s_bound_holds_only_while_a_provider_is_denied_or_asking_c1654`, which reads the
+three cases from install.sh.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
