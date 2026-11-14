@@ -4022,6 +4022,11 @@ def test_the_escape_set_is_credited_to_the_commit_that_added_it_c1651() -> None:
     assert "only the bidi and zero-width characters (U+200B, U+202E," not in c1447
     section = " ".join(_contracts_section("### 16.254 ", "### 16.300 ").split())
     assert "**The escape set's credit is the commit that added it** (C1651; docs only)." in section
+    # lane RB's 381517c07: install.sh's comment above ESCAPED_MARK gives the same credit
+    script = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    comment = script[: script.index('\nESCAPED_MARK="')].rsplit("\nCONTAINS_MARK=", 1)[1]
+    assert "(since 62b46915d, C932)" in comment and "fad8817a5" not in comment
+    assert "credits 62b46915d there since 381517c07 (§16.251)" in section
 
 
 def test_c1464s_bound_holds_only_while_a_provider_is_denied_or_asking_c1654() -> None:

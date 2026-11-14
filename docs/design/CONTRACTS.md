@@ -41947,14 +41947,14 @@ and 2a9fad40a (§16.252 C1678) it reads `nothing older than 37 days but the root
 in `compaction_due`'s source and the squashed root's header to the code.
 
 **The escape set's credit is the commit that added it** (C1651; docs only). C1280's dated line at §16.244, §16.246's
-C1447 paragraph and §16.249's C1455 paragraph said the folder list writes the C1 controls and U+2028 and U+2029 as
-`?` "since fad8817a5" (§16.236 C1072), while 62b46915d (§16.231 C932) added both byte classes to `esc` and the print
-test; fad8817a5 only added `ESCAPED_MARK` and moved that test, unchanged, into the shared `escd`. And C1447 gave the
-bidi and zero-width set as "only" U+200B, U+202E, U+2060, U+FEFF and U+061C, while `escd` matches the ranges C1280's
-dated line lists. The three now say "since 62b46915d" with C932, and C1447 lists the bidi controls (U+200E, U+200F,
-U+202A-U+202E, U+2066-U+2069, U+061C) and the zero-width characters (U+200B-U+200D, U+2060, U+FEFF), each corrected
-in place, since each credit was a fact about the code, not a decision of its round. install.sh's comment above
-`ESCAPED_MARK` gives the same credit; it is lane RB's file this round, which corrects it. Tests:
+C1447 paragraph and §16.249's C1455 paragraph said the folder list writes the C1 controls and U+2028 and U+2029 as `?`
+"since fad8817a5" (§16.236 C1072), while 62b46915d (§16.231 C932) added both byte classes to `esc` and the print test;
+fad8817a5 only added `ESCAPED_MARK` and moved that test, unchanged, into the shared `escd`. And C1447 gave the bidi and
+zero-width set as "only" U+200B, U+202E, U+2060, U+FEFF and U+061C, while `escd` matches the ranges C1280's dated line
+lists. The three now say "since 62b46915d" with C932, and C1447 lists the bidi controls (U+200E, U+200F, U+202A-U+202E,
+U+2066-U+2069, U+061C) and the zero-width characters (U+200B-U+200D, U+2060, U+FEFF), each corrected in place, since
+each credit was a fact about the code, not a decision of its round. install.sh's comment above `ESCAPED_MARK` gave the
+same credit; lane RB, which owns install.sh this round, credits 62b46915d there since 381517c07 (§16.251). Tests:
 `test_the_escape_set_is_credited_to_the_commit_that_added_it_c1651`, with
 `test_the_guides_name_every_character_the_list_escapes_c1455`, which holds C1280's line to `escd`.
 
