@@ -263,21 +263,32 @@ def _examples(command: str) -> str:
 
 
 _RESULT_FIELDS: dict[str, tuple[str, ...]] = {
-    "add-source": ("source", "outcome", "next"),
-    "sync": ("run", "outcome", "next", "waitingOnYou", "warnings"),
-    "accept-deletions": ("source", "run", "outcome", "next"),
+    "add-source": ("source", "outcome", "next", "warnings"),
+    "sync": ("run", "outcome", "findings", "next", "waitingOnYou", "warnings"),
+    "accept-deletions": ("source", "run", "outcome", "findings", "next", "warnings"),
     "status": ("status",),
+    "doctor": ("status",),
+    "policy": ("status",),
     "curate": ("findings", "next", "waitingOnYou", "warnings"),
-    "adopt": ("pages", "outcome", "next"),
-    "purge": ("purge", "results", "summary", "queued", "outcome", "next"),
-    "hold": ("holds", "pagination", "hold", "outcome", "next"),
-    "offboard": ("locations", "removed", "errors", "manualSteps", "outcome", "next"),
-    "compact-history": ("compaction", "outcome", "next"),
-    "whoami": ("account",),
-    "discover": ("scopes", "toml", "complete", "failures"),
+    "adopt": ("pages", "outcome", "next", "warnings"),
+    "purge": ("purge", "results", "summary", "queued", "outcome", "next", "warnings"),
+    "hold": ("holds", "pagination", "hold", "outcome", "next", "warnings"),
+    "offboard": ("locations", "removed", "errors", "manualSteps", "outcome", "next", "warnings"),
+    "compact-history": ("compaction", "outcome", "next", "warnings"),
+    "help": ("commands", "warnings"),
+    "whoami": ("account", "warnings"),
+    "discover": ("scopes", "toml", "complete", "failures", "warnings"),
+    "logout": ("outcome", "warnings"),
+    "graph": ("account", "scopes", "toml", "complete", "failures", "outcome", "warnings"),
 }
 """Each command's ``--json`` result schema (U-B4, U-B5): the top-level fields its documents carry, every
-variant's together. ``--help --json`` prints it and ``--fields`` selects from it; graph reads its action's."""
+variant's together. ``--help --json`` prints it and ``--fields`` selects from it; graph reads its action's,
+and its own row, the union of its actions', is read only by ``_help_doc`` (``graph --help --json``). Every
+key a command's document can carry is in its row (B13 round 39 C1638, C1673, C1643; ruling 136): sync's and
+accept-deletions' ``findings`` (``_run_doc``), one ``logout`` row for graph logout and the top-level alias,
+``warnings`` in every row whose document takes the run's log records at its top level (status's, doctor's and
+policy's take them in ``status.warnings``), help's ``commands`` (``--all`` and ``search`` only:
+``_select_fields`` refuses ``--fields`` on a help page). login prints no document."""
 
 
 class _JsonOptions:
@@ -299,10 +310,17 @@ class _Running:
 _running = _Running()
 
 
-def _emit(doc: Mapping[str, object]) -> None:
-    """``clio.emit``, keeping only the ``--fields`` fields when they were given (R252)."""
+def _emit(doc: Mapping[str, object], *, warnings_at: tuple[str, ...] = ("warnings",)) -> None:
+    """``clio.emit``, keeping only the ``--fields`` fields when they were given (R252). The run's log records
+    join the document's warnings (at ``warnings_at``) only when the selection keeps that field, after the
+    filter; otherwise ``clio.flush_log_warnings`` writes each on stderr after the document, so none is lost
+    and none reaches a field the selection left out (B13 round 39 C1639, C1674; ruling 136)."""
     fields = _json_options.fields
-    clio.emit(doc if fields is None else {k: v for k, v in doc.items() if k in fields})
+    clio.emit(
+        doc if fields is None else {k: v for k, v in doc.items() if k in fields},
+        warnings_at=warnings_at,
+        take_logged=fields is None or warnings_at[0] in fields,
+    )
 
 
 class _HelpFormatter(argparse.HelpFormatter):
@@ -3063,8 +3081,8 @@ def _build_status_once(config: Config, *, brief: bool = False) -> _Status:
 def _cmd_status(args: argparse.Namespace, *, brief: bool = False) -> int:
     config = _config(args)
     status = _build_status(config, brief=brief)
-    if clio.json_mode():
-        _emit(status.document())
+    if clio.json_mode():  # its log records join status.warnings, its own list (C1639)
+        _emit(status.document(), warnings_at=("status", "warnings"))
     for line in status.lines():
         _out(line)
     return EXIT_FAILED if status.failed else EXIT_OK
@@ -4431,8 +4449,8 @@ def _cmd_help(args: argparse.Namespace) -> int:
         for p in found:
             _out(f"{p.prog:<{width}}  {p.description}")
         return EXIT_OK
-    try:
-        build_parser().parse_args([*args.path, "--help"])
+    try:  # through _parse, so `help <unknown> --json` is one usage line (C1643)
+        _parse(build_parser(), [*args.path, "--help"], as_json=clio.json_mode())
     except SystemExit as exc:
         return int(exc.code) if isinstance(exc.code, int) else EXIT_USAGE
     return EXIT_OK
@@ -4477,8 +4495,8 @@ def _cmd_graph(args: argparse.Namespace) -> int:
     elif action == "logout":
         auth.logout()
         _out("signed out: cached Graph tokens removed")
-        if clio.json_mode():  # its one document (B13 round 38 C1485)
-            clio.emit({"outcome": "signed_out"})
+        if clio.json_mode():  # its one document (B13 round 38 C1485), --fields applied (C1638)
+            _emit({"outcome": "signed_out"})
     elif action == "whoami":
         status = auth.status()
         who = status.username if status.signed_in else "not signed in"
@@ -5657,6 +5675,8 @@ def _select_fields(args: argparse.Namespace) -> int | None:
         return _refused("error: --fields selects fields of the --json document: add --json", EXIT_USAGE)
     command = args.action if args.command == "graph" else args.command
     valid = _RESULT_FIELDS.get(command, ())
+    if command == "help" and not (args.all or args.path[:1] == ["search"]):
+        valid = ()  # a help page is no result: only --all and search print the commands (C1643)
     if not valid:
         return _refused(f"error: --fields: `{command}` prints no document to select fields from", EXIT_USAGE)
     asked = tuple(f.strip() for f in raw.split(",") if f.strip())

@@ -204,19 +204,40 @@ def json_mode() -> bool:
     return _json_mode
 
 
-def emit(doc: Mapping[str, object]) -> None:
+def emit(
+    doc: Mapping[str, object], *, warnings_at: Sequence[str] = ("warnings",), take_logged: bool = True
+) -> None:
     """One document on stdout: indented by two on a terminal, one compact line otherwise. Non-ASCII is
-    escaped, so remote text cannot reach a terminal as a control character and any stream can encode it."""
+    escaped, so remote text cannot reach a terminal as a control character and any stream can encode it.
+
+    With ``take_logged`` the run's kept WARNING records join the document's own warnings list, at the key
+    path ``warnings_at`` (``("status", "warnings")`` for status's document), after the loop's notes (B13
+    round 38 C1484). Without it, which a ``--fields`` selection leaving that field out asks for, they stay
+    for :func:`flush_log_warnings`, one JSON object each on stderr after the document: never in a field the
+    selection dropped, and never lost (B13 round 39 C1639, C1674; ruling 136)."""
     whole = dict(doc)
     _written.append("document")
-    logged = _take_log_warnings()
-    if logged:  # the run's WARNING records, after the loop's notes (B13 round 38 C1484)
-        kept = whole.get("warnings")
-        whole["warnings"] = [*(kept if isinstance(kept, list) else []), *logged]
+    logged = _take_log_warnings() if take_logged else []
+    if logged:
+        _join_warnings(whole, warnings_at, logged)
     if stdout_is_tty():
         _write_stdout(json.dumps(whole, indent=2))
     else:
         _write_stdout(json.dumps(whole, separators=(",", ":")))
+
+
+def _join_warnings(whole: dict[str, object], at: Sequence[str], logged: list[dict[str, str]]) -> None:
+    """Append ``logged`` to the list at key path ``at`` in ``whole``, copying each mapping on the way so the
+    caller's document is never changed; a path that does not hold a mapping puts them at the top level."""
+    holder = whole
+    for key in at[:-1]:
+        inner = holder.get(key)
+        if not isinstance(inner, Mapping):
+            holder, at = whole, ("warnings",)
+            break
+        holder[key] = holder = dict(inner)
+    kept = holder.get(at[-1])
+    holder[at[-1]] = [*(kept if isinstance(kept, list) else []), *logged]
 
 
 class Reason(enum.StrEnum):

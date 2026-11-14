@@ -41479,6 +41479,38 @@ C1489's tests read, is unchanged; `governance._lone_old_root` asks the second qu
 `test_governance.py::test_the_ok_compaction_line_names_the_compacted_root_when_it_is_the_one_old_commit_c1678` (a
 compacted history: the new root older than 37 days, nothing due, the new words; ten days earlier, the old ones).
 
+**--fields and log records follow the document the command prints** (C1638 with C1673, one defect from two finders,
+built once; C1639 with C1674, one defect from two finders, built once; C1643; ruling 136; the CLI conventions
+wave's landed --json code, at its lead's request of 2026-11-14). `_RESULT_FIELDS` lacked keys documents carry: sync's
+and accept-deletions' `findings` (C1484's `_run_doc`) were refused by `--fields` and missing from `--help --json`,
+and logout's `{"outcome": "signed_out"}` (C1485) was written past `_emit` with no row, so `--fields outcome` said it
+prints no document. Both rows take `findings`, one `logout` row serves graph logout and the top-level alias, and
+logout goes through `_emit`. `clio.emit` put the run's log records in a top-level `warnings` after `_emit` had
+filtered the document, so status's records sat outside `{"status": {...}}` and any `--fields` selection grew a
+`warnings` it had not named, which nine commands could not even ask for. `clio.emit` takes `warnings_at` (status's
+`("status", "warnings")`, through `_cmd_status`, which doctor and policy share) and `take_logged`, which `_emit`
+sets only when the selection keeps that field; otherwise the records stay for `flush_log_warnings`, which writes
+each after the document as one JSON object on stderr; and `warnings` joins every row but status's. Both finders'
+fixes make things worse as written (measured by the verifiers): building the whole document and then selecting
+drops the records the selection leaves out, which `_take_log_warnings` had already cleared, breaking C1484's
+never-lost rule; so the filter stays first and an unselected record goes to stderr. doctor and policy take
+`("status",)`, graph a union row that only `_help_doc` reads (`_select_fields` keeps reading the action's), and help
+`("commands", "warnings")`, refused by `_select_fields` on a help page, since `_Parser.print_help` writes the page
+past `_emit` and a bare row would print the whole page with `--fields` ignored (C1643, makes worse True as the
+finder had it); `_cmd_help`'s inner parse goes through `_parse`, so `help bogus --json` is one `usage` line. login
+takes no row: under `--json` it is a usage error, and error documents are never filtered. §16.300.6 and §16.300.25
+say so. Tests: `test_cli_json.py::test_fields_selects_the_findings_of_a_blocked_run_c1638` (sync and
+accept-deletions over a hand-edited page: `--fields findings` keeps only the findings, the row holds every key and
+`--help --json` prints it), `::test_logouts_document_takes_fields_c1638` (both spellings: an unknown field refused
+before any sign-out, `--fields outcome`, the logout and graph result rows),
+`::test_status_log_records_join_status_warnings_c1639` (status with and without `--fields status`, and doctor: the
+record in `status.warnings`, no top-level key), `::test_a_log_record_the_selection_leaves_out_goes_to_stderr_c1674`
+(`hold --list --fields holds`: stdout exactly the holds and the record on stderr; `holds,warnings` and sync's
+`outcome,warnings` keep it in the document; sync's `outcome` alone sends it to stderr),
+`::test_help_doctor_and_policy_documents_take_fields_c1643` and
+`::test_every_top_level_key_of_a_captured_document_is_in_its_row_c1638` (thirteen commands with a record logged
+mid-run, a blocked sync among them: every key each document carries is in its row).
+
 ### 16.253 Round 39: the converters: the empty-file screen, a zero-byte recording, and a table's page cap (2026-11-14, wave B13 round 39 lane E)
 
 Reserved for round 39 lane E of B13.
@@ -41739,7 +41771,11 @@ own (§16.10). Without it, every byte of stdout and stderr and every exit code i
   "logger", "time", "message"}`, never text; a run's held alarm records are not held, since no report prints. A record
   no document took is never lost: at `main`'s end `clio.flush_log_warnings` writes it as the run's one document
   `{"warnings": [...]}` when nothing was written, else as one JSON object on stderr; after the error line, which stays
-  last, it is dropped (C1484).
+  last, it is dropped (C1484). A document's own warnings list is where its records go: status's, doctor's and
+  policy's `status.warnings` (`clio.emit`'s `warnings_at`), every other document's top-level `warnings`; and they
+  join it only when a `--fields` selection keeps that field, after the filter, so a selection that leaves it out
+  prints exactly the fields it names and its records go to stderr after the document, one JSON object each (C1639,
+  C1674; ruling 136).
 - `_main` reads argv before parsing: `--json` turns `clio.set_json` on, so a usage error is one `usage` line on stderr
   (exit 2), and `--version --json` prints `{"version": "<version>"}` unless `-h` or `--help` is also given, which wins.
   No command with `--json` is a `usage` line too. `main` turns JSON mode off again on return.
@@ -41784,11 +41820,13 @@ command that shows what it changed, with `--config` when the run had one (`cli._
   `confirmation_required` error line (`status: action_required`, exit 1) whose `next` is the matching command.
 - `add-source --json` prints `{"source": {"id", "path"}, "outcome": "created" | "unchanged"}` with a `next` of
   `status`; `accept-deletions --json` prints `{"source": {"id"}, "run", "outcome", "next"}`, the run as sync's
-  (`cli._run_doc`); `adopt --json` prints `{"pages": [...], "outcome": "created" | "unchanged"}` with a `next` of
+  (`cli._run_doc`), with sync's `findings` when the land gate blocked it (C1638); `adopt --json` prints `{"pages": [...], "outcome": "created" | "unchanged"}` with a `next` of
   `curate`.
 - `whoami --json` prints `{"account": {"signedIn", "username", "tenantId", "method", "cache", "scopes"}}`; signed out
   it is a `login_required` error line (exit 77) carrying the account as `data.account`. `discover --json` prints
   `{"scopes": [{"kind", "name", "configured", "driveId", "site", "note"}], "toml", "complete", "failures"}`.
+  `graph logout --json` and its top-level alias `logout --json` print `{"outcome": "signed_out"}` (C1485), through
+  `cli._emit` (C1638); `graph login --json` is a `usage` error line (C1441).
 - A command whose own result carries its failure (purge's verify or push, compact-history's verify, offboard's
   errors, an incomplete discover, accept-deletions' run) writes its document whatever its exit code and no error
   line, as `sync --json` does. Any other refusal is one error line and an empty stdout, with the exit code unchanged:
@@ -42210,7 +42248,9 @@ deprecation warning becomes a `warnings` entry instead of a stderr line. The ref
   (`stable` for a listed command, `hidden` for one reached by name), `subcommands` (`path`, `summary`; listed ones
   only), `arguments`, `options` (`name`, `short`, `type`, `valueHint`, `default`, `choices`, `repeatable`,
   `deprecated`, `help`), `examples` (`job`, `command`) and `result` (`{"fields": [...]}`, or null for a command
-  that prints no document). `cli._Parser.print_help` builds it from the same actions the text page lists, so a
+  that prints no document: login, init and the others with none). `graph --help --json` gives the union of its
+  actions' rows, and `help --help --json` the `commands` of `help --all` and `help search`, the only help forms that
+  print a result (C1643). `cli._Parser.print_help` builds it from the same actions the text page lists, so a
   suppressed option or an unlisted command stays out of both. It runs inside the parse, so no config is read
   (R083, R411). Beside `--version`, `--help` still prints the text page, as `--version --json --help` did before.
 - `--help` with no `--json` prints the same bytes as before: `--fields` and `help --all` are hidden options.
@@ -42222,12 +42262,23 @@ deprecation warning becomes a `warnings` entry instead of a stderr line. The ref
   from the network or the config, and the query is never logged. `help search` with no query exits 2.
 - `--fields <FIELDS>` (R252, R454), in `_common` beside `--json`: comma-separated top-level fields of the command's
   `--json` document; the document keeps only those, in its own order. `cli._RESULT_FIELDS` is the one table of
-  result schemas (the U-B4 and U-B5 shapes; graph reads its action's). Exit 2, as a `usage` error, when
-  `--json` is absent, the command prints no document, or a field is unknown; the last line lists the valid
-  fields. Without `--fields` every document is unchanged, and error documents are never filtered.
+  result schemas (the U-B4 and U-B5 shapes; graph reads its action's, and one `logout` row serves graph logout and
+  the alias): every top-level key a command's document can carry is in its row, `findings` in sync's and
+  accept-deletions', `warnings` in every row but status's, doctor's and policy's (`("status",)`, their records in
+  `status.warnings`), and help's `commands` (C1638, C1673, C1643; ruling 136). Exit 2, as a `usage` error, when
+  `--json` is absent, the command prints no document (a help page included: only `help --all` and `help search`
+  print one), or a field is unknown; the last line lists the valid fields. Without `--fields` every document is
+  unchanged, and error documents are never filtered. The run's log records join the document only when the
+  selection keeps the field that holds them; otherwise each is one JSON object on stderr after it (C1639, C1674).
+  `help <unknown> --json` is one `usage` line, its inner parse through `cli._parse` (C1643).
 - Tests: `tests/test_cli_json.py` `test_help_json_matches_the_parser`, `test_help_all_lists_only_visible_commands`,
   `test_help_search_no_match_exits_0`, `test_help_works_with_a_broken_config`,
-  `test_fields_keeps_only_named_fields`, `test_unknown_field_lists_the_valid_ones`.
+  `test_fields_keeps_only_named_fields`, `test_unknown_field_lists_the_valid_ones`, and B13 round 39's
+  `test_fields_selects_the_findings_of_a_blocked_run_c1638`, `test_logouts_document_takes_fields_c1638`,
+  `test_status_log_records_join_status_warnings_c1639`,
+  `test_a_log_record_the_selection_leaves_out_goes_to_stderr_c1674`,
+  `test_help_doctor_and_policy_documents_take_fields_c1643` and
+  `test_every_top_level_key_of_a_captured_document_is_in_its_row_c1638`.
 
 #### 16.300.26 U-C9: install.sh conflicts and the consent spelling
 

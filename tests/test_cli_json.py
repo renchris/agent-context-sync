@@ -688,3 +688,195 @@ def test_unknown_field_lists_the_valid_ones(initialised: Config, capsys: pytest.
     assert "add --json" in capsys.readouterr().err
     rc, error = _error(["init", "--config", str(initialised.config_path), "--fields", "x"], capsys)
     assert (rc, error["reason"]) == (cli.EXIT_USAGE, "usage") and "no document" in error["message"]
+
+
+def _blocked(initialised: Config, capsys: pytest.CaptureFixture[str]) -> str:
+    """A synced install whose mirror page was edited by hand, so the land gate blocks the next commit."""
+    cfg = _synced(initialised, capsys)
+    page = initialised.docs_repo / "mirror" / "source" / "projects" / "sample.txt.md"
+    page.write_text(page.read_text(encoding="utf-8") + "hand edit\n", encoding="utf-8")
+    return cfg
+
+
+@pytest.mark.parametrize("verb", [["sync"], ["accept-deletions", "source"]])
+def test_fields_selects_the_findings_of_a_blocked_run_c1638(
+    initialised: Config, capsys: pytest.CaptureFixture[str], verb: list[str]
+) -> None:
+    """B13 round 39 C1638 with C1673 (ruling 136): C1484 gave sync's and accept-deletions' documents
+    ``findings`` (``_run_doc``) but not their ``_RESULT_FIELDS`` rows, so ``--fields findings`` was refused as
+    unknown and ``--help --json`` left it out. Both rows carry it, and a blocked run's selection keeps it."""
+    cfg = _blocked(initialised, capsys)
+    rc, whole, _err = _doc([*verb, "--config", cfg], capsys)
+    assert rc == cli.EXIT_FAILED and whole["outcome"] == "blocked" and whole["findings"], whole
+    rc, doc, _err = _doc([*verb, "--config", cfg, "--fields", "findings"], capsys)
+    assert rc == cli.EXIT_FAILED and list(doc) == ["findings"] and doc["findings"], doc
+    row = cli._RESULT_FIELDS[verb[0]]
+    assert set(whole) <= set(row) and "findings" in row, (list(whole), row)
+    help_doc = json.loads(_help_text(capsys, verb[0], "--help", "--json"))
+    assert help_doc["result"] == {"fields": list(row)}
+
+
+@pytest.mark.parametrize("verb", [["logout"], ["graph", "logout"]])
+def test_logouts_document_takes_fields_c1638(
+    initialised: Config,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    verb: list[str],
+) -> None:
+    """B13 round 39 C1638 with C1673 (ruling 136): logout's ``{"outcome": "signed_out"}`` (C1485) was
+    written past ``_emit``, with no row, so ``--fields outcome`` said it prints no document. One ``logout``
+    row serves graph logout and the top-level alias, and an unknown field is refused before any sign-out."""
+    monkeypatch.setattr(graph_auth, "MsalAuth", FakeAuth)
+    FakeAuth.calls, FakeAuth.blocked = [], False
+    cfg = _graph_config(initialised)
+    rc, error = _error([*verb, "--config", cfg, "--fields", "account"], capsys)
+    assert (rc, error["reason"], FakeAuth.calls) == (cli.EXIT_USAGE, "usage", []), error
+    rc, doc, err = _doc([*verb, "--config", cfg, "--fields", "outcome"], capsys)
+    assert (rc, doc, err, FakeAuth.calls) == (cli.EXIT_OK, {"outcome": "signed_out"}, "", ["logout"])
+    page = json.loads(_help_text(capsys, "logout", "--help", "--json"))
+    assert page["result"] == {"fields": ["outcome", "warnings"]}
+    graph = json.loads(_help_text(capsys, "graph", "--help", "--json"))
+    union = {f for verb in ("whoami", "discover", "logout") for f in cli._RESULT_FIELDS[verb]}
+    assert set(graph["result"]["fields"]) == union, graph["result"]
+
+
+def _warn_on_config(monkeypatch: pytest.MonkeyPatch, message: str = "Contoso share is slow") -> None:
+    """Every command logs one WARNING from agentsync.cycle as it reads its config, mid-run."""
+    real = cli._config
+
+    def config(args: argparse.Namespace) -> Config:
+        logging.getLogger("agentsync.cycle").warning(message)
+        return real(args)
+
+    monkeypatch.setattr(cli, "_config", config)
+
+
+_RECORD = {"message": "Contoso share is slow", "level": "warning", "logger": "agentsync.cycle"}
+
+
+def test_status_log_records_join_status_warnings_c1639(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 39 C1639 (ruling 136, makes worse True): clio.emit put the run's log records in a top-level
+    ``warnings``, outside status's ``{"status": {...}}`` and past ``--fields status``. They join
+    ``status.warnings`` (``warnings_at``), with or without ``--fields status``."""
+    _warn_on_config(monkeypatch)
+    cfg = str(initialised.config_path)
+    for extra in ([], ["--fields", "status"]):
+        _rc, doc, err = _doc(["status", "--config", cfg, *extra], capsys)
+        assert list(doc) == ["status"] and err == "", (doc, err)
+        assert doc["status"]["warnings"][-1] == _RECORD, doc["status"]["warnings"]
+    _rc, doc, _err = _doc(["doctor", "--config", cfg, "--fields", "status"], capsys)
+    assert list(doc) == ["status"] and doc["status"]["warnings"][-1] == _RECORD
+
+
+def test_a_log_record_the_selection_leaves_out_goes_to_stderr_c1674(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 39 C1674 with C1639 (ruling 136, makes worse True each): the records were merged after the
+    ``--fields`` filter, so ``--fields holds`` printed a ``warnings`` it could not ask for. They join the
+    document only when the selection keeps ``warnings``; otherwise each is one JSON object on stderr after
+    it, never dropped (C1484), and ``--fields warnings`` is a field of every such row."""
+    _warn_on_config(monkeypatch)
+    cfg = str(initialised.config_path)
+    rc, doc, err = _doc(["hold", "--list", "--config", cfg, "--fields", "holds"], capsys)
+    assert (rc, doc) == (cli.EXIT_OK, {"holds": []}) and [json.loads(x) for x in err.splitlines()] == [
+        _RECORD
+    ]
+    rc, doc, err = _doc(["hold", "--list", "--config", cfg, "--fields", "holds,warnings"], capsys)
+    assert (rc, doc, err) == (cli.EXIT_OK, {"holds": [], "warnings": [_RECORD]}, "")
+    rc, doc, err = _doc(["sync", "--config", cfg, "--fields", "outcome,warnings"], capsys)
+    assert rc == cli.EXIT_OK and list(doc) == ["outcome", "warnings"] and err == "", (doc, err)
+    assert _RECORD in doc["warnings"], doc
+    rc, doc, err = _doc(["sync", "--config", cfg, "--fields", "outcome"], capsys)
+    assert list(doc) == ["outcome"] and _RECORD in [json.loads(x) for x in err.splitlines()], (doc, err)
+    lacking = [
+        verb for verb, row in cli._RESULT_FIELDS.items() if row != ("status",) and "warnings" not in row
+    ]
+    assert lacking == [], lacking
+
+
+def test_help_doctor_and_policy_documents_take_fields_c1643(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 39 C1643 (ruling 136, makes worse True): help --all and search print ``commands``, doctor
+    and policy print status's document, and graph's actions theirs, yet --fields refused all three and their
+    --help --json said ``result: null``. They have rows; a help page is still refused, since a bare help row
+    would print the whole page with --fields ignored; and ``help bogus --json`` is one usage line."""
+    rc, doc, _err = _doc(["help", "--all", "--fields", "commands"], capsys)
+    assert rc == cli.EXIT_OK and list(doc) == ["commands"] and doc["commands"]
+    rc, doc, _err = _doc(["help", "search", "purge", "--fields", "commands"], capsys)
+    assert rc == cli.EXIT_OK and list(doc) == ["commands"] and doc["commands"]
+    rc, error = _error(["help", "status", "--fields", "commands"], capsys)
+    assert (rc, error["reason"]) == (cli.EXIT_USAGE, "usage") and "no document" in error["message"], error
+    cfg = str(initialised.config_path)
+    for verb in (["doctor"], ["policy", "show"]):
+        _rc, doc, _err = _doc([*verb, "--config", cfg, "--fields", "status"], capsys)
+        assert list(doc) == ["status"], (verb, doc)
+        page = json.loads(_help_text(capsys, verb[0], "--help", "--json"))
+        assert page["result"] == {"fields": ["status"]}, verb
+    rc, error = _error(["help", "bogus"], capsys)
+    assert (rc, error["reason"]) == (cli.EXIT_USAGE, "usage") and "bogus" in error["message"], error
+
+
+def test_every_top_level_key_of_a_captured_document_is_in_its_row_c1638(
+    initialised: Config,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    local_source_dir: Path,
+) -> None:
+    """B13 round 39 C1638 with C1673 and C1643 (ruling 136): each document a command writes, with a log
+    record logged mid-run, carries only keys of its ``_RESULT_FIELDS`` row, so a field a later change emits
+    cannot drift out of the table that ``--fields`` and ``--help --json`` read."""
+    seen: list[tuple[str, list[str]]] = []
+    real = clio.emit
+
+    def spy(doc: Any, **kw: Any) -> None:
+        real(doc, **kw)
+        args = cli._running.args
+        assert args is not None
+        command = args.action if args.command == "graph" else args.command
+        seen.append((command, list(json.loads(capsys.readouterr().out))))
+
+    monkeypatch.setattr(clio, "emit", spy)
+    monkeypatch.setattr(graph_auth, "MsalAuth", FakeAuth)
+    FakeAuth.calls, FakeAuth.blocked = [], False
+    _warn_on_config(monkeypatch)
+    cfg = str(initialised.config_path)
+    extra = tmp_path / "Contoso Extra"
+    shutil.copytree(local_source_dir, extra)
+    runs = [
+        ["add-source", str(extra), "--config", cfg],
+        ["sync", "--config", cfg],
+        ["accept-deletions", "source", "--config", cfg],
+        ["status", "--config", cfg],
+        ["doctor", "--config", cfg],
+        ["curate", "--config", cfg],
+        ["hold", "--list", "--config", cfg],
+        ["hold", "all", "--reason", "matter 7", "--owner", "Contoso Legal", "--config", cfg],
+        ["hold", "all", "--release", "--owner", "Contoso Legal", "--config", cfg],
+        ["compact-history", "--dry-run", "--config", cfg],
+        ["help", "--all"],
+        ["help", "search", "purge"],
+        ["logout", "--config", _graph_config(initialised)],
+    ]
+    for argv in runs:
+        cli.main([*argv, "--json"])
+        capsys.readouterr()
+    _blocked(initialised, capsys)
+    cli.main(["sync", "--config", cfg, "--json"])
+    assert {c for c, _ in seen} >= {
+        "add-source",
+        "sync",
+        "accept-deletions",
+        "status",
+        "doctor",
+        "curate",
+        "hold",
+        "help",
+        "logout",
+    }, seen
+    for command, keys in seen:
+        assert set(keys) <= set(cli._RESULT_FIELDS[command]), (command, keys)
+    assert ("sync", ["run", "outcome", "findings", "next", "waitingOnYou", "warnings"]) in seen, seen
