@@ -24719,6 +24719,7 @@ def test_the_shell_agent_words_are_the_python_reports() -> None:
     "name",
     [
         "Copilot",
+        "copilot|cursor",  # the lane's review: a | is no separator, never a run of two table words
         "github-copilot",
         "GitHub_Copilot",
         "Claude  Code",

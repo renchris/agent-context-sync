@@ -2601,6 +2601,7 @@ agent_words_name() {
 	for w in ${ws[@]+"${ws[@]}"}; do
 		case "$w" in
 		"") ;;
+		*"|"*) return 1 ;;
 		*) case "|$CUT_AGENT|" in *"|$w|"*) any=1 ;; *) return 1 ;; esac ;;
 		esac
 	done
@@ -4717,10 +4718,12 @@ typed_note_cut() { # [PAIRS CONFIGURED]: redact_stream's pairs and the configure
 	# below a kept one, a folder no configured source names (a refused look-alike, a name only step 1\047s list
 	# or install.log gave) is cut at the provider folder, so it reads `<Provider>-<org-N>/<path>`, never a
 	# <folder-N> of its own (B13 round 39 C1601 with C1656, as setup_report.Redactor.listed_only)
-	function cfgonly(r,    n, p, x, t) {
-		n = split(r, p, "/")
+	function cfgonly(r,    n, p, x, t, u) {
+		u = "" # unquoted first, as setup_report reads the word (`My\ Drive` is the generic My Drive)
+		for (x = 1; x <= length(r); x++) { t = substr(r, x, 1); if (t == "\\" && x < length(r)) t = substr(r, ++x, 1); u = u t }
+		n = split(u, p, "/")
 		for (x = 1; x <= n; x++) {
-			if (p[x] == "" || (p[x] in fixed) || (p[x] in drive) || (tolower(p[x]) in home)) continue
+			if (p[x] == "" || p[x] == "." || p[x] == ".." || (p[x] in fixed) || (p[x] in drive) || (tolower(p[x]) in home)) continue
 			if (p[x] !~ /^(<[a-z]+(-[0-9]+)?>)+$/) return 0
 			t = p[x]
 			while (match(t, /<(folder|library)-[0-9]+>/)) { if (!(substr(t, RSTART, RLENGTH) in cfgph)) return 0; t = substr(t, RSTART + RLENGTH) }
@@ -4730,6 +4733,17 @@ typed_note_cut() { # [PAIRS CONFIGURED]: redact_stream's pairs and the configure
 	# after each of three heads: `--source-local `, install.sh\047s `is not an existing folder: ` and a dry
 	# run\047s `add-source ` word, which keeps a folder\047s number (ck 0), as setup_report cuts them
 	function slcut(l) { return slone(slone(slone(l, "--source-local ", check), "is not an existing folder: ", check), "add-source ", 0) }
+	# where a bare not-a-folder name ends: the last ` (see --help)` before the line\047s end, `;,.:`, ` | ` or
+	# ` · `, else the line\047s end, as setup_report._NOT_A_FOLDER_RE and the recut\047s name_end read it
+	function nfend(r,    t, o, x, p, z, e) {
+		t = " (see --help)"; o = 0; p = r; e = 0
+		while ((x = index(p, t)) > 0) {
+			o += x; z = substr(r, o + length(t))
+			if (z == "" || index(";,.:", substr(z, 1, 1)) || substr(z, 1, 3) == " | " || substr(z, 1, 4) == " \302\267 ") e = o
+			p = substr(p, x + 1)
+		}
+		return e ? e : length(r) + 1
+	}
 	function slone(l, hd, ck,    out, a, q, w, i, c, e, j) {
 		out = ""
 		while ((a = index(l, hd)) > 0) {
@@ -4737,17 +4751,19 @@ typed_note_cut() { # [PAIRS CONFIGURED]: redact_stream's pairs and the configure
 			q = substr(l, 1, 1); q = (q == "\"" || q == "\047") ? q : ""
 			if (substr(l, length(q) + 1, length(cs)) != cs) continue
 			i = length(q) + 1; w = ""
-			while (i <= length(l)) {
+			if (q == "" && hd == "is not an existing folder: ") { # a name with blanks, taken whole
+				i = nfend(l); w = substr(l, 1, i - 1)
+			} else while (i <= length(l)) { # a bare word ends at a blank or a quote, a quoted one at its own
 				c = substr(l, i, 1)
-				if (q != "" ? c == q : (c == " " || c == "\t")) break
-				if (q == "" && c == "\\") { w = w substr(l, i, 2); i += 2; continue }
+				if (q != "" ? c == q : (c == " " || c == "\t" || c == "\"" || c == "\047")) break
+				if (q != "\047" && c == "\\") { w = w substr(l, i, 2); i += 2; continue }
 				w = w c; i++
 			}
 			e = length(w)
-			if (q == "") while (e > 0 && index(")]}.,;:`", substr(w, e, 1))) e--
+			if (q == "" && hd != "is not an existing folder: ") while (e > 0 && index(")]}.,;:`", substr(w, e, 1))) e--
 			j = index(substr(w, length(cs) + 1), "/")
 			c = j ? substr(w, length(cs) + 1, j - 1) : substr(w, length(cs) + 1, e - length(cs))
-			if (c ~ kept && (!ck || !j || cfgonly(substr(w, length(cs) + j + 1, e - length(cs) - j)))) {
+			if (c == "" || (c ~ kept && (!ck || !j || cfgonly(substr(w, length(cs) + j + 1, e - length(cs) - j))))) {
 				out = out q; l = substr(l, length(q) + 1); continue
 			}
 			out = out q cs (c ~ kept ? c "/" : "") "<path>" substr(w, e + 1); l = substr(l, i)

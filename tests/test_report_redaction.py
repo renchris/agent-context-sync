@@ -1467,6 +1467,23 @@ _C1626_ROWS = (
         "args=--source-local ~/Library/CloudStorage/Box-Box",
         "args=--source-local ~/Library/CloudStorage/Box-Box",
     ),
+    # the lane's review: a not-a-folder name with blanks taken whole, a bare word ending at a quote, and an
+    # escaped quote read through inside a double-quoted word
+    (
+        "usage error: --source-local is not an existing folder: "
+        "~/Library/CloudStorage/OneDrive-Contoso/Acme Merger Plans (see --help); retried",
+        "usage error: --source-local is not an existing folder: "
+        "~/Library/CloudStorage/OneDrive-<org-1>/<path> (see --help); retried",
+    ),
+    (
+        'ran "install.sh --source-local '
+        '~/Library/CloudStorage/OneDrive-Contoso/Northwind\\ Plans" and failed',
+        'ran "install.sh --source-local ~/Library/CloudStorage/OneDrive-<org-1>/<folder-1>" and failed',
+    ),
+    (
+        '--source-local "~/Library/CloudStorage/OneDrive-Fabrikam/Acme \\"Q3\\" Plans" --dry-run',
+        '--source-local "~/Library/CloudStorage/<path>" --dry-run',
+    ),
 )
 
 
