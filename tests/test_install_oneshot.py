@@ -8585,6 +8585,40 @@ def test_the_reinstall_keeps_uv_locks_versions(env: dict[str, str], tmp_path: Pa
         assert not pins.exists() and len(exported) == (lock == "export fails")
 
 
+@pytest.mark.parametrize("tmpdir", ["writable", "missing", "not writable"])
+def test_temp_files_go_under_a_writable_tmpdir_c1616(
+    env: dict[str, str], tmp_path: Path, tmpdir: str
+) -> None:
+    """B13 round 39 C1616: macOS mktemp with no template ignores TMPDIR for its per-user folder, so the uv
+    pins file (and doctor's, the sync's and the loop's output) went outside a sandbox's TMPDIR. tmp_make uses
+    TMPDIR when it names a writable folder and keeps the bare mktemp otherwise (never /tmp, never -t), so a
+    stale TMPDIR is never fatal under set -e (a make-things-worse case of the finder's fix)."""
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    (checkout / "pyproject.toml").write_text('[project]\nname = "agentsync"\n')
+    (checkout / "uv.lock").write_text("version = 1\n")
+    t = tmp_path / "t"
+    if tmpdir != "missing":
+        t.mkdir()
+    if tmpdir == "not writable":
+        t.chmod(0o500)
+    e = {**env, "STUB_UV_PINS": "contoso-dep==1.0", "TMPDIR": f"{t}/"}
+    try:
+        cp = install_sh(e, str(checkout))
+    finally:
+        if t.exists():
+            t.chmod(0o700)
+    assert cp.returncode == 2, cp.stdout + cp.stderr
+    [install] = [c for c in calls(e) if c.startswith("uv tool install ")]
+    pins = install.split(" -c ")[1].split(" ")[0]
+    assert Path(f"{e['STUB_LOG']}.pins").read_text() == "contoso-dep==1.0\n", "the fallback still pins"
+    if tmpdir == "writable":
+        assert pins.startswith(f"{t}/agentsync."), pins
+        assert list(t.iterdir()) == [], "every temp file is removed"
+    else:
+        assert not pins.startswith(str(t)) and not pins.startswith("/tmp/"), pins
+
+
 # ---- --version names local changes (J20) -------------------------------------------------------------------
 
 

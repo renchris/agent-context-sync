@@ -2209,6 +2209,17 @@ ticker() { # LINE
 	done
 }
 
+# A temp file, or a folder with -d, under $TMPDIR when it names a writable folder: macOS mktemp with no template
+# ignores TMPDIR for its per-user folder, so a sandbox's TMPDIR held none of the files (B13 round 39 C1616). A
+# TMPDIR that is missing or not writable keeps the bare mktemp, never /tmp and never -t, so a stale one is never
+# fatal under set -e.
+tmp_make() {
+	if [ -n "${TMPDIR:-}" ] && [ -d "$TMPDIR" ] && [ -w "$TMPDIR" ]; then
+		mktemp "$@" "${TMPDIR%/}/agentsync.XXXXXX" 2>/dev/null && return 0
+	fi
+	mktemp "$@"
+}
+
 # Run a command, or only print it in a dry run.
 run() {
 	if [ "$DRY_RUN" -eq 1 ]; then
@@ -9583,7 +9594,7 @@ list_folders() {
 	local line missing=0 gone=0 gonepaths="" others=0 other="" libs=0 libpaths="" apps="" tokens="" tok="" stuck=0 more=""
 	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vreal="" vplain="" vtail="" vlog="" cerr="" ctail="" clog="" stail="" crole="" clink="" cunread="" lwhat="" lfix="" lfact="" lown="" chbmode="" cshort="" cmis="" cmisread="" sfix="" cside="" codd="" fnoun="" stopsat="" chold=""
 	step_start list-folders
-	tmp="$(mktemp -d)"
+	tmp="$(tmp_make -d)"
 	: >"$tmp/list0"
 	if [ -d "$cs" ] && ! ls "$cs" >/dev/null 2>"$tmp/err"; then
 		grep -q 'Operation not permitted' "$tmp/err" && denied="OneDrive"
@@ -10594,7 +10605,7 @@ else
 		run "${UV_CURL[@]}" "$UV_INSTALLER_URL" -o "<tmp>/uv-install.sh"
 		run env UV_INSTALL_DIR="$HOME/.local/bin" UV_NO_MODIFY_PATH=1 /bin/sh "<tmp>/uv-install.sh"
 	else
-		UV_TMP="$(mktemp -d)"
+		UV_TMP="$(tmp_make -d)"
 		"${UV_CURL[@]}" "$UV_INSTALLER_URL" -o "$UV_TMP/uv-install.sh" ||
 			fail "could not download $UV_INSTALLER_URL (its error is above); install uv by hand"
 		[ "$(sha256 "$UV_TMP/uv-install.sh" | LC_ALL=C cut -c 1-64)" = "$UV_INSTALLER_SHA256" ] ||
@@ -10720,7 +10731,7 @@ holder_words() { # LOCK
 locked_pins() {
 	local f
 	[ -f "$SOURCE/uv.lock" ] || return 0
-	f="$(mktemp)" || return 0
+	f="$(tmp_make)" || return 0
 	if "$UV" export --project "$SOURCE" --locked --no-hashes --no-emit-project --no-default-groups --quiet \
 		-o "$f" </dev/null >/dev/null 2>&1 && [ -s "$f" ]; then
 		printf '%s' "$f"
@@ -10934,7 +10945,7 @@ elif [ "$SOURCE_KIND" = "checkout" ] && [ -x "$SOURCE/launcher/build.sh" ] && ha
 		run env OUT_DIR="<tmp>" ALLOWED_PROGRAM="$TOOL_PY" /bin/bash "$SOURCE/launcher/build.sh"
 		install_app "<tmp>/$APP_NAME"
 	else
-		LAUNCHER_OUT="$(mktemp -d)"
+		LAUNCHER_OUT="$(tmp_make -d)"
 		OUT_DIR="$LAUNCHER_OUT" ALLOWED_PROGRAM="$TOOL_PY" /bin/bash "$SOURCE/launcher/build.sh" || fail "launcher/build.sh failed"
 		install_app "$LAUNCHER_OUT/$APP_NAME"
 		rm -rf "$LAUNCHER_OUT"
@@ -11693,9 +11704,9 @@ add_source_filter() { # I N HELD MARK
 if [ "${#FOLDERS[@]}" -gt 0 ]; then
 	nth=0
 	HELD=""
-	[ "${#FOLDERS[@]}" -eq 1 ] || HELD="$(mktemp)"
-	MARK="$(mktemp)"
-	ERRF="$(mktemp)"
+	[ "${#FOLDERS[@]}" -eq 1 ] || HELD="$(tmp_make)"
+	MARK="$(tmp_make)"
+	ERRF="$(tmp_make)"
 	for f in "${FOLDERS[@]}"; do
 		nth=$((nth + 1))
 		: >"$MARK"
@@ -12035,7 +12046,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
 	run "$AGENTSYNC" status --config "$CONFIG"
 	step_end "done"
 else
-	DOCTOR_LOG="$(mktemp)"
+	DOCTOR_LOG="$(tmp_make)"
 	# With --confirm-install-agent and a source, step 7 installs the LaunchAgents: status's launchd.* lines say
 	# so instead of naming `agentsync install-agent` (a second instruction next to NEXT:). This step only: the
 	# report written at the exit describes what is installed by then. Under AGENTSYNC_NO_NEXT_HINT=1 status
@@ -12165,7 +12176,7 @@ elif [ "$DRY_RUN" -eq 1 ]; then
 	step_end "done"
 else
 	say "$SYNC_LABEL: $AGENTSYNC sync --once --materialise-budget 0 (downloads nothing: the files already on this Mac are converted now; each later sync downloads and converts the online-only ones)"
-	SYNC_OUT="$(mktemp)"
+	SYNC_OUT="$(tmp_make)"
 	# A sync still running (step 2's wait ran out, or one started since) holds the config's lock, and this one
 	# waits for it, up to 10 minutes (agentsync's INTERACTIVE_LOCK_WAIT_S): the note names the wait, so
 	# install.log and the Summary do not put its seconds on conversion (B13 round 4 Q29). The probe is
@@ -12503,7 +12514,7 @@ empty_grant_status() {
 }
 loop_next() { # sets next, and EXIT_RC to 1 when that status found something that stops the loop
 	local fails blocking held waits chmods srun=0
-	LOOP_OUT="$(mktemp)"
+	LOOP_OUT="$(tmp_make)"
 	# its exit status is its [FAIL] lines; 128 or more is a signal that stopped it, which `|| true` dropped, so
 	# the run ended 0 on the fallback NEXT with nothing said (B13 round 27 P14). Keyed on the rc, never on an
 	# empty LOOP_OUT: a status left running when only with_progress was stopped can still write it later, and
