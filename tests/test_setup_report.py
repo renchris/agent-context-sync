@@ -14896,8 +14896,9 @@ def test_a_step_install_sh_stopped_at_its_own_limit_is_never_an_outside_signal_c
     ``rc=143 result=failed note=timeout``, and the report read the rc alone: the step row said ``stopped by
     SIGTERM, rc 143 (timeout)``, the retry item ``from outside install.sh``, which was false, and the outcome
     dropped the limit. Each reads ``stopped at its limit after <N>s, rc 143`` now, from the step's note, at
-    each call site; a TERM from outside keeps its words, and the stale lock a limit-stopped first sync leaves
-    is still expected (_signal_lock reads _rc_words, which is unchanged)."""
+    each call site, but the sync line, whose ``failed in <N>s`` head gives the seconds, so it reads ``stopped
+    at its limit, rc 143`` (B13 round 39 C1637); a TERM from outside keeps its words, and the stale lock a
+    limit-stopped first sync leaves is still expected (_signal_lock reads _rc_words, which is unchanged)."""
     log = fake_mac["setup"] / "install.log"
     write_friction(fake_mac, retry_friction())
     limit = "stopped at its limit after 3600s, rc 143"
@@ -14920,7 +14921,9 @@ def test_a_step_install_sh_stopped_at_its_own_limit_is_never_an_outside_signal_c
     assert f"| failed, {limit} |" in table and "timeout" not in table, table
     assert setup_report._reached(first) != "" and limit in setup_report._run_end(first, runs)
     words, _counts = setup_report._sync_step_words(dict(first.step("first-sync") or {}))
-    assert words == f"failed in 3600s, {limit}", words
+    # B13 round 39 C1637: the sync line gives the seconds once, in its "in Ns" head
+    assert words == "failed in 3600s, stopped at its limit, rc 143", words
+    assert "s, stopped at its limit after " not in text, text
     status = {"seconds": "900", "rc": "143", "result": "failed", "note": "timeout"}
     assert setup_report._step_rc_words(status) == "stopped at its limit after 900s, rc 143"
     assert setup_report._step_rc_words({"rc": "143", "result": "failed"}) == "stopped by SIGTERM, rc 143"

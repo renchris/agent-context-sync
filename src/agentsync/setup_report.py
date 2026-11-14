@@ -16211,12 +16211,16 @@ def _run_named(run: InstallRun, every: Sequence[InstallRun]) -> str:
 
 
 def _sync_step_words(v: dict[str, str]) -> tuple[str, tuple[int, int, int] | None]:
-    """A first-sync step's words, ``done in 34s``, ``skipped in 0s, lock busy: ...``, and the counts its
-    ``converted-N-deferred-M[-reread-R]`` note carries (None when it carries none)."""
+    """A first-sync step's words, ``done in 34s``, ``skipped in 0s, lock busy: ...``, ``failed in 3600s,
+    stopped at its limit, rc 143`` (the seconds once: :func:`_step_rc_words`' ``after Ns`` is for the places
+    with no ``in Ns`` head, B13 round 39 C1637), and the counts its ``converted-N-deferred-M[-reread-R]`` note
+    carries (None when it carries none)."""
     counts: tuple[int, int, int] | None = None
     text = f"{v.get('result', '?')} in {v.get('seconds', '?')}s"
     limited = v.get("note") == "timeout" and v.get("rc", "0") not in ("0", "")
-    if v.get("rc", "0") not in ("0", ""):
+    if limited:  # the "in Ns" head gives the step's seconds already (B13 round 39 C1637)
+        text += f", stopped at its limit, rc {v['rc']}"
+    elif v.get("rc", "0") not in ("0", ""):
         text += f", {_step_rc_words(v)}"
     note = _CONVERTED_NOTE_RE.fullmatch(v.get("note", ""))
     if note is not None:

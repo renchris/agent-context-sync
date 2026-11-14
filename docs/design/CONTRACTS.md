@@ -40851,6 +40851,9 @@ step's own seconds, never the limit: install.log logs no limit, and a step's sec
 read `of 3s` under a 2 s limit, a limit the step never had), so the words say `after`, not `of`. Test:
 `test_a_step_install_sh_stopped_at_its_own_limit_is_never_an_outside_signal_c1434`.
 
+Amended 2026-11-14, §16.250 C1637: the report's first-sync line, whose `failed in <seconds>s` head gives the
+seconds already, reads `stopped at its limit, rc 143`; every other call site keeps `after <seconds>s`.
+
 **An empty source folder's listable warn is expected** (ruling 130's report half, completing C1205; C1401 with C1408
 and C1427, lane B's doctor half in §16.247). Doctor keeps the [warn] for an empty source folder outside every File
 Provider domain and gives it a pause-or-check fix, and the report filed it unexpected. `setup_report._sort_doctor`
@@ -41512,6 +41515,12 @@ word keeps the folder's number (the vanished-source add-back names the folder to
 `test_a_dollar_quoted_word_no_alias_covers_is_cut_whole_c1656_c1670`,
 `test_both_reports_print_a_folder_name_in_no_spelling_ruling_126` (every line form the same line in both reports,
 doctor's fix included), `test_a_refused_look_alike_keeps_only_its_provider_folder_c1656`.
+
+**The sync line gives a limit-stopped step's seconds once** (C1637; dated line at §16.245 C1434). `_sync_step_words`
+built `failed in 3600s` and then added `_step_rc_words`' `stopped at its limit after 3600s, rc 143`, the same number
+twice. Where the step stopped at its limit it now adds `stopped at its limit, rc 143`; `_step_rc_words` is unchanged,
+since the step table, the run end, the retry item and the outcome have no `in Ns` head and need its `after Ns`.
+Test: `test_a_step_install_sh_stopped_at_its_own_limit_is_never_an_outside_signal_c1434`.
 
 ### 16.251 Round 39: the installer: the shell reads the shared cut table, another build's render only when it reads every mark, and temp files under TMPDIR (2026-11-14, wave B13 round 39 lane RB)
 
