@@ -41442,6 +41442,18 @@ otherwise as before C1464, and the paragraph keeps `LIST_TIMEOUT` for a list_twi
 already says so. Test: `test_c1464s_bound_holds_only_while_a_provider_is_denied_or_asking_c1654`, which reads the
 three cases from install.sh.
 
+**tenant-probes.md's exit 78 says an invalid configuration writes nothing** (C1660; docs only). Since 6194dae7d row
+78 split its two causes, but its invalid-configuration clause said only `Configuration invalid: ...` on stderr "and
+no report", while round 37 C1305's fix asked for no state folder and no `--output` folder too: both `config_invalid`
+exits in tenant-probes.sh come before any write, and the folder is made only by `ensure_out_dir`, which a report
+write or probe 9's store calls, both after them. The clause now says
+the error shows with or without `--dry-run` and nothing is written: no report, and neither the state folder nor the
+`--output` folder is created. The client_id clause is unchanged, and the JSON form stays in the JSON section, which
+lists `config_invalid` among the error document's reasons. tests/test_tenant_probes.py is lane RB's file this round, so
+the proof sits in test_deploy_pack.py. Test: `test_tenant_probes_row_78_says_an_invalid_config_writes_nothing_c1660`,
+which pins the row and runs tenant-probes.sh over an unparseable sources.toml and a `client_id = 12`, plain and
+with `--dry-run`, each exiting 78 with nothing new under its folder.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units

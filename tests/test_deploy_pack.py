@@ -987,6 +987,45 @@ path = "{tmp_path / "src"}"
     assert sorted(str(p) for p in tmp_path.rglob("*")) == before  # no report, no state, no token cache
 
 
+@pytest.mark.parametrize("cause", ["unparseable", "client_id"])
+def test_tenant_probes_row_78_says_an_invalid_config_writes_nothing_c1660(tmp_path: Path, cause: str) -> None:
+    """B13 round 39 C1660: row 78 said an invalid configuration prints its error "and no report", leaving out
+    that nothing at all is written, with or without --dry-run: no report, and neither the state folder nor the
+    --output folder is created. The row says so, and each claim is run here, for an unparseable sources.toml
+    and a `[graph] client_id` that is no string, plain and dry."""
+    page = (ROOT / "docs" / "deploy" / "tenant-probes.md").read_text(encoding="utf-8")
+    [row] = [line for line in page.splitlines() if line.startswith("| 78 |")]
+    assert row == (
+        "| 78 | configuration invalid (`sources.toml` or its `[graph]` settings): `Configuration invalid:"
+        " ...` on stderr, with or without `--dry-run`, and nothing written: no report, and neither the state"
+        " folder nor the `--output` folder is created; or no `[graph] client_id` yet (IT request pending): a"
+        ' real run writes a "Not run" report and names its path on stderr, `--dry-run` writes nothing |'
+    )
+    ctx = tmp_path / "agent-context"
+    ctx.mkdir()
+    state, out = tmp_path / "state", tmp_path / "out"
+    graph = '[graph]\nclient_id = 12\ntenant = "contoso.onmicrosoft.com"\n'
+    body = (
+        "this is [not toml\n" if cause == "unparseable" else f'[agentsync]\nstate_dir = "{state}"\n\n{graph}'
+    )
+    (ctx / "sources.toml").write_text(body, encoding="utf-8")
+    env = tmp_home_env(tmp_path) | {"AGENTSYNC_PYTHON": sys.executable}
+    before = sorted(str(p) for p in tmp_path.rglob("*"))
+    for dry in ([], ["--dry-run"]):
+        proc = subprocess.run(
+            ["bash", str(SCRIPTS[1]), "--output", str(out), *dry],
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=120,
+        )
+        assert (proc.returncode, proc.stdout) == (78, ""), proc.stderr
+        assert proc.stderr.startswith("Error: Configuration invalid: "), proc.stderr
+        assert sorted(str(p) for p in tmp_path.rglob("*")) == before, dry  # no report, state or --output
+
+
 def test_tenant_probes_config_attributes_exist(tmp_path: Path) -> None:
     """The probe's embedded Python runs past --dry-run only against a real tenant, so no test executes it;
     every ``config.<a>.<b>`` it reads must still exist (KISS K15 removed ``GraphConfig.company``)."""
