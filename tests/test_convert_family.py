@@ -376,7 +376,9 @@ def test_a_zero_byte_office_file_or_msg_after_an_older_builds_cached_result_is_e
     """B13 round 38 C1450 with C1488 (ruling 132): before C930 a zero-byte Office file or ``.msg`` was a
     cached UNREADABLE ``not-ooxml`` or ``not-msg`` (classed ``not the type its name says``), and C930 moved no
     version, so an upgraded Mac served every new zero-byte file of that suffix (one canonical hash) the older
-    answer while a fresh one said ``empty``. The guard's ``empty_screen`` option moves those converters' keys:
+    answer while a fresh one said ``empty``. ``convert._identity``'s ``empty_screen`` option (Office names and
+    ``.msg`` only) moves those keys. C1466's zero-byte skip is what keeps the older answer away in a real
+    sync; this test turns it off around the second sync so the key move alone answers (B13 round 39 C1646):
     a new zero-byte file is ``empty``, a real file still converts, and the row the older build settled keeps
     its class (C930's rule: no re-read)."""
     config, src = make_env(tmp_path)
@@ -390,7 +392,9 @@ def test_a_zero_byte_office_file_or_msg_after_an_older_builds_cached_result_is_e
     (src / f"Contoso zero{suffix}").write_bytes(b"")
     if real is not None:
         real(src / f"Contoso real{suffix}")
-    assert run(config).exit_code == 0
+    with monkeypatch.context() as no_skip:  # C1466's zero-byte cache skip off: the key move alone answers
+        no_skip.setattr(convert_pkg, "_zero_bytes", lambda src: False)
+        assert run(config).exit_code == 0
     row = _row(config, f"Contoso zero{suffix}")
     assert row.state is RowState.QUARANTINED and row.state_reason == policy_mod.EMPTY_OUTPUT_REASON
     assert quarantine_class(row.state_reason) == "empty"

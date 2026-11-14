@@ -1386,6 +1386,9 @@ cache get and put for a staged file of size 0, after the label refusal, an OSErr
 KEY_SCHEMA_VERSION stays, no outdated rule reads options and _republish_from_cache is unchanged, so a settled row
 keeps its class (C930's ruling). The test seeds an older build's answer for .docx, .xlsx, .pptx, .potx, .vsdx and
 .msg; C930's dated line and C1304's `Not built here` sentence move in lane E's commit.
+Amended 2026-11-14, §16.253 C1646: built in `convert._identity`, keyed on the name, not in `_GuardedConverter.options`
+(with an OCR engine pandoc is two converters, §16.248); C1466's zero-byte skip is what keeps the older answer away,
+and the option is a second guard that changes no result (C1645).
 
 ROUND 39 RULINGS (lead; every lane builds to them; all code-only; the prompt stays at v37):
 (133) Both reports cut the same spellings by construction, from one table both read, completing ruling 126 (privacy;

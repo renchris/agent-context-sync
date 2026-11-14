@@ -114,9 +114,12 @@ def _identity(conv: Converter, name: str) -> tuple[str, str]:
     converter may render the same bytes differently per suffix (``.csv`` table vs ``.txt`` fence), so the
     suffix must be part of the producer identity.  Nothing else of the name may influence output.
 
-    An Office package name or a ``.msg`` also carries ``empty_screen``: C930 changed its zero-byte answer from
-    a cached ``not-ooxml`` or ``not-msg`` to ``empty`` and moved no version, so an older build's answer is
-    never served (B13 round 38 C1450 with C1488, ruling 132). Keyed on the name, not on the converter's
+    An Office package name or a ``.msg`` also carries ``empty_screen`` (B13 round 38 C1450 with C1488, ruling
+    132): C930 changed its zero-byte answer from a cached ``not-ooxml`` or ``not-msg`` to ``empty`` and moved
+    no version. What keeps that older answer away is C1466's zero-byte skip in ``convert_file``: only a file
+    of zero bytes has that canonical hash, and it never reads the cache. The option is a second guard that
+    changes no result; it cost each Office and ``.msg`` file one conversion at the upgrade, and stays, since
+    taking it out would move those keys again (B13 round 39 C1645). Keyed on the name, not on the converter's
     suffixes: with an OCR engine pandoc is two converters, and ``.rtf`` keeps the one key it has on a Mac
     without an engine.
     """

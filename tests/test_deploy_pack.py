@@ -7309,6 +7309,12 @@ _ROUND_38_RB_PARAGRAPH_AMENDS = (
 """Round 38 lane RB's dated lines no claim reads: C1405's in §16.29's re-run table row, and C1456's and
 C1458's in §16.300.19's paragraph and §16.300.24's Success bullet, sections the CLI conventions wave
 numbers below §16.300."""
+_ROUND_39_E_PARAGRAPH_AMENDS = (
+    ("16.248", "**An Office file or `.msg` of zero bytes is `empty` after an older", "§16.253 C1645, C1646"),
+    ("16.248", "**Zero bytes skip the cache both ways** (C1466;", "§16.253 C1645"),
+)
+"""Round 39 lane E's dated lines no one claim holds alone: C1645's two in §16.248, where the C1450 and C1466
+paragraphs each name the other's item, so each claim finds both lines."""
 _ROUND_32_B_PARAGRAPH_AMENDS = (
     ("16.200", "**C112, C125, C146, C155, C177, C178, C139, C141, C145, C210: status", "§16.215 C624"),
     ("16.205", "C381 (ruling 34): what governance/ keeps survives the folder's loss", "§16.215 C632"),
@@ -7544,6 +7550,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_37_B_PARAGRAPH_AMENDS,
         *_ROUND_35_RB_PARAGRAPH_AMENDS,
         *_ROUND_38_RB_PARAGRAPH_AMENDS,
+        *_ROUND_39_E_PARAGRAPH_AMENDS,
         *_REVIEW_BACKTEST_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)

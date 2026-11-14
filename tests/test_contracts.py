@@ -651,6 +651,29 @@ def test_contracts_cites_the_lanes_brief_by_ruling_not_by_line_c1284() -> None:
     assert len(re.findall(r"^\(84\) ", lanes, flags=re.MULTILINE)) == 1
 
 
+def test_c1450s_option_is_credited_as_a_second_guard_c1645() -> None:
+    """B13 round 39 C1645 with C1646: with C1450's two ``empty_screen`` lines taken out every behavior check
+    still passed, since only a zero-byte file has the canonical hash an older answer sits under and C1466's
+    skip keeps it from the cache. ``convert._identity``'s docstring credits the skip and calls the option a
+    second guard, §16.248's two paragraphs take that dated line, and ruling 132's text in COMMON.md stays as
+    written with one dated line after it naming where the option lives."""
+    identity = importlib.import_module("agentsync.convert")._identity
+    doc = " ".join((identity.__doc__ or "").split())
+    assert "What keeps that older answer away is C1466's zero-byte skip in ``convert_file``" in doc
+    assert "The option is a second guard that changes no result" in doc
+    text = " ".join(CONTRACTS.read_text(encoding="utf-8").split())
+    home = text.split("### 16.248 ", 1)[1].split("### 16.249 ", 1)[0]
+    assert home.count("Amended 2026-11-14, §16.253 C1645") == 2
+    assert "Amended 2026-11-14, §16.253 C1645: `C1450's option moves today's keys` is not why" in home
+    lanes = (CONTRACTS.parent.parent / "lanes" / "COMMON.md").read_text(encoding="utf-8")
+    ruling = lanes.split("\n(132) ", 1)[1].split("\n\n", 1)[0]
+    assert ruling.startswith("A zero-byte file is never served an older build's cached answer")
+    assert "_GuardedConverter.options adds `empty_screen: 1`" in ruling, "ruling 132 stays as written"
+    [line] = [x for x in ruling.splitlines() if x.startswith("Amended ")]
+    assert line.startswith("Amended 2026-11-14, §16.253 C1646: built in `convert._identity`")
+    assert ruling.splitlines()[-3] == line, "the dated line closes the ruling"
+
+
 def test_every_item_paragraph_opens_after_a_blank_line_c1043() -> None:
     """B13 round 36 C1043: §16.232's C911 entry followed C937's last line with no blank line, so Markdown
     rendered it inside C937's paragraph. Every `**<title>** (C<n>` entry opens after a blank line."""

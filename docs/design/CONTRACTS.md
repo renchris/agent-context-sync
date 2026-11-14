@@ -39013,6 +39013,8 @@ Amended 2026-11-13, §16.248 C1450, C1488: `a failed one was never cached` is wr
 their zero-byte answer before C930 was a cached UNREADABLE `not-ooxml` or `not-msg`, so an upgraded Mac served it to
 every new zero-byte file of the suffix. An `empty_screen` option moves those names' keys; still no emitter bump and
 no re-read, so a row already settled keeps its class.
+Amended 2026-11-14, §16.253 C1645: what keeps that older answer away is §16.248 C1466's zero-byte cache skip, since
+only zero bytes have that canonical hash; `empty_screen` is a second guard that changes no result.
 Amended 2026-11-08, §16.238 C1033: "a wrong-type `.vsdx`" is a `.vsdx` that is not a ZIP, or an Office package of
 another family: a ZIP that is no Office package at all still reads `not a Visio drawing` and is tried again.
 Amended 2026-11-08, §16.239 C1034, C1118: a blank or byte-order-mark-only `.drawio` takes `not-drawio` by choice,
@@ -40532,6 +40534,8 @@ Amended 2026-11-13, §16.248 C1466: and `convert_file` neither reads nor writes 
 bytes, so no answer cached for zero bytes under a key a build still uses is served either. A zero-byte file converted
 from now on has no cache entry, so a damaged page of one (a text type's page; a stub never was) is fetched again
 rather than rendered again from the cache.
+Amended 2026-11-14, §16.253 C1645: the `Not built here` sentence is built by C1466's skip, not by the key move: only
+a zero-byte file has the canonical hash the older answer sits under, and it never reads the cache.
 
 **A test kills its helper through the helper's own Popen, never a bare pid** (C1272; `tests/test_ocr.py`). The C961
 test's `finally` (C1036's red-run cleanup) sent SIGKILL to the helper's bare pid after its green path had asserted
@@ -41289,6 +41293,9 @@ bytes change (C930's ruling). Tests:
 (six suffixes: an older build's sync caches `not-ooxml` or `not-msg` under a key without the option; a new zero-byte
 file is then `empty` under another options hash, a real `.pptx` or `.potx` converts, and the settled row keeps its
 class) and `test_convert_family.py::test_only_an_office_name_or_msg_carries_the_empty_screen_option_c1450`.
+Amended 2026-11-14, §16.253 C1645, C1646: the option changes no result; C1466's skip below is what keeps the older
+answer away, and the option is a second guard. The first test turns that skip off around its second sync, so the
+key move alone answers there.
 
 **Zero bytes skip the cache both ways** (C1466; `agentsync.convert`; amends §16.243 C1304). Every zero-byte file of
 a suffix shares one canonical hash, so whatever answer a build once cached for zero bytes under a key still in use
@@ -41305,6 +41312,8 @@ rare path at the cost of one fetch. Tests:
 `.msg`: the older answer seeded under today's key; a new zero-byte file is `empty` under that same key, the old
 entry stays, a real `.docx` converts, and the settled row keeps its class) and
 `test_convert_family.py::test_convert_file_neither_reads_nor_writes_the_cache_for_zero_bytes_c1466`.
+Amended 2026-11-14, §16.253 C1645: `C1450's option moves today's keys` is not why the older answer stays away: this
+skip alone keeps it from a new zero-byte file, under the old key or a new one.
 
 **`engine()`'s docstring names the cycle's one look** (C1467; `agentsync.convert.ocr`). `engine()` still opened
 "The engine a cycle should use", while the cycle looks once through `engine_state` (`cycle._cycle_ocr_state`) and
@@ -41529,7 +41538,26 @@ exclude glob with DEL, the inbox table and discover's string round-trip; red wit
 
 ### 16.253 Round 39: the converters: the empty-file screen, a zero-byte recording, and a table's page cap (2026-11-14, wave B13 round 39 lane E)
 
-Reserved for round 39 lane E of B13.
+Round 39's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 39"; specs `round39/items/C<n>.md`, the
+verifier's corrected fix built). A dated line this round writes reads `Amended 2026-11-14, §16.253 C<n>`.
+
+**C1466's zero-byte skip, not C1450's key move, keeps an older build's answer from a new empty file** (C1645 and
+C1646, one defect from two findings, built once; `agentsync.convert`; amends §16.248 C1450 and C1466, §16.233 C930
+and §16.243 C1304). Only a file of zero bytes has the canonical hash an older build's `not-ooxml` or `not-msg` answer
+sits under (any ZIP that parses takes the `ooxml-parts@1` roll, a `.msg` its bytes), and C1466 stops such a file
+reading the cache; the other reader, `_republish_from_cache`, renders only an `ok` page, and a zero-byte stub is
+quarantined. So with the two `empty_screen` lines taken out, every behavior check of C1450's test still passed and
+only its options-hash assertion failed (the verifier's run on 853fab348). `empty_screen` stays in
+`convert._identity` as a second guard that changes no result: it cost every Office and `.msg` file one conversion
+and a new page options hash at the upgrade, and taking it out now would move those keys a second time on every Mac
+that ran a build since 2764de31e. The `_identity` docstring and the four passages that credited the option say so
+by dated lines; ruling 132's own text in `docs/lanes/COMMON.md` stays as written and takes one dated line (C1646).
+C1450's test turns `convert._zero_bytes` off around its second sync, so its behavior checks answer for the key move
+alone, and its docstring names `convert._identity`, not the guard, as the option's home. Tests:
+`test_convert_family.py::test_a_zero_byte_office_file_or_msg_after_an_older_builds_cached_result_is_empty_c1450`
+(red at its state check, a new zero-byte `.docx` served `not-ooxml`, in all six cases once the two lines are gone)
+and `test_contracts.py::test_c1450s_option_is_credited_as_a_second_guard_c1645`.
+
 
 ### 16.254 Round 39: the compaction promise, recording downloads and the guides (2026-11-14, wave B13 round 39 lane D)
 
