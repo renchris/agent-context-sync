@@ -1242,24 +1242,39 @@ def test_both_reports_print_a_folder_name_in_no_spelling_ruling_126(
     safe_text's spelling (a format character dropped) was no pair, so a name holding a control, a break or a
     hidden character printed in clear. Each proof name, configured, goes through the shell report and the
     agentsync report in every line form, its list spelling, its `$'...'` word and its safe_text spelling: no
-    fragment of any name prints, and both reports print the same line."""
+    fragment of any name prints, and both reports print the same line, doctor's fix included (C1656)."""
     names = [f"Alder{n:02d}{ch}Birch{n:02d}" for n, ch in enumerate(_R126_CHARS)][group : group + 12]
     said = " ;; ".join(line for n, name in enumerate(names) for line in _r126_lines(n, name))
     shell, python = _fuzzy_report(env, monkeypatch, names, said)
     leaks = [(who, line) for who, got in (("shell", shell), ("python", python)) for line in got.split(" ;; ")]
     leaks = [(who, line) for who, line in leaks if re.search("Alder|Birch", line)]
     assert not leaks, (len(leaks), leaks[:3], sorted({(w, x[x.index("Alder") :][:7]) for w, x in leaks}))
-    # the shell cuts every `$'...'` word whole, before its pairs, so doctor's fix reads `open ~/<path> ...`
-    # there, where the agentsync report keeps the word's quotes around its placeholders
+    # B13 round 39 C1656 (ruling 134): both reports cut every `$'...'` word whole, so doctor's fix reads
+    # `open ~/<path> in Finder once` in each, and every line form, the fix line included, is the same line
     pairs = list(zip(shell.split(" ;; "), python.split(" ;; "), strict=True))
     fixes = [(a, b) for a, b in pairs if a.startswith("open ")]
-    assert fixes and all(a == "open ~/<path> in Finder once" for a, _b in fixes), fixes
-    assert all(
-        re.fullmatch(r"open ~/\$'Library/CloudStorage/OneDrive-<org-1>/<folder-\d+>' in Finder once", b)
-        for _a, b in fixes
-    )
-    wrong = [(a, b) for a, b in pairs if a != b and not a.startswith("open ")]
+    assert fixes and all(a == b == "open ~/<path> in Finder once" for a, b in fixes), fixes
+    wrong = [(a, b) for a, b in pairs if a != b]
     assert not wrong, (len(wrong), wrong[:6])
+
+
+@pytest.mark.parametrize("ch", ["\b", "\f", "\v", "\a"])
+def test_a_folder_name_holding_a_control_byte_is_redacted_alike_in_both_reports_c1629(
+    env: dict[str, str],  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+    ch: str,
+) -> None:
+    """B13 round 39 C1629 (ruling 133; data integrity): install.sh's pairs split a name at a control byte,
+    the agentsync report's separators did not, so for ``Q3<BS>Plans`` the shell cut all five spellings and
+    the agentsync report printed ``Q3 Plans``, ``Q3-Plans`` and ``q3_plans`` in clear. Both read
+    report_cuts.SEPARATORS now and print the same line."""
+    shell, python = _fuzzy_report(
+        env, monkeypatch, [f"Q3{ch}Plans"], "opened Q3 Plans and Q3-Plans and Q3?Plans and q3_plans"
+    )
+    assert shell == python == "opened <folder-1> and <folder-1> and <folder-1> and <folder-1>", (
+        shell,
+        python,
+    )
 
 
 @pytest.mark.parametrize(

@@ -40763,6 +40763,12 @@ and each character `_LIST_ESCAPED_RE` matches, in each line form) and its `build
 `test_a_folder_name_prints_in_no_spelling_through_the_report_ruling_126`; `_separator_lines()` takes each
 `_LIST_ESCAPED_RE` character as a path byte, and both reports still agree on every slot.
 
+Amended 2026-11-14, §16.250 C1670, C1649, C1635: `printf %q`'s UTF-8 body above matches only a name whose escaped
+characters are all ASCII and whose other characters hold no byte 0x80 to 0x9F (`Café` with an ESC or a BEL), so the
+body macOS's bash 3.2 writes byte by byte (0x80 to 0x9F and 0xAD in octal, every other byte raw, read back with
+`errors="replace"`) is aliased beside it, and a generic folder or product-word `safe_text` spelling is exempt before
+the report-word test: it gets no alias and leaves the report public (§16.250).
+
 **agentsync's own verbs are held whole after `agentsync `** (C1425; ruling 126; makes worse True for an edge rule).
 A folder `Empty Project` beside a source `Project Alpha` turned `agentsync exclude-empty project-alpha` into
 `exclude-<folder-N>-alpha`. `Redactor._compile` holds each verb `setup_report.agentsync_verbs` reads from the
@@ -40790,6 +40796,11 @@ the rule install.sh's recut takes (lane RB, §16.246). Behind a volume `_VOLUME_
 and `_VOLUME_HOME_RE` finds every head, overlapping, so `/Volumes/Users/Users/olga/x` is cut. Test:
 `test_the_provider_folder_is_kept_only_as_a_placeholder_and_a_volume_head_overlaps_c1481_c1440`; the both-reports
 rows are lane RB's.
+
+Amended 2026-11-14, §16.250 C1634: `_PROVIDER_KEPT_RE` also keeps an app's name, `-SharedLibraries` or not, and a
+domain `_org_of` reads as naming no organisation (`Personal`, `Business` or `Work` in any case, or the app's own name:
+`Box-Box`), from `report_cuts.provider_kept_pattern()`, which install.sh's recut reads too; a literal tenant is still
+cut.
 
 **A recording waiting on a failed OCR helper takes its page's class** (C1433 and C1452 with C1451, C1487, C1490,
 C1465 and C1454; ruling 127; data integrity; dated lines at §16.74 J39, §16.240 C1266, C1267 and §16.242 C1271).
@@ -41400,7 +41411,83 @@ mapping from install.sh first, so a change to what the installer escapes fails i
 
 ### 16.250 Round 39: the report: one cut table both reports read, bash 3.2's %q spellings, and the step-limit words (2026-11-14, wave B13 round 39 lane RA)
 
-Reserved for round 39 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 39").
+Lane RA of B13 round 39 (`docs/plans/bring-back-ocr.md`, "B13 round 39"): rulings 133's and 134's Python half
+(privacy; data integrity), landed with lane RB's shell half in one run, and the report's other words. A dated line
+this round writes reads `Amended 2026-11-14, §16.250 C<n>`.
+
+**One table both reports cut by** (C1629, C1634 and C1635; ruling 133; privacy; data integrity). Ruling 126's halves
+were ported by hand and drifted. Every value the two reports cut by now lives once, as data, in
+`agentsync.report_cuts` (`src/agentsync/report_cuts.py`, standard library only): agentsync's verbs
+(`agentsync_verbs()`, the commands `cli.build_parser` registers, hidden ones included), the provider apps
+(`PROVIDER_APPS`, `SHARED_LIBRARIES`) and the provider folder forms kept after `CloudStorage`
+(`provider_kept_pattern()`), the generic folders (`GENERIC_FOLDERS`), the agent words (`AGENT_WORDS`), the generic
+domains (`GENERIC_DOMAINS`), the separator class (`SEPARATORS`, as a Python bracket class `sep_class()`), the format
+characters (`FORMAT_RANGES`, every Cf of Unicode 14.0 to 15.1, Python 3.11 to 3.13, as a set `format_chars()`),
+the alias forms in the order both builders walk them (`ALIAS_FORMS`) and the bytes bash 3.2 writes in octal under
+UTF-8 (`BASH32_UTF8_OCTAL`). `setup_report` builds `_SEP_RE`, `_FUZZY_SEP`, `_JOINED_SEP`, `_PROVIDER_KEPT_RE`, its
+word sets and `agentsync_verbs` from it. `report_cuts.shell_block()` generates the block install.sh carries between
+`# BEGIN report_cuts` and `# END report_cuts` (`AGENTSYNC_VERBS`, `CUT_DRIVE`, `CUT_AGENT`, `CUT_APPS`,
+`CUT_DOMAINS`, `CUT_PROVIDER_KEPT`, `CUT_SEP`, `CUT_CF`, `CUT_Q32_OCTAL`, `CUT_ALIAS_FORMS`; each format character one
+UTF-8 alternative in octal, the provider forms spelled out per app with every letter in any case, since an awk has no
+backreference and an ERE no case flag), held byte for byte by lane RB's test (§16.251); the shell never reads the
+table from the installed agentsync. Test: `test_the_report_cuts_table_is_what_both_reports_read_ruling_133` (the
+running Python's Cf set inside the table's, the block valid bash whose values an awk reads as the Python reads
+them).
+
+**A name holding a control byte is matched in every separator spelling** (C1629; ruling 133; data integrity). The
+separators were a blank, a tab, `_`, `\` and `-`, so `Q3<BS>Plans` was one token and its blank, hyphen and underscore
+spellings printed in clear, where install.sh's pairs split at the byte. The class is now `report_cuts.SEPARATORS`:
+those five, every other C0 control and DEL, never LF or CR, so no match spans two lines. Tests:
+`test_a_name_holding_a_control_byte_is_matched_in_every_separator_spelling_c1629`,
+`test_a_folder_name_holding_a_control_byte_is_redacted_alike_in_both_reports_c1629`.
+
+**A provider folder that names no organisation is kept** (C1634; ruling 133; dated line at §16.245 C1481). `_cut_path`
+kept a provider folder only as an app's name and placeholders, so `Box-Box/<folder-1>` and
+`OneDrive-Personal/<folder-1>` were cut to `<path>` in the Installer line while Environment printed the same folder
+in clear. It now also keeps an app's name, `-SharedLibraries` or not, and a domain `_org_of` reads as naming no
+organisation: `Personal`, `Business` or `Work` in any case, or the app's own name. `OneDrive-Fabrikam`,
+`Fabrikam-<org-1>` and `OneDrive-Personal-Fabrikam` are still cut. Test:
+`test_the_provider_folder_is_kept_only_as_a_placeholder_and_a_volume_head_overlaps_c1481_c1440`.
+
+**A generic or product-word spelling leaves the report public** (C1635; ruling 133; dated line at §16.245 C1414).
+`_alias_escaped` made a report private only when a name's `safe_text` spelling was one word the report prints, before
+it checked the generic and product-word exemption `Redactor.add` applies, so a zero-width character before
+`Documents`, `Music` or `Copilot` dropped the public issue link. The exemption is checked first: such a spelling gets
+no alias (install.sh adds no pair) and the report stays public; a zero-width `Status` still makes it private only.
+Test: `test_a_folder_name_prints_in_no_spelling_ruling_126`.
+
+**The report knows what bash 3.2's `printf %q` writes** (C1670, C1636 and C1649; ruling 134; data integrity; makes
+worse True for dropping the UTF-8 body; dated line at §16.245 C1414). Under en_US.UTF-8 macOS's /bin/bash 3.2.57
+tests each byte: it writes 0x80 to 0x9F and 0xAD as `\ooo` and every other byte raw, and dollar-quotes the word
+only when a byte is escaped (U+FEFF, all raw, is not quoted); under `LC_ALL=C` every non-ASCII byte is octal.
+`folder_spellings` had only the all-octal bodies, so a name with U+2028, U+200B, U+202E or U+0085, or É beside a tab,
+matched no alias in a UTF-8 run's word. It now adds the body bash 3.2 writes (`_bash32_body`), built as bytes and
+decoded with `errors="replace"` as the report reads install.out and the friction log, in `\E` and `\e` forms, beside
+the `LC_ALL=C` body and the body with only escaped characters in octal, which stays: it is the only spelling of a
+name like `Café` with an ESC or a BEL, which no other body matches. A body no alias matches is still safe: install.sh
+writes a folder through `%q` only after `--source-local `, cut by structure, and every `$'...'` word is cut whole
+(below). The test helper `_printf_word` runs /bin/bash under the locale it is given (LC_ALL and LANG), captures bytes
+and decodes them so. Test: `test_folder_spellings_hold_what_bash_32_writes_in_either_locale_c1670_c1636` (U+2028,
+U+200B, U+202E after an accent, U+0085, É with a tab, Café with an ESC and with a BEL, under both locales; skipped
+unless /bin/bash is 3.2 on darwin).
+
+**Every `$'...'` word is cut whole, and a refused look-alike keeps its provider folder** (C1656 with C1601's
+report half; ruling 134; makes worse True for the shell taking this report's form). install.sh's `redact_stream` cuts
+every `$'...'` word to `<path>` first, so doctor's fix read `open ~/<path> in Finder once` there and kept the word's
+quotes around placeholders here. `Redactor.redact` now cuts every `$'...'` word left after its aliases to `<path>`
+(`_ANSI_C_WORD_RE`, one left open running to the line's end, never past it), uncounted as the shell's is, so the fix
+reads the same in both and a body no alias covers never prints. A word right after `--source-local` or `add-source`
+is left to `_source_local_shown`, which decodes it and cuts it by structure (round 17 U10's quotes kept), the cut
+that makes a body no alias matches safe there. install.sh's stage stays (porting this report's form
+there would print any body no pair covers). The `<path>` legend item names it. A `--source-local` argument or a
+refusal under CloudStorage that names a folder only a listing names, no configured source, is cut at that folder:
+`_add_listed` notes each placeholder it numbered first for such a name (`Redactor.listed_only`) and `_cut_path` does
+not keep one, so a refused look-alike's `args=` and usage-error lines read
+`~/Library/CloudStorage/OneDrive-<org-N>/<path>`, as lane RB's shell report prints them (§16.251); an `add-source`
+word keeps the folder's number (the vanished-source add-back names the folder to add again). Tests:
+`test_a_dollar_quoted_word_no_alias_covers_is_cut_whole_c1656_c1670`,
+`test_both_reports_print_a_folder_name_in_no_spelling_ruling_126` (every line form the same line in both reports,
+doctor's fix included), `test_a_refused_look_alike_keeps_only_its_provider_folder_c1656`.
 
 ### 16.251 Round 39: the installer: the shell reads the shared cut table, another build's render only when it reads every mark, and temp files under TMPDIR (2026-11-14, wave B13 round 39 lane RB)
 

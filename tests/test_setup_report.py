@@ -51,6 +51,7 @@ from agentsync import (
     materialise,
     net,
     policy,
+    report_cuts,
     setup_report,
 )
 from agentsync import manifest as manifest_mod
@@ -5110,15 +5111,25 @@ def _doctor_word(name: str) -> str:
     return "".join(out)
 
 
-def _printf_word(name: str) -> str:
-    """macOS's bash ``printf %q`` of ``name`` under LC_ALL=C, as install.sh writes it."""
+def _printf_word(name: str, locale: str = "C") -> str:
+    """/bin/bash's ``printf %q`` of ``name`` under ``locale`` (LC_ALL and LANG), as install.sh writes it: its
+    bytes, decoded with ``errors="replace"`` as the report reads install.out and the friction log (B13 round
+    39 C1670 with C1636: macOS's bash 3.2 writes a raw lead byte under UTF-8)."""
     return subprocess.run(
-        ["/bin/bash", "-c", 'printf %q "$1"', "_", name],
-        env={"LC_ALL": "C", "PATH": "/usr/bin:/bin"},
+        ["/bin/bash", "-c", 'printf %q "$1"', "_", name.encode("utf-8")],
+        env={"LC_ALL": locale, "LANG": locale, "PATH": "/usr/bin:/bin"},
         capture_output=True,
-        text=True,
         check=True,
-    ).stdout
+    ).stdout.decode("utf-8", errors="replace")
+
+
+def _bash_is_32() -> bool:
+    """Whether /bin/bash is macOS's bash 3.2, whose ``printf %q`` under UTF-8 ruling 134 measured (a later
+    bash, Linux CI's, quotes a non-ASCII byte otherwise)."""
+    if sys.platform != "darwin":
+        return False
+    cp = subprocess.run(["/bin/bash", "--version"], capture_output=True, text=True, check=False)
+    return cp.stdout.startswith("GNU bash, version 3.2.")
 
 
 _RULING_126_CHARS = (
@@ -5173,8 +5184,15 @@ def test_a_folder_name_prints_in_no_spelling_ruling_126() -> None:
         setup_report._alias_escaped(red, name)
         for line in _ruling_126_lines(name):
             got = red.redact(line)
-            if re.search("(?i)zephyr|quarry|vault", got) or "<folder-1>" not in got:
+            # B13 round 39 C1656: a $'...' word is cut whole after the aliases; its body alone is still an
+            # alias of the folder (C1670)
+            bodies = re.findall(r"\$'((?:[^'\\]|\\.)*)'", line)
+            held = "<path>" in got if bodies else "<folder-1>" in got
+            if re.search("(?i)zephyr|quarry|vault", got) or not held:
                 wrong.append((hex(ord(c)), line, got))
+            wrong += [
+                (hex(ord(c)), b, red.redact(b)) for b in bodies if not red.redact(b).endswith("<folder-1>")
+            ]
         assert not red.private_only, hex(ord(c))
     assert not wrong, (len(wrong), wrong[:6])
     # the round 38 review: a SharedLibraries library and a folder only a listing names take every spelling
@@ -5212,6 +5230,130 @@ def test_a_folder_name_prints_in_no_spelling_ruling_126() -> None:
     setup_report._alias_escaped(red, "\u200bStatus")
     assert red.redact("## Status\nStatus: ok") == "## Status\nStatus: ok"
     assert red.private_only
+    # B13 round 39 C1635: a generic folder or product word is exempt first, as Redactor.add exempts it: its
+    # zero-width spelling reads back as nothing private, gets no alias and leaves the report public
+    for name in ("\u200bDocuments", "\u200bMusic", "\u200bCopilot", "\u200bDesktop"):
+        red = setup_report.Redactor()
+        red.add("folder", name, fuzzy=True)
+        setup_report._alias_escaped(red, name)
+        shown = safe_text(name)
+        assert red.redact(f"saw {shown} and {name}") == f"saw {shown} and <folder-1>", name
+        assert not red.private_only, name
+
+
+_BASH32_NAMES = (
+    "Zephyr\u2028Quarry Vault",
+    "Zephyr\u200bQuarry Vault",
+    "Caf\u00e9\u202eQuarry Vault",
+    "Zephyr\u0085Quarry Vault",
+    "\u00c9\tQuarry Vault",
+    "Caf\u00e9\x1bQuarry Vault",
+    "Caf\u00e9\x07Quarry Vault",
+)
+"""Ruling 134's names: U+2028, U+200B, U+202E after an accent, U+0085, É with a tab, Café with an ESC and
+with a BEL."""
+
+
+@pytest.mark.skipif(not _bash_is_32(), reason="bash 3.2's printf %q (macOS /bin/bash) is the one measured")
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize("name", _BASH32_NAMES)
+def test_folder_spellings_hold_what_bash_32_writes_in_either_locale_c1670_c1636(
+    name: str, locale: str
+) -> None:
+    """B13 round 39 C1670 with C1636 and C1649 (ruling 134; data integrity): under en_US.UTF-8 macOS's bash
+    3.2 writes a non-ASCII character byte by byte, 0x80 to 0x9F and 0xAD in octal and every other byte raw,
+    which the report reads back as U+FFFD; folder_spellings had only the all-octal forms, so that body matched
+    no alias, and the test helper ran LC_ALL=C alone. Each locale's ``$'...'`` body, read back as the report
+    reads it, is one of folder_spellings and redacts to the folder's placeholder; the whole word is
+    ``<path>``. Café with an ESC or a BEL takes the UTF-8 body with only its escaped characters in octal,
+    which stays (C1649)."""
+    word = _printf_word(name, locale)
+    assert word.startswith("$'") and word.endswith("'"), word
+    body = word[2:-1]
+    assert body in setup_report.folder_spellings(name), (body, setup_report.folder_spellings(name))
+    red = setup_report.Redactor()
+    red.add("folder", name, fuzzy=True)
+    setup_report._alias_escaped(red, name)
+    assert red.redact(f"saw {body} there") == "saw <folder-1> there"
+    cloud = "~/Library/CloudStorage/OneDrive-Contoso"
+    assert red.redact(f"[dry-run] /bin/ls {cloud}/{word}") == f"[dry-run] /bin/ls {cloud}/<path>"
+
+
+def test_a_dollar_quoted_word_no_alias_covers_is_cut_whole_c1656_c1670() -> None:
+    """B13 round 39 C1656 with C1670 (ruling 134; makes worse True for the shell porting this report's form):
+    install.sh cuts every ``$'...'`` word whole, so doctor's fix read ``open ~/<path> in Finder once`` there
+    and ``open ~/$'Library/.../<folder-N>' in Finder once`` here, and a body no alias covered printed in clear
+    here alone. The report cuts every such word to ``<path>`` after its aliases, one left open to the line's
+    end and never past it, and a word with no ``$'`` is untouched."""
+    red = setup_report.Redactor()
+    red.add("folder", "Zephyr\tQuarry", fuzzy=True)
+    setup_report._alias_escaped(red, "Zephyr\tQuarry")
+    for line, cut in (
+        (
+            "open ~/$'Library/CloudStorage/OneDrive-Contoso/Zephyr\\tQuarry' in Finder once",
+            "open ~/<path> in Finder once",
+        ),
+        ("ls ~/x/$'Tailspin\\342\\200Merger' then", "ls ~/x/<path> then"),
+        ("ls $'Tailspin Merger\\'s plan' x", "ls <path> x"),
+        ("ls $'Tailspin Merger", "ls <path>"),
+        ("a $'Tailspin\nMerger'", "a <path>\nMerger'"),
+        ("chmod u+rx ~/'Tailspin' $Merger", "chmod u+rx ~/'Tailspin' $Merger"),
+    ):
+        assert red.redact(line) == cut, line
+    assert setup_report._redact_lines(red, ["fix: open ~/$'Library/x' in Finder once"]) == (
+        "fix: open ~/<path> in Finder once"
+    )
+    legend = setup_report._LEGEND["path"]
+    assert "dollar-quote form, cut whole, so doctor's fix reads open ~/<path> in Finder once" in legend
+
+
+def test_a_refused_look_alike_keeps_only_its_provider_folder_c1656() -> None:
+    """B13 round 39 C1656 with C1601's report half (ruling 133): a ``--source-local`` argument under
+    CloudStorage that names a folder only step 1's list names, no configured source, printed that folder's
+    ``<folder-N>`` on install.log's ``args=`` line and the refusal lines here and ``<path>`` there. Both
+    reports cut it at that folder, ``~/Library/CloudStorage/OneDrive-<org-1>/<path>``; a configured folder
+    keeps its placeholder, and so does a list name that is a spelling of one."""
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    red.add("org", ORG, fuzzy=True)
+    red.add("folder", "Alder Birch", fuzzy=True)
+    red.configured_names = frozenset({"alder birch"})
+    setup_report._add_listed(
+        red, [(f"OneDrive-{ORG}", 1, "Zephyr Quarry"), (f"OneDrive-{ORG}", 1, "Alder Birch")]
+    )
+    assert len(red.listed_only) == 1
+    root = f"/Users/dana/Library/CloudStorage/OneDrive-{ORG}"
+    cut = "~/Library/CloudStorage/OneDrive-<org-1>/<path>"
+    lines = [
+        f"run=1 start install.sh args=--source-local {root}/Zephyr\\ Quarry",
+        *(
+            f"usage error: --source-local {root}/Zephyr Quarry: {head}x"
+            for head in setup_report._REFUSED_HEADS
+        ),
+        f"usage error: --source-local is not an existing folder: {root}/Zephyr Quarry (see --help)",
+        f"run=2 start install.sh args=--source-local {root}/Alder\\ Birch",
+    ]
+    assert setup_report._redact_lines(red, lines).split("\n") == [
+        f"run=1 start install.sh args=--source-local {cut}",
+        *(f"usage error: --source-local {cut}: {head}x" for head in setup_report._REFUSED_HEADS),
+        f"usage error: --source-local is not an existing folder: {cut} (see --help)",
+        "run=2 start install.sh args=--source-local ~/Library/CloudStorage/OneDrive-<org-1>/<folder-1>",
+    ]
+
+
+@pytest.mark.parametrize("ch", ["\b", "\f", "\v", "\a", "\x01", "\x1b", "\x1f", "\x7f"])
+def test_a_name_holding_a_control_byte_is_matched_in_every_separator_spelling_c1629(ch: str) -> None:
+    """B13 round 39 C1629 (ruling 133; data integrity): the separators were a blank, a tab, ``_``, ``\\`` and
+    ``-``, so ``Q3<BS>Plans`` was one token and its blank, hyphen and underscore spellings printed in clear,
+    where install.sh's pairs split at the control byte. The class is report_cuts.SEPARATORS: every C0 control
+    and DEL, never LF or CR, so no match spans two lines."""
+    name = f"Q3{ch}Plans"
+    red = setup_report.Redactor()
+    red.add("folder", name, fuzzy=True)
+    setup_report._alias_escaped(red, name)
+    said = f"opened Q3 Plans and Q3-Plans and {name} and q3_plans and Q3Plans and Q3?Plans"
+    assert red.redact(said) == "opened " + " and ".join(["<folder-1>"] * 6), red.redact(said)
+    assert red.redact("Q3\nPlans and Q3\rPlans") == "Q3\nPlans and Q3\rPlans"
 
 
 def test_a_folder_name_prints_in_no_spelling_through_the_report_ruling_126(fake_mac: dict[str, Path]) -> None:
@@ -5296,8 +5438,20 @@ def test_the_provider_folder_is_kept_only_as_a_placeholder_and_a_volume_head_ove
         "~/Documents",
         "~/Projects",
         "~/src",
+        # B13 round 39 C1634: a domain _org_of reads as naming no organisation, which Environment prints
+        "~/Library/CloudStorage/Box-Box/<folder-1>",
+        "~/Library/CloudStorage/OneDrive-Personal/<folder-1>",
+        "~/Library/CloudStorage/OneDrive-SharedLibraries-Business",
+        "~/Library/CloudStorage/Dropbox-WORK/<path>",
+        "~/Library/CloudStorage/GoogleDrive-googledrive",
     ):
         assert setup_report._cut_path(kept) == kept
+    for cut in ("OneDrive-Personal-Fabrikam", "OneDrive-Fabrikam", "Box-Dropbox", "OneDrive-Personalx"):
+        assert setup_report._cut_path(f"~/Library/CloudStorage/{cut}/x") == "~/Library/CloudStorage/<path>", (
+            cut
+        )
+    for provider in ("OneDrive-Personal", "Box-Box", "Dropbox-Work", "OneDrive-SharedLibraries-Business"):
+        assert setup_report._org_of(provider) is None, provider  # what the rule keeps names no organisation
     assert (
         setup_report._cut_path("~/Library/CloudStorage/OneDrive-Fabrikam/x")
         == "~/Library/CloudStorage/<path>"
@@ -5316,6 +5470,75 @@ def test_the_provider_folder_is_kept_only_as_a_placeholder_and_a_volume_head_ove
         ('"/Volumes/Contoso/Users/<user>/Fabrikam"', '"/Volumes/<path>"'),
     ):
         assert red.redact(line) == cut, line
+
+
+def test_the_report_cuts_table_is_what_both_reports_read_ruling_133() -> None:
+    """B13 round 39 ruling 133 (privacy; data integrity): every value the two reports cut by lives once, in
+    report_cuts, and setup_report builds its separators, provider rule and word sets from it. The format
+    characters hold every Cf of Unicode 14.0 to 15.1 (C1628 with C1672: install.sh's safe_shown drops this
+    set, so it must hold the running Python's, which text.safe_text drops); the shell block it generates is
+    valid bash whose values an awk reads as the Python reads them."""
+    running = {c for c in range(0x110000) if unicodedata.category(chr(c)) == "Cf"}
+    assert running <= report_cuts.format_chars(), sorted(map(hex, running - report_cuts.format_chars()))
+    assert all(unicodedata.category(chr(c)) in ("Cf", "Cn") for c in report_cuts.format_chars())
+    assert setup_report._GENERIC_FOLDERS is report_cuts.GENERIC_FOLDERS
+    assert setup_report._AGENT_WORDS is report_cuts.AGENT_WORDS
+    assert setup_report._GENERIC_DOMAINS is report_cuts.GENERIC_DOMAINS
+    assert setup_report._PROVIDER_APPS is report_cuts.PROVIDER_APPS
+    assert setup_report._PROVIDER_KEPT_RE.pattern == report_cuts.provider_kept_pattern()
+    assert setup_report._SEP_RE.pattern == report_cuts.sep_class() + "+"
+    assert setup_report.agentsync_verbs() == report_cuts.agentsync_verbs()
+    seps = "".join(map(chr, report_cuts.SEPARATORS))
+    assert "\n" not in seps and "\r" not in seps
+    assert len(set(seps)) == 32 + 1 - 2 + 4  # C0 and DEL but LF and CR, then a blank, "_", "\\" and "-"
+    assert setup_report._SEP_RE.fullmatch(seps) is not None
+    assert setup_report._SEP_RE.search("\n\r") is None
+    block = report_cuts.shell_block()
+    assert block.startswith("# BEGIN report_cuts\n") and block.endswith("# END report_cuts\n")
+    names = [ln.split("=", 1)[0] for ln in block.splitlines() if not ln.startswith("#")]
+    assert names == [
+        "AGENTSYNC_VERBS",
+        "CUT_DRIVE",
+        "CUT_AGENT",
+        "CUT_APPS",
+        "CUT_DOMAINS",
+        "CUT_PROVIDER_KEPT",
+        "CUT_SEP",
+        "CUT_CF",
+        "CUT_Q32_OCTAL",
+        "CUT_ALIAS_FORMS",
+    ]
+    folders = [
+        "Box-Box",
+        "box-BOX",
+        "OneDrive-Personal",
+        "OneDrive-SharedLibraries-Business",
+        "OneDrive-<org-1>",
+        "OneDrive-SharedLibraries-<org-2><team>",
+        "Dropbox",
+        "OneDrive-SharedLibraries",
+        "OneDrive-Fabrikam",
+        "OneDrive-Personal-Fabrikam",
+        "Fabrikam-<org-1>",
+        "Box-Dropbox",
+        "GoogleDrive-<email-1>",
+    ]
+    text = "Q3\bPlans q3_plans a\u00adb\u200bc\U000e0041d\u0890e\n" + "".join(f"{f}\n" for f in folders)
+    script = (
+        block
+        + "export CUT_PROVIDER_KEPT CUT_SEP CUT_CF\n"
+        + 'LC_ALL=C /usr/bin/awk \'NR == 1 { gsub(ENVIRON["CUT_CF"], "")'
+        + '; gsub(ENVIRON["CUT_SEP"], "|"); print; next }'
+        + ' { print ($0 ~ ENVIRON["CUT_PROVIDER_KEPT"]) ? "kept" : "cut" }\'\n'
+    )
+    cp = subprocess.run(["/bin/bash", "-c", script], input=text.encode(), capture_output=True, check=False)
+    assert cp.returncode == 0, cp.stderr
+    first, *kept = cp.stdout.decode().splitlines()
+    assert first == "Q3|Plans|q3|plans|abcde"
+    assert kept == ["kept" if setup_report._PROVIDER_KEPT_RE.fullmatch(f) else "cut" for f in folders], list(
+        zip(folders, kept, strict=True)
+    )
+    assert kept.count("kept") == 8, kept
 
 
 def test_agentsyncs_own_inbox_is_never_cut_as_a_typed_folder_c1123() -> None:
@@ -7254,9 +7477,10 @@ def test_a_source_local_argument_never_shows_a_folder_the_redactor_does_not_know
     under = "--source-local ~/Library/CloudStorage/OneDrive-<org-1>/"
     # B13 round 17 U10: a $'...' word is shown in double quotes, as decoded; a bare one stays bare
     quoted = '--source-local "~/Library/CloudStorage/OneDrive-<org-1>/'
-    shown = re.search(rf'args={quoted}(<folder-\d+>)" {quoted}<path>" {under}<path>\n', inst)
-    assert shown, "the decoded name is a known folder; the other two are cut below the provider folder"
-    assert inst.count(f'install.sh {quoted}{shown.group(1)}" {quoted}<path>" {under}<path>\n') == 2
+    # B13 round 39 C1656 with C1601 (ruling 133): the decoded name is a folder only the listing names, no
+    # configured source, so it is cut below the provider folder too, as the other two are
+    assert f'args={quoted}<path>" {quoted}<path>" {under}<path>\n' in inst, inst
+    assert inst.count(f'install.sh {quoted}<path>" {quoted}<path>" {under}<path>\n') == 2
     for raw in ("rich", "Tide", "Tables", "Gone", "Deck", "\\303", "\\200", "$'", "\ufffd"):
         assert raw not in text, raw
 
@@ -22461,7 +22685,8 @@ def test_a_dropbox_team_folder_is_an_org_and_its_app_name_no_residue(
     environment = section(text, "Environment")
     assert "Dropbox-<org-" in environment and "OneDrive-<org-1>" in environment
     assert "Box-Box" in environment and "Dropbox-Personal" in environment
-    assert re.search(r"Dropbox-<org-\d+>/<folder-\d+>", section(text, "Installer"))
+    # the team is <org-N> there too; its folder, which no source configures, is cut (B13 round 39 C1656)
+    assert re.search(r"Dropbox-<org-\d+>/<path>", section(text, "Installer"))
     check = next(ln for ln in section(text, "Redaction").splitlines() if "Residue check:" in ln)
     assert "Dropbox" not in check and "Box" not in check, check
     assert set(re.findall(r"<org-\d+>", text)) == {"<org-1>", "<org-2>"}
