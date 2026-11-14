@@ -41522,6 +41522,14 @@ twice. Where the step stopped at its limit it now adds `stopped at its limit, rc
 since the step table, the run end, the retry item and the outcome have no `in Ns` head and need its `after Ns`.
 Test: `test_a_step_install_sh_stopped_at_its_own_limit_is_never_an_outside_signal_c1434`.
 
+**No first-sync note word for a note no log carries** (C1632). Round 38 gave the first-sync note `timeout` words of
+its own in `_FIRST_SYNC_NOTE_WORDS`, but install.sh logs that note only with rc 143 (its `at_limit`), where
+`_step_rc_words` gives the limit's words and the note is dropped, and no shell copy mirrors the first-sync table, so
+no log reached the entry: it is gone. `_STATUS_NOTE_WORDS`' `timeout` stays, its comment saying why: this renderer
+never reads it for its own table, but it is the source of install.sh's `STOPPED_STEP_WORDS`, whose shim maps an
+older renderer's `(timeout)` bracket in a stopped copy. Test:
+`test_no_first_sync_note_word_is_kept_for_a_note_no_log_carries_c1632`.
+
 ### 16.251 Round 39: the installer: the shell reads the shared cut table, another build's render only when it reads every mark, and temp files under TMPDIR (2026-11-14, wave B13 round 39 lane RB)
 
 Round 39's lane RB items (`docs/plans/bring-back-ocr.md`, "B13 round 39"; specs `round39/items/C<n>.md`, the

@@ -6884,9 +6884,11 @@ _FIRST_SYNC_NOTE_WORDS = {
     "tcc-denied": "this terminal app may not read the folders",
     # exit 65 (B13 round 18 V50), with no bracket: the row and the sync line put the words in one
     "state-unreadable": "agentsync's state file, manifest.sqlite, cannot be read: the person's to fix",
-    "timeout": "stopped at its limit",  # B13 round 38 C1434: install.sh's own limit, never an outside signal
 }
-"""install.log's first-sync notes with no number -> the report's words (B13 round 11 M40)."""
+"""install.log's first-sync notes with no number -> the report's words (B13 round 11 M40). No ``timeout``:
+install.sh logs it only with rc 143 (its ``at_limit``), where :func:`_step_rc_words` gives the limit's words
+and the note is dropped, so no log reaches an entry for it, and no shell copy mirrors one (B13 round 39
+C1632)."""
 
 
 def _first_sync_note(note: str) -> str:
@@ -6979,7 +6981,10 @@ _STATUS_NOTE_WORDS = {
     # the same lines to a run that asks for none (B13 round 15 S35)
     "tcc-pending": "its only [FAIL] lines were a macOS Allow still to be clicked (the [FAIL] line names it)",
     "status-error": "agentsync status exited with no [FAIL] line",
-    "timeout": "stopped at its limit",  # B13 round 38 C1434
+    # B13 round 38 C1434; never read for this renderer's own table (rc 143 drops the note, _step_table), but
+    # kept as the source of install.sh's STOPPED_STEP_WORDS, whose shim maps an older renderer's "(timeout)"
+    # bracket in a stopped copy (B13 round 39 C1632)
+    "timeout": "stopped at its limit",
 }
 """install.log's status-step notes -> the Installer table's words (B13 round 14 Q4, Q50)."""
 

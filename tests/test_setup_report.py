@@ -14889,6 +14889,18 @@ def judged(tmp_path: Path, friction: str, *runs: str) -> tuple[setup_report.Outc
     ]
 
 
+def test_no_first_sync_note_word_is_kept_for_a_note_no_log_carries_c1632() -> None:
+    """B13 round 39 C1632: round 38 gave the first-sync note ``timeout`` words of its own, but install.sh logs
+    it only with rc 143, where the step's rc words carry the limit and the note is dropped, so no real log
+    reached the entry. It is gone; the status entry stays, the source of install.sh's STOPPED_STEP_WORDS."""
+    assert "timeout" not in setup_report._FIRST_SYNC_NOTE_WORDS
+    assert setup_report._STATUS_NOTE_WORDS["timeout"] == "stopped at its limit"
+    step = {"seconds": "3600", "rc": "143", "result": "failed", "note": "timeout"}
+    assert setup_report._sync_step_words(step)[0] == "failed in 3600s, stopped at its limit, rc 143"
+    table = "\n".join(setup_report._step_table([("first-sync", step)]))
+    assert "| failed, stopped at its limit after 3600s, rc 143 |" in table and "timeout" not in table, table
+
+
 def test_a_step_install_sh_stopped_at_its_own_limit_is_never_an_outside_signal_c1434(
     fake_mac: dict[str, Path], tmp_path: Path
 ) -> None:
