@@ -40939,6 +40939,12 @@ a NEXT that leaves that --source-local out. Every NEXT for one person's folder c
 finder's one person's NEXT for the branch is not taken. Test:
 `test_a_missing_source_local_folder_names_its_owner_c1407` (absolute, absolute beside a real folder, relative, and the
 three kept marks).
+Amended 2026-11-14, §16.251 C1652: the prompt's step 2 forbids the re-run a NEXT names after `not a step for the
+agent`, so the agent clause above could not be reached and is gone. A missing full path that could have been a
+--list-folders row (1 or 2 levels inside a `~/Library/CloudStorage/<provider>`, no part hidden, its parent a folder on
+disk) takes the person-only `MISSING_NEXT`, which names no re-run, plural for 2 or more; one outside every provider
+folder, deeper than 2, hidden or under a missing parent is the agent's spelling and keeps the corrected-command NEXT,
+and so does the whole refusal when any one is. Every NEXT for one person's folder no longer covers the agent's mistake.
 
 **A refusal of two folders leaves the person the choice of which to rename** (C1415; `scripts/install.sh`). The
 look-alike refusal (`its name is step 1's escaped form of another folder there, ...; rename one of them in its sync
@@ -41491,7 +41497,25 @@ doctor's fix included), `test_a_refused_look_alike_keeps_only_its_provider_folde
 
 ### 16.251 Round 39: the installer: the shell reads the shared cut table, another build's render only when it reads every mark, and temp files under TMPDIR (2026-11-14, wave B13 round 39 lane RB)
 
-Reserved for round 39 lane RB of B13.
+Round 39's lane RB items (`docs/plans/bring-back-ocr.md`, "B13 round 39"; specs `round39/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's rulings 133 to 136 settle it). A dated line this round writes in another
+section reads `Amended <date>, §16.251 C<n>: ...`.
+
+**A missing --source-local folder's owner is settled in install.sh, so prompt v37's step 2 stands** (C1652; amends
+§16.246 C1407; `scripts/install.sh`). C1407's `MISSING_NEXT` named the agent's re-run (`if that path is not exactly a
+row ... run the command again with that row's path`) after `not a step for the agent`, the words on which the prompt's
+step 2 forbids the re-run a NEXT names, so an agent that mistyped a full path could not reach its own fix, and it said
+`the path given` for 2 or more. `could_be_row` asks whether a missing full path could have been a --list-folders row:
+1 or 2 levels inside a `~/Library/CloudStorage/<provider>` (list_folders' `find -mindepth 1 -maxdepth 2`), no part
+hidden, its parent a folder on disk. One that could takes a person-only `MISSING_NEXT` with no re-run named (`no folder
+is at the path given: putting it back, syncing it to this Mac in its app, or naming another folder is the person's, not
+a step for the agent, so show them the error and go on to the report; ...`), plural for 2 or more (`no folder is at
+<N> of the paths given: putting them back, ...`); one that could not, a relative one, or any one of several, keeps the
+corrected-command NEXT. A typo in the last part of a path under a real parent still reads as a deleted folder, the
+person's, as before; the finder's v38 prompt words are not taken. Tests:
+`test_a_missing_source_local_folder_names_its_owner_c1407` (outside every provider folder, deeper than 2, under a
+missing parent, hidden, a depth-2 row, `~/...`, two rows, one of each) and
+`test_usage_error_after_parsing_still_writes_the_report`.
 
 ### 16.252 Round 39: --fields and log records follow the document, names in doctor's lines, and a recording kept during an OCR outage (2026-11-14, wave B13 round 39 lane B)
 

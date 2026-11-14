@@ -10490,10 +10490,23 @@ fi
 again="then run $SELF --list-folders again"
 twin_tail="and it cannot be told apart from another folder there; rename it in its sync app, $again"
 KEPT_NEXT="leave that --source-local out: the folder it names already syncs, and a re-run keeps it; then run the corrected command"
-# A folder given as a full path that is not on disk is the person's to put back or name again; one given relative,
-# whose spelling the agent chose, keeps the corrected-command NEXT (B13 round 38 C1407, makes worse True)
-MISSING_NEXT="no folder is at the path given: if that path is not exactly a row $SELF --list-folders printed, run the command again with that row's path; if it is, putting it back, syncing it to this Mac in its app, or naming another folder is the person's, not a step for the agent, so show them the error and go on to the report; once they say it is back, run $SELF --list-folders again and go by what it prints (leaving it out is their choice, not the agent's)"
-BAD_RELATIVE=0
+# A folder given as a full path that is not on disk is the person's to put back or name again when it could have
+# been a --list-folders row; one given relative, or a full path no row could be (outside every provider folder,
+# deeper than 2, a hidden part or under a missing parent), is a spelling the agent chose and keeps the
+# corrected-command NEXT, and so does the whole refusal when any one is (B13 round 38 C1407, makes worse True; round
+# 39 C1652). The person's NEXT names no re-run: the prompt's step 2 forbids the re-run after its "not a step" words.
+MISSING_NEXT="no folder is at the path given: putting it back, syncing it to this Mac in its app, or naming another folder is the person's, not a step for the agent, so show them the error and go on to the report; once they say it is back, run $SELF --list-folders again and go by what it prints (leaving it out is their choice, not the agent's)"
+BAD_AGENT=0
+# 0 when the full path $1 could be a --list-folders row: 1 or 2 levels inside a ~/Library/CloudStorage/<provider>,
+# no part hidden, its parent a folder on disk (list_folders' find: -mindepth 1 -maxdepth 2, hidden ones pruned)
+could_be_row() {
+	local p="${1%/}" rel
+	case "$p" in "$HOME/Library/CloudStorage/"*) ;; *) return 1 ;; esac
+	rel="${p#"$HOME/Library/CloudStorage/"}"
+	case "/$rel/" in *//* | */.*) return 1 ;; esac
+	case "$rel" in */*/*/*) return 1 ;; */*) ;; *) return 1 ;; esac
+	[ -d "${p%/*}" ]
+}
 # a refusal of two folders, a plain look-alike or a pasted twin row, leaves the choice of which to rename to the
 # person, as its own error says "rename one of them" (B13 round 38 C1415)
 TWIN_NEXT="renaming one of the two folders is the person's, not a step for the agent, so show them the error and go on to the report; once they say one is renamed in its sync app, run $SELF --list-folders again and go by what it prints (leaving it out is their choice, not the agent's)"
@@ -10543,7 +10556,7 @@ for f in ${SOURCE_LOCALS[@]+"${SOURCE_LOCALS[@]}"}; do
 	/*) ;;
 	*)
 		f="$PWD/$f"
-		[ -d "$f" ] || BAD_RELATIVE=1
+		[ -d "$f" ] || BAD_AGENT=1
 		;;
 	esac
 	if [ -d "$f" ]; then
@@ -10557,6 +10570,7 @@ for f in ${SOURCE_LOCALS[@]+"${SOURCE_LOCALS[@]}"}; do
 		source_local_refused "$(list_name "$f")" "this is how step 1 shows a folder whose name holds a hidden or control character, not a folder's own name; rename that folder in its sync app, $again"
 	else
 		BAD_FOLDERS+=("$f")
+		could_be_row "$f" || BAD_AGENT=1
 	fi
 done
 # One line for each bad folder, at most 5 and then a count; usage_error writes the last of them, and exits once.
@@ -10566,7 +10580,9 @@ while [ "$bad_shown" -lt 5 ] && [ "$((bad_shown + 1))" -lt "$bad_total" ]; do
 	printf 'usage error: --source-local is not an existing folder: %s (see --help)\n' "$(list_name "${BAD_FOLDERS[$bad_shown]}")" >&2
 	bad_shown=$((bad_shown + 1))
 done
-[ "$bad_total" -eq 0 ] || [ "$BAD_RELATIVE" -eq 1 ] || USAGE_NEXT="$MISSING_NEXT"
+[ "$bad_total" -lt 2 ] ||
+	MISSING_NEXT="no folder is at $bad_total of the paths given: putting them back, syncing them to this Mac in their app, or naming other folders is the person's, not a step for the agent, so show them the error and go on to the report; once they say they are back, run $SELF --list-folders again and go by what it prints (leaving them out is their choice, not the agent's)"
+[ "$bad_total" -eq 0 ] || [ "$BAD_AGENT" -eq 1 ] || USAGE_NEXT="$MISSING_NEXT"
 if [ "$bad_total" -gt 5 ]; then
 	usage_error "--source-local: $((bad_total - 5)) more folders are not existing folders"
 elif [ "$bad_total" -gt 0 ]; then

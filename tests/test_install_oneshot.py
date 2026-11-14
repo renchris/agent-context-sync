@@ -2407,8 +2407,9 @@ def test_usage_error_after_parsing_still_writes_the_report(env: dict[str, str], 
     assert cp.returncode == 2
     assert "usage error: --source-local is not an existing folder" in cp.stderr
     assert report_path(env).is_file() and "usage error" in report_path(env).read_text()
-    # a full path not on disk is the person's to put back or name again (B13 round 38 C1407)
-    assert last_line(cp).startswith("NEXT: no folder is at the path given: ")
+    # a full path outside every provider folder could be no --list-folders row: the agent's spelling to
+    # correct (B13 round 38 C1407; round 39 C1652)
+    assert last_line(cp).startswith("NEXT: fix the usage error above ")
     assert [c for c in calls(env) if not c.startswith(("launchctl print", "launchctl getenv"))] == [], (
         "no step ran (the report's reads of launchd only)"
     )
@@ -9851,7 +9852,16 @@ def test_source_local_refuses_an_escaped_row_or_a_folder_with_a_look_alike_c1072
     [
         ("<lib>/Fabrikam Missing Folder", "person"),
         ("<lib>/Fabrikam Missing Folder\0<lib>/Real", "person"),
+        ("<lib>/Real/Fabrikam Missing Folder", "person"),  # depth 2, its parent on disk
+        ("~/Library/CloudStorage/OneDrive-Contoso/Fabrikam Missing Folder", "person"),
+        ("<lib>/Fabrikam Missing Folder\0<lib>/Fabrikam Second Folder", "persons"),
         ("Fabrikam Missing Folder", "agent"),  # relative: the agent chose its spelling
+        # B13 round 39 C1652: a full path no --list-folders row could be is a spelling the agent chose
+        ("<home>/Fabrikam Missing Folder", "agent"),  # outside every provider folder
+        ("<lib>/Real/Deeper/Fabrikam Missing Folder", "agent"),  # deeper than 2
+        ("<lib>/Fabrikam Gone/Fabrikam Missing Folder", "agent"),  # under a missing parent
+        ("<lib>/.Fabrikam Missing Folder", "agent"),  # a hidden part, which the list prunes
+        ("<lib>/Fabrikam Missing Folder\0<home>/Fabrikam Missing Folder", "agent"),  # any one agent's
         ("[synced] <lib>/Real", "kept"),
         ("[inside a synced folder] <lib>/Real", "kept"),
         ("[contains a synced folder] <lib>/Real", "contains"),
@@ -9864,11 +9874,17 @@ def test_a_missing_source_local_folder_names_its_owner_c1407(
     was refused with `fix the usage error above ..., then run the corrected command`, though putting it back
     or naming another folder is the person's. Such a refusal now takes the person's NEXT; a relative path,
     whose spelling the agent chose, keeps the corrected command; and a row pasted with a kept mark is refused
-    in its own words, never as a missing folder, with a NEXT the agent acts on."""
+    in its own words, never as a missing folder, with a NEXT the agent acts on.
+
+    B13 round 39 C1652: the prompt's step 2 forbids the re-run a NEXT names after `not a step for the agent`,
+    so the person's NEXT carried an agent clause the agent could not reach. install.sh settles the owner: a
+    full path that could have been a --list-folders row (1 or 2 levels inside a provider folder, its parent on
+    disk) is the person's, with no re-run named; one that could not, or any one of several, is the agent's;
+    two or more take the plural."""
     lib = _cloud(env) / "OneDrive-Contoso"
     (lib / "Real").mkdir(parents=True)
     args: list[str] = []
-    for one in given.replace("<lib>", str(lib)).split("\0"):
+    for one in given.replace("<lib>", str(lib)).replace("<home>", env["HOME"]).split("\0"):
         args += ["--source-local", one]
     cp = subprocess.run(
         [BASH32, str(INSTALL_SH), *args],
@@ -9885,12 +9901,18 @@ def test_a_missing_source_local_folder_names_its_owner_c1407(
     if owner == "person":
         assert "--source-local is not an existing folder: " in cp.stderr, cp.stderr
         assert nxt.startswith(
-            "NEXT: no folder is at the path given: if that path is not exactly a row "
-            f"{INSTALL_SH} --list-folders printed, run the command again with that row's path; if it is, "
-            "putting it back, syncing it to this Mac in its app, or naming another folder is the person's, "
-            "not a step for the agent, so show them the error and go on to the report; "
+            "NEXT: no folder is at the path given: putting it back, syncing it to this Mac in its app, or "
+            "naming another folder is the person's, not a step for the agent, so show them the error and go "
+            f"on to the report; once they say it is back, run {INSTALL_SH} --list-folders again and go by "
+            "what it prints (leaving it out is their choice, not the agent's)"
         ), nxt
-        assert f"run {INSTALL_SH} --list-folders again and go by what it prints" in nxt, nxt
+    elif owner == "persons":
+        assert nxt.startswith(
+            "NEXT: no folder is at 2 of the paths given: putting them back, syncing them to this Mac in "
+            "their app, or naming other folders is the person's, not a step for the agent, so show them the "
+            f"error and go on to the report; once they say they are back, run {INSTALL_SH} --list-folders "
+            "again and go by what it prints (leaving them out is their choice, not the agent's)"
+        ), nxt
     elif owner == "agent":
         assert "--source-local is not an existing folder: " in cp.stderr, cp.stderr
         assert nxt.startswith(f"NEXT: fix the usage error above (see {INSTALL_SH} --help)"), nxt
@@ -9908,6 +9930,7 @@ def test_a_missing_source_local_folder_names_its_owner_c1407(
         assert "is not an existing folder" not in cp.stderr, cp.stderr
         assert nxt.startswith("NEXT: leave that --source-local out: the folder it names "), nxt
     assert "Fabrikam" not in nxt, "the NEXT names no folder"
+    assert "run the command again with that row's path" not in nxt, "no re-run the prompt's step 2 forbids"
 
 
 @pytest.mark.parametrize(
