@@ -1524,3 +1524,25 @@ def test_a_recut_of_another_builds_render_says_so_under_its_redaction_section_c1
     report.write_text(older, encoding="utf-8")
     assert _report_recut_harness(tmp_path, report, other=0).returncode == 0
     assert "This checkout's installer" not in report.read_text(encoding="utf-8"), "never on its own render"
+    # B13 round 39 C1604 (ruling 135): a render that already held <path> (an older build's own exclude cut)
+    # scopes this pass's <path> to its two kinds; one with none keeps the sentence above
+    assert "this pass's <path>" not in lines[at + 1] and "any other <path>" not in lines[at + 1]
+    report.write_text(
+        older.replace(
+            "## Redaction", "set exclude = [<path>] in [[source]]\nsaw /Users/olga/x\n\n## Redaction"
+        ),
+        encoding="utf-8",
+    )
+    cp = _report_recut_harness(tmp_path, report)
+    assert cp.returncode == 0, cp.stderr
+    scoped = report.read_text(encoding="utf-8").splitlines()
+    note = scoped[scoped.index("Placeholders used: <folder-N>.") + 1]
+    assert note.startswith(
+        "This checkout's installer cut this report again after the installed agentsync wrote it: this pass's "
+        "<path> stands for a path in another home, cut whole to /Users/<path>"
+    ), note
+    assert (
+        "; any other <path> here was already in the render, the installed agentsync's own cut; "
+        "these 3 cut(s) are not counted above."
+    ) in note, note
+    assert "set exclude = [<path>] in [[source]]" in scoped

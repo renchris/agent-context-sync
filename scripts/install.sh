@@ -7072,15 +7072,16 @@ report_new_marks() {
 # port of _cut_path keeps an unregistered tenant). Never the whole redact_stream, whose pairs would cut the
 # placeholders again. 1 when the pass fails, so write_report falls back to the shell report, never an uncut one.
 report_recut() { # OTHER
-	local tmp n1=0 n2=0
+	local tmp n1=0 n2=0 pre=0
 	tmp="$(mktemp "${REPORT_PATH%/*}/.report-cut.XXXXXX" 2>/dev/null)" || return 1
+	! LC_ALL=C grep -qF '<path>' "$REPORT_PATH" 2>/dev/null || pre=1 # the render's own, before this pass
 	if CUT_COUNT="$tmp.n1" foreign_home_cut recut <"$REPORT_PATH" |
 		if [ "${1:-1}" -eq 1 ]; then CUT_COUNT="$tmp.n2" report_words_cut; else cat; fi >"$tmp" && [ -s "$tmp" ]; then
 		if cmp -s "$tmp" "$REPORT_PATH"; then rm -f "$tmp" "$tmp.n1" "$tmp.n2"; return 0; fi
 		{ read -r n1 <"$tmp.n1"; } 2>/dev/null || n1=0 # n2 is written by another build's pass alone
 		{ read -r n2 <"$tmp.n2"; } 2>/dev/null || n2=0
 		rm -f "$tmp.n1" "$tmp.n2"
-		[ "${1:-1}" -ne 1 ] || recut_note "$tmp" $((n1 + n2)) || true # the cut render stays, note or not
+		[ "${1:-1}" -ne 1 ] || recut_note "$tmp" $((n1 + n2)) "$pre" || true # the cut render stays, note or not
 		chmod 600 "$tmp" 2>/dev/null || true
 		mv -f "$tmp" "$REPORT_PATH" || { rm -f "$tmp"; return 1; }
 	else
@@ -7090,13 +7091,18 @@ report_recut() { # OTHER
 }
 # One line under another build's Redaction section, right after its "Placeholders used:" line (else at the section's
 # end), saying this checkout cut the render again and how many cuts the passes made, which that section's own
-# counts leave out; once, never beside one already there (B13 round 38 C1406). FILE N; 1 when it cannot write it.
+# counts leave out; once, never beside one already there (B13 round 38 C1406). When the render held <path> before
+# this pass (PRE 1), the note scopes this pass's <path> to its two kinds and says any other is the installed
+# agentsync's own cut, an older build's meaning of it unlisted (B13 round 39 ruling 135, C1604). FILE N [PRE]; 1
+# when it cannot write it.
 RECUT_NOTE="This checkout's installer cut this report again after the installed agentsync wrote it"
 recut_note() {
-	local out
+	local out what
 	[ "$2" -gt 0 ] && ! LC_ALL=C grep -qF "$RECUT_NOTE" "$1" || return 0
 	out="$(mktemp "$1.note.XXXXXX" 2>/dev/null)" || return 1
-	if NOTE="$RECUT_NOTE: <path> stands for a path in another home, cut whole to /Users/<path> (/Volumes/<path> behind a volume), or a folder install.sh itself named in a refusal or an \`is not an existing folder:\` line; these $2 cut(s) are not counted above." LC_ALL=C awk '
+	what="<path> stands for a path in another home, cut whole to /Users/<path> (/Volumes/<path> behind a volume), or a folder install.sh itself named in a refusal or an \`is not an existing folder:\` line"
+	[ "${3:-0}" -ne 1 ] || what="this pass's $what; any other <path> here was already in the render, the installed agentsync's own cut"
+	if NOTE="$RECUT_NOTE: $what; these $2 cut(s) are not counted above." LC_ALL=C awk '
 		function put() { if (!done) { print ENVIRON["NOTE"]; done = 1 } }
 		/^## / { if (sec && !done) put(); sec = ($0 == "## Redaction") }
 		{ print }

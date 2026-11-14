@@ -41070,6 +41070,10 @@ existing folder:" line; these N cut(s) are not counted above.`, N the passes' ow
 render's; the line is written once (never beside one already there, and a second pass changes nothing), never on
 this checkout's render, and a render with no Redaction section keeps the cut render without it. Test:
 `test_report_redaction.py::test_a_recut_of_another_builds_render_says_so_under_its_redaction_section_c1406`.
+Amended 2026-11-14, §16.251 C1604: when the render already held `<path>` before the recut, the note reads `...: this
+pass's <path> stands for a path in another home, ... line; any other <path> here was already in the render, the
+installed agentsync's own cut; these N cut(s) are not counted above.`, and the sentence above only for a render that
+held none.
 
 **A first sync stopped at install.sh's own limit keeps the next run's one re-run** (C1434's install.sh half; lane
 RA builds the report's words, `stopped at its limit after <n>s, rc 143`; `scripts/install.sh`). `prior_signal_first_sync`
@@ -41586,6 +41590,16 @@ checkout's build wrote is still kept. Tests:
 kept), `test_a_mark_outside_a_list_row_keeps_another_builds_render_c1630` and
 `test_a_twin_past_the_list_limit_keeps_its_name_out_of_an_older_render_c1655` (C1655's reproduction: no folder word
 in setup-report.md or bring-back.md, `shell fallback` on stdout).
+
+**The recut note says which <path> is its own** (C1604; ruling 135; amends §16.246 C1406; `scripts/install.sh`). An
+older build writes `<path>` itself (`set exclude = [<path>] in [[source]]`, an item path in a log line), and the
+recut note defined `<path>` as only the recut's two kinds, giving that token a false meaning. `report_recut` reads,
+before its passes, whether the render already held `<path>`, and `recut_note` then scopes the token to this pass
+(`this pass's <path> stands for ...`) and says `any other <path> here was already in the render, the installed
+agentsync's own cut`, never listing what an older build means by it, which differs across versions; the line still
+ends `these N cut(s) are not counted above.`, and a render with no earlier `<path>` keeps the sentence as it was. Test:
+`test_report_redaction.py::test_a_recut_of_another_builds_render_says_so_under_its_redaction_section_c1406` (the
+scoped note with an older exclude line, the plain one without).
 
 ### 16.252 Round 39: --fields and log records follow the document, names in doctor's lines, and a recording kept during an OCR outage (2026-11-14, wave B13 round 39 lane B)
 
