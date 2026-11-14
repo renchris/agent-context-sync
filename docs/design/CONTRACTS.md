@@ -40792,6 +40792,9 @@ end, one of `;,.:`, ` | ` or ` · `, else at the line's end (C1436, makes worse 
 row's own words after it were cut). Tests: `test_a_refused_pasted_row_is_cut_whole_at_the_last_refusal_head_c1432`,
 `test_a_missing_source_local_folder_is_cut_in_the_installer_section_c1299`.
 
+Amended 2026-11-14, §16.250 C1658: `_SOURCE_LOCAL_REFUSED_RE` is tried once, anchored at the line's first
+`--source-local `, not as a `sub` at every one; the cut is the same, in linear time.
+
 **The provider folder is kept only as a placeholder, and a volume's home heads overlap** (C1481, C1440; ruling 126;
 privacy). `_cut_path` kept any folder after `CloudStorage`, so a tenant no value registered printed as
 `OneDrive-Fabrikam`; it keeps it only as `_PROVIDER_KEPT_RE` reads it, a known app's bare name (`Dropbox`) or that
@@ -41529,6 +41532,15 @@ no log reached the entry: it is gone. `_STATUS_NOTE_WORDS`' `timeout` stays, its
 never reads it for its own table, but it is the source of install.sh's `STOPPED_STEP_WORDS`, whose shim maps an
 older renderer's `(timeout)` bracket in a stopped copy. Test:
 `test_no_first_sync_note_word_is_kept_for_a_note_no_log_carries_c1632`.
+
+**The refused-name cut is one match, linear in the line** (C1658, C1664's H4; dated line at §16.245 C1432).
+`_SOURCE_LOCAL_REFUSED_RE` ran as a `sub`, which tried again at every `--source-local ` on a line, each try running
+to the line's end and back: quadratic in the flag's count (7.7 s for 8000). `_redact_lines` now tries one match,
+anchored at the line's first `--source-local `, which gives the same cut: if it fails, no head follows the first
+flag, so none follows a later one; if it succeeds, it ends at the last head, so no second match exists. The same
+greedy cut, the same 1-character minimum name, the same count. Test:
+`test_the_refused_name_cut_is_one_match_at_the_first_flag_c1658` (8000 flags and no head unchanged, one cut with a
+head after them, an empty name no match, the pattern reached through one `match` per line).
 
 ### 16.251 Round 39: the installer: the shell reads the shared cut table, another build's render only when it reads every mark, and temp files under TMPDIR (2026-11-14, wave B13 round 39 lane RB)
 

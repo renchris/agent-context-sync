@@ -18525,7 +18525,12 @@ _SOURCE_LOCAL_REFUSED_RE = re.compile(
 """B13 round 38 C1432 (privacy): install.sh's refusal of a pasted row or a twin, ``usage error: --source-local
 <name>: <head> ...``, which install.out tees: the name runs to the LAST ``: `` before one of
 :data:`_REFUSED_HEADS` (greedy), so a name that holds a blank, or such words itself, is taken whole, where
-:data:`_SOURCE_LOCAL_RE`'s one shell word printed the rest of a name with a blank after ``<path>``."""
+:data:`_SOURCE_LOCAL_RE`'s one shell word printed the rest of a name with a blank after ``<path>``. Tried
+once, anchored at the line's first ``--source-local `` (B13 round 39 C1658, C1664's H4): a ``sub`` retried at
+every later one, each running to the line's end and back, so a line repeating the flag took quadratic time.
+One match there gives what ``sub`` gave: if it fails, no head follows the first flag, so none follows a later
+one; if it succeeds, it ends at the last head, so no second match exists. A name of 1 character or more, as
+before."""
 
 
 def _not_a_folder_shown(red: Redactor, m: re.Match[str]) -> str:
@@ -18691,8 +18696,10 @@ def _redact_lines(red: Redactor, lines: list[str], agents: Iterable[str] = ()) -
             line = re.sub(r" {2,}— ", " — ", line, count=1)
         if NOT_A_FOLDER_SAID in line:  # install.sh's missing --source-local folder (C1299 with C1250)
             line = _NOT_A_FOLDER_RE.sub(functools.partial(_not_a_folder_shown, red), line)
-        if "--source-local " in line:  # a refused pasted row or twin, cut whole (B13 round 38 C1432)
-            line = _SOURCE_LOCAL_REFUSED_RE.sub(functools.partial(_not_a_folder_shown, red), line)
+        # a refused pasted row or twin, cut whole (B13 round 38 C1432): one anchored match at the first
+        # --source-local, linear in the line (B13 round 39 C1658)
+        if (i := line.find("--source-local ")) >= 0 and (m := _SOURCE_LOCAL_REFUSED_RE.match(line, i)):
+            line = line[: m.start()] + _not_a_folder_shown(red, m) + line[m.end() :]
         return (
             _SOURCE_LOCAL_RE.sub(shown, line) if "--source-local" in line or "add-source " in line else line
         )

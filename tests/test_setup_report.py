@@ -5424,6 +5424,37 @@ def test_a_refused_pasted_row_is_cut_whole_at_the_last_refusal_head_c1432() -> N
     assert red.counts["path"] == 3 * len(setup_report._REFUSED_HEADS)
 
 
+def test_the_refused_name_cut_is_one_match_at_the_first_flag_c1658(monkeypatch: pytest.MonkeyPatch) -> None:
+    """B13 round 39 C1658 (C1664's H4): the refusal cut was a ``sub`` that tried again at every
+    ``--source-local``, each try running to the line's end and back, quadratic in the flag's count (7.7 s at
+    8000). It is one
+    match anchored at the first flag, which gives the same cut: a line of 8000 flags and no head comes back as
+    it is, the same line with a head after it is cut once at that head, and an empty name is no match, as
+    before. The pattern is reached through ``match`` alone, once per line, never ``sub``."""
+    real = setup_report._SOURCE_LOCAL_REFUSED_RE
+    calls: list[int] = []
+
+    class _MatchOnly:
+        pattern = real.pattern
+
+        def match(self, text: str, pos: int = 0) -> re.Match[str] | None:
+            calls.append(pos)
+            return real.match(text, pos)
+
+    monkeypatch.setattr(setup_report, "_SOURCE_LOCAL_REFUSED_RE", _MatchOnly())
+    red = setup_report.Redactor()
+    flags = "--source-local " * 8000
+    head = setup_report._REFUSED_HEADS[0]
+    assert setup_report._redact_lines(red, [f"x {flags}"]) == f"x {flags}"
+    assert calls == [2]
+    cut = setup_report._redact_lines(red, [f"x {flags}Tailspin Q3: {head}y"])
+    assert cut == f"x --source-local <path>: {head}y", cut[:80]
+    assert red.counts["path"] == 1 and calls == [2, 2]
+    empty = f"usage error: --source-local : {head}x"
+    assert setup_report._redact_lines(red, [empty]) == empty
+    assert red.counts["path"] == 1
+
+
 def test_the_provider_folder_is_kept_only_as_a_placeholder_and_a_volume_head_overlaps_c1481_c1440() -> None:
     """B13 round 38 C1481 (ruling 126; makes worse True for a faithful port): _cut_path kept any folder after
     ``CloudStorage``, so a tenant no value registered printed as ``OneDrive-Fabrikam``; it keeps only
