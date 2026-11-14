@@ -8664,6 +8664,8 @@ Amended 2026-11-04, §16.233 C927, C930: the not-the-type row also takes `not-dr
 draw.io diagram), and a zero-byte file under an Office, Outlook or draw.io name is `empty-output`, so `empty`.
 Amended 2026-11-08, §16.238 C1050, C1117: so is a zero-byte `.pdf`, `.eml`, `.odt`, `.teams.json` or `.vtt`, each
 converter saying so for zero bytes itself.
+Amended 2026-11-14, §16.253 C1647: and a zero-byte image (`.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.tif`, `.tiff`,
+`.webp`, `.heic`, `.heif`) or recording (`.mp4`, `.m4v`, `.mov`), once `image not readable` and `other`.
 Amended 2026-11-10, §16.240 C1267: the class `waiting for the OCR helper`, after `no converter` in
 `QUARANTINE_CLASSES`, for an image whose stub page says the OCR helper is not working, read from the page with or
 without a label rule (`_Mirror.read_image_pages`), never from the report's own OCR probe.
@@ -39015,6 +39017,8 @@ every new zero-byte file of the suffix. An `empty_screen` option moves those nam
 no re-read, so a row already settled keeps its class.
 Amended 2026-11-14, §16.253 C1645: what keeps that older answer away is §16.248 C1466's zero-byte cache skip, since
 only zero bytes have that canonical hash; `empty_screen` is a second guard that changes no result.
+Amended 2026-11-14, §16.253 C1647: the rule holds for an image and a recording too: a zero-byte one is `empty-output`
+on an empty head read, where it was `image not readable` or `other`.
 Amended 2026-11-08, §16.238 C1033: "a wrong-type `.vsdx`" is a `.vsdx` that is not a ZIP, or an Office package of
 another family: a ZIP that is no Office package at all still reads `not a Visio drawing` and is tried again.
 Amended 2026-11-08, §16.239 C1034, C1118: a blank or byte-order-mark-only `.drawio` takes `not-drawio` by choice,
@@ -39793,6 +39797,8 @@ names), `test_convert_family.py::test_a_zero_byte_eml_under_a_label_rule_keeps_i
 case of `test_convert_formats.py::test_vtt_that_is_not_a_transcript_is_a_fixed_stub` moved to `empty-output`.
 Amended 2026-11-10, §16.243 C1304: `no emitter bump` holds for all but `.vtt`, whose zero-byte answer before this
 was a cached UNREADABLE (`not a WebVTT transcript`), never an uncached FAILED: vtt's emitter is 1.0.1.
+Amended 2026-11-14, §16.253 C1647: the image and recording converters too, on an empty head read, before any helper;
+no bump, since §16.248 C1466 skips the cache both ways for zero bytes.
 
 **A Word, Excel or PowerPoint package named `.vsdx` is one stub of its type** (C1033, ruling 118;
 `agentsync.convert.diagram`; amends §16.233 C927). C927's words said a wrong-type `.vsdx` is one stub at first read, but only bytes that are no
@@ -41557,6 +41563,25 @@ alone, and its docstring names `convert._identity`, not the guard, as the option
 `test_convert_family.py::test_a_zero_byte_office_file_or_msg_after_an_older_builds_cached_result_is_empty_c1450`
 (red at its state check, a new zero-byte `.docx` served `not-ooxml`, in all six cases once the two lines are gone)
 and `test_contracts.py::test_c1450s_option_is_credited_as_a_second_guard_c1645`.
+
+**A zero-byte image or recording is `empty`, before any helper runs** (C1647; `agentsync.convert.image`,
+`agentsync.convert.recording`; amends §16.233 C930 and §16.238 C1050, with a dated line at §16.28). C930's and
+C1050's rule, that no bytes have no type to disagree with the name, held for eleven typed names but not these: with
+engines a zero-byte `.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.tif`, `.tiff`, `.webp`, `.heic` or `.heif` read `not
+an image on-device OCR reads (...)`, classed `image not readable`, and a zero-byte `.mp4`, `.m4v` or `.mov` read `not a
+recording on-device reading supports (MP4, M4V, MOV)`, classed `other` (the verifier's stub engines at 853fab348).
+`ImageConverter.convert` reads its 16-byte head once and `RecordingConverter._reading` its 12-byte head, and each
+raises `UnreadableSourceError(policy.EMPTY_OUTPUT_REASON)` when that read returns nothing, before the raster or
+container test, and so before `sha256_file`, `media.info` or any OCR helper. Only zero bytes: a short or wrong-type
+head keeps its own words. The label decision still runs first, in `convert_file` and the guard, as for C1050, and
+pictures inside documents are untouched. No emitter, version or key bump: §16.248 C1466 skips the cache both ways
+for zero bytes, so no older build's stub is served and the new answer is never stored; a row already settled keeps
+its class until its bytes change (C930's ruling). Tests:
+`test_convert_image.py::test_a_zero_byte_image_is_empty_and_never_reaches_the_helper_c1647` (the empty case moved out
+of `NOT_IMAGES`),
+`test_convert_recording.py::test_a_zero_byte_recording_is_empty_before_any_helper_runs_c1647` and
+`test_convert_recording.py::test_a_zero_byte_image_or_recording_is_classed_empty_and_never_cached_c1647` (through
+`Registry.default` with an OCR and a media engine: `quarantine_class` gives `empty`, and the cache has no entry).
 
 
 ### 16.254 Round 39: the compaction promise, recording downloads and the guides (2026-11-14, wave B13 round 39 lane D)

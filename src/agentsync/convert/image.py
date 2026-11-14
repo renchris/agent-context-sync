@@ -41,6 +41,7 @@ from agentsync.convert.base import OptionValue, make_unit
 from agentsync.convert.ocr import LANGUAGES, MAX_PAGES, OcrEngine, OcrError, OcrImage, _kept, text_lines
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import RenderedUnit, UnitKind
+from agentsync.policy import EMPTY_OUTPUT_REASON
 from agentsync.text import plural
 
 log = logging.getLogger(__name__)
@@ -464,7 +465,10 @@ class ImageConverter:
         ``name`` labels the log line of a helper failure and nothing else.  The helper runs in the staged
         file's own folder, which is under the cycle's staging folder."""
         with src.open("rb") as fh:
-            kind = _raster_suffix(fh.read(_HEAD_BYTES))
+            first = fh.read(_HEAD_BYTES)
+        if not first:  # no bytes have no type to disagree with the name (C930's rule; B13 round 39 C1647)
+            raise UnreadableSourceError(EMPTY_OUTPUT_REASON)
+        kind = _raster_suffix(first)
         if kind is None:
             raise UnreadableSourceError(_NOT_RASTER)
         asked = MAX_PAGES if kind == _PAGED else 1  # a frame of any other type is not a page

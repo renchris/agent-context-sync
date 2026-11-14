@@ -66,6 +66,7 @@ from agentsync.convert.speech_lines import SpeechReading
 from agentsync.errors import UnreadableSourceError
 from agentsync.materialise import sha256_file
 from agentsync.model import RenderedUnit
+from agentsync.policy import EMPTY_OUTPUT_REASON
 
 Kind = Literal["share", "camera", "other"]
 Tag = Literal["SCREEN", "TILE"]
@@ -1625,6 +1626,8 @@ class RecordingConverter:
         for its suffix only (a ``.mov`` may open with another QuickTime atom); it reaches no output."""
         with src.open("rb") as fh:
             head = fh.read(12)
+        if not head:  # zero bytes are `empty` before any helper runs (C930's rule; B13 round 39 C1647)
+            raise UnreadableSourceError(EMPTY_OUTPUT_REASON)
         if not _container(head, name):
             raise UnreadableSourceError(_NOT_RECORDING)
         sha = sha256_file(src)

@@ -34,7 +34,8 @@ from agentsync.convert.speech import SpeechEngine, SpeechError
 from agentsync.errors import UnreadableSourceError
 from agentsync.materialise import sha256_file
 from agentsync.model import ConversionStatus, RenderedUnit
-from agentsync.policy import PolicyConfig
+from agentsync.policy import EMPTY_OUTPUT_REASON, PolicyConfig
+from agentsync.setup_report import quarantine_class
 from media_kit import calls as media_calls
 from media_kit import fake_media, fake_recording, recording, row, screen
 from speech_kit import FAKE_PIN, fake_speech, place_models
@@ -549,6 +550,46 @@ def _registry(tmp_path: Path, **kw: Any) -> Registry:
     helper = fake_media(tmp_path / "helpers")
     media = MediaEngine(helper, name="paper-media", helper_version="0.1.0")
     return Registry.default(CFG, ocr=fake_engine(tmp_path / "helpers", **kw), media=media)
+
+
+@pytest.mark.parametrize("name", ["Contoso blank.mp4", "Contoso blank.m4v", "Contoso blank.mov"])
+def test_a_zero_byte_recording_is_empty_before_any_helper_runs_c1647(tmp_path: Path, name: str) -> None:
+    """B13 round 39 C1647: a zero-byte recording read `not a recording on-device reading supports`, which
+    the report classes `other`, against C930's rule that no bytes have no type to disagree with the name.
+    The empty head is ``empty-output`` before the container test, the hash and media.info; a twelve-byte
+    head that is no container keeps `not a recording` (the test below)."""
+    conv = converter(tmp_path)
+    folder = tmp_path / "staging"
+    folder.mkdir()
+    (folder / name).write_bytes(b"")
+    with pytest.raises(UnreadableSourceError) as refused:
+        conv._reading(folder / name, name=name)
+    assert str(refused.value) == EMPTY_OUTPUT_REASON
+    assert media_calls(conv._media.helper) == []
+
+
+@pytest.mark.parametrize("name", ["Contoso.png", "Contoso.jpg", "Contoso.heic", "Contoso.mp4", "Contoso.mov"])
+def test_a_zero_byte_image_or_recording_is_classed_empty_and_never_cached_c1647(
+    tmp_path: Path, name: str
+) -> None:
+    """B13 round 39 C1647: through ``Registry.default`` with an OCR and a media engine, as the cycle converts,
+    a zero-byte image or recording is an UNREADABLE ``empty-output`` the report classes ``empty``, and
+    C1466's skip leaves the cache without an entry, so no emitter, version or key bump is needed."""
+    folder = tmp_path / "staging"
+    folder.mkdir()
+    (folder / name).write_bytes(b"")
+    empty = hashlib.sha256(b"").hexdigest()
+    got = convert_file(
+        folder / name,
+        name=name,
+        content_sha256=empty,
+        canonical_sha256=empty,
+        registry=_registry(tmp_path),
+        cache=ConverterCache(tmp_path / "cache"),
+    )
+    assert got.status is ConversionStatus.UNREADABLE and got.reason == EMPTY_OUTPUT_REASON
+    assert quarantine_class(got.reason) == "empty"
+    assert not got.from_cache and not any((tmp_path / "cache").rglob("*.json"))
 
 
 def test_a_file_that_is_not_mp4_m4v_or_mov_or_has_no_tracks_is_a_cached_stub(tmp_path: Path) -> None:

@@ -344,7 +344,6 @@ def test_a_png_head_on_something_the_helper_cannot_read_is_unreadable(
 
 
 NOT_IMAGES: dict[str, bytes] = {
-    "an empty file": b"",
     "a web page saved as an image": b"<!DOCTYPE html>\n<html><body>Contoso</body></html>\n",
     "a PDF": b"%PDF-1.7\n1 0 obj\n<<>>\nendobj\n",
     "vector art": b"<svg xmlns='http://www.w3.org/2000/svg'/>",
@@ -362,6 +361,22 @@ def test_a_file_that_is_no_raster_image_never_reaches_the_helper(
     assert str(refused.value) == (
         "not an image on-device OCR reads (PNG, JPEG, GIF, BMP, TIFF, WebP, HEIC or HEIF)"
     )
+    assert calls(engine.helper) == []
+
+
+@pytest.mark.parametrize("name", ["Contoso blank.png", "Contoso blank.jpg", "Contoso blank.heic"])
+def test_a_zero_byte_image_is_empty_and_never_reaches_the_helper_c1647(
+    tmp_path: Path, engine: ocr.OcrEngine, name: str
+) -> None:
+    """B13 round 39 C1647: C930's rule, no bytes have no type to disagree with the name, held for 11 typed
+    names but not images: a zero-byte picture read `not an image on-device OCR reads`, classed `image not
+    readable`. The empty head is ``empty-output`` before the raster test, and no helper runs; a short or
+    wrong-type head keeps its own reason (the NOT_IMAGES cases)."""
+    src = tmp_path / name
+    src.write_bytes(b"")
+    with pytest.raises(UnreadableSourceError) as refused:
+        one(engine, src)
+    assert str(refused.value) == policy.EMPTY_OUTPUT_REASON
     assert calls(engine.helper) == []
 
 
