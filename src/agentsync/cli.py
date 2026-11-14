@@ -85,6 +85,7 @@ from agentsync.config import (
     parse_config,
     parse_size,
     set_source_exclude,
+    toml_string,
 )
 from agentsync.convert import CONVERTER_UNAVAILABLE
 from agentsync.cycle import (
@@ -2024,7 +2025,7 @@ def _cmd_exclude_empty(args: argparse.Namespace) -> int:
             return EXIT_CONFIG
     finally:
         lock.release()
-    listed = ", ".join(json.dumps(g, ensure_ascii=False) for g in exclude)
+    listed = ", ".join(toml_string(g) for g in exclude)  # the file's own words (R39-B1)
     # the folders by their count (B13 round 12 N40: "without them" after one folder, beside "files")
     without = f"lists {src.id} without {'that folder' if len(clear) == 1 else 'those folders'}"
     lists = f"the next sync {without}"

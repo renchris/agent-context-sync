@@ -20,6 +20,7 @@ import subprocess
 import sys
 import threading
 import time
+import tomllib
 import unicodedata
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
@@ -47,7 +48,15 @@ from agentsync import (
 )
 from agentsync import cycle as cycle_mod
 from agentsync import manifest as manifest_mod
-from agentsync.config import RETIRE_ADVICE, Config, canonical_source_root, inbox_source_table, load_config
+from agentsync.config import (
+    RETIRE_ADVICE,
+    Config,
+    canonical_source_root,
+    inbox_source_table,
+    load_config,
+    set_source_exclude,
+    toml_string,
+)
 from agentsync.cycle import HYDRATION_REFUSED, RECORDING_WAITS, run_cycle
 from agentsync.errors import (
     AgentSyncError,
@@ -15282,3 +15291,35 @@ def test_the_reports_evidence_damage_line_splits_at_a_newline_alone_c1431(
     assert len(got) == len(lines) + 1, got
     (failed,) = [ln for ln in got if ln.startswith("[FAIL] state_dir.manifest ")]
     assert f"Contoso{brk}Merger Board" in failed and failed.endswith(")"), failed
+
+
+def test_a_folder_named_with_del_leaves_a_sources_toml_that_loads_r39_b1(
+    initialised: Config, tmp_path: Path, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 39 R39-B1 (lane RB's note; found by ruling 133's property test): the source tables wrote the
+    path with ``json.dumps(..., ensure_ascii=False)``, which leaves DEL (U+007F) raw, and TOML 1.0 forbids it
+    in a basic string, so ``add-source`` on a folder whose name holds one wrote a sources.toml no later
+    command could load. Every TOML string agentsync writes goes through ``config.toml_string``: the file
+    loads and gives the path back, and exclude-empty's list and discover's TOML take the same form."""
+    folder = tmp_path / "Contoso\x7fBoard"
+    shutil.copytree(local_source_dir, folder)
+    cfg = str(initialised.config_path)
+    assert cli.main(["add-source", str(folder), "--config", cfg]) == cli.EXIT_OK
+    capsys.readouterr()
+    text = initialised.config_path.read_text(encoding="utf-8")
+    assert "\x7f" not in text and "\\u007F" in text, text
+    loaded = tomllib.loads(text)
+    assert canonical_source_root(folder).as_posix() in [t.get("path") for t in loaded["source"]], loaded
+    config = load_config(initialised.config_path)
+    (src,) = [s for s in config.sources if s.path == canonical_source_root(folder)]
+    assert cli.main(["status", "--config", cfg]) in (cli.EXIT_OK, cli.EXIT_FAILED)  # it loads
+    capsys.readouterr()
+    glob = "/Empty\x7fFolder/"
+    set_source_exclude(initialised.config_path, src.id, [glob])
+    assert glob in load_config(initialised.config_path).source(src.id).exclude
+    assert tomllib.loads(f"t = {inbox_source_table('inbox-2', folder).split('path = ')[1]}")["t"] == str(
+        folder
+    )
+    assert tomllib.loads(f"g = {discover._toml_str(glob)}")["g"] == glob
+    for text_ in ("a\x7fb", 'q"\\b\n\t', "Caf\u00e9\x85\u2028"):
+        assert tomllib.loads(f"v = {toml_string(text_)}")["v"] == text_, text_

@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import base64
 import functools
-import json
 import logging
 import re
 import unicodedata
@@ -32,7 +31,7 @@ from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from urllib.parse import quote, unquote, urlsplit
 
-from agentsync.config import SOURCE_ID_RE, SourceConfig
+from agentsync.config import SOURCE_ID_RE, SourceConfig, toml_string
 from agentsync.errors import AuthRequiredError, GraphError
 from agentsync.graph.client import GraphClient, JsonObject
 from agentsync.graph.drive import DiscoveredScope, _obj, _opt_str, _quote_segment, _site_param
@@ -553,8 +552,8 @@ _ID_PREFIX = {SourceKind.GRAPH_DRIVE: "drive", SourceKind.GRAPH_MAIL: "mail", So
 
 
 def _toml_str(value: str) -> str:
-    """A TOML basic string (JSON's escaping is a valid subset)."""
-    return json.dumps(value, ensure_ascii=False)
+    """A TOML basic string (:func:`agentsync.config.toml_string`: JSON's escaping, DEL escaped too)."""
+    return toml_string(value)
 
 
 def _comment(text: str) -> str:

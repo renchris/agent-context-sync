@@ -673,13 +673,21 @@ def derive_source_id(path: Path, taken: Collection[str]) -> str:
     return candidate
 
 
+def toml_string(text: str) -> str:
+    """``text`` as one TOML basic string that ``tomllib`` reads back as ``text``: ``json.dumps``'s escaping is
+    TOML's, but it leaves DEL (U+007F) raw, which TOML 1.0 forbids in a basic string, so a folder named with
+    one gave a sources.toml no command could load; DEL is written ``\u007f`` (B13 round 39 R39-B1, lane RB's
+    note). Every writer of a TOML string in agentsync goes through it."""
+    return json.dumps(text, ensure_ascii=False).replace("\x7f", "\\u007F")
+
+
 def local_source_table(source_id: str, path: Path) -> str:
     """The ``[[source]]`` table ``add-source`` writes for a folder: a live ``kind = "local"`` source with
     every other key at its default (excludes ``DEFAULT_EXCLUDES``, budget 1 GiB and 5000 files per cycle) and
     the sentinel left as a commented recommendation.  Starts with a blank line, ends with a newline."""
     return (
         f'\n[[source]]\nid = "{source_id}"\nkind = "local"\n'
-        f"path = {json.dumps(str(path), ensure_ascii=False)}\n"
+        f"path = {toml_string(str(path))}\n"
         '# sentinel = "README.txt"   # recommended: a file that must always exist under path\n'
     )
 
@@ -690,7 +698,7 @@ def inbox_source_table(source_id: str, path: Path) -> str:
     blank line, ends with a newline."""
     return (
         f'\n[[source]]\nid = "{source_id}"\nkind = "inbox"\n'
-        f"path = {json.dumps(str(path), ensure_ascii=False)}\n"
+        f"path = {toml_string(str(path))}\n"
         "# quiescence_s = 60   # write to a temp name, then rename it into place; expect about a 60 s delay\n"
     )
 
@@ -796,7 +804,7 @@ def set_source_exclude(
     if span is None:
         raise ConfigError(f"{p}: no [[source]] table with id {source_id!r} that can be edited as text")
     start, end = span
-    new_line = f"exclude = [{', '.join(json.dumps(g, ensure_ascii=False) for g in exclude)}]"
+    new_line = f"exclude = [{', '.join(toml_string(g) for g in exclude)}]"
     key = next((i for i in range(start + 1, end) if _EXCLUDE_KEY_LINE.match(lines[i])), None)
     if key is not None:
         stop = next((j for j in range(key + 1, end + 1) if _loads("".join(lines[key:j])) is not None), None)

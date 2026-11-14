@@ -41515,6 +41515,18 @@ record in `status.warnings`, no top-level key), `::test_a_log_record_the_selecti
 `::test_every_top_level_key_of_a_captured_document_is_in_its_row_c1638` (thirteen commands with a record logged
 mid-run, a blocked sync among them: every key each document carries is in its row).
 
+**A folder named with DEL leaves a sources.toml that loads** (R39-B1, lane RB's note, found by ruling 133's property
+test; the lead's addition to lane B on 2026-11-14). `config.local_source_table` and `inbox_source_table` wrote the
+path with `json.dumps(..., ensure_ascii=False)`, whose escaping is TOML's but leaves DEL (U+007F) raw, which TOML
+1.0 forbids in a basic string: `add-source` on a folder whose name holds one was refused (exit 2, the table would
+not load), and `exclude-empty` would write or advise an `exclude` line no command could read. One helper,
+`config.toml_string`, writes every TOML string agentsync writes, DEL as `\u007F`: both source tables,
+`set_source_exclude`'s line, the exclude list `exclude-empty` prints and `arm_local`'s exclude advice, and
+`graph.discover`'s TOML. C1 controls and the line separators stay raw, as TOML allows. Test:
+`test_cli.py::test_a_folder_named_with_del_leaves_a_sources_toml_that_loads_r39_b1` (add-source on
+`Contoso<DEL>Board`: the file holds `\u007F`, `tomllib` loads it and gives the path back, status loads it; an
+exclude glob with DEL, the inbox table and discover's string round-trip; red with `json.dumps` alone).
+
 ### 16.253 Round 39: the converters: the empty-file screen, a zero-byte recording, and a table's page cap (2026-11-14, wave B13 round 39 lane E)
 
 Reserved for round 39 lane E of B13.

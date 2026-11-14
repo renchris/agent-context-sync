@@ -16,7 +16,6 @@ import dataclasses
 import errno as errno_mod
 import functools
 import hashlib
-import json
 import logging
 import os
 import plistlib
@@ -38,7 +37,7 @@ from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import NamedTuple, Protocol, TypeVar, cast
 
-from agentsync.config import SourceConfig, always_excluded
+from agentsync.config import SourceConfig, always_excluded, toml_string
 from agentsync.errors import ConfigError, MaterialiseError
 from agentsync.materialise import (
     file_provider_marker,
@@ -1056,7 +1055,7 @@ def exclude_advice(cfg: SourceConfig, empty: Sequence[str], where: str) -> str:
     list cannot drop) and adds the first five folders, each anchored at the root (``/<path>/``) with its glob
     characters made literal; more than five are a count."""
     shown = exclude_globs(cfg, empty[:_EXCLUDE_SHOWN])
-    listed = ", ".join(json.dumps(g, ensure_ascii=False) for g in shown)
+    listed = ", ".join(toml_string(g) for g in shown)  # as set_source_exclude writes it (R39-B1)
     more = len(empty) - min(len(empty), _EXCLUDE_SHOWN)
     rest = f" (+{more} more: status names them once these are excluded)" if more > 0 else ""
     return (
