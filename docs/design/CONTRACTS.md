@@ -41627,6 +41627,30 @@ organization for that folder)`). Tests:
 `test_report_redaction.py::test_both_reports_cut_a_refused_look_alike_at_its_provider_folder_c1601` and the shell legend's `test_the_path_legend_says_only_a_relative_argument_is_one`; the
 legend tests whose args= folder was unconfigured now configure it.
 
+**One property test runs both reports over one hostile name set** (ruling 133's proof; C1625 to C1629, C1671, C1672,
+C1681, C1601; `tests/test_report_redaction.py`, `scripts/install.sh`).
+`test_both_reports_print_one_line_over_a_hostile_name_set_ruling_133` configures each name under OneDrive-Contoso and
+writes one friction row for each line form (install.log's `args=` word in `printf %q` under the run's locale, each
+refusal head, the not-a-folder line, a typed note collapsed and not, a friction row in `safe_text`'s spelling,
+doctor's listable detail and its `$'...'` fix, and a dry run's `add-source` word), then compares the shell report
+with this checkout's own `agentsync setup-report` render (install.sh would recut a render it cannot stamp as its own
+build), under `LC_ALL=C` and `en_US.UTF-8`: the same line row by row, the same private-only verdict and no fragment of
+any name. The names are each C0 control, DEL, each `str.splitlines()` break, U+00AD, U+0890, U+110BD, U+13430 and
+U+1D173 between two words; a zero-width space or word joiner before `Status`, `Documents`, `Music` and `Copilot`; a
+control byte between `Q3` and `Plans`; verb-led folders; and a name bash 3.2 writes in a UTF-8 `$'...'` word, each
+also quoted under an unregistered and a generic-domain provider folder. It found two shell gaps, built here: a
+`safe_text` spelling that is a product word (a zero-width `Copilot`) got a pair, where C1635 aliases none, so
+`add_forms` now checks `generic_folder` and `agent_words_name` before `report_word`; and an unregistered tenant after
+`is not an existing folder: ` and a dry run's `add-source ` word was kept, so `slcut` reads those two heads too (an
+`add-source` word keeps a configured folder's number, as the agentsync report keeps it). A raw DEL in sources.toml is
+not valid TOML, so the test writes it as `\u007F`, as `config.toml_string` does since lane B's R39-B1. An unregistered tenant
+in free text or doctor's detail has no structure either report cuts by, and prints alike in both.
+One divergence is kept and known (lane RA's ruling, 2026-11-14): a `$'...'` word right after `--source-local ` (install.log
+writes `printf %q` of the whole path) is decoded and cut by structure in the agentsync report (round 17 U10, which
+§16.245's `a byte-wise miss is safe` rests on) and cut whole to `<path>` by the shell's older stage, so the two print
+`~/Library/CloudStorage/OneDrive-<org-1>/<folder-N>` and `<path>` there; neither prints a name. The property test puts
+its `$'...'` mid-path, where both agree.
+
 **The recut note says which <path> is its own** (C1604; ruling 135; amends §16.246 C1406; `scripts/install.sh`). An
 older build writes `<path>` itself (`set exclude = [<path>] in [[source]]`, an item path in a log line), and the
 recut note defined `<path>` as only the recut's two kinds, giving that token a false meaning. `report_recut` reads,

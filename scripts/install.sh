@@ -3164,9 +3164,14 @@ redaction_pairs() {
 			[ -z "$v" ] || [ "$v" = "$1" ] || emit_pair "$v" "$2" "${3:-}" utf8
 		fi
 		# and as text.safe_text prints it, its blanks at either end gone, as setup_report._alias_escaped aliases
-		# it (B13 round 38 C1439, ruling 126): one word that is a report word or a generic folder is no pair
+		# it (B13 round 38 C1439, ruling 126): one word that is a generic folder or product word (C1635, checked
+		# first: the report stays public) or a report word (fallback_redaction makes it private only) is no pair
 		v="$(safe_shown "$1")"
-		case "$v" in "$1" | ? | "") return 0 ;; *[\ _-]*) ;; *) ! report_word "$(recase lower "$v")" && ! generic_folder "$v" || return 0 ;; esac
+		case "$v" in
+		"$1" | ? | "") return 0 ;;
+		*[\ _-]*) ;;
+		*) if generic_folder "$v" || agent_words_name "$v" || report_word "$(recase lower "$v")"; then return 0; fi ;;
+		esac
 		emit_pair "$v" "$2" "${3:-}" utf8
 	}
 	# A folder's or an organisation's pair is matched as the Python report's fuzzy mode matches it (B13 round 10
@@ -4722,10 +4727,13 @@ typed_note_cut() { # [PAIRS CONFIGURED]: redact_stream's pairs and the configure
 		}
 		return 1
 	}
-	function slcut(l,    out, a, q, w, i, c, e, j) {
+	# after each of three heads: `--source-local `, install.sh\047s `is not an existing folder: ` and a dry
+	# run\047s `add-source ` word, which keeps a folder\047s number (ck 0), as setup_report cuts them
+	function slcut(l) { return slone(slone(slone(l, "--source-local ", check), "is not an existing folder: ", check), "add-source ", 0) }
+	function slone(l, hd, ck,    out, a, q, w, i, c, e, j) {
 		out = ""
-		while ((a = index(l, "--source-local ")) > 0) {
-			out = out substr(l, 1, a + 14); l = substr(l, a + 15)
+		while ((a = index(l, hd)) > 0) {
+			out = out substr(l, 1, a + length(hd) - 1); l = substr(l, a + length(hd))
 			q = substr(l, 1, 1); q = (q == "\"" || q == "\047") ? q : ""
 			if (substr(l, length(q) + 1, length(cs)) != cs) continue
 			i = length(q) + 1; w = ""
@@ -4739,7 +4747,7 @@ typed_note_cut() { # [PAIRS CONFIGURED]: redact_stream's pairs and the configure
 			if (q == "") while (e > 0 && index(")]}.,;:`", substr(w, e, 1))) e--
 			j = index(substr(w, length(cs) + 1), "/")
 			c = j ? substr(w, length(cs) + 1, j - 1) : substr(w, length(cs) + 1, e - length(cs))
-			if (c ~ kept && (!check || !j || cfgonly(substr(w, length(cs) + j + 1, e - length(cs) - j)))) {
+			if (c ~ kept && (!ck || !j || cfgonly(substr(w, length(cs) + j + 1, e - length(cs) - j)))) {
 				out = out q; l = substr(l, length(q) + 1); continue
 			}
 			out = out q cs (c ~ kept ? c "/" : "") "<path>" substr(w, e + 1); l = substr(l, i)

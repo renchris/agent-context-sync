@@ -7,6 +7,7 @@ from __future__ import annotations
 import re
 import shlex
 import subprocess
+import sys
 import unicodedata
 from pathlib import Path
 
@@ -21,12 +22,15 @@ from test_install_oneshot import (  # noqa: F401  (fixture)
     _REPORT_CUTS_BLOCK,
     BASH32,
     INSTALL_SH,
+    _cloud,
     _fuzzy_report,
     _renderer_home,
     _shell_cut_stdout,
     _stub_id,
+    _write_config,
     _write_exe,
     env,
+    friction_path,
     install_sh,
     report_path,
 )
@@ -1523,6 +1527,156 @@ def test_both_reports_cut_a_refused_look_alike_at_its_provider_folder_c1601(
     # the shell report's own record of the refusal (the agentsync report names only its exit here)
     own = f"--source-local {form}: its name is step 1's"
     assert [ln for ln in reports["shell"].splitlines() if own in ln], reports["shell"]
+
+
+# ---- ruling 133's property test: both reports over one hostile name set, in every line form ----------------
+
+_HOSTILE_CHARS = (
+    [chr(c) for c in range(1, 32)]
+    + ["\x7f", "\x85", "\u2028", "\u2029"]
+    + ["\u00ad", "\u0890", "\U000110bd", "\U00013430", "\U0001d173"]
+)
+"""Ruling 133's characters, each between two made-up words: each C0 control, DEL, each break str.splitlines()
+honours, and Cf characters safe_shown once kept (U+00AD, U+0890, U+110BD, U+13430, U+1D173)."""
+_HOSTILE_WORDS = (
+    "\u200bStatus",
+    "\u2060Status",
+    "\u200bDocuments",
+    "\u2060Music",
+    "\u200bCopilot",
+    "Q3\x08Plans",
+    "Curate Notes",
+    "Exclude Empty Alder",
+    "Café\x1bAlder",
+)
+"""Ruling 133's named cases: a zero-width or word joiner before a report word, a generic folder and a product
+word, a control byte between two words, verb-led folders and a bash 3.2 UTF-8 `%q` word (Café with an ESC)."""
+
+
+def _printf_q(word: str, locale: str) -> str:
+    cp = subprocess.run(
+        [BASH32, "-c", 'printf %q "$1"', "_", word],
+        capture_output=True,
+        check=True,
+        env={"PATH": "/usr/bin:/bin", "LC_ALL": locale, "LANG": locale},
+    )
+    return cp.stdout.decode("utf-8", "replace")
+
+
+def _hostile_lines(n: int, name: str, locale: str, provider: str = "OneDrive-Contoso") -> list[str]:
+    """Each line form ruling 133 names, for the configured folder ``name`` (source s<n>), quoted under
+    ``provider``: args=, each refusal head, the not-a-folder line, a typed note collapsed and not, a friction
+    row, doctor's detail and fix, and a dry-run line."""
+    shown = setup_report._LIST_ESCAPED_RE.sub(lambda m: setup_report._LIST_ESCAPES.get(m.group(), "?"), name)
+    root = f"~/Library/CloudStorage/{provider}"
+    q = _printf_q(name, locale)
+    ansi = setup_report._ansi_c_body(name, setup_report._DOCTOR_LETTERS)
+    return [
+        f"start install.sh args=--source-local {root}/{q}",
+        *(f"usage error: --source-local {root}/{shown}: {head}x" for head in setup_report._REFUSED_HEADS),
+        f"usage error: --source-local is not an existing folder: {root}/{shown} (see --help)",
+        f"added source 'alpha' to ~/agent-context/sources.toml ({root}/{shown}, stored as {root}/{shown}): x",
+        f"added source 'alpha' to ~/agent-context/sources.toml ({root}/{shown}, stored as ~/x/{shown}): x",
+        f"saw {root}/{safe_text(name)}",
+        f"[warn] source.alpha.listable — {root}/{shown} is empty",
+        f"open ~/$'Library/CloudStorage/{provider}/{ansi}' in Finder once",
+        f"[dry-run] ~/.local/bin/agentsync add-source {root}/{q}",
+    ]
+
+
+def _both_reports(
+    env: dict[str, str],  # noqa: F811
+    folders: list[str],
+    said: list[str],
+    locale: str,
+) -> tuple[list[str], list[str], bool, bool]:
+    """Each of ``said``, a friction row of its own, as the shell report and this checkout's agentsync report
+    print it, with ``folders`` configured under OneDrive-Contoso, install.sh under ``locale``; and each
+    report's private-only verdict."""
+    lib = _cloud(env) / "OneDrive-Contoso"
+    lib.mkdir(parents=True, exist_ok=True)
+    tables = []
+    for n, name in enumerate(folders):
+        (lib / name).mkdir(parents=True)
+        # TOML takes no raw DEL: escaped, as config.toml_string writes it since lane B's R39-B1
+        tables.append(local_source_table(f"s{n}", lib / name).replace("\x7f", "\\u007F"))
+    _write_config(env, *tables)
+    rows = "".join(
+        f"2026-10-10T00:00:{n % 60:02d}Z | step 1 | deviation | {ln} | -\n" for n, ln in enumerate(said)
+    )
+    friction_path(env).parent.mkdir(parents=True, exist_ok=True)
+    friction_path(env).write_text(f"Attempt: 2026-10-10T00:00:00Z\nPrompt: v15\n{rows}", encoding="utf-8")
+    cp = install_sh({**env, "LC_ALL": locale, "LANG": locale}, "--report-only")
+    assert cp.returncode == 0 and "shell fallback" in cp.stdout, cp.stdout + cp.stderr
+    texts = [report_path(env).read_text(encoding="utf-8")]
+    # this checkout's own render, as `agentsync setup-report` writes it (install.sh would recut a render it
+    # cannot stamp as its own build, ruling 126's other-build pass)
+    out = Path(env["HOME"]) / "agentsync-report.md"
+    cp = subprocess.run(
+        [sys.executable, "-m", "agentsync", "setup-report", "--out", str(out)],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+        env={**env, "LC_ALL": locale, "LANG": locale, "AGENTSYNC_OCR": "0", "AGENTSYNC_TM_EXCLUDE": "0"},
+        stdin=subprocess.DEVNULL,
+    )
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    texts.append(out.read_text(encoding="utf-8"))
+    cut = " | step 1 | deviation | "
+    shell, python = (
+        [ln.split(cut, 1)[1].removesuffix(" | -") for ln in text.splitlines() if cut in ln] for text in texts
+    )
+    return shell, python, "Private only:" in texts[0], "Private only:" in texts[1]
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize(
+    "names",
+    [
+        *(
+            [f"Alder{n:02d}{ch}Birch{n:02d}" for n, ch in enumerate(_HOSTILE_CHARS)][g : g + 6]
+            for g in range(0, len(_HOSTILE_CHARS), 6)
+        ),
+        *([w] for w in _HOSTILE_WORDS),
+    ],
+)
+@pytest.mark.parametrize("provider", ["OneDrive-Contoso", "OneDrive-Fabrikam", "OneDrive-Personal"])
+def test_both_reports_print_one_line_over_a_hostile_name_set_ruling_133(
+    env: dict[str, str],  # noqa: F811
+    names: list[str],
+    locale: str,
+    provider: str,
+) -> None:
+    """B13 round 39 ruling 133 (privacy; data integrity): ruling 126's halves were ported by hand and drifted
+    (C1625 to C1629, C1671, C1672, C1681, C1601). Both reports now cut by one table, and over one hostile name
+    set, in every line form, under LC_ALL=C and en_US.UTF-8, the shell report and this checkout's agentsync
+    report print the same line, give the same private-only verdict and print no fragment of a name, for the
+    folders quoted under a registered, an unregistered and a generic-domain provider folder. safe_shown
+    over every Cf the running Python knows is test_install_oneshot.py's
+    test_safe_shown_drops_every_format_character_the_running_python_knows_c1628_c1672."""
+    if provider != "OneDrive-Contoso" and len(names) > 1:
+        pytest.skip("each other provider folder runs over the named cases")
+    said = [ln for n, name in enumerate(names) for ln in _hostile_lines(n, name, locale, provider)]
+    shell, python, shell_private, python_private = _both_reports(env, names, said, locale)
+    assert shell_private == python_private, (names, shell_private, python_private)
+    assert len(shell) == len(python) == len(said), (len(shell), len(python), len(said))
+    frags = {w for name in names for w in re.split(r"[^A-Za-z0-9]+", safe_text(name)) if len(w) > 3}
+    frags -= {"Status", "Documents", "Music", "Copilot", "Curate", "Exclude", "Empty", "Notes", "Plans"}
+    frags.add("Fabrikam")
+    pairs = list(zip(shell, python, strict=True))
+    # an unregistered tenant is cut by structure only: free text and doctor's detail have none in either
+    # report (a configured folder's provider is on disk, so a pair registers it there)
+    free = ("saw ", "[warn] source.")
+    leaks = [
+        (a, b)
+        for a, b in pairs
+        for f in frags
+        if (f in a or f in b) and not (f == "Fabrikam" and a.startswith(free))
+    ]
+    assert not leaks, (len(leaks), leaks[:4])
+    wrong = [(a, b) for a, b in pairs if a != b]
+    assert not wrong, (len(wrong), wrong[:8])
 
 
 def test_a_recut_of_another_builds_render_says_so_under_its_redaction_section_c1406(tmp_path: Path) -> None:
