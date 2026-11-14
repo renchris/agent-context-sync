@@ -41307,6 +41307,10 @@ land gate passes, and is left by a hold, a blocked land gate or a failure, statu
 after `history_days` plus twice the slack, `compaction_state`); neither words the sum as a deadline for a body's age,
 the misreading C1306 corrected. Test: `test_the_guides_say_when_compaction_runs_never_a_deadline_c1489`, which reads
 each sentence and each claim from the code.
+Amended 2026-11-14, §16.254 C1653, C1678: "hourly by default" is the background job's schedule, which setup does not
+install, and without it the first `agentsync sync` an hour or more after the last full pass reconciles; "a stopped
+install" is "no sync at all" now; and the history's first commit, when it is the only one that old (such as the
+snapshot a compaction leaves), does not make one due.
 
 **CI's time is the time of round 37's jobs, and its limit is 100** (C1460 with C1473; CLAUDE.md, `docs/lanes/COMMON.md`,
 ci.yml; dated line at §16.144 W70). The twenty-three ci jobs on main from feedd8ef to 248e6a0a (read back with `gh run
@@ -41390,6 +41394,27 @@ downloaded and the re-read never downloads a recording, and names the reconcile'
 counting words and its CONTRACTS citations stay. No code changes. Test:
 `test_the_repeat_conversions_row_says_which_recordings_a_sync_downloads_c1677`, which reads each claim from the
 code, with `test_the_repeat_conversions_row_names_the_upgrade_retry_note` keeping the counting words.
+
+**The guides say who runs the reconcile, and that a first commit alone that old starts no compaction** (C1653 with
+C1678; docs only; dated line at §16.249 C1489). README.md's point-in-time paragraph said the compaction runs in "the
+next reconcile (`agentsync sync`'s full pass, hourly by default)", while the only hourly schedule is the background
+job's (`launchd.reconcile_spec`, `reconcile_interval_s`, 3600 by default), which setup never installs; without it an
+interactive `agentsync sync` reconciles only once the last full pass is that old (`cycle._interactive_mode`). It also
+named "a stopped install", a phrase no code or guide defines, which reads as an interrupted install.sh (C1653). And
+README.md and `docs/deploy/data-governance.md`'s table row and Bounded history bullet said compaction is due once any
+commit is older than `history_days` plus `compaction_slack_days`, while `governance.compaction_due` returns
+`len(old) > 1 or` a parent among them, so a root that is the only commit that old is not due, in a mirror never
+compacted too: the snapshot every compaction leaves takes its base commit's header lines (`_apply_rewrite`) and passes
+the sum about a week later, and in that window status says ok while git log shows an older commit (C1678). The README
+now says a reconcile is `agentsync sync`'s full pass, run hourly by the background job by default and without it by the
+first `agentsync sync` an hour or more (by default) after the last full pass; that a hold, a blocked land gate, a failed
+compaction, or no sync at all (no background job and none typed) leaves the history; and that the history's first
+commit, when it is the only one that old (such as the snapshot the last compaction left), is left out of the trigger.
+data-governance.md's row and bullet say the same. §16.249's paragraph and §16.244's C1306 lines are left as written:
+there "a stopped install" stands opposite "a running install". compaction_state's `ok` words are lane B's (§16.252).
+Test: `test_the_guides_say_when_compaction_runs_never_a_deadline_c1489`, its three sentences updated, which holds
+`reconcile_interval_s`'s default of 3600, the reconcile job's interval, `_interactive_mode`'s age test, `len(old) > 1`
+in `compaction_due`'s source and the squashed root's header to the code.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

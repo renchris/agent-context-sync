@@ -9830,25 +9830,37 @@ def test_the_guides_say_when_compaction_runs_never_a_deadline_c1489() -> None:
     readme = " ".join(_page("README.md").split())
     assert "squashes that history after `history_days` on its next full pass" not in readme
     assert (
-        "Once a commit is older than `history_days` plus `compaction_slack_days` (30 + 7 days by default),"
-        " the next reconcile (`agentsync sync`'s full pass, hourly by default) whose land gate passes"
-        " squashes every commit older than `history_days`. A hold, a blocked land gate, a failed compaction"
-        " or a stopped install leaves the history in place, and `agentsync status` then shows compaction due"
-        " or overdue."
+        "Once history holds a commit older than `history_days` plus `compaction_slack_days` (30 + 7 days by"
+        " default), other than the history's first commit when it is the only one that old (such as the"
+        " snapshot the last compaction left, which keeps its old date), the next reconcile whose land gate"
+        " passes squashes every commit older than `history_days`. A reconcile is `agentsync sync`'s full"
+        " pass: the background job runs one hourly by default, and without that job the first `agentsync"
+        " sync` an hour or more (by default) after the last full pass runs one. A hold, a blocked land gate,"
+        " a failed compaction, or no sync at all (no background job and none typed) leaves the history in"
+        " place, and `agentsync status` then shows compaction due or overdue."
     ) in readme
+    # B13 round 39 C1653: no hourly schedule without the background job, and no "stopped install"
+    assert "full pass, hourly by default) whose land gate" not in readme
+    assert "or a stopped install leaves the history" not in readme
     gov = " ".join(_page("docs/deploy/data-governance.md").split())
     assert "compaction on `sync`'s full pass when due (`[governance] history_days`, default 30)" not in gov
     assert (
         "| compaction, due once a commit is older than `history_days` + `compaction_slack_days` (30 + 7 by"
-        " default) and run by the next reconcile (`sync`'s full pass) whose land gate passes; a hold or a"
-        " failure leaves it (status: due, then overdue) |"
+        " default), other than the history's first commit when it is the only one that old (such as the"
+        " snapshot the last compaction left), and run by the next reconcile (`sync`'s full pass: the"
+        " background job's, hourly by default, or without it the first `sync` an hour or more after the last"
+        " full pass) whose land gate passes; a hold, a failure or no sync"
+        " at all leaves it (status: due, then overdue) |"
     ) in gov
     assert (
         "Compaction becomes due once a commit is older than `history_days` plus `compaction_slack_days` (7 by"
-        " default), and it then runs in the next reconcile whose land gate passes. A hold (see below), a"
-        " blocked land gate or a failed compaction skips it, and nothing here is a deadline for a body's age."
-        " `agentsync status` warns when compaction is due and fails when it is overdue, after `history_days`"
-        " plus twice `compaction_slack_days`."
+        " default), other than the history's first commit when it is the only one that old (such as the"
+        " snapshot the last compaction left, which keeps its old date), and it then runs in the next"
+        " reconcile whose land gate passes: the background job runs one hourly by default, and without that"
+        " job the first `agentsync sync` an hour or more (by default) after the last full pass runs one. A"
+        " hold (see below), a blocked land gate, a failed compaction or no sync at all skips it, and nothing"
+        " here is a deadline for a body's age. `agentsync status` warns when compaction is due and fails when"
+        " it is overdue, after `history_days` plus twice `compaction_slack_days`."
     ) in gov
     for text in (readme, gov):
         assert "within 37 days" not in text and "after 37 days" not in text
@@ -9874,6 +9886,20 @@ def test_the_guides_say_when_compaction_runs_never_a_deadline_c1489() -> None:
     )
     defaults = {f.name: f.default for f in dataclasses.fields(config.Config)}
     assert defaults["reconcile_interval_s"] == 3600
+    # B13 round 39 C1653: the hourly run is the background job's, its interval the reconcile setting, and an
+    # interactive sync reconciles only once the last full pass is that old
+    from agentsync.ops import launchd  # noqa: PLC0415
+
+    job = inspect.getsource(launchd.reconcile_spec)
+    assert '_spec(config, "reconcile", CycleMode.RECONCILE, config.reconcile_interval_s)' in job
+    picked = inspect.getsource(cycle._interactive_mode)
+    assert "return CycleMode.RECONCILE if age >= config.reconcile_interval_s else CycleMode.POLL" in picked
+    # B13 round 39 C1678: a lone old root, the snapshot a compaction leaves with its base's date, is not due
+    assert "return len(old) > 1 or any(ps for sha, ps, _ in graph if sha in old)" in due
+    assert "(other than a lone root)" in " ".join((inspect.getdoc(governance.compaction_due) or "").split())
+    # the squashed root takes the base commit's header lines (its dates among them), so it keeps its old date
+    rewrite = inspect.getsource(governance._apply_rewrite)
+    assert "_join_commit(rw.root_tree(tree), [], other, squash_message)" in rewrite
     section = " ".join(_contracts_section("### 16.249 ", "### 16.300 ").split())
     assert (
         "**The guides say when compaction runs, never a deadline** (C1489, by §16.244 C1306; docs only)."

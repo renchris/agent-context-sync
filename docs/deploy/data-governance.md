@@ -23,7 +23,7 @@ refuses to push to a remote that is not listed.
 
 | Location | Holds | Bounded by | Purge reaches it |
 |---|---|---|---|
-| `~/agent-context/docs/mirror/` + `.git` | converted markdown, one page per item, plus git history | compaction, due once a commit is older than `history_days` + `compaction_slack_days` (30 + 7 by default) and run by the next reconcile (`sync`'s full pass) whose land gate passes; a hold or a failure leaves it (status: due, then overdue) | yes: history rewrite, reflog expiry, `gc --prune=now`, verified with `git cat-file -e` |
+| `~/agent-context/docs/mirror/` + `.git` | converted markdown, one page per item, plus git history | compaction, due once a commit is older than `history_days` + `compaction_slack_days` (30 + 7 by default), other than the history's first commit when it is the only one that old (such as the snapshot the last compaction left), and run by the next reconcile (`sync`'s full pass: the background job's, hourly by default, or without it the first `sync` an hour or more after the last full pass) whose land gate passes; a hold, a failure or no sync at all leaves it (status: due, then overdue) | yes: history rewrite, reflog expiry, `gc --prune=now`, verified with `git cat-file -e` |
 | `~/Library/Caches/agentsync` | converter outputs by content hash | GC after each complete enumeration | yes |
 | `~/Library/Application Support/agentsync/manifest.sqlite` | paths, ids, hashes, labels, cursors (0600); no content | tombstone reap, 180 days | yes (rows forgotten) |
 | `…/agentsync/staging`, `…/agentsync/teams/` | raw downloads (per cycle); Teams month stores | emptied each cycle; Teams rolls up by month | staging: n/a; Teams: yes |
@@ -50,8 +50,11 @@ is a copy that no purge reaches, so exclude it too.
 - **Bounded history:** mirror history older than `history_days` is squashed into one snapshot and the dropped
   objects are pruned. This runs automatically on the full pass `agentsync sync` makes when one is due.
   Compaction becomes due once a commit is older than `history_days` plus `compaction_slack_days` (7 by default),
-  and it then runs in the next reconcile whose land gate passes. A hold (see below), a blocked land gate or a failed
-  compaction skips it, and nothing here is a deadline for a body's age.
+  other than the history's first commit when it is the only one that old (such as the snapshot the last compaction
+  left, which keeps its old date), and it then runs in the next reconcile whose land gate passes: the background job
+  runs one hourly by default, and without that job the first `agentsync sync` an hour or more (by default) after the
+  last full pass runs one. A hold (see below), a blocked land
+  gate, a failed compaction or no sync at all skips it, and nothing here is a deadline for a body's age.
   `agentsync status` warns when compaction is due and fails when it is overdue, after `history_days` plus twice
   `compaction_slack_days`.
 - **Explicit purge:** `agentsync purge id=<stable_id> | path=<source glob> | docs=<docs glob> --reason
