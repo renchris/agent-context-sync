@@ -2747,6 +2747,46 @@ and up, prompt v37 (v36's block from `702fcff5`), outputs `round39/`. While its 
 `git ls-remote`, never a fetch in the operator checkout (C1470). The stop rule names Codex and Gemini: a clean round
 without Gemini goes to the operator before the loop closes.
 
+### B13 round 39: v37 rehearsal, cross-lane review, harvest, Codex beside Claude; Gemini not run (2026-11-14)
+
+Run `wf_30e7ed78-379` on `853fab34` (BASE `5bf1911e`), codex-only, 98 agents with no errors: 75 confirmed (0 turns,
+16 wrongs, 59 small), 6 refuted (C1619, C1623, C1662, C1663, C1665, C1668). All six rehearsal scenarios passed on v37
+with no turn, and no item needs prompt words, so the prompt stays v37. Ten items are data integrity, all privacy, and
+most are ruling 126's halves that landed in one report but not the other: the shell report's verb hold switched off
+once a folder name began with a verb (C1625, C1425's leak back), C1481's provider rule was missing from the shell's
+typed-note and --source-local cuts (C1626), C1439's private-only flag had no shell half, so the shell report offered
+the public issue link (C1627 with C1671 and C1681), the shell's `safe_shown` lacked `safe_text`'s format-character
+removal (C1628 with C1672), Python printed a backspace name the shell cut (C1629), Python's aliases missed macOS bash
+3.2's UTF-8 `printf %q` output (C1670 with C1636 and C1649), and an older installed build's render printed a name
+from a TWIN_MARK row once the plain twin was renamed (C1655). Doctor's `tcc.<id>` lines still printed a folder's name
+raw (C1640). Five wrongs are in the CLI conventions wave's landed `--json` code (C1638 with C1673, C1639 with C1674,
+C1643); that wave's lead asked on 2026-11-14 that lane B build them on trunk. C1641 (C1442 copies and hashes a
+recording in a source's queue during an OCR outage) and three doc wrongs (C1677, C1678, C1679) complete the list.
+Codex's five finders ran and its second opinion gave 16 opinions, none disputed. Gemini did not run: the allow rule
+for `~/.claude/scripts/agy-review.sh` is still the operator's (backlog `8ed9dae0fbc0`). A triage workflow
+(`wf_26a7aa4f-330`) placed every item once.
+
+Lead rulings for round 39 (in `lanes/COMMON38.md`, mirrored in `docs/lanes/COMMON.md`): (133) both reports cut the same
+spellings by construction: every value they cut by lives once, in a new `src/agentsync/report_cuts.py` (lane RA) that
+generates a block inside install.sh held byte for byte by a test, one property test runs both reports over one
+hostile name set, doctor's lines print through the same rule (lane B), and the halves land in one run, completing
+ruling 126; (134) the report knows what macOS bash 3.2's `printf %q` writes under UTF-8, measured with `/bin/bash`;
+(135) another build's render is kept only when that build can read every marked row install.out holds, completing
+ruling 129's fallback; (136) `--fields` and log records follow the document the command prints. The calls under 90%
+are filed with their courses kept: decision `8ac14056ab04` (conviction 70), veto window to 2026-11-16.
+
+Convergence: confirmed as before, then 85, then 75; turns as before, then 0, then 0; wrongs as before, then 21, then
+16.
+
+Lanes (`--account auto`, CONTRACTS §16.250 to §16.254, plain `scripts/ship-land.sh` with the repo's own lock shared with
+the CLI conventions wave, scratch under `round39/`, back-channel pane 13 or its successor): RA 13 (ruling 133's table
+and C1670's bash 3.2 spellings first, sent to lanes RB and B; landed with RB in one run), RB 16 (the shell half of
+ruling 133 and its property test, C1655's render fallback, C1648's legend, C1616's temp files), B 13 (C1640 and C1675
+first; C1641 with C1679; the CLI wave's `--json` items last), E 4 (C1645 with C1646, C1647, C1676), D 6 (C1677,
+C1653 with C1678, C1651, C1654, C1660). The lead holds 23: round 40's kit (C1602, C1603, C1605 with C1624, C1659 and
+C1666, C1606 to C1609, C1611 to C1615, C1617, C1618, C1620 to C1622), C1661, C1667 (Gemini) and C1669 (the CLI
+wave's queued C1462 half, checked when that wave closes).
+
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be

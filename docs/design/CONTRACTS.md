@@ -41353,6 +41353,26 @@ substrings the C1280 test reads stay. setup-feedback.md's K59 row records what v
 Test: `test_the_guides_name_every_character_the_list_escapes_c1455`, which reads `escd`'s byte classes and the 0x1E
 mapping from install.sh first, so a change to what the installer escapes fails it rather than leaving the guides stale.
 
+### 16.250 Round 39: the report: one cut table both reports read, bash 3.2's %q spellings, and the step-limit words (2026-11-14, wave B13 round 39 lane RA)
+
+Reserved for round 39 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 39").
+
+### 16.251 Round 39: the installer: the shell reads the shared cut table, another build's render only when it reads every mark, and temp files under TMPDIR (2026-11-14, wave B13 round 39 lane RB)
+
+Reserved for round 39 lane RB of B13.
+
+### 16.252 Round 39: --fields and log records follow the document, names in doctor's lines, and a recording kept during an OCR outage (2026-11-14, wave B13 round 39 lane B)
+
+Reserved for round 39 lane B of B13.
+
+### 16.253 Round 39: the converters: the empty-file screen, a zero-byte recording, and a table's page cap (2026-11-14, wave B13 round 39 lane E)
+
+Reserved for round 39 lane E of B13.
+
+### 16.254 Round 39: the compaction promise, recording downloads and the guides (2026-11-14, wave B13 round 39 lane D)
+
+Reserved for round 39 lane D of B13.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units
