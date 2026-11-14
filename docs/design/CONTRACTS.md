@@ -41531,6 +41531,21 @@ a literal one by its bytes): if one does, no verb is held there, so a folder `Cu
 <folder-1>-queue` in both reports. Tests: `test_report_redaction.py::test_both_reports_take_keep_verbs_one_guard_c1625`
 (both rows, shell equal to Python, no `alpha`) and `test_both_reports_hold_agentsyncs_own_verb_whole_c1425`.
 
+**The shell cuts an unregistered tenant after CloudStorage as the agentsync report does** (C1626 with C1634's
+`known()` form; ruling 133; privacy; `scripts/install.sh`). `typed_note_cut`'s `cut()` kept every part right after
+`CloudStorage`, and the pair loop skips a `--source-local` argument under CloudStorage, so an unregistered
+`OneDrive-Fabrikam` printed in an added-source note and on an `args=` line beside the public link, where `_cut_path`
+reads `~/Library/CloudStorage/<path>`. The provider rule is the table's `CUT_PROVIDER_KEPT`
+(`report_cuts.provider_kept_pattern()`, anchored), read through ENVIRON by `typed_note_cut`'s `cut()` and the recut's
+`known()`; and `slcut`, at the end of `typed_note_cut`'s line rule, after every pair has run, takes each `--source-local
+~/Library/CloudStorage/` word, bare (to a blank no backslash escapes, a `\ ` kept in it, trailing `)]}.,;:` and a
+backtick left after it) or in single or double quotes (to the closing one), and when its provider folder is not one
+`CUT_PROVIDER_KEPT` keeps, prints `~/Library/CloudStorage/<path>` for the whole word. It reads the redacted line, so a
+tenant a pair registered (`OneDrive-<org-1>/<folder-1>`), a domain that names no organisation (`OneDrive-Personal`) and
+the app's own name (`Box-Box`) stay as they are; no guess runs in the pair loop. Test:
+`test_report_redaction.py::test_both_reports_cut_an_unregistered_tenant_after_cloudstorage_c1626` (a collapsed and an
+uncollapsed note, a bare, an escaped-blank and a quoted argument cut, three kept, both reports the same line).
+
 ### 16.252 Round 39: --fields and log records follow the document, names in doctor's lines, and a recording kept during an OCR outage (2026-11-14, wave B13 round 39 lane B)
 
 Round 39's lane B items (`docs/plans/bring-back-ocr.md`, "B13 round 39"; specs `round39/items/C<n>.md`, the

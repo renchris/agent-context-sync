@@ -4085,6 +4085,8 @@ def test_the_typed_cuts_word_lists_are_the_shells_and_the_reports() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
     [script] = re.findall(r"(?ms)^typed_note_cut\(\) \{\n(.*?)^\}$", text)
     assert 'TYPED_FIXED="$CUT_FIXED" TYPED_DRIVE="$CUT_DRIVE" TYPED_HOME="$CUT_HOME"' in script
+    # B13 round 39 C1626, C1634 (ruling 133): the provider rule is the table's, in both awks
+    assert 'TYPED_KEPT="$CUT_PROVIDER_KEPT"' in script and "p[i] ~ kept" in script
     # B13 round 38 ruling 126: one copy of each, which report_recut's awk reads too
     [drive] = re.findall(r"(?m)^CUT_DRIVE='(.*)'$", text)
     [homes] = re.findall(r"(?m)^CUT_HOME='(.*)'$", text)
@@ -4094,8 +4096,9 @@ def test_the_typed_cuts_word_lists_are_the_shells_and_the_reports() -> None:
     assert set(fixed.split("|")) == set(setup_report._PATH_COMPONENTS)
     [recut] = re.findall(r"(?ms)^report_words_cut\(\) \{\n(.*?)^\}$", text)
     assert 'CUT_FIXED="$CUT_FIXED" CUT_DRIVE="$CUT_DRIVE" CUT_HOME="$CUT_HOME"' in recut
-    [apps] = re.findall(r"p\[i\] ~ /\^\(([A-Za-z|]+)\)\(-SharedLibraries\)", recut)
-    assert tuple(apps.split("|")) == setup_report._PROVIDER_APPS
+    assert 'CUT_KEPT="$CUT_PROVIDER_KEPT"' in recut and "p[i] ~ kept" in recut
+    [kept] = re.findall(r"(?m)^CUT_PROVIDER_KEPT='(.*)'$", text)
+    assert kept == f"^{setup_report._PROVIDER_KEPT_RE.pattern}$"
 
 
 def test_every_source_local_refusal_opens_with_a_head_both_reports_cut_after_c1432() -> None:

@@ -13,11 +13,12 @@ from pathlib import Path
 import pytest
 
 from agentsync import cli, net, setup_report
-from agentsync.config import load_config
+from agentsync.config import load_config, local_source_table
 from agentsync.text import safe_text
 from test_install_oneshot import (  # noqa: F401  (fixture)
     _C1253_ROWS,
     _C1285_ROWS,
+    _REPORT_CUTS_BLOCK,
     BASH32,
     INSTALL_SH,
     _fuzzy_report,
@@ -1125,7 +1126,8 @@ def _report_recut_harness(tmp_path: Path, report: Path, other: int = 1) -> subpr
         m.group(0)
         for m in re.finditer(
             r"(?ms)^(?:foreign_home_cut|report_recut|report_words_cut|recut_note)\(\) \{[^\n]*\n.*?^\}$|"
-            r"^(?:CUT_FIXED|CUT_DRIVE|CUT_HOME|REFUSED_HEADS|RECUT_NOTE)=.*?$",
+            r"^(?:CUT_FIXED|CUT_HOME|REFUSED_HEADS|RECUT_NOTE)=.*?$|"
+            + _REPORT_CUTS_BLOCK,  # the generated block whole (B13 round 39 C1633)
             text,
         )
     )
@@ -1381,6 +1383,78 @@ def test_both_reports_take_keep_verbs_one_guard_c1625(
     assert shell == python, (shell, python)
     assert re.fullmatch(want, shell), shell
     assert "alpha" not in shell.lower(), shell
+
+
+_C1626_ROWS = (
+    # an unregistered tenant in a collapsed and an uncollapsed added-source note
+    (
+        "added source 'plans' to ~/agent-context/sources.toml "
+        "(~/Library/CloudStorage/OneDrive-Fabrikam/Plans, stored as "
+        "~/Library/CloudStorage/OneDrive-Fabrikam/Plans): kept",
+        "added source 'plans' to ~/agent-context/sources.toml (~/Library/CloudStorage/<path>): kept",
+    ),
+    (
+        "added source 'plans' to ~/agent-context/sources.toml "
+        "(~/Library/CloudStorage/OneDrive-Fabrikam/Plans, stored as ~/Projects/Plans): kept",
+        "added source 'plans' to ~/agent-context/sources.toml (~/Library/CloudStorage/<path>, stored as "
+        "~/Projects/Plans): kept",
+    ),
+    # a --source-local argument for a missing folder, bare, with a %q-escaped blank, and quoted
+    (
+        "args=--source-local ~/Library/CloudStorage/OneDrive-Fabrikam/Plans --dry-run",
+        "args=--source-local ~/Library/CloudStorage/<path> --dry-run",
+    ),
+    (
+        "args=--source-local ~/Library/CloudStorage/OneDrive-Fabrikam\\ Partners/Plans; retried",
+        "args=--source-local ~/Library/CloudStorage/<path>; retried",
+    ),
+    (
+        "ran --source-local '~/Library/CloudStorage/OneDrive-Personal-Fabrikam/Plans' once",
+        "ran --source-local '~/Library/CloudStorage/<path>' once",
+    ),
+    # kept: a provider registered from disk, one that names no organisation, and the app's own name
+    (
+        "ran --source-local '~/Library/CloudStorage/OneDrive-Contoso/Northwind Plans' once",
+        "ran --source-local '~/Library/CloudStorage/OneDrive-<org-1>/<folder-1>' once",
+    ),
+    (
+        "args=--source-local ~/Library/CloudStorage/OneDrive-Personal/Northwind Plans",
+        "args=--source-local ~/Library/CloudStorage/OneDrive-Personal/<folder-1>",
+    ),
+    (
+        "args=--source-local ~/Library/CloudStorage/Box-Box",
+        "args=--source-local ~/Library/CloudStorage/Box-Box",
+    ),
+)
+
+
+@pytest.mark.parametrize(("said", "want"), _C1626_ROWS)
+def test_both_reports_cut_an_unregistered_tenant_after_cloudstorage_c1626(
+    env: dict[str, str],  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+    said: str,
+    want: str,
+) -> None:
+    """B13 round 39 C1626 (ruling 133; privacy): typed_note_cut kept every part right after CloudStorage, and
+    the pair loop skips a CloudStorage --source-local argument, so an unregistered `OneDrive-Fabrikam` printed
+    in a typed note and an args= line beside the public link. The provider rule (CUT_PROVIDER_KEPT, the
+    table's) now runs in typed_note_cut's cut() and in a pass after the pairs over each `--source-local
+    ~/Library/CloudStorage/` word, bare or quoted, a `\\ ` kept in it: both reports print the same line, a
+    registered tenant, a domain naming no organisation and the app's own name untouched."""
+    lib = Path(env["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso"
+    (lib / "Northwind Plans").mkdir(parents=True)
+    cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text(local_source_table("s0", lib / "Northwind Plans"), encoding="utf-8")
+    line = f"2026-10-12T10:00:01Z | step 2 | deviation | {said} | -"
+    text = _shell_report(env, f"Attempt: 2026-10-12T10:00:00Z\nPrompt: v15\n{line}\n")
+    [shell] = [ln for ln in text.splitlines() if " | step 2 | deviation | " in ln]
+    monkeypatch.setenv("HOME", env["HOME"])
+    red = setup_report._build_redactor(setup_report._Run(cfg, setup_report.ReportHooks(), 12.0))
+    python = setup_report._redact_lines(red, [line])
+    assert shell.split(" | deviation | ", 1)[1] == f"{want} | -", shell
+    assert python.split(" | deviation | ", 1)[1] == f"{want} | -", python
+    assert "Fabrikam" not in text
 
 
 def test_a_recut_of_another_builds_render_says_so_under_its_redaction_section_c1406(tmp_path: Path) -> None:

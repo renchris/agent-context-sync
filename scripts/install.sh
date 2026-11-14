@@ -4684,17 +4684,44 @@ foreign_home_cut() {
 # (BSD awk takes no newline in -v; generic_folder's and generic_home_dir's words, a test keeps them equal),
 # byte-wise.
 typed_note_cut() {
-	TYPED_FIXED="$CUT_FIXED" TYPED_DRIVE="$CUT_DRIVE" TYPED_HOME="$CUT_HOME" LC_ALL=C awk '
+	TYPED_FIXED="$CUT_FIXED" TYPED_DRIVE="$CUT_DRIVE" TYPED_HOME="$CUT_HOME" TYPED_KEPT="$CUT_PROVIDER_KEPT" LC_ALL=C awk '
 	BEGIN {
 		n = split(ENVIRON["TYPED_FIXED"], w, "|"); for (i = 1; i <= n; i++) fixed[w[i]] = 1
 		n = split(ENVIRON["TYPED_DRIVE"], w, "|"); for (i = 1; i <= n; i++) drive[w[i]] = 1
 		n = split(ENVIRON["TYPED_HOME"], w, "|"); for (i = 1; i <= n; i++) home[w[i]] = 1
+		kept = ENVIRON["TYPED_KEPT"]
+		cs = "~/Library/CloudStorage/"
+	}
+	# each `--source-local ~/Library/CloudStorage/<provider>/...` word, bare or in quotes, after the pairs: a
+	# provider folder CUT_PROVIDER_KEPT does not keep (a tenant no pair registered) is cut with the rest of
+	# the word, `\ ` kept in it, its closing quote and trailing `)]}.,;:` kept after (B13 round 39 C1626)
+	function slcut(l,    out, a, q, w, i, c, e, j) {
+		out = ""
+		while ((a = index(l, "--source-local ")) > 0) {
+			out = out substr(l, 1, a + 14); l = substr(l, a + 15)
+			q = substr(l, 1, 1); q = (q == "\"" || q == "\047") ? q : ""
+			if (substr(l, length(q) + 1, length(cs)) != cs) continue
+			i = length(q) + 1; w = ""
+			while (i <= length(l)) {
+				c = substr(l, i, 1)
+				if (q != "" ? c == q : (c == " " || c == "\t")) break
+				if (q == "" && c == "\\") { w = w substr(l, i, 2); i += 2; continue }
+				w = w c; i++
+			}
+			e = length(w)
+			if (q == "") while (e > 0 && index(")]}.,;:`", substr(w, e, 1))) e--
+			j = index(substr(w, length(cs) + 1), "/")
+			c = j ? substr(w, length(cs) + 1, j - 1) : substr(w, length(cs) + 1, e - length(cs))
+			if (c ~ kept) { out = out q; l = substr(l, length(q) + 1); continue }
+			out = out q cs "<path>" substr(w, e + 1); l = substr(l, i)
+		}
+		return out l
 	}
 	function cut(t,    n, p, i, j, out) {
 		n = split(t, p, "/")
 		for (i = 1; i <= n; i++) {
 			if (p[i] == "" || p[i] == "~" || p[i] == "." || p[i] == ".." || p[i] ~ /^(<[a-z]+(-[0-9]+)?>)+$/) continue
-			if ((p[i] in fixed) || (p[i] in drive) || (tolower(p[i]) in home) || (i > 1 && p[i - 1] == "CloudStorage")) continue
+			if ((p[i] in fixed) || (p[i] in drive) || (tolower(p[i]) in home) || (i > 1 && p[i - 1] == "CloudStorage" && p[i] ~ kept)) continue
 			out = ""
 			for (j = 1; j < i; j++) out = out p[j] "/"
 			return out "<path>"
@@ -4742,7 +4769,7 @@ typed_note_cut() {
 			done = done substr(s, 1, a)
 			s = substr(s, a + 1)
 		}
-		print done s
+		print slcut(done s)
 	}'
 }
 launchd_field() { # TEXT KEY: the value of a top-level "KEY = value" line of `launchctl print`
@@ -7055,13 +7082,14 @@ recut_note() {
 REFUSED_HEADS="this is a row step 1 marked |step 1 shows this folder's name |its name is step 1's escaped form |this is how step 1 shows a folder "
 # report_recut's fixed-word cuts of another build's render, on stdin
 report_words_cut() {
-	CUT_FIXED="$CUT_FIXED" CUT_DRIVE="$CUT_DRIVE" CUT_HOME="$CUT_HOME" CUT_HEADS="$REFUSED_HEADS" LC_ALL=C awk \
+	CUT_FIXED="$CUT_FIXED" CUT_DRIVE="$CUT_DRIVE" CUT_HOME="$CUT_HOME" CUT_HEADS="$REFUSED_HEADS" CUT_KEPT="$CUT_PROVIDER_KEPT" LC_ALL=C awk \
 		-v m="is not an existing folder: " -v t=" (see --help)" -v sl="--source-local " '
 	BEGIN {
 		n = split(ENVIRON["CUT_FIXED"], w, "|"); for (i = 1; i <= n; i++) fixed[w[i]] = 1
 		n = split(ENVIRON["CUT_DRIVE"], w, "|"); for (i = 1; i <= n; i++) drive[w[i]] = 1
 		n = split(ENVIRON["CUT_HOME"], w, "|"); for (i = 1; i <= n; i++) home[w[i]] = 1
 		nh = split(ENVIRON["CUT_HEADS"], head, "|")
+		kept = ENVIRON["CUT_KEPT"]
 	}
 	# a name _cut_path could have printed: its last part <path>, every earlier one a part it keeps
 	function known(name,    n, p, i) {
@@ -7070,8 +7098,9 @@ report_words_cut() {
 		for (i = 1; i < n; i++) {
 			if (p[i] == "" || p[i] == "~" || p[i] == "." || p[i] == ".." || p[i] ~ /^(<[a-z]+(-[0-9]+)?>)+$/) continue
 			if ((p[i] in fixed) || (p[i] in drive) || (tolower(p[i]) in home)) continue
-			# setup_report._PROVIDER_KEPT_RE: a known app (_PROVIDER_APPS), bare or before placeholders only
-			if (i > 1 && p[i - 1] == "CloudStorage" && p[i] ~ /^(Box|Dropbox|Egnyte|GoogleDrive|OneDrive)(-SharedLibraries)?(-(<[a-z]+(-[0-9]+)?>)+)?$/) continue
+			# CUT_PROVIDER_KEPT, setup_report._PROVIDER_KEPT_RE: a known app, bare, before placeholders only or
+			# before a domain that names no organisation (B13 round 39 C1634, ruling 133)
+			if (i > 1 && p[i - 1] == "CloudStorage" && p[i] ~ kept) continue
 			return 0
 		}
 		return 1
