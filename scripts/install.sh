@@ -3027,6 +3027,24 @@ hold_scopes() {
 			}
 		}' "${files[@]}" 2>/dev/null | LC_ALL=C awk '$0 != "all" && length($0) <= 63' | LC_ALL=C sort -u || true
 }
+# TEXT as text.safe_text prints it: CSI and terminated OSC sequences, controls (a newline as \n), C1 controls,
+# U+2028, U+2029, the tag and filler characters and every format (Cf) character of Unicode 14 to 15.1 (the
+# Pythons 3.11 to 3.13 agentsync runs on; CUT_CF, the generated table's, one alternative a code point:
+# B13 round 39 C1628 with C1672) dropped, byte-wise; its blanks at either end gone, as _alias_escaped
+# strips it
+safe_shown() {
+	SAFE_TEXT="$1" SAFE_CF="$CUT_CF" LC_ALL=C awk 'BEGIN {
+		s = ENVIRON["SAFE_TEXT"]
+		gsub(/(\033\[|\302\233)[0-?]*[ -\/]*[@-~]/, "", s)
+		gsub(/(\033\]|\302\235)[^\007\033]*(\007|\033\\|\302\234)/, "", s)
+		gsub(/\n/, "\\n", s)
+		gsub(/[\001-\037\177]|\302[\200-\237]|\342\200[\250\251]|\363\240[\200-\201][\200-\277]/, "", s)
+		gsub(/\341\205[\237\240]|\343\205\244|\357\276\240|\342\240\200/, "", s)
+		gsub(ENVIRON["SAFE_CF"], "", s)
+		sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s)
+		printf "%s", s
+	}'
+}
 redaction_pairs() {
 	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x links walked lk
 	local port k folders_seen=$'\n' ph b auth sep tail rw keys key m sp top folder_keys=$'\n' FUZZY
@@ -3150,22 +3168,6 @@ redaction_pairs() {
 		v="$(safe_shown "$1")"
 		case "$v" in "$1" | ? | "") return 0 ;; *[\ _-]*) ;; *) ! report_word "$(recase lower "$v")" && ! generic_folder "$v" || return 0 ;; esac
 		emit_pair "$v" "$2" "${3:-}" utf8
-	}
-	# TEXT as text.safe_text prints it: CSI and terminated OSC sequences, controls (a newline as \n), C1 controls,
-	# U+2028, U+2029, the tag and filler characters and every format (Cf) character agentsync's names hold
-	# dropped, byte-wise; its blanks at either end gone, as _alias_escaped strips it
-	safe_shown() {
-		SAFE_TEXT="$1" LC_ALL=C awk 'BEGIN {
-			s = ENVIRON["SAFE_TEXT"]
-			gsub(/(\033\[|\302\233)[0-?]*[ -\/]*[@-~]/, "", s)
-			gsub(/(\033\]|\302\235)[^\007\033]*(\007|\033\\|\302\234)/, "", s)
-			gsub(/\n/, "\\n", s)
-			gsub(/[\001-\037\177]|\302[\200-\237]|\342\200[\250\251]|\363\240[\200-\201][\200-\277]/, "", s)
-			gsub(/\341\205[\237\240]|\343\205\244|\357\276\240|\342\240\200/, "", s)
-			gsub(/\302\255|\330[\200-\205\234]|\333\235|\334\217|\341\240\216|\342\200[\213-\217\252-\256]|\342\201[\240-\244\246-\257]|\357\273\277|\357\277[\271-\273]/, "", s)
-			sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s)
-			printf "%s", s
-		}'
 	}
 	# A folder's or an organisation's pair is matched as the Python report's fuzzy mode matches it (B13 round 10
 	# L66): in any case and with any separator or none between its words, as a whole word (redact_stream's flag

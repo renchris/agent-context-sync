@@ -41546,6 +41546,15 @@ the app's own name (`Box-Box`) stay as they are; no guess runs in the pair loop.
 `test_report_redaction.py::test_both_reports_cut_an_unregistered_tenant_after_cloudstorage_c1626` (a collapsed and an
 uncollapsed note, a bare, an escaped-blank and a quoted argument cut, three kept, both reports the same line).
 
+**safe_shown drops every format character safe_text drops** (C1628 with C1672; ruling 133; privacy;
+`scripts/install.sh`). `safe_shown`'s own byte list kept 26 of the 163 Cf characters Python 3.11's `safe_text`
+drops (U+0890, U+0891, U+08E2, U+110BD, U+110CD, U+13430 to U+1343F, U+1BCA0 to U+1BCA3, U+1D173 to U+1D17A), so a
+name holding one had a spelling no pair matched. It now drops the table's `CUT_CF` (`report_cuts.FORMAT_RANGES`, every
+Cf of Unicode 14 to 15.1, the Pythons 3.11 to 3.13 agentsync runs on, one UTF-8 alternative a code point), read
+through ENVIRON, its other rules unchanged; it is a top-level function now, which C1627 calls from
+`fallback_redaction`. Test:
+`test_install_oneshot.py::test_safe_shown_drops_every_format_character_the_running_python_knows_c1628_c1672` (every Cf the running Python knows, between two words, equal to `safe_text(...).strip()`).
+
 ### 16.252 Round 39: --fields and log records follow the document, names in doctor's lines, and a recording kept during an OCR outage (2026-11-14, wave B13 round 39 lane B)
 
 Round 39's lane B items (`docs/plans/bring-back-ocr.md`, "B13 round 39"; specs `round39/items/C<n>.md`, the

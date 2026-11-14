@@ -71,6 +71,7 @@ from agentsync.manifest import Manifest, manifest_lost
 from agentsync.ops import doctor
 from agentsync.ops.lock import SingleWriterLock
 from agentsync.paths import expand
+from agentsync.text import safe_text
 
 REPO = Path(__file__).resolve().parents[1]
 INSTALL_SH = REPO / "scripts" / "install.sh"
@@ -4165,6 +4166,32 @@ def test_the_shell_generic_folder_test_is_the_python_reports(name: str) -> None:
         env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
     )
     assert (cp.returncode == 0) == (name in setup_report._GENERIC_FOLDERS), (name, cp.stderr)
+
+
+def test_safe_shown_drops_every_format_character_the_running_python_knows_c1628_c1672() -> None:
+    """B13 round 39 C1628 with C1672 (ruling 133; privacy): safe_shown's own list kept 26 format characters
+    safe_text drops (U+0890, U+08E2, U+110BD, U+13430 to U+1343F, U+1D173 to U+1D17A, ...), so a name holding
+    one had a spelling no pair matched. It drops the table's CUT_CF, every Cf of Unicode 14 to 15.1: over
+    every Cf this Python knows, its spelling is safe_text's, stripped."""
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    [block] = re.findall(r"(?ms)" + _REPORT_CUTS_BLOCK, text)
+    cfs = [chr(c) for c in range(0x110000) if unicodedata.category(chr(c)) == "Cf"]
+    names = [f"Contoso{c}Alpha Board" for c in cfs] + [f"\u200b{c}Status\ufeff " for c in cfs[:3]]
+    harness = (
+        f'{block}\n{_shell_function("safe_shown")}\nfor a in "$@"; do safe_shown "$a"; printf "\\n"; done'
+    )
+    cp = subprocess.run(
+        [BASH32, "-c", harness, "-", *names],
+        capture_output=True,
+        check=False,
+        env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
+    )
+    assert cp.returncode == 0, cp.stderr
+    got = cp.stdout.decode("utf-8").split("\n")[:-1]
+    want = [safe_text(n).strip() for n in names]
+    assert len(cfs) >= 160
+    assert [(hex(ord(c)), g) for c, g, w in zip(cfs, got, want, strict=False) if g != w] == []
+    assert got == want
 
 
 def test_every_global_the_shell_redaction_reads_is_in_its_harnesses_c1633() -> None:
@@ -22649,7 +22676,8 @@ _REPORT_CUTS_BLOCK = r"^# BEGIN report_cuts\n.*?^# END report_cuts$"
 """install.sh's generated block (B13 round 39 ruling 133), which both function sets below take whole, so every
 harness built from them reads the cut table its functions read (C1633)."""
 SHELL_REDACTION_FNS = re.compile(
-    r"(?ms)^(?:hold_values|hold_scopes|redaction_pairs|redact_stream|typed_note_cut|foreign_home_cut|hold_cut)"
+    r"(?ms)^(?:hold_values|hold_scopes|safe_shown|redaction_pairs|redact_stream|typed_note_cut|foreign_home_cut"
+    r"|hold_cut)"
     r"\(\) \{\n.*?^\}$|" + _REPORT_CUTS_BLOCK
 )
 _SHELL_GLOBALS_RE = re.compile(
