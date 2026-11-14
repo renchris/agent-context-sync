@@ -2916,30 +2916,32 @@ def _missing_source_fix(src: SourceConfig, root: Path) -> str:
     sign-in either (B13 round 13 O52: the empty-folder rule ran first). The provider folder is read within the
     listing's time bound, since a hidden Allow prompt holds that read too, and unread it keeps the path fix
     (B13 round 13 O47). No parenthesis: a FAIL line puts its fix in one. One rule for the listing, the volume
-    and the launcher's probe."""
+    and the launcher's probe. A provider folder, app or organization name prints through
+    :func:`list_spelling`, never raw (B13 round 39 C1640, ruling 133)."""
     fix_path = f'fix path in [[source]] id = "{src.id}"'
     if not is_cloud_path(root):
         return fix_path
     provider = cloud_provider_root(root)
     if provider is None:
         return f"{fix_path}, or sign in to the sync client"
-    app = provider.name.split("-", 1)[0] or "the sync client"
+    app = list_spelling(provider.name.split("-", 1)[0]) or "the sync client"
     state = provider_state(provider)
     there = os.path.lexists(provider)
+    shown = list_spelling(provider)  # never raw: an organization's name may hold a control (C1640)
     if state == "library":
-        org = org_of(provider.name)
+        org = list_spelling(f"{org_of(provider.name)}")
         if there:
             return (
-                f"{provider} is empty while OneDrive-{org} is there: sync the SharePoint library to this Mac "
+                f"{shown} is empty while OneDrive-{org} is there: sync the SharePoint library to this Mac "
                 f"with Sync on its SharePoint page, or let OneDrive finish setting it up, or {fix_path}"
             )
         return (
-            f"{provider} is missing while OneDrive-{org} is there: sync the SharePoint library to this Mac "
+            f"{shown} is missing while OneDrive-{org} is there: sync the SharePoint library to this Mac "
             f"with Sync on its SharePoint page, or {fix_path}"
         )
     if state == "signed-out" and there:  # a stale provider folder, as install.sh's list reads it (N61)
         return (
-            f"sign in to {app} on this Mac or let it finish setting up, since {provider} is empty, "
+            f"sign in to {app} on this Mac or let it finish setting up, since {shown} is empty, "
             f"then run {BIN} status again"
         )
     # Renamed, moved or deleted there: names the put-back, as the wait does, after the path PERSONS_FIX_RE
@@ -2948,10 +2950,10 @@ def _missing_source_fix(src: SourceConfig, root: Path) -> str:
         return f"{fix_path}, or put the folder back under that name in {app}, or sync that folder in {app}"
     if state == "other-account":
         return (
-            f"{provider} is missing while another {app} folder is there: sign in to {app} with the account "
+            f"{shown} is missing while another {app} folder is there: sign in to {app} with the account "
             f"it belongs to, or {fix_path}"
         )
-    return f"sign in to {app} on this Mac, since {provider} is missing, then run {BIN} status again"
+    return f"sign in to {app} on this Mac, since {shown} is missing, then run {BIN} status again"
 
 
 ProviderState = Literal["signed-out", "other-account", "library", "signed-in"]
@@ -3120,7 +3122,7 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
         sentinel = list_spelling(target)  # never raw (C1414)
         try:
             target.lstat()  # lstat never hydrates a dataless placeholder
-            out.append(_ok(f"{base}.sentinel", f"{src.sentinel} present"))
+            out.append(_ok(f"{base}.sentinel", f"{list_spelling(src.sentinel)} present"))  # never raw (C1675)
         except FileNotFoundError:
             out.append(
                 _bad(
@@ -3522,15 +3524,16 @@ def _check_tcc_access(config: Config) -> list[CheckResult]:
         if not launchd.tcc_protected(root):
             continue
         name = f"tcc.{src.id}"
+        shown = list_spelling(root)  # never raw (B13 round 39 C1640, ruling 133); the fixes keep _shell_path
         rc, line = _launcher_canary(exe, root, _FP_CANARY_TIMEOUT_S)
         if rc == 0:
-            out.append(_ok(name, f"{target} can read {root} as its own responsible process"))
+            out.append(_ok(name, f"{target} can read {shown} as its own responsible process"))
         elif rc == launchd.EXIT_TCC_PENDING:
             out.append(
                 _bad(
                     name,
-                    f"TCC_PENDING: {root} did not answer within {_FP_CANARY_TIMEOUT_S:.0f}s; macOS is asking "
-                    f"(or asked) {prompt}",
+                    f"TCC_PENDING: {shown} did not answer within {_FP_CANARY_TIMEOUT_S:.0f}s; macOS is "
+                    f"asking (or asked) {prompt}",
                     fix=(
                         f"click Allow on {prompt} while logged in, then run {BIN} status again "
                         "(prefer this per-provider grant over Full Disk Access: see "
@@ -3543,7 +3546,7 @@ def _check_tcc_access(config: Config) -> list[CheckResult]:
             out.append(
                 _bad(
                     name,
-                    f"TCC_DENIED: {root}: Operation not permitted for {target}",
+                    f"TCC_DENIED: {shown}: Operation not permitted for {target}",
                     fix=(
                         "clear the earlier 'Don't Allow' with tccutil reset All "
                         f"{launchd.launcher_identifier(exe)} and approve the prompt ({_fda_target(target)} "
@@ -3555,7 +3558,7 @@ def _check_tcc_access(config: Config) -> list[CheckResult]:
             out.append(
                 _bad(
                     name,
-                    f"{root} does not exist (sync client signed out or folder moved)",
+                    f"{shown} does not exist (sync client signed out or folder moved)",
                     fix=_missing_source_fix(src, root),
                 )
             )
@@ -3572,7 +3575,8 @@ def _check_tcc_access(config: Config) -> list[CheckResult]:
             out.append(
                 _bad(
                     name,
-                    f"launcher canary exited {rc}: {line or 'no output'}",
+                    # the launcher's CANARY_ERROR line repeats the path main.swift's quoted() leaves raw
+                    f"launcher canary exited {rc}: {list_spelling(line) if line else 'no output'}",
                     Severity.WARN,
                     fix=f"{exe} --canary-only --canary {_shell_path(root)}",
                 )

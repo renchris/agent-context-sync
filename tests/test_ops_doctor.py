@@ -2712,6 +2712,65 @@ def test_a_refused_listing_fix_reaches_a_folder_whose_name_holds_a_control_chara
     assert doctor.ansi_c_word("a\\b'c") == "$'a\\\\b\\'c'" and doctor._shell_path("/x/plain") == "'/x/plain'"
 
 
+@pytest.mark.parametrize(
+    "rc",
+    [
+        0,
+        launchd.EXIT_TCC_PENDING,
+        launchd.EXIT_TCC_DENIED,
+        launchd.EXIT_CANARY_MISSING,
+        launchd.EXIT_CANARY_IO,
+    ],
+)
+def test_a_tcc_line_spells_a_synced_folders_name_as_the_list_does_c1640(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch, rc: int
+) -> None:
+    """B13 round 39 C1640 (ruling 133; privacy): the four tcc.<id> details and the launcher's canary line
+    printed a synced folder's name raw, so a name holding ESC sent an escape sequence to the terminal on every
+    status once background sync was installed, and one holding a newline put its tail on a line of its own
+    (C1431's shape). Each detail now spells the root as step 1's list does, the same spelling
+    source.<id>.listable prints and the report aliases; the fixes keep _shell_path's ``$'...'`` word."""
+    _launcher(monkeypatch)
+    root = Path.home() / "Library" / "CloudStorage" / "OneDrive-Contoso" / (_C1414_NAME + "\nTail")
+    root.mkdir(parents=True)
+    src = dataclasses.replace(
+        sample_config.sources[0], id="onedrive", kind=SourceKind.LOCAL, path=root, sentinel=None
+    )
+    cfg = dataclasses.replace(sample_config, sources=(sample_config.sources[0], src))
+    # the launcher writes CANARY_ERROR with main.swift's quoted(), which escapes only \\ and "
+    line = f'CANARY_ERROR path="{root}" errno=5' if rc == launchd.EXIT_CANARY_IO else ""
+    monkeypatch.setattr(doctor, "_launcher_canary", lambda *a: (rc, line))
+    (t,) = [r for r in doctor._check_tcc_access(cfg) if r.name == "tcc.onedrive"]
+    raw = re.compile("[\x00-\x1f\x7f-\x9f\u2028\u2029\u200b]")
+    assert not raw.search(t.detail) and not raw.search(t.fix or ""), (t.detail, t.fix)
+    assert len(doctor.format_lines([t])) == 1, doctor.format_lines([t])
+    assert doctor.list_spelling(root) in t.detail, t.detail
+    if rc == launchd.EXIT_CANARY_IO:  # the fix still reaches the real folder
+        (word,) = re.findall(r" --canary (\S+)$", t.fix or "")
+        assert _ls_d(word) == str(root), word
+
+
+@pytest.mark.parametrize(
+    "name", ["ok\x1b[31mRED", "FAKE\nline", "Board\tTab", "Line\u2028Two", "a\x85b", "Zero\u200bWidth"]
+)
+def test_a_present_sentinel_spells_its_name_as_the_list_does_c1675(
+    sample_config: Config, tmp_path: Path, name: str
+) -> None:
+    """B13 round 39 C1675 (ruling 133): the sentinel's missing and refused details were list-spelled (C1414)
+    but its ok line printed the name from the config raw, so a sentinel holding ESC or a newline reached the
+    terminal on every status. The ok detail is ``list_spelling(<sentinel>) present``, one line."""
+    root = tmp_path / "Contoso Docs"
+    root.mkdir()
+    (root / name).write_text("x\n", encoding="utf-8")
+    src = dataclasses.replace(sample_config.sources[0], kind=SourceKind.LOCAL, path=root, sentinel=name)
+    r = by_name(doctor._check_local_source(sample_config, src, Path(sys.executable)))[
+        "source.local-fixture.sentinel"
+    ]
+    assert r.ok and r.detail == f"{doctor.list_spelling(name)} present", r.detail
+    assert not arm_local._LIST_ESCAPED_RE.search(r.detail), r.detail
+    assert len(doctor.format_lines([r])) == 1
+
+
 def test_only_the_kept_inbox_is_called_the_drop_folder(sample_config: Config, tmp_path: Path) -> None:
     """Field report 2026-10-08: a Mac with inbox sources the person added (a bridge folder another tool
     writes) beside the inbox agentsync keeps. Both are empty and both are OK, but only the kept one, the

@@ -41084,6 +41084,11 @@ detail or fix, and `bash -c 'ls -d <word>'` reaches the folder) and
 `::test_doctors_spellings_of_a_folder_are_the_reports_aliases_c1414` (both spellings are among
 `setup_report.folder_spellings`, read from the report's own helper).
 
+Amended 2026-11-14, §16.252 C1640, C1675: the four `tcc.<id>` details of `_check_tcc_access`, the launcher's canary
+line in its `else` detail, the provider folder, app and organization `_missing_source_fix` names, and the sentinel's
+ok detail (`list_spelling(<sentinel>) present`) spell a name through `doctor.list_spelling` too; the fixes keep
+`_shell_path`.
+
 **A recording keeps its page while the OCR helper fails** (C1442; ruling 127; data integrity; amends §16.242 C1286).
 C1268 gives a recording waiting on a failed OCR helper the OCR-down words while the media helper is ready
 (`recordings_wait_ocr`), so `Cycle._keeps_ocr_page` passed its `ocr_waits` gate for one, then declined it because its
@@ -41374,7 +41379,25 @@ Reserved for round 39 lane RB of B13.
 
 ### 16.252 Round 39: --fields and log records follow the document, names in doctor's lines, and a recording kept during an OCR outage (2026-11-14, wave B13 round 39 lane B)
 
-Reserved for round 39 lane B of B13.
+Round 39's lane B items (`docs/plans/bring-back-ocr.md`, "B13 round 39"; specs `round39/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's rulings 133 and 136 settle it). A dated line this round writes reads
+`Amended 2026-11-14, §16.252 C<n>`.
+
+**Doctor's tcc lines and the sentinel's ok line spell a folder's name as the list does** (C1640, C1675; ruling 133;
+privacy; amends §16.247 C1414). C1414 list-spelled `_check_local_source`'s details, but `_check_tcc_access` still
+put the root raw into its four `tcc.<id>` details (ok, `TCC_PENDING`, `TCC_DENIED`, does not exist), the launcher's
+`CANARY_ERROR` line (which `main.swift`'s `quoted()` escapes only for `\` and `"`) went raw into the `else` detail,
+and the sentinel's ok detail printed the configured name raw: on every status once background sync is installed, a
+name holding ESC sent an escape sequence to the terminal and one holding a newline printed its tail as a line of its
+own, which the report's redactor read alone. Each now spells the root, the launcher's line and the sentinel through
+`doctor.list_spelling`, the spelling the report aliases; `_missing_source_fix` spells the provider folder, app and
+organization it names the same way; the fixes keep `_shell_path`'s `$'...'` word, which reaches the folder. A plain
+name prints byte for byte as before. Tests:
+`test_ops_doctor.py::test_a_tcc_line_spells_a_synced_folders_name_as_the_list_does_c1640` (C1414's name plus a
+newline, the canary answering 0, pending, denied, missing and 74 with a raw `CANARY_ERROR` line: no raw control in
+any detail or fix, one `format_lines` line, the list spelling in the detail, and the 74 fix's word reaching the
+folder) and `::test_a_present_sentinel_spells_its_name_as_the_list_does_c1675` (ESC, a newline, a tab, U+2028,
+U+0085 and U+200B in an existing sentinel's name).
 
 ### 16.253 Round 39: the converters: the empty-file screen, a zero-byte recording, and a table's page cap (2026-11-14, wave B13 round 39 lane E)
 
