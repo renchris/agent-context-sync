@@ -51,7 +51,7 @@ from unittest.mock import patch
 import pytest
 
 import exec_stub
-from agentsync import cli, gitops, governance, lints, manifest, net, paths, setup_report
+from agentsync import cli, gitops, governance, lints, manifest, net, paths, report_cuts, setup_report
 from agentsync.config import (
     Config,
     SourceConfig,
@@ -3103,7 +3103,7 @@ def _shell_hold_redact(
             "repo_slug() { echo contoso/agentsync; }",
             'id() { case "$1" in -un) echo kxy ;; -F) echo "Kim Xu" ;; esac; }',
             f"FOLDERS=() CONFIG={cfg} SETUP_LOG=/nonexistent SELF_FILE={INSTALL_SH} REPORT_WORDS=",
-            *re.findall(r"(?m)^(?:GENERIC_SOURCE_IDS|FIXED_CAPS_PHRASES|FIXED_VALUE_PHRASES)\+?=.*$", text),
+            *_SHELL_GLOBALS_RE.findall(text),
             helpers,
             funcs,
             f"redact_stream <{said_file}",
@@ -3569,10 +3569,8 @@ def test_the_shell_report_does_not_glob_a_name_part(env: dict[str, str], tmp_pat
 
 
 def test_the_shell_folder_list_is_the_python_reports_generic_set() -> None:
-    body = INSTALL_SH.read_text().split("\ngeneric_folder() {\n", 1)[1].split("\n}\n", 1)[0]
-    rows = re.findall(r"^\t(.*)\) return 0 ;;$", body, re.M)
-    names = {n.strip().strip('"') for row in rows for n in row.split("|")}
-    assert names == set(setup_report._GENERIC_FOLDERS)
+    [drive] = re.findall(r"(?m)^CUT_DRIVE='(.*)'$", INSTALL_SH.read_text(encoding="utf-8"))
+    assert set(drive.split("|")) == set(setup_report._GENERIC_FOLDERS)
 
 
 def test_the_shell_report_redacts_a_generic_configured_folder_as_a_whole_word(env: dict[str, str]) -> None:
@@ -4118,8 +4116,74 @@ def test_the_shells_verbs_are_the_commands_cli_registers_c1425() -> None:
     """B13 round 38 C1425 (ruling 126): redact_stream holds agentsync's own verb whole after `agentsync `,
     read from AGENTSYNC_VERBS, which is setup_report.agentsync_verbs(): every command cli.build_parser
     registers, hidden ones included, longest first."""
-    [verbs] = re.findall(r'(?m)^AGENTSYNC_VERBS="(.*)"$', INSTALL_SH.read_text(encoding="utf-8"))
+    [verbs] = re.findall(r"(?m)^AGENTSYNC_VERBS='(.*)'$", INSTALL_SH.read_text(encoding="utf-8"))
     assert verbs.split("|") == list(setup_report.agentsync_verbs())
+
+
+def test_install_sh_carries_the_report_cuts_block_byte_for_byte_ruling_133() -> None:
+    """B13 round 39 ruling 133 (C1655 with C1625 to C1629): ruling 126's two halves were ported by hand and
+    drifted, so install.sh carries the block report_cuts.shell_block() generates, once, between its two
+    marker lines, byte for byte; the shell never reads the table from the installed agentsync, which may be
+    older. Every value that block holds is assigned nowhere else in install.sh, and the agent words and
+    generic folders are read from it."""
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    [block] = re.findall(r"(?ms)" + _REPORT_CUTS_BLOCK, text)
+    assert block + "\n" == report_cuts.shell_block()
+    names = re.findall(r"(?m)^([A-Z_0-9]+)='", block)
+    assert len(names) == 10, names
+    for name in names:
+        assert len(re.findall(rf"(?m)^\s*{name}\+?=", text)) == 1, name
+    assert "import report_cuts" not in text and "report_cuts import" not in text, (
+        "never the installed build's"
+    )
+    assert '"|$CUT_AGENT|"' in _shell_function("agent_words_name")
+    assert '"|$CUT_DRIVE|"' in _shell_function("generic_folder")
+
+
+@pytest.mark.parametrize(
+    "name", [*sorted(setup_report._GENERIC_FOLDERS), "Projects", "Apps|Music", "", "music"]
+)
+def test_the_shell_generic_folder_test_is_the_python_reports(name: str) -> None:
+    """generic_folder reads CUT_DRIVE, the generated block's setup_report._GENERIC_FOLDERS (ruling 133): a
+    whole name, as written, never a run of two."""
+    block = re.search(r"(?ms)" + _REPORT_CUTS_BLOCK, INSTALL_SH.read_text(encoding="utf-8"))
+    assert block is not None
+    cp = subprocess.run(
+        [
+            BASH32,
+            "-c",
+            f'{block.group(0)}\n{_shell_function("generic_folder")}\ngeneric_folder "$1"',
+            "-",
+            name,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
+    )
+    assert (cp.returncode == 0) == (name in setup_report._GENERIC_FOLDERS), (name, cp.stderr)
+
+
+def test_every_global_the_shell_redaction_reads_is_in_its_harnesses_c1633() -> None:
+    """B13 round 39 C1633: two harnesses took the redaction functions with a hand list of globals and missed
+    a round's new ones, so they tested a shell with no verb hold and empty cut lists. Every ENVIRON-fed
+    `NAME="$GLOBAL"` the extracted functions read is now in the generated block both function sets take, in
+    _SHELL_GLOBALS_RE, or in the harness's own preamble."""
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    fns = "\n".join(m.group(0) for fs in (SHELL_REDACTION_FNS, SHELL_HELPER_FNS) for m in fs.finditer(text))
+    read = set(re.findall(r'\b[A-Z_][A-Z_0-9]*="\$([A-Z_][A-Z_0-9]*)"', fns))
+    assert {"AGENTSYNC_VERBS", "CUT_FIXED", "CUT_DRIVE", "CUT_HOME"} <= read, read
+    [block] = re.findall(r"(?ms)" + _REPORT_CUTS_BLOCK, text)
+    have = set(re.findall(r"(?m)^([A-Z_0-9]+)=", block))
+    have |= {ln.split("=", 1)[0].rstrip("+") for ln in _SHELL_GLOBALS_RE.findall(text)}
+    preamble = {"FOLDERS", "CONFIG", "SETUP_LOG", "SELF_FILE", "REPORT_WORDS", "HOME", "TMPDIR"}
+    # set by install.sh before any report runs, from functions or values no harness extracts
+    elsewhere = {
+        name
+        for name in read - have - preamble
+        if re.search(rf"(?m)^\s*(?:local\s+)?{name}=", fns) or name in ("REDACT_PAIRS", "REPORT_PATH")
+    }
+    assert read - have - preamble - elsewhere == set(), sorted(read - have - preamble - elsewhere)
 
 
 def test_the_shell_report_cuts_a_path_in_another_home_whole(env: dict[str, str]) -> None:
@@ -4199,7 +4263,7 @@ def _shell_cut_stdout(tmp_path: Path, home: str, said: Sequence[str], login: str
             "repo_slug() { echo contoso/agentsync; }",
             f'id() {{ case "$1" in -un) echo {login} ;; -F) echo "Kim Xu" ;; esac; }}',
             f"FOLDERS=() CONFIG={cfg} SETUP_LOG=/nonexistent SELF_FILE={INSTALL_SH} REPORT_WORDS=",
-            *re.findall(r"(?m)^(?:GENERIC_SOURCE_IDS|FIXED_CAPS_PHRASES|FIXED_VALUE_PHRASES)\+?=.*$", text),
+            *_SHELL_GLOBALS_RE.findall(text),
             helpers,
             funcs,
             f"redact_stream <{said_file}",
@@ -22578,10 +22642,18 @@ def test_shell_report_redacts_tmpdir(env: dict[str, str], folder: Path, tmp_path
 # ---- the shell report's MDM host has its own placeholder (N39) ---------------------------------------------
 
 MDM_URL = "https://contosoltd.mdm.example:443/mdm/ServerURL"
+_REPORT_CUTS_BLOCK = r"^# BEGIN report_cuts\n.*?^# END report_cuts$"
+"""install.sh's generated block (B13 round 39 ruling 133), which both function sets below take whole, so every
+harness built from them reads the cut table its functions read (C1633)."""
 SHELL_REDACTION_FNS = re.compile(
     r"(?ms)^(?:hold_values|hold_scopes|redaction_pairs|redact_stream|typed_note_cut|foreign_home_cut|hold_cut)"
-    r"\(\) \{\n.*?^\}$"
+    r"\(\) \{\n.*?^\}$|" + _REPORT_CUTS_BLOCK
 )
+_SHELL_GLOBALS_RE = re.compile(
+    r"(?m)^(?:GENERIC_SOURCE_IDS|FIXED_CAPS_PHRASES|FIXED_VALUE_PHRASES|CUT_FIXED|CUT_HOME)\+?=.*$"
+)
+"""The other globals the redaction functions read, which a harness takes beside the two function sets (B13
+round 39 C1633: two harnesses lacked a round's new globals and tested a shell with empty cut lists)."""
 
 
 @pytest.mark.parametrize(
@@ -22593,7 +22665,8 @@ def test_the_shell_report_redacts_the_mdm_host_as_mdmhost(tmp_path: Path, login:
     `/usr/bin/profiles` is an absolute path no PATH stub reaches, so the real redaction_pairs and
     redact_stream run with with_timeout answering for it, and id answering for the login and full name."""
     funcs = "\n".join(m.group(0) for m in SHELL_REDACTION_FNS.finditer(INSTALL_SH.read_text()))
-    assert funcs.startswith("hold_values() {") and "\nredact_stream() {" in funcs
+    assert funcs.startswith("# BEGIN report_cuts\n") and "\nhold_values() {" in funcs
+    assert "\nredact_stream() {" in funcs
     harness = "\n".join(
         [
             "with_timeout() {",
@@ -22624,7 +22697,7 @@ def test_the_shell_report_redacts_the_mdm_host_as_mdmhost(tmp_path: Path, login:
 
 SHELL_HELPER_FNS = re.compile(
     r"(?ms)^(?:generic_folder|generic_home_dir|agent_words_name|id_key|listed_folder_lines"
-    r"|config_path_values|agentsync_dir_values)\(\) \{\n.*?^\}$"
+    r"|config_path_values|agentsync_dir_values)\(\) \{\n.*?^\}$|" + _REPORT_CUTS_BLOCK
 )
 
 
@@ -24543,9 +24616,8 @@ def test_the_shell_report_registers_the_folders_step_1s_list_printed(env: dict[s
 
 def test_the_shell_agent_words_are_the_python_reports() -> None:
     """agent_words_name's words are setup_report._AGENT_WORDS (B13 round 9 K1, K47)."""
-    body = INSTALL_SH.read_text().split("\nagent_words_name() {\n", 1)[1].split("\n}\n", 1)[0]
-    [row] = re.findall(r"^\t\t(claude .*)\) any=1 ;;$", body, re.M)
-    assert {w.strip() for w in row.split("|")} == set(setup_report._AGENT_WORDS)
+    [row] = re.findall(r"(?m)^CUT_AGENT='(.*)'$", INSTALL_SH.read_text(encoding="utf-8"))
+    assert set(row.split("|")) == set(setup_report._AGENT_WORDS)
 
 
 @pytest.mark.parametrize(
@@ -24564,8 +24636,10 @@ def test_the_shell_agent_words_are_the_python_reports() -> None:
 )
 def test_the_shell_agent_words_test_is_the_python_reports(name: str) -> None:
     fn = _shell_function("agent_words_name")
+    block = re.search(r"(?ms)" + _REPORT_CUTS_BLOCK, INSTALL_SH.read_text(encoding="utf-8"))
+    assert block is not None
     cp = subprocess.run(
-        [BASH32, "-c", f'{fn}\nagent_words_name "$1"', "-", name],
+        [BASH32, "-c", f'{block.group(0)}\n{fn}\nagent_words_name "$1"', "-", name],
         capture_output=True,
         text=True,
         check=False,
@@ -24909,6 +24983,7 @@ def test_the_shells_agent_spans_keep_only_a_product_word_standing_alone(tmp_path
     script = "\n".join(
         [
             "set -euo pipefail",
+            *re.findall(r"(?ms)" + _REPORT_CUTS_BLOCK, INSTALL_SH.read_text(encoding="utf-8")),
             *(
                 _shell_function(f)
                 for f in ("agent_words_name", "agent_word_values", "agent_protect", "agent_restore")
