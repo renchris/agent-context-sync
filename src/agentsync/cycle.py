@@ -5938,14 +5938,20 @@ class _Cycle:
         OCR made of it stands: the page is kept, nothing is published.  Without this, an unchanged image whose
         mtime moved during the outage lost its OCR text to the OCR-down stub until the helper worked again
         (B13 round 37 C1286), and a recording its transcript (B13 round 38 C1442, ruling 127: C1268 gave it
-        the OCR-down words, so it is kept under the same gates).  A recording whose media helper is not ready
-        (``recordings_wait_ocr`` false) gets no OCR-down words and so is never kept here.
+        the OCR-down words, so it is kept under the same gates but the label rule).  A recording whose media
+        helper is not ready (``recordings_wait_ocr`` false) gets no OCR-down words and so is never kept here.
 
-        Only with no label rule on (:meth:`Publisher.ocr_waits`; one withholds an image whatever the engine
-        does), live outputs all OK (or an OCR-made unreadable stub: a QUARANTINED output on a QUARANTINED
-        row, B13 round 38 C1403), intact and made by the image or the recording converter, and a row that
-        still holds its canonical hash (a row a re-screen forgot is never kept).  An image whose read needs a
-        download keeps the page unread and is settled as ``_keeps_page`` settles it.  An image on this Mac is
+        Only while :meth:`Publisher.ocr_waits` holds: for an image, with no label rule on (one withholds an
+        image whatever the engine does); for a recording, under a label rule too (one never withholds a
+        recording; B13 round 39 C1644, C1679).  Then only with live outputs all OK (or an OCR-made unreadable
+        stub: a QUARANTINED output on a QUARANTINED row, B13 round 38 C1403), intact and made by the image or
+        the recording converter, and a row that still holds its canonical hash (a row a re-screen forgot is
+        never kept).  A recording is kept unread in every mode: it is read only in the recording pass, under
+        its own budget, and an interactive sync reads none (spec S0 rules 4 and 5; B13 round 39 C1641).  Its
+        row stays ``MAYBE_CHANGED``, pending, so each cycle brings it back, and once the helper works the
+        recording pass compares its bytes (settled, the row would hold its new stat over the old hash, and a
+        recording changed in the outage would keep a stale transcript).  An image whose read needs a download
+        keeps the page unread and is settled as ``_keeps_page`` settles it.  An image on this Mac is
         read through ``arm`` with a probe budget of its own (no download, and none of the source's
         ``max_files``: a cycle past its file cap must not cost the image its page, nor this read take a later
         one's place), its canonical hash and the suppression lists checked as ``_after_fetch`` does, and the
@@ -5972,6 +5978,13 @@ class _Cycle:
             or not _pages_intact(self.repo, outs)
         ):
             return False
+        if any(o.converter_id == RecordingConverter.converter_id for o in live):
+            # read only in the recording pass, in no mode here (spec S0 rules 4, 5): kept unread and left
+            # pending, so the row comes back each cycle and the pass compares its bytes once the helper
+            # works; settled, it would hold its new stat over the old hash and never be read (C1641)
+            self.manifest.set_verdict(row.source_id, row.stable_id, Verdict.MAYBE_CHANGED)
+            acc.settle(row.stable_id, Verdict.MAYBE_CHANGED)
+            return True
         if read_needs_download(graph=src.kind.is_graph, dataless=row.dataless):
             self._settle_kept_online(row, acc)
             return True

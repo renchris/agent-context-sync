@@ -40338,6 +40338,11 @@ gives it the `no converter for <suffix>` stub. And (C1403) "the row's live outpu
 OCR-made unreadable stub (a QUARANTINED output on a QUARANTINED row)": an image whose page OCR made says `unreadable`
 keeps that page while the helper fails, and the row stays quarantined, as QUARANTINE.tsv says.
 
+Amended 2026-11-14, §16.252 C1641, C1679: "under the same gates" reads "under the same gates but the label rule: one
+never withholds a recording, so `_ocr_wait_eligible` lets it wait, and keeps it, under one too", and a recording is
+never read here: whatever the mode, its page is kept unread and its row left `MAYBE_CHANGED`, pending, for the
+recording pass to compare once the helper works.
+
 **QUARANTINE.tsv follows an image's OCR-down page** (C1211 with C1204, C1238, C1259, C1269; ruling 122; amends
 §16.237 C1101). While the OCR helper fails, an image's page says `publish.OCR_DOWN_REASON` and sends the reader to
 `_sync/QUARANTINE.tsv`, whose row said `no converter for .png`, the words C1101 took off the page. `Publisher.write_quarantine`
@@ -41101,6 +41106,12 @@ is not ready keeps the `no converter for <suffix>` stub on a touch, as before. T
 helper failed with `media.probe` ready and an mtime-only touch: the page byte for byte, the row `TOUCHED_NOT_CHANGED`,
 nothing counted; with the helper back, no piece is read again).
 
+Amended 2026-11-14, §16.252 C1641, C1679: "every other gate stands (no label rule, live outputs all OK and intact, the
+canonical hash, `TOUCHED_NOT_CHANGED`)" reads "every other gate stands (`Publisher.ocr_waits`, which for an image needs
+no label rule but lets a recording wait under one, since a label rule never withholds a recording; live outputs all
+OK, or a QUARANTINED output on a QUARANTINED row (C1403); intact; the canonical hash)", and a recording is kept unread,
+its row `MAYBE_CHANGED`, never `TOUCHED_NOT_CHANGED`.
+
 **offboard's recovery command carries the chosen `--config`** (C1486; ruling 128; data integrity). A refused
 `offboard --confirm <wrong>` printed `To remove, run` and returned in `next` a command without the `--config` the
 person gave, while `_inspect`'s commands carry it (R249): where the default install names the same docs repo, running
@@ -41398,6 +41409,29 @@ newline, the canary answering 0, pending, denied, missing and 74 with a raw `CAN
 any detail or fix, one `format_lines` line, the list spelling in the detail, and the 74 fix's word reaching the
 folder) and `::test_a_present_sentinel_spells_its_name_as_the_list_does_c1675` (ESC, a newline, a tab, U+2028,
 U+0085 and U+200B in an existing sentinel's name).
+
+**A recording is never read while the OCR helper fails, and is compared once it works** (C1641 with C1679, C1644's
+first docstring; ruling 127 kept; data integrity; amends §16.247 C1442 and §16.242 C1286). C1442 let
+`Cycle._keeps_ocr_page` keep a recording's page, but it reached it by the image's road: `arm.fetch` copied the whole
+recording to staging and hashed it, then `canonical_hash` read it again, in a source's queue, outside
+`_RECORDING_BUDGET_S`, and in an interactive sync too, which spec S0 rules 4 and 5 forbid (while the helper fails the
+registry has no recording converter, so the `if recording:` deferral never ran). A row whose live outputs include
+the recording converter's is now kept unread in every mode, the key the live outputs' converter id, since the
+registry has none. The verifier's fix settled it as the download case does, which was measured to be worse: the
+walk had stored the new stat, so a settled row held it over the old hash, and a recording whose bytes changed in the
+outage kept its old transcript after the helper came back (no piece read, the page stale). So the row is left
+`MAYBE_CHANGED` with its count: a pending row comes back each cycle, is kept unread again while the helper fails,
+and once it works goes to the recording pass, which compares it under its own budget (unchanged bytes publish
+nothing new through the cache, `OUTPUT_UNCHANGED`; changed ones carry the new text). The label rule is no gate for a
+recording (`_ocr_wait_eligible` returns before it; one never withholds a recording, so adding the gate would bring
+C1442's loss back under a rule); C1442's and C1286's lines take dated lines saying so, and `_keeps_ocr_page`'s
+docstring says it. Tests:
+`test_cycle.py::test_an_unchanged_recording_keeps_its_page_while_the_ocr_helper_fails_c1442` (POLL, interactive and
+a label rule: no `.mp4` fetched, the page byte for byte, the row `MAYBE_CHANGED` with no reason, nothing counted;
+with the helper back, no piece read and the row `OUTPUT_UNCHANGED`) and
+`::test_a_recording_changed_during_an_ocr_outage_carries_its_new_text_once_the_helper_works_c1641` (new bytes in the
+outage: two cycles, POLL and interactive, fetch nothing and keep the old page; the first cycle with the helper back
+publishes the new text).
 
 ### 16.253 Round 39: the converters: the empty-file screen, a zero-byte recording, and a table's page cap (2026-11-14, wave B13 round 39 lane E)
 
