@@ -12197,13 +12197,61 @@ def test_the_repeat_conversions_row_names_the_upgrade_retry_note() -> None:
         f" {done.group(3)}`) are read by the first run with a converter for their type"
         f" (`{wait.group(1)}`), if the file is still on this Mac then, so an old conversion error can show in"
         " that run. An image or recording that only a download would read (a Graph source's, or one"
-        f" online-only when that run counted it) is counted `that run {done.group(2)}`, as no sync downloads"
-        " one (CONTRACTS §16.168, A63; §16.171, B74; §16.175, B73)."
+        f" online-only when that run counted it) is counted `that run {done.group(2)}`, as no later sync"
+        " reads that file again on its own"
     ) in row
     assert "an online-only or Graph image keeps its stub" not in row
     assert "that run read with no OCR engine" not in row and "are read again by the first run" not in row
     # the note sits beside the other notes, before the Quarantine sentence
     assert row.index(f"`{note.group(1)}:`") < row.index("Quarantine by reason counts")
+
+
+def test_the_repeat_conversions_row_says_which_recordings_a_sync_downloads_c1677() -> None:
+    """B13 round 39 C1677: the row said an image or recording only a download would read is settled "as no
+    sync downloads one", while a background reconcile downloads an online-only or Graph recording
+    (``_recording_downloads``) and ``agentsync materialise PATH`` one it names. The count stays right, since
+    no later sync reads that stub again on its own; the reason now says so, and says which recordings are
+    downloaded, each read from the code."""
+    from agentsync import cycle  # noqa: PLC0415
+
+    [row] = [line for line in _feedback_page().splitlines() if line.startswith("| Repeat conversions |")]
+    assert "no sync downloads one" not in row
+    assert (
+        "is counted `that run settled with no try left`, as no later sync reads that file again on its own:"
+        " an image is never downloaded, and the re-read never downloads a recording. A background reconcile"
+        " downloads an online-only or Graph recording only when it is new or its bytes change, and"
+        " `agentsync materialise PATH` downloads one it names (README, Meeting recordings) (CONTRACTS"
+        " §16.168, A63; §16.171, B74; §16.175, B73; §16.254, C1677)."
+    ) in row
+    # a reconcile in background mode, or materialise naming the file, may download a recording
+    downloads = " ".join(inspect.getsource(cycle._Cycle._recording_downloads).split())
+    assert 'self.recordings == "named" or ( self.recordings == "background" and' in downloads
+    assert "self.mode is CycleMode.RECONCILE" in downloads
+    # only one whose bytes may be new is queued for that download; materialise makes what it names so
+    defer = " ".join((inspect.getdoc(cycle._Cycle._recording_defer) or "").split())
+    assert "unless its bytes may be new" in defer
+    assert "A ``materialise PATH`` run makes what it names maybe-changed without new bytes." in defer
+    # the re-read takes stubs through a local arm only, and never one that is online-only
+    candidates = inspect.getsource(cycle._Cycle._recording_candidates)
+    assert "while isinstance(arm, LocalArm) and targets:" in candidates
+    from agentsync.manifest import Manifest  # noqa: PLC0415
+
+    reread = " ".join((inspect.getdoc(Manifest.reread_candidates) or "").split())
+    assert "is online-only is never read again" in reread
+    # the image half: a download-only image is stubbed, never downloaded, materialise included
+    no_byte = " ".join((inspect.getdoc(cycle._Cycle._no_converter) or "").split())
+    assert "Only an image already on this Mac is read." in no_byte
+    # the README section the row names says the same
+    page = (ROOT / "README.md").read_text(encoding="utf-8")
+    readme = " ".join(page.split())
+    assert "### Meeting recordings: on-device screens" in page
+    said = "An online-only recording is downloaded by the background reconcile job (or `materialise`)"
+    assert said in readme
+    # only a background reconcile downloads: an interactive sync reads none, even when it reconciles
+    modes = 'recordings = "named" if forced else "none" if interactive else "background"'
+    assert modes in inspect.getsource(cycle)
+    dated = " ".join(_contracts_section("Amended 2026-11-14, §16.254 C1677: ", "\n\n").split())
+    assert "since a background reconcile downloads an online-only or Graph recording" in dated
 
 
 def test_the_guides_step_2_next_quotes_the_folders_same_pass_chmod() -> None:

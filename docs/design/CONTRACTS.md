@@ -30594,6 +30594,9 @@ engine or media helper, the report's own words for the converter (`an engine bui
 turned back on`), and the download case as settled, as no sync downloads one; it does not say such a file is never
 read (the OS may download it). Test: `test_the_repeat_conversions_row_names_the_upgrade_retry_note`, which reads
 the converter words from the report and the download case from `_stub_settled`'s docstring.
+Amended 2026-11-14, §16.254 C1677: "as no sync downloads one" was the wrong reason, since a background reconcile
+downloads an online-only or Graph recording whose bytes may be new and `materialise PATH` one it names; the row now
+says no later sync reads that stub again on its own, which keeps the count.
 
 ### 16.183 Round 26: setup report: pairing every person's stop, the new start's pages, state files that are not files (2026-10-23, wave B13 round 26 lane RA)
 
@@ -41371,7 +41374,22 @@ Reserved for round 39 lane E of B13.
 
 ### 16.254 Round 39: the compaction promise, recording downloads and the guides (2026-11-14, wave B13 round 39 lane D)
 
-Reserved for round 39 lane D of B13.
+Round 39's lane D items (`docs/plans/bring-back-ocr.md`, "B13 round 39"; specs `round39/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's rulings 133 to 136 settle it). A dated line this round writes reads
+`Amended 2026-11-14, §16.254 C<n>`.
+
+**The guide says which recordings a sync downloads** (C1677; docs only; dated line at §16.182 D60).
+`docs/deploy/setup-feedback.md`'s Repeat conversions row counted an image or recording only a download would read as
+`that run settled with no try left`, "as no sync downloads one", while `_Cycle._recording_downloads` lets a reconcile
+in background mode download an online-only or Graph recording, and `agentsync materialise PATH` one it names, as the
+README's Meeting recordings section says. The count was right and its reason wrong: no later sync reads that stub
+again on its own, since the re-read takes stubs through a local arm only (`_recording_candidates`) and never one
+online-only (`Manifest.reread_candidates`), and `_recording_defer` queues an online-only recording for the download
+only when its bytes may be new or `materialise PATH` names it. The row now gives that reason, says an image is never
+downloaded and the re-read never downloads a recording, and names the reconcile's and materialise's downloads; its
+counting words and its CONTRACTS citations stay. No code changes. Test:
+`test_the_repeat_conversions_row_says_which_recordings_a_sync_downloads_c1677`, which reads each claim from the
+code, with `test_the_repeat_conversions_row_names_the_upgrade_retry_note` keeping the counting words.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
