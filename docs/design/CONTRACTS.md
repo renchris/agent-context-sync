@@ -41642,8 +41642,10 @@ first `agentsync sync` an hour or more (by default) after the last full pass; th
 compaction, or no sync at all (no background job and none typed) leaves the history; and that the history's first
 commit, when it is the only one that old (such as the snapshot the last compaction left), is left out of the trigger.
 data-governance.md's row and bullet say the same. §16.249's paragraph and §16.244's C1306 lines are left as written:
-there "a stopped install" stands opposite "a running install". compaction_state's `ok` words are lane B's (§16.252).
-Test: `test_the_guides_say_when_compaction_runs_never_a_deadline_c1489`, its three sentences updated, which holds
+there "a stopped install" stands opposite "a running install". compaction_state's `ok` line is lane B's: since d847c5054
+and 2a9fad40a (§16.252 C1678) it reads `nothing older than 37 days but the root commit, which compaction keeps
+(history_days 30 + slack)` in that window, so status and git log agree. Test:
+`test_the_guides_say_when_compaction_runs_never_a_deadline_c1489`, its three sentences updated, which holds
 `reconcile_interval_s`'s default of 3600, the reconcile job's interval, `_interactive_mode`'s age test, `len(old) > 1`
 in `compaction_due`'s source and the squashed root's header to the code.
 

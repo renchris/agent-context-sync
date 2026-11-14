@@ -10016,6 +10016,11 @@ def test_the_guides_say_when_compaction_runs_never_a_deadline_c1489() -> None:
     # the squashed root takes the base commit's header lines (its dates among them), so it keeps its old date
     rewrite = inspect.getsource(governance._apply_rewrite)
     assert "_join_commit(rw.root_tree(tree), [], other, squash_message)" in rewrite
+    # lane B's d847c5054 and 2a9fad40a: in that window the ok line names the root, as §16.254 quotes it
+    said = " ".join(_contracts_section("**The guides say who runs the reconcile, and that a", "\n\n").split())
+    cited = "since d847c5054 and 2a9fad40a (§16.252 C1678) it reads `nothing older than 37 days but the root"
+    assert cited in said
+    assert "but the root commit, which compaction keeps " in inspect.getsource(governance.compaction_state)
     section = " ".join(_contracts_section("### 16.249 ", "### 16.300 ").split())
     assert (
         "**The guides say when compaction runs, never a deadline** (C1489, by §16.244 C1306; docs only)."
