@@ -882,6 +882,43 @@ def test_a_folder_named_only_by_product_words_leaves_both_reports_public(
         assert parse_qs(urlsplit(last).query)["agent"] == [agent], last
 
 
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize(
+    ("name", "private"),
+    [("\u200bStatus", True), ("\u2060Status", True), ("\u200bDocuments", False), ("\u200bQuokka", False)],
+)
+def test_a_folder_safe_text_prints_as_a_report_word_makes_both_reports_private_c1627(
+    env: dict[str, str],  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+    private: bool,
+    locale: str,
+) -> None:
+    """B13 round 39 C1627 with C1671 and C1681 (ruling 133; privacy): a folder named a zero-width space or a
+    word joiner before Status prints as `Status` wherever the CLI shows it through safe_text, so the agentsync
+    report went private only while the shell report, whose private-only loop skipped a value holding a
+    non-letter, kept the public issue link. fallback_redaction's own loop now takes safe_shown's spelling of a
+    folder pair: a generic folder or product word, checked first, stays public (C1635: Documents), any other
+    report word makes the report private only, and a word no report prints (Quokka) changes nothing."""
+    home = Path(env["HOME"])
+    folder = home / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Projects" / name
+    folder.mkdir(parents=True)
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text(local_source_table("s0", folder), encoding="utf-8")
+    said = "2026-10-12T10:00:01Z | step 2 | deviation | opened the folder | -"
+    text = _shell_report(
+        env, f"Attempt: 2026-10-12T10:00:00Z\nPrompt: v15\n{said}\n", LC_ALL=locale, LANG=locale
+    )
+    monkeypatch.setenv("HOME", env["HOME"])
+    red = setup_report._build_redactor(setup_report._Run(cfg, setup_report.ReportHooks(), 12.0))
+    assert red.private_only == private, name
+    assert ("Private only:" in text) == private, text.split("\n## Redaction\n", 1)[1]
+    last = text.rstrip("\n").splitlines()[-1]
+    assert last.startswith(setup_report.ISSUE_URL) != private, last
+    assert ("paste this report into its Setup report field" in text) != private
+
+
 def test_an_organisation_named_by_a_product_word_makes_both_reports_private(
     env: dict[str, str],  # noqa: F811
     monkeypatch: pytest.MonkeyPatch,

@@ -6070,7 +6070,7 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	local used="${2:-}" folder_item in_list="" whole="" skip_generic="" skip_agent="" proj="" v p fl
 	local low org_item apps="" heads e email="" inword="" inword_ex="" ag="one made of coding-agent product words (Copilot, GitHub Copilot)"
 	[ -n "$used" ] || used=" ~ <tmp> <user> <name> <org-[0-9] <link-[0-9] <mdmhost> <proxy-[0-9] <folder-[0-9] <source-[0-9] <path> <label> <remote> <value> "
-	local pairs generic=" "
+	local pairs generic=" " shown
 	pairs="$(redaction_pairs 2>/dev/null || true)"
 	# The <folder-N> item's clauses, each only where the report shows what it explains (B13 round 11 M3, as
 	# round 10 L1 for the items): step 1's list where one of its folders was registered; the whole-word rule
@@ -6272,11 +6272,29 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	while IFS=$'\t' read -r v p _; do
 		case "$p" in "<folder-"*) if generic_folder "$v" || agent_words_name "$v"; then generic+="$p "; fi ;; esac
 	done <<<"$pairs"
+	# A folder's name that safe_text prints as one other word, 2 letters or more (a zero-width space before Status):
+	# add_forms registers no pair for that spelling, so where the CLI prints it, it reads as the word; a generic
+	# folder or product word reads back as nothing private and leaves the report public, checked first, any other
+	# report word makes it private only, as setup_report._alias_escaped's stripped_word_named. Decided here, in
+	# this loop over the pairs, since a flag set in the redaction_pairs subshell never reaches it (B13 round 39
+	# C1627 with C1671 and C1681, C1635).
 	while IFS=$'\t' read -r v p _; do
 		case "$p" in "<folder-"* | "<org-"*) ;; *) continue ;; esac
-		case "$v" in "" | *[!A-Za-z]*) continue ;; esac
-		case "$generic" in *" $p "*) continue ;; esac
-		low="$(printf '%s' "$v" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
+		case "$v" in
+		"") continue ;;
+		*[!A-Za-z]*)
+			case "$p" in "<folder-"*) ;; *) continue ;; esac
+			shown="$(safe_shown "$v")"
+			[ "$shown" != "$v" ] && [ "${#shown}" -ge 2 ] || continue
+			case "$shown" in *[!A-Za-z]*) continue ;; esac
+			if generic_folder "$shown" || agent_words_name "$shown"; then continue; fi
+			low="$(printf '%s' "$shown" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
+			;;
+		*)
+			case "$generic" in *" $p "*) continue ;; esac
+			low="$(printf '%s' "$v" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
+			;;
+		esac
 		report_word "$low" || output_word "$low" || continue
 		say "Private only: one of your folder or organization names is also a word this report prints, so where its"
 		say "placeholder stands in the report's own text it can be read back."

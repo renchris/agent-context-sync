@@ -41055,6 +41055,9 @@ fix, each refusal head, the not-a-folder line and a friction row),
 Amended 2026-11-14, §16.251 C1625: `unless a pair begins with it` blocked a verb on every line once any pair began
 with it; the hold now takes `keep_verb`'s one per-position guard, holding no verb where a pair whose value begins with
 any of agentsync's verbs matches right after `agentsync `.
+Amended 2026-11-14, §16.251 C1627: the excepted `safe_shown` spelling is not only left unpaired: one that is any report
+word other than a generic folder or product word makes the shell report private only, as `word_named_shown` makes the
+agentsync report, decided in `fallback_redaction`'s own loop over the `<folder-` pairs (§16.251).
 
 **A recut that changed another build's render says so under its Redaction section** (C1406; ruling 126;
 `scripts/install.sh`). A render by an older build showed the recut's `/Users/<path>` and `<path>`, which its own
@@ -41554,6 +41557,21 @@ Cf of Unicode 14 to 15.1, the Pythons 3.11 to 3.13 agentsync runs on, one UTF-8 
 through ENVIRON, its other rules unchanged; it is a top-level function now, which C1627 calls from
 `fallback_redaction`. Test:
 `test_install_oneshot.py::test_safe_shown_drops_every_format_character_the_running_python_knows_c1628_c1672` (every Cf the running Python knows, between two words, equal to `safe_text(...).strip()`).
+
+**A folder safe_text prints as a report word makes the shell report private only too** (C1627 with C1671 and C1681;
+ruling 133; amends §16.246 C1439; privacy; `scripts/install.sh`). A folder named a zero-width space or a word joiner
+before `Status` prints as `Status` wherever the CLI shows it through `safe_text`; `add_forms` registers no pair for
+that spelling (it would cut the report's own words), and the agentsync report went private only
+(`stripped_word_named`), while the shell report's private-only loop skipped any value holding a non-letter and kept
+the public link. That loop in `fallback_redaction` now takes, for a `<folder-` pair whose value holds a non-letter,
+`safe_shown`'s spelling (a top-level function, since a flag set in the `redaction_pairs` subshell never reaches it and
+a marker pair would be a live redaction pair): when it differs, has 2 letters or more and is one word, a generic
+folder or product word is checked first and leaves the report public (C1635: a zero-width `Documents`), and any other
+word `report_word` or `output_word` knows makes it private only, with the same two lines; a word no report prints
+(`Quokka`) changes nothing. Test:
+`test_report_redaction.py::test_a_folder_safe_text_prints_as_a_report_word_makes_both_reports_private_c1627` (a
+zero-width and a word-joiner `Status` private, a zero-width `Documents` and `Quokka` public, under `LC_ALL=C` and
+`en_US.UTF-8`).
 
 ### 16.252 Round 39: --fields and log records follow the document, names in doctor's lines, and a recording kept during an OCR outage (2026-11-14, wave B13 round 39 lane B)
 
