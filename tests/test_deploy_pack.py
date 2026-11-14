@@ -3947,10 +3947,42 @@ def test_the_guides_name_every_character_the_list_escapes_c1455() -> None:
     )
     assert (
         "Amended 2026-11-13, §16.249 C1455: the escaped form also writes the C1 controls and U+2028 and"
-        " U+2029 as `?` (since fad8817a5, §16.236 C1072), and since 8528ea2a4 (§16.300.18) the bidi controls"
+        " U+2029 as `?` (since 62b46915d, §16.231 C932), and since 8528ea2a4 (§16.300.18) the bidi controls"
         " (U+200E, U+200F, U+202A-U+202E, U+2066-U+2069, U+061C) and the zero-width characters"
         r" (U+200B-U+200D, U+2060, U+FEFF), and a name holding the record separator 0x1E shows it as `\n`"
     ) in c1280
+
+
+def test_the_escape_set_is_credited_to_the_commit_that_added_it_c1651() -> None:
+    """B13 round 39 C1651: the C1 controls and U+2028/U+2029 were credited to fad8817a5 (§16.236 C1072), which
+    only added ESCAPED_MARK and moved the shared test into `escd`; 62b46915d (§16.231 C932) wrote them as `?`.
+    And §16.246 C1447 gave the bidi and zero-width set as "only" five code points, while `escd` matches the
+    ranges C1280's dated line lists. Every credit names C932's commit, and C1447 lists the same ranges as that
+    line, the reference `test_the_guides_name_every_character_the_list_escapes_c1455` holds to `escd`."""
+    c1280 = " ".join(
+        _contracts_section("**The guides name every mark a folder row opens with**", "\n\n").split()
+    )
+    c1447 = " ".join(
+        _contracts_section("**The escaped marks say a hidden or control character, and both", "\n\n").split()
+    )
+    c1455 = " ".join(
+        _contracts_section("**The guides name every character the folder list escapes**", "\n\n").split()
+    )
+    for text in (c1280, c1447, c1455):
+        assert "since fad8817a5" not in text
+    assert "U+2029 as `?` (since 62b46915d, §16.231 C932)" in c1280
+    assert "U+2029 (since 62b46915d, C932) and the bidi and zero-width characters" in c1455
+    ranges = (
+        "the bidi controls (U+200E, U+200F, U+202A-U+202E, U+2066-U+2069, U+061C) and the zero-width"
+        " characters (U+200B-U+200D, U+2060, U+FEFF)"
+    )
+    assert ranges in c1280
+    assert (
+        "(U+0080 to U+009F, U+2028, U+2029, since 62b46915d, §16.231 C932) and, since 8528ea2a4, " + ranges
+    ) in c1447
+    assert "only the bidi and zero-width characters (U+200B, U+202E," not in c1447
+    section = " ".join(_contracts_section("### 16.254 ", "### 16.300 ").split())
+    assert "**The escape set's credit is the commit that added it** (C1651; docs only)." in section
 
 
 def test_the_dollar_quote_sentences_name_the_installers_own_commands_c1307() -> None:

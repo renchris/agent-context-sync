@@ -40703,7 +40703,7 @@ not the whole of step 1 (C1275). The "read twice" reason stays for the three con
 `test_the_guides_name_every_mark_a_folder_row_opens_with_c1280`, which reads each mark from install.sh's own constant
 and fails without either guide's sentences.
 Amended 2026-11-13, §16.249 C1455: the escaped form also writes the C1 controls and U+2028 and U+2029 as `?` (since
-fad8817a5, §16.236 C1072), and since 8528ea2a4 (§16.300.18) the bidi controls (U+200E, U+200F, U+202A-U+202E,
+62b46915d, §16.231 C932), and since 8528ea2a4 (§16.300.18) the bidi controls (U+200E, U+200F, U+202A-U+202E,
 U+2066-U+2069, U+061C) and the zero-width characters (U+200B-U+200D, U+2060, U+FEFF), and a name holding the record
 separator 0x1E shows it as `\n`, as install.sh's LIST_ESC_AWK and `arm_local._LIST_ESCAPES` do on purpose (C1492);
 both guides name them, and lane RB's C1447 words the marks `hidden or control character`.
@@ -40844,8 +40844,9 @@ A dated line this round writes in another section reads `Amended <date>, §16.24
 **The escaped marks say a hidden or control character, and both wordings are read** (C1447; ruling 129; amends
 §16.236 C1001 and §16.241 C1202; `scripts/install.sh`, `src/agentsync/arm_local.py`, `src/agentsync/setup_report.py`).
 The escaped form covers the C1 controls and the line and paragraph separators (U+0080 to U+009F, U+2028, U+2029,
-since fad8817a5, §16.236 C1072) and, since 8528ea2a4, only the bidi and zero-width characters (U+200B, U+202E,
-U+2060, U+FEFF, U+061C), format characters, not controls, so `ESCAPED_MARK` and
+since 62b46915d, §16.231 C932) and, since 8528ea2a4, the bidi controls (U+200E, U+200F, U+202A-U+202E,
+U+2066-U+2069, U+061C) and the zero-width characters (U+200B-U+200D, U+2060, U+FEFF), Unicode format characters
+(Cf), not control characters (Cc), so `ESCAPED_MARK` and
 `ESCAPED_KEPT_MARK` read `[name holds a hidden or control character: rename it to sync it]` and `[name holds a hidden
 or control character]`, in install.sh, its header, `arm_local.ESCAPED_KEPT_MARK` and the guides' quotes. install.out
 keeps every run's rows, so the old words stay registered: `ESCAPED_MARK_OLD` and `ESCAPED_KEPT_MARK_OLD` hold them,
@@ -41349,9 +41350,9 @@ joined-text assertions of `test_readme_step1_says_a_marked_row_cannot_be_chosen`
 **The guides name every character the folder list escapes** (C1455 with C1492, one defect from two finders, built once,
 on lane RB's C1447; docs only; dated line at §16.244 C1280). Both guides said the escape mark's row shows "any other
 control character as `?`", while install.sh's `escd` and `esc` (LIST_ESC_AWK) also mark and write as `?` U+2028 and
-U+2029 (since fad8817a5) and the bidi and zero-width characters (since 8528ea2a4, U-B11), which are Unicode Zl, Zp and
-Cf, not control characters (Cc), and map the record separator 0x1E, which carries a newline through the list's files, to
-`\n`. `arm_local._LIST_ESCAPES` and `_LIST_ESCAPED_RE` copy both on purpose, held by
+U+2029 (since 62b46915d, C932) and the bidi and zero-width characters (since 8528ea2a4, U-B11), which are Unicode Zl,
+Zp and Cf, not control characters (Cc), and map the record separator 0x1E, which carries a newline through the list's
+files, to `\n`. `arm_local._LIST_ESCAPES` and `_LIST_ESCAPED_RE` copy both on purpose, held by
 `test_list_shown_name_spells_a_folder_as_install_shs_list_does_c1244`, so no code changes. Lane RB's C1447 already words
 the mark `hidden or control character`; each guide's parenthetical now ends `and any other control character, a line or
 paragraph separator, or an invisible bidi or zero-width character as ?; a name holding the record separator, 0x1E, shows
@@ -41415,6 +41416,18 @@ there "a stopped install" stands opposite "a running install". compaction_state'
 Test: `test_the_guides_say_when_compaction_runs_never_a_deadline_c1489`, its three sentences updated, which holds
 `reconcile_interval_s`'s default of 3600, the reconcile job's interval, `_interactive_mode`'s age test, `len(old) > 1`
 in `compaction_due`'s source and the squashed root's header to the code.
+
+**The escape set's credit is the commit that added it** (C1651; docs only). C1280's dated line at §16.244, §16.246's
+C1447 paragraph and §16.249's C1455 paragraph said the folder list writes the C1 controls and U+2028 and U+2029 as
+`?` "since fad8817a5" (§16.236 C1072), while 62b46915d (§16.231 C932) added both byte classes to `esc` and the print
+test; fad8817a5 only added `ESCAPED_MARK` and moved that test, unchanged, into the shared `escd`. And C1447 gave the
+bidi and zero-width set as "only" U+200B, U+202E, U+2060, U+FEFF and U+061C, while `escd` matches the ranges C1280's
+dated line lists. The three now say "since 62b46915d" with C932, and C1447 lists the bidi controls (U+200E, U+200F,
+U+202A-U+202E, U+2066-U+2069, U+061C) and the zero-width characters (U+200B-U+200D, U+2060, U+FEFF), each corrected
+in place, since each credit was a fact about the code, not a decision of its round. install.sh's comment above
+`ESCAPED_MARK` gives the same credit; it is lane RB's file this round, which corrects it. Tests:
+`test_the_escape_set_is_credited_to_the_commit_that_added_it_c1651`, with
+`test_the_guides_name_every_character_the_list_escapes_c1455`, which holds C1280's line to `escd`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
