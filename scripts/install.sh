@@ -4357,6 +4357,25 @@ redact_stream() {
 		}
 		return 0
 	}
+	# 1: a pair whose value begins with one of agentsync\047s verbs (vpair) matches s from c on, its own edge
+	# after it (setup_report keep_verb\047s guard, one for every verb: B13 round 39 C1625). RSTART and RLENGTH
+	# of the caller are kept
+	function verb_pair_at(s, c,    k, t, n, rs, rl, hit) {
+		rs = RSTART; rl = RLENGTH; hit = 0; t = substr(s, c)
+		for (k = 1; k <= np && !hit; k++) {
+			if (!(k in vpair)) continue
+			if (k in rx) {
+				if (match(t, "^(" rx[k] ")") && !(trail[k] && substr(t, RLENGTH + 1, 1) ~ /[A-Za-z0-9]/)) hit = 1
+				continue
+			}
+			if (fz[k]) continue # one form of many: its twin pattern is tried
+			n = length(val[k])
+			if ((k in lv) ? substr(tolower(t), 1, n) == lv[k] : substr(t, 1, n) == val[k])
+				hit = substr(val[k], n, 1) !~ /[A-Za-z0-9]/ || substr(t, n + 1, 1) !~ /[A-Za-z0-9]/
+		}
+		RSTART = rs; RLENGTH = rl
+		return hit
+	}
 	function own_at(s, best, t, i, off, c, n, x, ok) { # where an own name to hold starts in s (0: none); OL its length
 		best = 0; t = s; off = 0
 		while ((i = index(t, "/agent-context")) > 0) {
@@ -4374,11 +4393,12 @@ redact_stream() {
 			# a pair of the word itself (a folder named agentsync) is no hold either, as in the Python report
 			if (!covered(s, off + i, 8)) {
 				best = off + i; OL = 9
-				# and agentsync\047s own verb after it, whole, unless a pair begins with that verb: then the
-				# pair is cut as before (setup_report keep_verb, B13 round 38 C1425, ruling 126)
-				if (substr(s, best + 9, 1) == " ") for (x = 1; x <= nv; x++) {
+				# and agentsync\047s own verb after it, whole, unless a pair whose value begins with one of
+				# the verbs matches right there: then no verb is held and the pair is cut as before
+				# (setup_report keep_verb\047s one guard, B13 round 38 C1425, round 39 C1625)
+				if (substr(s, best + 9, 1) == " " && !verb_pair_at(s, best + 10)) for (x = 1; x <= nv; x++) {
 					n = length(verb[x])
-					if (!(x in vblock) && substr(s, best + 10, n) == verb[x] && substr(s, best + 10 + n, 1) !~ /[A-Za-z0-9_-]/) { OL = 10 + n; break }
+					if (substr(s, best + 10, n) == verb[x] && substr(s, best + 10 + n, 1) !~ /[A-Za-z0-9_-]/) { OL = 10 + n; break }
 				}
 				break
 			}
@@ -4439,9 +4459,9 @@ redact_stream() {
 			if (og[k]) { okey[k] = tolower(f[1]); gsub(/[ \t_\\-]/, "", okey[k]) }
 		}
 		nv = split(ENVIRON["AGENTSYNC_VERBS"], verb, "|") # longest first, as setup_report.agentsync_verbs
-		for (x = 1; x <= nv; x++) {
-			vn = verb[x]; gsub(/-/, "", vn)
-			for (k = 1; k <= np; k++) { pn = tolower(val[k]); gsub(/[ \t_\\-]/, "", pn); if (index(pn, vn) == 1) vblock[x] = 1 }
+		for (k = 1; k <= np; k++) { # the pairs whose value begins with any verb, as keep_verb\047s verb_longer
+			pn = tolower(val[k]); gsub(/[ \t_\\-]/, "", pn)
+			for (x = 1; x <= nv; x++) { vn = verb[x]; gsub(/-/, "", vn); if (index(pn, vn) == 1) { vpair[k] = 1; break } }
 		}
 		nh = split("# agentsync setup report|## Summary|## Agent friction log|## Environment|## Installer|" \
 			"## Configuration|## Doctor|## Status|## Background runs|## Recent errors", hd, "|")

@@ -1351,6 +1351,38 @@ def test_both_reports_hold_agentsyncs_own_verb_whole_c1425(
     assert "alpha" not in shell.lower(), shell
 
 
+@pytest.mark.parametrize(
+    ("folders", "said", "want"),
+    [
+        (
+            ["Empty Project", "Project Alpha", "Exclude Empty Notes"],
+            "~/.local/bin/agentsync exclude-empty project-alpha; agentsync sync project-alpha",
+            r"~/\.local/bin/agentsync exclude-empty <folder-\d>; agentsync sync <folder-\d>",
+        ),
+        (
+            ["Curate", "Project Alpha"],
+            "agentsync curate-queue project-alpha",
+            r"agentsync <folder-\d>-queue <folder-\d>",
+        ),
+    ],
+)
+def test_both_reports_take_keep_verbs_one_guard_c1625(
+    env: dict[str, str],  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+    folders: list[str],
+    said: str,
+    want: str,
+) -> None:
+    """B13 round 39 C1625 (ruling 133): the shell blocked a verb on every line once any pair began with it,
+    so with a folder `Exclude Empty Notes` it held no `exclude-empty`, and `Empty Project` cut across the
+    command, leaving `alpha` in clear. Both reports now take keep_verb's one per-position guard: no verb is
+    held where a pair whose value begins with any verb matches right after `agentsync `."""
+    shell, python = _fuzzy_report(env, monkeypatch, folders, said)
+    assert shell == python, (shell, python)
+    assert re.fullmatch(want, shell), shell
+    assert "alpha" not in shell.lower(), shell
+
+
 def test_a_recut_of_another_builds_render_says_so_under_its_redaction_section_c1406(tmp_path: Path) -> None:
     """B13 round 38 C1406 (ruling 126): another build's render that this checkout's recut changed showed
     `/Users/<path>` and `<path>` its own legend neither names nor counts. One line right after its

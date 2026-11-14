@@ -41052,6 +41052,9 @@ fix, each refusal head, the not-a-folder line and a friction row),
 `test_the_source_local_line_prints_a_folder_in_list_spelling_c1414`;
 `test_install_help.py::test_each_refused_source_local_name_outside_cloudstorage_stays_out_of_every_render_c1432`
 (each head under ~/Projects, rendered by this checkout and by an older stub).
+Amended 2026-11-14, §16.251 C1625: `unless a pair begins with it` blocked a verb on every line once any pair began
+with it; the hold now takes `keep_verb`'s one per-position guard, holding no verb where a pair whose value begins with
+any of agentsync's verbs matches right after `agentsync `.
 
 **A recut that changed another build's render says so under its Redaction section** (C1406; ruling 126;
 `scripts/install.sh`). A render by an older build showed the recut's `/Users/<path>` and `<path>`, which its own
@@ -41516,6 +41519,17 @@ person's, as before; the finder's v38 prompt words are not taken. Tests:
 `test_a_missing_source_local_folder_names_its_owner_c1407` (outside every provider folder, deeper than 2, under a
 missing parent, hidden, a depth-2 row, `~/...`, two rows, one of each) and
 `test_usage_error_after_parsing_still_writes_the_report`.
+
+**The shell holds agentsync's verb by keep_verb's one guard** (C1625; ruling 133; amends §16.246 C1425;
+`scripts/install.sh`). `redact_stream` kept a per-run `vblock`: once any pair's value began with a verb, that verb was
+never held, on any line, so with folders `Empty Project`, `Project Alpha` and `Exclude Empty Notes` the shell printed
+`agentsync exclude-<folder-1>-alpha`, a word of `Project Alpha` in clear, where the agentsync report held
+`exclude-empty`. Now `vpair` marks each pair whose value, lower-cased with its separators gone, begins with any verb
+(dashes gone), as `keep_verb`'s `verb_longer` gathers them, and `own_at` asks `verb_pair_at` once, before its verb
+loop, whether any such pair matches right after `agentsync ` with its own trailing edge (a fuzzy pair by its pattern,
+a literal one by its bytes): if one does, no verb is held there, so a folder `Curate` reads `agentsync
+<folder-1>-queue` in both reports. Tests: `test_report_redaction.py::test_both_reports_take_keep_verbs_one_guard_c1625`
+(both rows, shell equal to Python, no `alpha`) and `test_both_reports_hold_agentsyncs_own_verb_whole_c1425`.
 
 ### 16.252 Round 39: --fields and log records follow the document, names in doctor's lines, and a recording kept during an OCR outage (2026-11-14, wave B13 round 39 lane B)
 
