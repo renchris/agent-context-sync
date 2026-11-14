@@ -3740,10 +3740,17 @@ def test_the_shell_report_reads_past_a_dollar_quoted_install_log_word(
     assert {"<path>", "<folder-N>"} <= set(kinds) and "<proxy-N>" not in kinds, kinds
     item = {i.split(":", 1)[0].lstrip("- "): " ".join(i.split()) for i in items}
     assert item["<path>"].endswith(
-        "and every word bash wrote in its dollar-quote form ($'...'), which install.log uses for a name with "
-        "a tab or another control character, a curly apostrophe, an en dash or a decomposed accent, and "
-        "under the C locale for any accent (any character outside ASCII)"
-    ), "the Redaction text is not itself redacted, and reads plainly (B13 R7; round 38 C1493)"
+        "and every word bash or doctor's fix wrote in its dollar-quote form ($'...'), cut whole, so doctor's "
+        "fix reads open ~/<path> in Finder once, which install.log uses for a name with a tab or another "
+        "control character, a curly apostrophe, an en dash, a decomposed accent or many precomposed ones, "
+        "such as É, ß, í or ł, and under the C locale for any accent (any character outside ASCII)"
+    ), "the Redaction text is not itself redacted, and reads plainly (B13 R7; round 38 C1493; round 39 C1648)"
+    # B13 round 39 C1601: a CloudStorage argument no configured source names keeps only its provider folder
+    assert (
+        "one under CloudStorage that names no configured folder, a refused one among them, kept only to its "
+        "provider folder (~/Library/CloudStorage/OneDrive-<org-N>/<path>, cut whole when the report numbers "
+        "no organization for that folder)"
+    ) in item["<path>"], item["<path>"]
 
     # B13 round 11 M3: no name every drive has is in this report, so its rule is not explained
     assert "such as Documents" not in item["<folder-N>"], item["<folder-N>"]
@@ -3786,15 +3793,17 @@ def test_the_path_legend_says_only_a_relative_argument_is_one(env: dict[str, str
         "part is not a CloudStorage entry, or a ~/ or absolute one outside CloudStorage that names no "
         "configured folder, there or as an added source's typed folder (never agentsync's own "
         "~/agent-context/inbox), cut at its first part that is not a fixed macOS folder or one every home or "
-        "drive has; a path in another home (/Users/ and any "
+        "drive has; one under CloudStorage that names no configured folder, a refused one among them, kept "
+        "only to its provider folder (~/Library/CloudStorage/OneDrive-<org-N>/<path>, cut whole when the "
+        "report numbers no organization for that folder); a path in another home (/Users/ and any "
         "folder but Shared or this login's), cut whole to /Users/<path> (/Volumes/<path> behind a volume, "
         "the prefixes in any case; in both reports, an unquoted path keeps its tail after the first quote, "
         "backtick, bracket, comma or semicolon, a provider folder's name, in any case, running past a "
         'bracket, comma or semicolon to the next / but stopping at a quote, a backtick, "):" or ", stored as '
         '", and after a blank from the first word that holds no / or holds =, or that '
         "is an option, a URL, a path of its own or a number like 3/14; a blank right after this home ends "
-        "it, so another home named as this one and a blank keeps what follows); and every word bash wrote "
-        "in its dollar-quote form ($'...'),"
+        "it, so another home named as this one and a blank keeps what follows); and every word bash or "
+        "doctor's fix wrote in its dollar-quote form ($'...'),"
     ), (
         item
     )  # B13 round 31 ruling 49 (C529): an added source's typed folder named; round 34 C822; round 35 C946;
@@ -4776,6 +4785,8 @@ def test_the_shell_legend_lists_only_the_kinds_its_report_shows(env: dict[str, s
         "2026-10-10T00:00:02Z run=20261010T000002Z-1 start install.sh compat=15 commit=- kind=- source=- "
         f"args=--source-local {shlex.quote(str(folder))}\n"
     )
+    # configured, so its args= word keeps <folder-1> (B13 round 39 C1601: one no source names is <path>)
+    _write_config(env, local_source_table("s0", folder))
     assert install_sh({k: v for k, v in env.items() if k != "TMPDIR"}, "--report-only").returncode == 0
     text = report_path(env).read_text()
     assert "<folder-1>" in text and "<org-1>" in text
@@ -24776,6 +24787,8 @@ def test_the_folder_legend_explains_only_the_names_the_report_shows(env: dict[st
         "2026-10-10T00:00:02Z run=20261010T000002Z-1 start install.sh compat=15 commit=- kind=- source=- "
         f"args=--source-local {shlex.quote(str(picked))}\n"
     )
+    # configured, so its args= word keeps its <folder-N> (B13 round 39 C1601: one no source names is <path>)
+    _write_config(env, local_source_table("s0", picked))
     install_out(env).write_text(
         _listed(
             cs,

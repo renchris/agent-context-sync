@@ -177,7 +177,8 @@ def test_a_refused_source_local_folder_name_stays_out_of_the_report_c1278(
     assert "Northwind Board" in cp.stderr, "the person still reads it"
     report = report_path(env).read_text(encoding="utf-8")
     assert "Board" not in report and "Minutes" not in report, report
-    assert "--source-local <path>: " in report, report
+    # under CloudStorage the provider folder stays, cut by its pair (B13 round 39 C1601)
+    assert "--source-local ~/Library/CloudStorage/OneDrive-<org-1>/<path>: " in report, report
 
 
 @pytest.mark.parametrize("renderer", ["checkout", "older"])

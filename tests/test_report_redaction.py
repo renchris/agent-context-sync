@@ -22,6 +22,7 @@ from test_install_oneshot import (  # noqa: F401  (fixture)
     BASH32,
     INSTALL_SH,
     _fuzzy_report,
+    _renderer_home,
     _shell_cut_stdout,
     _stub_id,
     _write_exe,
@@ -1492,6 +1493,36 @@ def test_both_reports_cut_an_unregistered_tenant_after_cloudstorage_c1626(
     assert shell.split(" | deviation | ", 1)[1] == f"{want} | -", shell
     assert python.split(" | deviation | ", 1)[1] == f"{want} | -", python
     assert "Fabrikam" not in text
+
+
+def test_both_reports_cut_a_refused_look_alike_at_its_provider_folder_c1601(
+    env: dict[str, str],  # noqa: F811
+) -> None:
+    """B13 round 39 C1601 with C1656 (ruling 133): a refused look-alike --source-local folder under
+    CloudStorage read `<path>` whole in the shell report's refusal line, `OneDrive-<org-2>/<folder-1>` on its
+    install.log line, and `<org-2>/<path>` or `<org-2>/<folder-2>` in the agentsync report. Every such line
+    in both reports now reads `~/Library/CloudStorage/OneDrive-<org-1>/<path>`, no list-only name numbered
+    there, and the shell legend's <path> item names that form."""
+    lib = Path(env["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso"
+    (lib / "Zephyr\nQuarry").mkdir(parents=True)
+    (lib / "Zephyr\\nQuarry").mkdir()
+    assert install_sh(env, "--list-folders").returncode in (0, 3)
+    refused = install_sh(env, "--source-local", str(lib / "Zephyr\\nQuarry"))
+    assert refused.returncode == 2, refused.stdout + refused.stderr
+    assert "its name is step 1's escaped form of another folder there" in refused.stderr, refused.stderr
+    form = "~/Library/CloudStorage/OneDrive-<org-1>/<path>"
+    reports = {"shell": report_path(env).read_text(encoding="utf-8")}
+    assert "shell fallback" in refused.stdout or "Shell fallback" in reports["shell"], refused.stdout
+    assert install_sh(_renderer_home(env, "checkout"), "--report-only").returncode == 0
+    reports["agentsync"] = report_path(env).read_text(encoding="utf-8")
+    for who, text in reports.items():
+        assert "Zephyr" not in text and "Quarry" not in text, who
+        said = [ln for ln in text.splitlines() if "--source-local ~/Library/CloudStorage/" in ln]
+        assert said, (who, text)
+        assert all(form in ln and "<folder-" not in ln for ln in said), (who, said)
+    # the shell report's own record of the refusal (the agentsync report names only its exit here)
+    own = f"--source-local {form}: its name is step 1's"
+    assert [ln for ln in reports["shell"].splitlines() if own in ln], reports["shell"]
 
 
 def test_a_recut_of_another_builds_render_says_so_under_its_redaction_section_c1406(tmp_path: Path) -> None:

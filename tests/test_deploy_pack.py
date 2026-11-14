@@ -7848,7 +7848,7 @@ def test_the_guide_says_both_reports_cut_a_path_in_another_home() -> None:
     limit = "an unquoted path keeps its tail after the first quote, backtick, bracket, comma or semicolon"
     assert limit in page
     shell = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
-    assert "typed_note_cut | foreign_home_cut" in shell
+    assert 'typed_note_cut "$pairs" "$cfg" | foreign_home_cut' in shell
 
 
 def test_the_guides_purge_queue_row_names_the_sections_parts() -> None:

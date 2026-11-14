@@ -13728,6 +13728,10 @@ needs no pair: `redact_stream` makes every `$'..'` word `<path>` first.
   Amended 2026-11-13, §16.246 C1493: the legend now ends `a curly apostrophe, an en dash or a decomposed accent, and
   under the C locale for any accent (any character outside ASCII)`: under the Mac's UTF-8 locale bash 3.2 writes a
   precomposed accent plain.
+  CORRECTED (2026-11-14, §16.251 C1648): bash 3.2's `printf %q` tests each byte with isprint(), and under macOS's
+  en_US.UTF-8 the bytes 0x80 to 0x9F and 0xAD are not printable, so any character whose UTF-8 form holds one is
+  dollar-quoted, precomposed or not: É, Ü, ß, í, ł and Ł are, and é, ü, ï, ó and ñ are not. The legend now says `a
+  decomposed accent or many precomposed ones, such as É, ß, í or ł`.
 - `test_headings_redaction_and_runtime` asserts `<library-1>` from install.log's args in the Installer section,
   not from Doctor, which a loaded machine timed out (R45).
 
@@ -41016,6 +41020,10 @@ one. The legend, the guide's `<path>` row and the test that quotes it now say `a
 decomposed accent, and under the C locale for any accent (any character outside ASCII)`, in one commit, the closing
 parenthetical kept, which `test_the_guides_path_row_quotes_the_shell_reports_legend` reads to its first `)`. Tests:
 that test and the shell legend's in `test_install_oneshot.py`.
+CORRECTED (2026-11-14, §16.251 C1648): `writes a precomposed accent plain` is true only of a character whose UTF-8
+bytes all lie outside 0x80 to 0x9F and 0xAD, the bytes bash 3.2 writes in octal under UTF-8 (ruling 134); É, Ü, ß, í,
+ł and Ł are dollar-quoted too, so the legend says `an en dash, a decomposed accent or many precomposed ones, such as
+É, ß, í or ł, and under the C locale for any accent (any character outside ASCII)`.
 
 **A folder's name prints in no spelling in the shell report, and the recut runs only on another build's render**
 (C1453 with C1480, C1481 and C1435; C1440; the shell halves of C1414, C1425, C1432, C1436 and C1439; ruling 126;
@@ -41590,6 +41598,34 @@ checkout's build wrote is still kept. Tests:
 kept), `test_a_mark_outside_a_list_row_keeps_another_builds_render_c1630` and
 `test_a_twin_past_the_list_limit_keeps_its_name_out_of_an_older_render_c1655` (C1655's reproduction: no folder word
 in setup-report.md or bring-back.md, `shell fallback` on stdout).
+
+**The shell legend says which accents bash 3.2 dollar-quotes, and names the dollar-quote and look-alike cuts** (C1648,
+with ruling 134's `<path>` item and C1601's form; a CORRECTED line under §16.46 R7 and under §16.246 C1493;
+`scripts/install.sh`, `docs/deploy/setup-feedback.md`). C1493's legend said bash 3.2 writes a precomposed accent
+plain under UTF-8, but its `printf %q` tests each byte, so a character whose UTF-8 form holds a byte 0x80 to 0x9F or
+0xAD (É, Ü, ß, í, ł, Ł, curly quotes, dashes, most CJK) is dollar-quoted, and only one with none of them (é, ü, ï, ó,
+ñ) is plain. The shell legend's `<path>` item, the guide's `<path>` row (docs/deploy/setup-feedback.md) and the pin in
+`test_install_oneshot.py` say `a tab or another control character, a curly apostrophe, an en dash, a decomposed accent
+or many precomposed ones, such as É, ß, í or ł, and under the C locale for any accent (any character outside ASCII)`,
+no parenthetical before the closing one, which `test_the_guides_path_row_quotes_the_shell_reports_legend` reads to its
+first `)`. The same item says the dollar-quote words of bash and of doctor's fix are cut whole, so doctor's fix reads
+`open ~/<path> in Finder once` (ruling 134), and names C1601's form below.
+
+**A refused look-alike reads `<Provider>-<org-N>/<path>` on every line of both reports** (C1601 with C1656's report
+half; ruling 133; `scripts/install.sh`). One refused look-alike under CloudStorage showed four ways: `<path>` whole in
+the shell report's refusal line (`USAGE_ERROR_REPORTED`), `OneDrive-<org-2>/<folder-1>` on its install.log line there,
+and `<org-2>/<path>` or `<org-2>/<folder-2>` in the agentsync report, a form the shell legend did not name.
+`refused_shown` now records a refused or missing folder under CloudStorage as `~/Library/CloudStorage/<provider>/<path>`
+when that provider folder is on disk (its name then cut by the pairs), `<path>` elsewhere, in the refusal and
+not-a-folder records alike; and `typed_note_cut`, given `redact_stream`'s pairs (read once, before the stream) and the
+configured folders' CloudStorage parts, cuts a `--source-local ~/Library/CloudStorage/<kept provider>/...` word at the
+provider folder when any part after it is not a configured folder's placeholder, a fixed, generic or home folder, as
+`Redactor.listed_only` and `_cut_path` cut it, so no list-only or argument-only name is numbered there. The shell
+legend's `<path>` item says so (`one under CloudStorage that names no configured folder, a refused one among them, kept
+only to its provider folder (~/Library/CloudStorage/OneDrive-<org-N>/<path>, cut whole when the report numbers no
+organization for that folder)`). Tests:
+`test_report_redaction.py::test_both_reports_cut_a_refused_look_alike_at_its_provider_folder_c1601` and the shell legend's `test_the_path_legend_says_only_a_relative_argument_is_one`; the
+legend tests whose args= folder was unconfigured now configure it.
 
 **The recut note says which <path> is its own** (C1604; ruling 135; amends §16.246 C1406; `scripts/install.sh`). An
 older build writes `<path>` itself (`set exclude = [<path>] in [[source]]`, an item path in a log line), and the

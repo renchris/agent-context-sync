@@ -4236,12 +4236,16 @@ redact_stream() {
 	# own ("Jane" + U+2019), and the placeholder match runs on every line. A by-hand purge's id (governance's
 	# queue_lost fix rebuilds `purge id=<guid>:<file number>`) is <its id>, its words kept, as
 	# setup_report._PURGE_ID_RE writes it: the id runs to a blank, backtick or quote, and one already a
-	# placeholder stays (B13 round 30 ruling 35, lane RA's report half).
+	# placeholder stays (B13 round 30 ruling 35, lane RA's report half). The pairs are read once, before the
+	# stream, and typed_note_cut takes them with the configured folders' CloudStorage parts (B13 round 39 C1601).
+	local pairs cfg
+	pairs="$(redaction_pairs </dev/null | LC_ALL=C awk -F '\t' '{ k = $1; if ($3 == "f" || $3 == "j" || $3 == "o") gsub(/[ \t_\\-]/, "", k); print length(k) "\t" $0 }' |
+		LC_ALL=C sort -t "$(printf '\t')" -k1,1nr -s | LC_ALL=C cut -f 2-)"
+	cfg="$({ [ -f "$CONFIG" ] && config_path_values; } </dev/null 2>/dev/null | LC_ALL=C sed -n 's#^.*/Library/CloudStorage/[^/]*/##p')" || cfg=""
 	LC_ALL=C sed -E "s/\\\$'([^'\\\\]|\\\\.)*'?/<path>/g" |
 		LC_ALL=C sed -E "s/(^|[^A-Za-z0-9_-])(purge (--queue --forget )?id=)[^<[:space:]\`'\"][^[:space:]\`'\"]*/\\1\\2<its id>/g" |
 		LC_ALL=C sed -E -f <(gov_value_sed) | hold_cut |
-		REDACT_PAIRS="$(redaction_pairs | LC_ALL=C awk -F '\t' '{ k = $1; if ($3 == "f" || $3 == "j" || $3 == "o") gsub(/[ \t_\\-]/, "", k); print length(k) "\t" $0 }' |
-			LC_ALL=C sort -t "$(printf '\t')" -k1,1nr -s | LC_ALL=C cut -f 2-)" REPO_SLUG="$(repo_slug)" \
+		REDACT_PAIRS="$pairs" REPO_SLUG="$(repo_slug)" \
 		FIXED_PHRASES="$FIXED_CAPS_PHRASES|$FIXED_VALUE_PHRASES" AGENTSYNC_VERBS="$AGENTSYNC_VERBS" LC_ALL=C awk '
 	# The line is kept as pieces, plain text or a placeholder (held): a later pair never matches inside a
 	# placeholder an earlier one wrote ("<name>" stays whole beside a folder named "name"), as in the Python
@@ -4562,7 +4566,7 @@ redact_stream() {
 		print line
 	}
 	END { if (hn && ENVIRON["HOLD_WORD_FILE"] != "") print hn > ENVIRON["HOLD_WORD_FILE"] } # the words cut, each once' |
-		typed_note_cut | foreign_home_cut
+		typed_note_cut "$pairs" "$cfg" | foreign_home_cut
 }
 # A path in another home (a moved home's install.log source= or args=, a --source in another account's folder) is
 # cut whole to /Users/<path>, the form a --source-local argument already gets, uncounted, as setup_report.Redactor
@@ -4685,9 +4689,17 @@ foreign_home_cut() {
 # one the cut has not seen. The word lists through ENVIRON
 # (BSD awk takes no newline in -v; generic_folder's and generic_home_dir's words, a test keeps them equal),
 # byte-wise.
-typed_note_cut() {
-	TYPED_FIXED="$CUT_FIXED" TYPED_DRIVE="$CUT_DRIVE" TYPED_HOME="$CUT_HOME" TYPED_KEPT="$CUT_PROVIDER_KEPT" LC_ALL=C awk '
+typed_note_cut() { # [PAIRS CONFIGURED]: redact_stream's pairs and the configured folders' CloudStorage parts
+	TYPED_FIXED="$CUT_FIXED" TYPED_DRIVE="$CUT_DRIVE" TYPED_HOME="$CUT_HOME" TYPED_KEPT="$CUT_PROVIDER_KEPT" \
+		TYPED_CHECK="${1:+1}" TYPED_PAIRS="${1:-}" TYPED_CFG="${2:-}" LC_ALL=C awk '
+	function norm(v) { v = tolower(v); gsub(/[ \t_\\-]/, "", v); return v }
 	BEGIN {
+		# the placeholders of configured folders: a pair whose value is a part of a configured CloudStorage path
+		n = split(ENVIRON["TYPED_CFG"], w, "\n")
+		for (i = 1; i <= n; i++) { m = split(w[i], cp, "/"); for (j = 1; j <= m; j++) if (cp[j] != "") cfgkey[norm(cp[j])] = 1 }
+		n = split(ENVIRON["TYPED_PAIRS"], w, "\n")
+		for (i = 1; i <= n; i++) { split(w[i], cp, "\t"); if (cp[2] ~ /^<(folder|library)-[0-9]+>$/ && (norm(cp[1]) in cfgkey)) cfgph[cp[2]] = 1 }
+		check = ENVIRON["TYPED_CHECK"] == "1"
 		n = split(ENVIRON["TYPED_FIXED"], w, "|"); for (i = 1; i <= n; i++) fixed[w[i]] = 1
 		n = split(ENVIRON["TYPED_DRIVE"], w, "|"); for (i = 1; i <= n; i++) drive[w[i]] = 1
 		n = split(ENVIRON["TYPED_HOME"], w, "|"); for (i = 1; i <= n; i++) home[w[i]] = 1
@@ -4696,7 +4708,20 @@ typed_note_cut() {
 	}
 	# each `--source-local ~/Library/CloudStorage/<provider>/...` word, bare or in quotes, after the pairs: a
 	# provider folder CUT_PROVIDER_KEPT does not keep (a tenant no pair registered) is cut with the rest of
-	# the word, `\ ` kept in it, its closing quote and trailing `)]}.,;:` kept after (B13 round 39 C1626)
+	# the word, `\ ` kept in it, its closing quote and trailing `)]}.,;:` kept after (B13 round 39 C1626); and
+	# below a kept one, a folder no configured source names (a refused look-alike, a name only step 1\047s list
+	# or install.log gave) is cut at the provider folder, so it reads `<Provider>-<org-N>/<path>`, never a
+	# <folder-N> of its own (B13 round 39 C1601 with C1656, as setup_report.Redactor.listed_only)
+	function cfgonly(r,    n, p, x, t) {
+		n = split(r, p, "/")
+		for (x = 1; x <= n; x++) {
+			if (p[x] == "" || (p[x] in fixed) || (p[x] in drive) || (tolower(p[x]) in home)) continue
+			if (p[x] !~ /^(<[a-z]+(-[0-9]+)?>)+$/) return 0
+			t = p[x]
+			while (match(t, /<(folder|library)-[0-9]+>/)) { if (!(substr(t, RSTART, RLENGTH) in cfgph)) return 0; t = substr(t, RSTART + RLENGTH) }
+		}
+		return 1
+	}
 	function slcut(l,    out, a, q, w, i, c, e, j) {
 		out = ""
 		while ((a = index(l, "--source-local ")) > 0) {
@@ -4714,8 +4739,10 @@ typed_note_cut() {
 			if (q == "") while (e > 0 && index(")]}.,;:`", substr(w, e, 1))) e--
 			j = index(substr(w, length(cs) + 1), "/")
 			c = j ? substr(w, length(cs) + 1, j - 1) : substr(w, length(cs) + 1, e - length(cs))
-			if (c ~ kept) { out = out q; l = substr(l, length(q) + 1); continue }
-			out = out q cs "<path>" substr(w, e + 1); l = substr(l, i)
+			if (c ~ kept && (!check || !j || cfgonly(substr(w, length(cs) + j + 1, e - length(cs) - j)))) {
+				out = out q; l = substr(l, length(q) + 1); continue
+			}
+			out = out q cs (c ~ kept ? c "/" : "") "<path>" substr(w, e + 1); l = substr(l, i)
 		}
 		return out l
 	}
@@ -6238,16 +6265,20 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 		say "- <path>: a relative --source-local argument in install.log (which records no working directory) whose first"
 		say "  part is not a CloudStorage entry, or a ~/ or absolute one outside CloudStorage that names no configured folder,"
 		say "  there or as an added source's typed folder (never agentsync's own ~/agent-context/inbox), cut at its first part"
-		say "  that is not a fixed macOS folder or one every home or drive has; a path in another home (/Users/ and any folder"
-		say "  but Shared or this login's), cut whole to /Users/<path> (/Volumes/<path> behind a volume, the prefixes in any"
-		say "  case; in both reports, an unquoted path keeps its tail after the first quote, backtick, bracket, comma or"
+		say "  that is not a fixed macOS folder or one every home or drive has; one under CloudStorage that names no configured"
+		say "  folder, a refused one among them, kept only to its provider folder"
+		say "  (~/Library/CloudStorage/OneDrive-<org-N>/<path>, cut whole when the report numbers no organization for that"
+		say "  folder); a path in another home (/Users/ and any folder but Shared or this login's), cut whole to /Users/<path>"
+		say "  (/Volumes/<path> behind a volume, the prefixes in any case; in both reports, an unquoted path keeps its tail"
+		say "  after the first quote, backtick, bracket, comma or"
 		say "  semicolon, a provider folder's name, in any case, running past a bracket, comma or semicolon to the next / but"
 		say "  stopping at a quote, a backtick, \"):\" or \", stored as \", and after a blank from the first word that holds no / or"
 		say "  holds =, or that is an option, a URL, a path of its own or a number like 3/14; a blank right after this home ends"
-		say "  it, so another home named as this one and a blank keeps what follows); and every word bash wrote in its"
-		say "  dollar-quote form (\$'...'), which install.log uses for a name with a tab or another control character, a curly"
-		say "  apostrophe, an en dash or a decomposed accent, and under the C locale for any accent (any character outside"
-		say "  ASCII)"
+		say "  it, so another home named as this one and a blank keeps what follows); and every word bash or doctor's fix"
+		say "  wrote in its dollar-quote form (\$'...'), cut whole, so doctor's fix reads open ~/<path> in Finder once, which"
+		say "  install.log uses for a name with a tab or another control character, a curly apostrophe, an en dash, a"
+		say "  decomposed accent or many precomposed ones, such as É, ß, í or ł, and under the C locale for any accent (any"
+		say "  character outside ASCII)"
 		;;
 	esac
 	# as setup_report._LEGEND words them (B13 round 16 T3, round 17 U93)
@@ -10612,8 +10643,24 @@ could_be_row() {
 # person, as its own error says "rename one of them" (B13 round 38 C1415)
 TWIN_NEXT="renaming one of the two folders is the person's, not a step for the agent, so show them the error and go on to the report; once they say one is renamed in its sync app, run $SELF --list-folders again and go by what it prints (leaving it out is their choice, not the agent's)"
 RENAME_NEXT="renaming that folder is the person's, not a step for the agent, so show them the error and go on to the report; once they say it is renamed in its sync app, run $SELF --list-folders again and go by what it prints (leaving it out is their choice, not the agent's)"
+# A refused or missing folder as the reports show it: under CloudStorage, a provider folder on disk kept and the
+# rest <path> (`~/Library/CloudStorage/<provider>/<path>`, its provider then cut as the pairs cut it), as the
+# agentsync report cuts it; anywhere else <path> (B13 round 39 C1601 with C1656). SHOWN-NAME
+refused_shown() {
+	local rel="" prov
+	case "$1" in
+	"$HOME/Library/CloudStorage/"*/*) rel="${1#"$HOME/Library/CloudStorage/"}" ;;
+	\~/Library/CloudStorage/*/*) rel="${1#\~/Library/CloudStorage/}" ;;
+	esac
+	prov="${rel%%/*}"
+	if [ -n "$prov" ] && [ -d "$HOME/Library/CloudStorage/$prov" ]; then
+		printf '%s/Library/CloudStorage/%s/<path>' "~" "$prov"
+	else
+		printf '%s' "<path>"
+	fi
+}
 source_local_refused() { # SHOWN-NAME WORDS [NEXT]
-	USAGE_ERROR_REPORTED="--source-local <path>: $2"
+	USAGE_ERROR_REPORTED="--source-local $(refused_shown "$1"): $2"
 	USAGE_NEXT="${3:-$RENAME_NEXT}"
 	usage_error "--source-local $1: $2"
 }
@@ -10692,7 +10739,7 @@ elif [ "$bad_total" -gt 0 ]; then
 	# `is not an existing folder: ` by _cut_path (B13 round 37 C1299 with C1250, lane RA), and report_recut cuts it
 	# again only in a render by another build, unless _cut_path could have printed it, so this checkout's own render
 	# names one folder one way (ruling 120; round 38 C1453, ruling 126).
-	USAGE_ERROR_REPORTED="--source-local is not an existing folder: <path>"
+	USAGE_ERROR_REPORTED="--source-local is not an existing folder: $(refused_shown "${BAD_FOLDERS[$bad_shown]}")"
 	usage_error "--source-local is not an existing folder: $(list_name "${BAD_FOLDERS[$bad_shown]}")"
 fi
 
