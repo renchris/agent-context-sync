@@ -8754,7 +8754,7 @@ INSIDE_MARK="[inside a synced folder]"
 CONTAINS_MARK="[contains a synced folder]"
 # A row list_shown printed with a control character escaped opens with this mark, before any other: two
 # folders can show as one escaped text, so such a row is never a folder to paste (B13 round 36 C1001, C1072)
-# B13 round 38 C1447 (ruling 129): the escaped form covers the line separators (since fad8817a5) and, since
+# B13 round 38 C1447 (ruling 129): the escaped form covers the line separators (since 62b46915d, C932) and, since
 # 8528ea2a4, bidi and zero-width characters, none of them a control character, so the words say "hidden or
 # control"; $ESCAPED_MARK_OLD and $ESCAPED_KEPT_MARK_OLD, the words before it, are still read in install.out and
 # refused when pasted.
