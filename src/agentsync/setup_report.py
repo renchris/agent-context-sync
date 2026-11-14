@@ -16714,8 +16714,10 @@ def _install_line(
     # ran out, or a lock not taken (B13 round 3 R34). Other steps' notes are other lines' facts. After a
     # comma: the step list is already in a bracket, and one inside it nested (B13 round 12 N33). A first sync
     # that did not run to done says its result, `first-sync 0s, skipped`, so it never reads as a sync that ran
-    # in 0s; every other step keeps its bare seconds, since install.sh logs `skipped` for a config step that
-    # ran (`exists`) and an agentsync step already current (B13 round 38 C1404)
+    # in 0s; every other step keeps its bare seconds, since a `skipped` there can be a step that ran:
+    # install.sh logs `skipped` for an agentsync step already current (`current`), and an install.log from
+    # before B13 round 38 C1405 logs `skipped` for a config step that ran init over an existing config
+    # (`exists`; it is logged `done` since) (B13 round 38 C1404; round 39 C1631 with C1650, C1680)
     steps = " · ".join(
         f"{k} {v.get('seconds', '?')}s"
         + (f", {_agentsync_note(v['note'])}" if k == "agentsync" and v.get("note") else "")

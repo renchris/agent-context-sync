@@ -40832,6 +40832,11 @@ comma (round 12 N33); every other step keeps its bare seconds, since install.sh 
 that ran (`exists`) and an agentsync step already current (dropping or marking them makes worse True). Test:
 `test_the_install_line_says_a_first_sync_that_did_not_run_c1404`.
 
+Amended 2026-11-14, §16.250 C1631, C1650, C1680: since §16.246 C1405 install.sh logs a config step that ran over an
+existing config `done`, so the reason reads: every other step keeps its bare seconds, since install.sh logs `skipped`
+for an agentsync step already current (`current`), and an install.log from before C1405 logs `skipped` for a config
+step that ran (`exists`) (dropping or marking them still makes worse True: old logs render as they did).
+
 **The Loop line's empty-root grant names a line only where that line is** (C1437; ruling 131, with lane RB's C1438).
 The report took status's form of the pointer whenever Doctor's section printed no `source.<id>.listable` [warn], but
 with Doctor run in full and no such warn (the folder filled since the sync), status drops the pointer too, so the
@@ -41541,6 +41546,14 @@ flag, so none follows a later one; if it succeeds, it ends at the last head, so 
 greedy cut, the same 1-character minimum name, the same count. Test:
 `test_the_refused_name_cut_is_one_match_at_the_first_flag_c1658` (8000 flags and no head unchanged, one cut with a
 head after them, an empty name no match, the pattern reached through one `match` per line).
+
+**C1404's reason names install.log from before C1405** (C1631, C1650 and C1680; dated line at §16.245 C1404). C1404
+kept every step but the first sync at its bare seconds "since install.sh logs `skipped` for a config step that ran",
+which C1405, landed in the same push, made false: a config step that ran over an existing config is logged `done`
+since. `_install_line`'s comment and §16.245 now say an install.log from before C1405 logs it so, and install.sh
+still logs `skipped` for an agentsync step already current. Words only: the code and its test,
+`test_the_install_line_says_a_first_sync_that_did_not_run_c1404`, are unchanged, and the dated line's claim is held
+by the dated-line scan.
 
 ### 16.251 Round 39: the installer: the shell reads the shared cut table, another build's render only when it reads every mark, and temp files under TMPDIR (2026-11-14, wave B13 round 39 lane RB)
 
