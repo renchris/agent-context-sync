@@ -5948,9 +5948,11 @@ class _Cycle:
         the recording converter, and a row that still holds its canonical hash (a row a re-screen forgot is
         never kept).  A recording is kept unread in every mode: it is read only in the recording pass, under
         its own budget, and an interactive sync reads none (spec S0 rules 4 and 5; B13 round 39 C1641).  Its
-        row stays ``MAYBE_CHANGED``, pending, so each cycle brings it back, and once the helper works the
-        recording pass compares its bytes (settled, the row would hold its new stat over the old hash, and a
-        recording changed in the outage would keep a stale transcript).  An image whose read needs a download
+        row is left waiting for that pass as ``_recording_defer`` leaves one (``DEFERRED``,
+        :data:`RECORDING_WAITS`, so ``loop`` counts it with the recordings, never rule 3), so each cycle
+        brings it back, and once the helper works the recording pass compares its bytes (settled, the row
+        would hold its new stat over the old hash, and a recording changed in the outage would keep a stale
+        transcript).  An image whose read needs a download
         keeps the page unread and is settled as ``_keeps_page`` settles it.  An image on this Mac is
         read through ``arm`` with a probe budget of its own (no download, and none of the source's
         ``max_files``: a cycle past its file cap must not cost the image its page, nor this read take a later
@@ -5980,10 +5982,15 @@ class _Cycle:
             return False
         if any(o.converter_id == RecordingConverter.converter_id for o in live):
             # read only in the recording pass, in no mode here (spec S0 rules 4, 5): kept unread and left
-            # pending, so the row comes back each cycle and the pass compares its bytes once the helper
-            # works; settled, it would hold its new stat over the old hash and never be read (C1641)
-            self.manifest.set_verdict(row.source_id, row.stable_id, Verdict.MAYBE_CHANGED)
-            acc.settle(row.stable_id, Verdict.MAYBE_CHANGED)
+            # waiting for that pass as _recording_defer leaves one (never queued: this cycle's has no
+            # converter), so the row comes back each cycle and the pass compares its bytes once the helper
+            # works; settled, it would hold its new stat over the old hash and never be read, and pending
+            # with no reason, status would send the agent to sync again all outage long (C1641)
+            self.manifest.set_verdict(row.source_id, row.stable_id, Verdict.DEFERRED)
+            acc.deferred_ids.add(row.stable_id)
+            acc.settle(row.stable_id, Verdict.DEFERRED)
+            if row.state in (RowState.LIVE, RowState.DATALESS) and row.state_reason is None:
+                self.manifest.set_state(row.source_id, row.stable_id, row.state, RECORDING_WAITS)
             return True
         if read_needs_download(graph=src.kind.is_graph, dataless=row.dataless):
             self._settle_kept_online(row, acc)

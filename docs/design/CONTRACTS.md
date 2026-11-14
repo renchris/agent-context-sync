@@ -40340,8 +40340,8 @@ keeps that page while the helper fails, and the row stays quarantined, as QUARAN
 
 Amended 2026-11-14, §16.252 C1641, C1679: "under the same gates" reads "under the same gates but the label rule: one
 never withholds a recording, so `_ocr_wait_eligible` lets it wait, and keeps it, under one too", and a recording is
-never read here: whatever the mode, its page is kept unread and its row left `MAYBE_CHANGED`, pending, for the
-recording pass to compare once the helper works.
+never read here: whatever the mode, its page is kept unread and its row left waiting for the recording pass
+(`DEFERRED`, `RECORDING_WAITS`), which compares it once the helper works.
 
 **QUARANTINE.tsv follows an image's OCR-down page** (C1211 with C1204, C1238, C1259, C1269; ruling 122; amends
 §16.237 C1101). While the OCR helper fails, an image's page says `publish.OCR_DOWN_REASON` and sends the reader to
@@ -41110,7 +41110,7 @@ Amended 2026-11-14, §16.252 C1641, C1679: "every other gate stands (no label ru
 canonical hash, `TOUCHED_NOT_CHANGED`)" reads "every other gate stands (`Publisher.ocr_waits`, which for an image needs
 no label rule but lets a recording wait under one, since a label rule never withholds a recording; live outputs all
 OK, or a QUARANTINED output on a QUARANTINED row (C1403); intact; the canonical hash)", and a recording is kept unread,
-its row `MAYBE_CHANGED`, never `TOUCHED_NOT_CHANGED`.
+its row `DEFERRED` with `RECORDING_WAITS`, never `TOUCHED_NOT_CHANGED`.
 
 **offboard's recovery command carries the chosen `--config`** (C1486; ruling 128; data integrity). A refused
 `offboard --confirm <wrong>` printed `To remove, run` and returned in `next` a command without the `--config` the
@@ -41423,16 +41423,21 @@ registry has no recording converter, so the `if recording:` deferral never ran).
 the recording converter's is now kept unread in every mode, the key the live outputs' converter id, since the
 registry has none. The verifier's fix settled it as the download case does, which was measured to be worse: the
 walk had stored the new stat, so a settled row held it over the old hash, and a recording whose bytes changed in the
-outage kept its old transcript after the helper came back (no piece read, the page stale). So the row is left
-`MAYBE_CHANGED` with its count: a pending row comes back each cycle, is kept unread again while the helper fails,
-and once it works goes to the recording pass, which compares it under its own budget (unchanged bytes publish
-nothing new through the cache, `OUTPUT_UNCHANGED`; changed ones carry the new text). The label rule is no gate for a
+outage kept its old transcript after the helper came back (no piece read, the page stale). Left pending with no
+reason (`MAYBE_CHANGED`, this lane's first build), it made status's rule 3 send the agent to `sync` again for the
+whole outage (`loop._unpublished` counted it a local file not converted yet; found by the lane's review). So the row
+is left as `_recording_defer` leaves a recording for the recording pass, `DEFERRED` with `RECORDING_WAITS` (over no
+other reason), counted deferred, but not queued, since this cycle's pass has no converter: `loop` counts it with the
+recordings, never rule 3; each cycle brings it back and keeps it unread again while the helper fails; once it
+works it goes to the recording pass, which compares it under its own budget (unchanged bytes publish nothing new
+through the cache, `OUTPUT_UNCHANGED`, and the reason clears; changed ones carry the new text). The label rule is no gate for a
 recording (`_ocr_wait_eligible` returns before it; one never withholds a recording, so adding the gate would bring
 C1442's loss back under a rule); C1442's and C1286's lines take dated lines saying so, and `_keeps_ocr_page`'s
 docstring says it. Tests:
 `test_cycle.py::test_an_unchanged_recording_keeps_its_page_while_the_ocr_helper_fails_c1442` (POLL, interactive and
-a label rule: no `.mp4` fetched, the page byte for byte, the row `MAYBE_CHANGED` with no reason, nothing counted;
-with the helper back, no piece read and the row `OUTPUT_UNCHANGED`) and
+a label rule: no `.mp4` fetched, the page byte for byte, the row `DEFERRED` with `RECORDING_WAITS`, nothing counted
+as OCR-unread, `loop._unpublished` counting it with the recordings and no local file; with the helper back, no
+piece read and the row `OUTPUT_UNCHANGED` with no reason) and
 `::test_a_recording_changed_during_an_ocr_outage_carries_its_new_text_once_the_helper_works_c1641` (new bytes in the
 outage: two cycles, POLL and interactive, fetch nothing and keep the old page; the first cycle with the helper back
 publishes the new text).
@@ -41473,8 +41478,8 @@ item, its guide words §16.254's). `governance.compaction_due` is never due over
 one with a parent), and a compaction's new root keeps the base commit's date, so about a week after every compaction
 `compaction_state`'s ok line said `no commit older than 37 days (history_days 30 + slack)` while `git log` showed an
 older commit. With no compaction due and a commit older than `history_days + compaction_slack_days` (only the root
-can be), the line reads `nothing older than <N days> but the root snapshot the last compaction left (history_days
-<H> + slack)`; with none, it is unchanged, so S26's count noun stands. `compaction_due`'s body, which lane D's and
+can be), the line reads `nothing older than <N days> but the root commit, which compaction keeps (history_days <H> +
+slack)` (a never-compacted history whose first commit aged before syncs began is the same case); with none, it is unchanged, so S26's count noun stands. `compaction_due`'s body, which lane D's and
 C1489's tests read, is unchanged; `governance._lone_old_root` asks the second question. Test:
 `test_governance.py::test_the_ok_compaction_line_names_the_compacted_root_when_it_is_the_one_old_commit_c1678` (a
 compacted history: the new root older than 37 days, nothing due, the new words; ten days earlier, the old ones).
@@ -42266,8 +42271,8 @@ deprecation warning becomes a `warnings` entry instead of a stderr line. The ref
   the alias): every top-level key a command's document can carry is in its row, `findings` in sync's and
   accept-deletions', `warnings` in every row but status's, doctor's and policy's (`("status",)`, their records in
   `status.warnings`), and help's `commands` (C1638, C1673, C1643; ruling 136). Exit 2, as a `usage` error, when
-  `--json` is absent, the command prints no document (a help page included: only `help --all` and `help search`
-  print one), or a field is unknown; the last line lists the valid fields. Without `--fields` every document is
+  `--json` is absent, the command prints no document, a help page is asked for (`a help page is no result to
+  select fields from`: only `help --all` and `help search` print `commands`), or a field is unknown; the last line lists the valid fields. Without `--fields` every document is
   unchanged, and error documents are never filtered. The run's log records join the document only when the
   selection keeps the field that holds them; otherwise each is one JSON object on stderr after it (C1639, C1674).
   `help <unknown> --json` is one `usage` line, its inner parse through `cli._parse` (C1643).

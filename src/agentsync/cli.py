@@ -5675,8 +5675,12 @@ def _select_fields(args: argparse.Namespace) -> int | None:
         return _refused("error: --fields selects fields of the --json document: add --json", EXIT_USAGE)
     command = args.action if args.command == "graph" else args.command
     valid = _RESULT_FIELDS.get(command, ())
-    if command == "help" and not (args.all or args.path[:1] == ["search"]):
-        valid = ()  # a help page is no result: only --all and search print the commands (C1643)
+    if command == "help" and not (args.all or args.path[:1] == ["search"]):  # a page is no result (C1643)
+        return _refused(
+            "error: --fields: a help page is no result to select fields from; "
+            "`help --all` and `help search` print `commands`",
+            EXIT_USAGE,
+        )
     if not valid:
         return _refused(f"error: --fields: `{command}` prints no document to select fields from", EXIT_USAGE)
     asked = tuple(f.strip() for f in raw.split(",") if f.strip())

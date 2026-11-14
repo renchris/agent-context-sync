@@ -808,7 +808,7 @@ def test_help_doctor_and_policy_documents_take_fields_c1643(
     rc, doc, _err = _doc(["help", "search", "purge", "--fields", "commands"], capsys)
     assert rc == cli.EXIT_OK and list(doc) == ["commands"] and doc["commands"]
     rc, error = _error(["help", "status", "--fields", "commands"], capsys)
-    assert (rc, error["reason"]) == (cli.EXIT_USAGE, "usage") and "no document" in error["message"], error
+    assert (rc, error["reason"]) == (cli.EXIT_USAGE, "usage") and "a help page" in error["message"], error
     cfg = str(initialised.config_path)
     for verb in (["doctor"], ["policy", "show"]):
         _rc, doc, _err = _doc([*verb, "--config", cfg, "--fields", "status"], capsys)

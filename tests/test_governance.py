@@ -2206,7 +2206,7 @@ def test_the_ok_compaction_line_names_the_compacted_root_when_it_is_the_one_old_
     state, line = gv.compaction_state(repo, gv.GovernanceConfig(), now=NOW)
     assert state == "ok" and not gv.compaction_due(repo, gv.GovernanceConfig(), now=NOW)
     assert line == (
-        "nothing older than 37 days but the root snapshot the last compaction left (history_days 30 + slack)"
+        "nothing older than 37 days but the root commit, which compaction keeps (history_days 30 + slack)"
     ), line
     assert gv.compaction_state(repo, gv.GovernanceConfig(), now=NOW - timedelta(days=10)) == (
         "ok",

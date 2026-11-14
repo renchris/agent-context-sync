@@ -6358,8 +6358,8 @@ def compaction_due(repo: Path, gov: GovernanceConfig, *, now: datetime | None = 
 
 def _lone_old_root(repo: Path, days: int, now: datetime | None) -> bool:
     """True when history holds a commit older than ``days`` though :func:`compaction_due` says none is due:
-    the one old commit is a root, as the snapshot the last compaction left keeps its old date (B13 round 39
-    C1678)."""
+    the one old commit is a lone root, which compaction keeps (the snapshot a compaction left keeps its old
+    date, and a first commit may have aged before syncs began; B13 round 39 C1678)."""
     repo = expand(repo)
     if not (repo / ".git").exists():
         return False
@@ -6379,7 +6379,7 @@ def compaction_state(repo: Path, gov: GovernanceConfig, *, now: datetime | None 
     if not compaction_due(repo, gov, now=now):
         if _lone_old_root(repo, span, now):  # never "no commit", which git log would contradict (C1678)
             return "ok", (
-                f"nothing older than {plural(span, 'day')} but the root snapshot the last compaction left "
+                f"nothing older than {plural(span, 'day')} but the root commit, which compaction keeps "
                 f"(history_days {gov.history_days} + slack)"
             )
         return "ok", f"no commit older than {plural(span, 'day')} (history_days {gov.history_days} + slack)"

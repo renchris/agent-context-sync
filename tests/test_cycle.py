@@ -39,6 +39,7 @@ from agentsync import arm_local as al
 from agentsync import cli, curate, gitops, governance, lints, loop, materialise, setup_report, slug
 from agentsync import convert as convert_mod
 from agentsync import cycle as cycle_mod
+from agentsync import loop as loop_mod
 from agentsync import policy as content_policy
 from agentsync import publish as publish_mod
 from agentsync.arm_local import LocalArm
@@ -7274,8 +7275,9 @@ def test_an_unchanged_recording_keeps_its_page_while_the_ocr_helper_fails_c1442(
     It is kept: the page byte for byte, the row settled, nothing counted, and once the helper works the next
     cycle reads no piece again. B13 round 39 C1641: the keep path copied and hashed the recording to compare
     it, outside the recording pass and its budget, in an interactive sync too (spec S0 rules 4 and 5); it is
-    kept unread in every mode, and its row stays MAYBE_CHANGED, pending, until the recording pass compares
-    it. C1679: a label rule never withholds a recording, so one waits, and is kept, under a label rule too
+    kept unread in every mode, and its row waits for the recording pass (DEFERRED, RECORDING_WAITS), which
+    status counts with the recordings, never as a file to sync again (rule 3). C1679: a label rule never
+    withholds a recording, so one waits, and is kept, under a label rule too
     (which reads it again once the helper works, as any label rule does)."""
     config = config_with(tmp_path, meetings)
     recording = stub_recording(meetings / MEETING, 10)
@@ -7294,16 +7296,20 @@ def test_an_unchanged_recording_keeps_its_page_while_the_ocr_helper_fails_c1442(
     assert [f for f in fetched if f.endswith(".mp4")] == [], fetched
     assert path.read_bytes() == before
     row = _row(config, MEETING)
-    assert row.last_verdict is Verdict.MAYBE_CHANGED and row.state is RowState.LIVE, row
-    assert row.state_reason is None, row
+    assert row.last_verdict is Verdict.DEFERRED and row.state is RowState.LIVE, row
+    assert row.state_reason == cycle_mod.RECORDING_WAITS, row
     assert sum(s.ocr_unread + s.refused_unread for s in report.sources) == 0, report.sources
+    with Manifest(config.state_paths.db) as m:
+        files = loop_mod._unpublished(m, config.sources)
+    assert (files.recording, files.local, files.online) == ({SID: 1}, {}, {}), files
     if extra:
         return
     _use_ocr(monkeypatch, tmp_path)
     rec.worked.clear()
     assert run(config).exit_code == 0
     assert path.read_bytes() == before and rec.worked == []
-    assert _row(config, MEETING).last_verdict is Verdict.OUTPUT_UNCHANGED  # the pass, through the cache
+    back = _row(config, MEETING)  # the pass compared it, through the cache, and it waits no more
+    assert (back.last_verdict, back.state_reason) == (Verdict.OUTPUT_UNCHANGED, None), back
 
 
 def test_a_recording_changed_during_an_ocr_outage_carries_its_new_text_once_the_helper_works_c1641(
