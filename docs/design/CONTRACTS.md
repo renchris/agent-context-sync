@@ -41583,6 +41583,29 @@ of `NOT_IMAGES`),
 `test_convert_recording.py::test_a_zero_byte_image_or_recording_is_classed_empty_and_never_cached_c1647` (through
 `Registry.default` with an OCR and a media engine: `quarantine_class` gives `empty`, and the cache has no entry).
 
+**A table whose header or first row passes the page cap rides in its sidecar** (C1676; `agentsync.convert.text`,
+`agentsync.convert.xlsx`). `ConvertConfig.max_page_bytes` is a hard cap, but `PlainTextConverter._table` kept the
+header, its delimiter and the first data row whatever their size and attached `full-table.csv` only when a row was
+dropped, so a one-row CSV with a 10,000-character cell gave a 10,076-byte page at a 2,000-byte cap and a 200-column
+header a 13,335-byte one, neither with a sidecar (the verifier's runs at 853fab348). Every line now counts against
+the budget. When those three lines alone do not fit, the page shows no GFM table, since a cut inside one can split
+a `\|` escape, a `<br>` or a character: it gives the `CSV table:` (or `TSV table:`) line, a fenced head of the raw
+text cut at its last line end that fits, else at a character boundary, its fence sized from the head (backticks
+further down never empty it), and `[row cap: first 0 of N rows shown; every row is in the sidecar `full-table.csv`]`
+(for a header with no rows, `[header past the page cap: the whole header is in the sidecar `full-table.csv`]`), and
+always attaches the sidecar. The budget keeps
+its 1,024 bytes of room for that note, the banner and the sidecar digest footer, so the guarded page stays within
+the cap. A table under the cap renders byte for byte as before. `_EMITTER_VERSION` is 1.0.1, so a new conversion
+misses the cache once. `xlsx._table_lines` had the same exemption (`shown > 0`): a first row past the budget is not
+shown and a header past it leaves no table, the sheet's CSV sidecar holding every row (a streamed summary with no row
+shown says `[no row fits the page; every row is in the sidecar ...]` in place of its `## First 0` heading); xlsx's
+`_EMITTER_VERSION` is 1.0.1 too. Neither converter's `outdated` rule reads the version, so an unchanged file keeps its page. Tests:
+`test_convert_formats.py::test_a_table_whose_header_or_first_row_passes_the_cap_rides_in_its_sidecar_c1676` (an
+oversized header, an oversized single first row, one followed by small rows, a multi-byte cell and a TSV row: the
+guarded page within the cap, the sidecar round-tripping every row, no GFM line, the fence closed),
+`test_convert_formats.py::test_a_cut_tables_head_keeps_its_header_past_far_backticks_and_a_wide_header_says_so_c1676`,
+`test_convert_formats.py::test_a_table_under_the_cap_is_unchanged_and_a_row_capped_one_still_shows_its_rows_c1676`
+and `test_convert_formats.py::test_xlsx_first_row_past_the_budget_rides_in_the_sidecar_c1676`.
 
 ### 16.254 Round 39: the compaction promise, recording downloads and the guides (2026-11-14, wave B13 round 39 lane D)
 

@@ -30,7 +30,7 @@ from agentsync.errors import ConversionError
 from agentsync.model import RenderedUnit, UnitKind
 from agentsync.text import plural
 
-_EMITTER_VERSION = "1.0.0"
+_EMITTER_VERSION = "1.0.1"  # B13 round 39 C1676: a first row past the page cap goes to the sidecar
 _INDEX_TERM_LIMIT = 400  # distinct terms kept on 00-index (most frequent first, then listed sorted)
 _TERM_MAX_CHARS = 80  # a text cell up to this long is one term; longer text contributes its words
 _HEADER_LIMIT = 30  # column headers listed per sheet on 00-index
@@ -287,19 +287,24 @@ def _sidecar_name(number: int, width: int, title: str) -> str:
 def _table_lines(
     sheet: _Sheet, rows: list[int], cells: Mapping[tuple[int, int], str], budget: int, max_rows: int
 ) -> tuple[list[str], int]:
-    """Render up to ``max_rows`` rows within ``budget`` bytes; return (lines, rows shown)."""
+    """Render up to ``max_rows`` rows within ``budget`` bytes; return (lines, rows shown).
+
+    The first row counts against the budget too: a row that does not fit is never shown, and a header
+    that does not fit leaves no table, so the caller's sidecar holds every row (B13 round 39 C1676)."""
     assert sheet.bounds is not None
     _r0, c0, _r1, c1 = sheet.bounds
     header = ["Row", *(_col_letter(c) for c in range(c0, c1 + 1))]
     lines = _gfm_table(header, [])
     used = sum(len(ln.encode("utf-8")) + 1 for ln in lines)
+    if used > budget:
+        return [], 0
     shown = 0
     for r in rows:
         if shown >= max_rows:
             break
         line = _gfm_table(header, [[str(r), *(cells.get((r, c), "") for c in range(c0, c1 + 1))]])[2]
         size = len(line.encode("utf-8")) + 1
-        if used + size > budget and shown > 0:
+        if used + size > budget:
             break
         lines.append(line)
         used += size
@@ -707,7 +712,10 @@ class XlsxConverter:
             if rows:
                 budget = max(1024, self._cfg.max_page_bytes - 4096 - sum(len(x) + 1 for x in out))
                 lines, shown = _table_lines(sheet, rows, sheet.shown, budget, self._cfg.max_rows_per_sheet)
-                out += [f"## First {shown} of {plural(total_rows, 'non-empty row')}", "", *lines, ""]
+                if shown:
+                    out += [f"## First {shown} of {plural(total_rows, 'non-empty row')}", "", *lines, ""]
+                else:  # the first row is past the page cap (B13 round 39 C1676)
+                    out += [f"[no row fits the page; every row is in the sidecar `{sc}`]", ""]
             else:
                 out += ["[empty sheet]", ""]
             if sheet.missing_cache:

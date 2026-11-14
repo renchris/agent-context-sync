@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -25,7 +26,7 @@ from agentsync.errors import ConversionError
 from agentsync.model import RenderedUnit, UnitKind
 from agentsync.text import plural
 
-_EMITTER_VERSION = "1.0.0"
+_EMITTER_VERSION = "1.0.1"  # B13 round 39 C1676: a table row past the page cap goes to the sidecar
 _TABLE_SIDECAR = "full-table.csv"
 _FENCE_LANG: dict[str, str] = {
     ".txt": "text",
@@ -69,6 +70,23 @@ def _parse_delimited(text: str, delimiter: str) -> list[list[str]] | None:
         return [row for row in reader if row]
     except csv.Error:
         return None
+
+
+def _raw_head(text: str, lang: str, room: int) -> str:
+    """A fenced head of the delimited ``text`` within ``room`` bytes: cut at the last line end that fits,
+    else at a character boundary (B13 round 39 C1676).  The fence is sized from a first cut, never from
+    backticks further down, which the head does not hold."""
+    raw = text.encode("utf-8")
+
+    def cut(ticks: int) -> str:  # both fence lines, the language and the line ends
+        return raw[: max(0, room - 2 * ticks - len(lang) - 3)].decode("utf-8", errors="ignore")
+
+    first = cut(3)
+    head = cut(max(3, max((len(m.group(0)) for m in re.finditer(r"`+", first)), default=0) + 1))
+    end = head.rfind("\n")
+    if end > 0:
+        head = head[: end + 1]
+    return _fence(head, lang).rstrip("\n")
 
 
 class PlainTextConverter:
@@ -117,7 +135,7 @@ class PlainTextConverter:
         if suffix in (".csv", ".tsv") and text.strip():
             table = _parse_delimited(text, "," if suffix == ".csv" else "\t")
         if table:
-            body, sidecars, title, summary = self._table(table, suffix[1:].upper())
+            body, sidecars, title, summary = self._table(table, suffix[1:].upper(), text)
         else:
             lang = _FENCE_LANG.get(suffix, "text")
             body = "[empty file]\n" if not text.strip() else _fence(text, lang)
@@ -146,26 +164,39 @@ class PlainTextConverter:
         )
 
     def _table(
-        self, table: list[list[str]], kind: str
+        self, table: list[list[str]], kind: str, text: str
     ) -> tuple[str, tuple[tuple[str, bytes], ...], str, str]:
-        """Render delimited data as a GFM table (row- and byte-capped, full CSV sidecar when capped)."""
+        """Render delimited data as a GFM table (row- and byte-capped, full CSV sidecar when capped).
+
+        Every line counts against the budget, the header, its delimiter and the first row included: when
+        those three alone do not fit, no GFM table is shown (a cut inside one can split a ``\\|`` escape, a
+        ``<br>`` or a character), only a fenced head of the raw text cut at a line or character boundary,
+        and the sidecar holds every row (B13 round 39 C1676).  The budget leaves room for the row-cap note
+        and the sidecar digest footer, so a page stays within ``max_page_bytes``."""
         header, rows = table[0], table[1:]
         shown = rows[: self._cfg.max_rows_per_sheet]
         out = [f"{kind} table: {plural(len(rows), 'data row')} x {plural(len(header), 'column')}", ""]
         table_lines = _gfm_table([_cell(h) for h in header], ([_cell(c) for c in r] for r in shown))
         budget = max(1024, self._cfg.max_page_bytes - 1024)
         used = sum(len(x.encode("utf-8")) + 1 for x in out)
+        sizes = [len(line.encode("utf-8")) + 1 for line in table_lines]
+        cut = used + sum(sizes[:3]) > budget
         kept: list[str] = []
-        for i, line in enumerate(table_lines):
-            size = len(line.encode("utf-8")) + 1
-            if i > 2 and used + size > budget:
-                break
-            kept.append(line)
-            used += size
+        if cut:
+            out.append(_raw_head(text, kind.lower(), budget - used))
+        else:
+            for line, size in zip(table_lines, sizes, strict=True):
+                if len(kept) > 2 and used + size > budget:
+                    break
+                kept.append(line)
+                used += size
         rows_kept = max(0, len(kept) - 2)
         out += kept
         sidecars: tuple[tuple[str, bytes], ...] = ()
-        if rows_kept < len(rows):
+        if cut and not rows:
+            sidecars = ((_TABLE_SIDECAR, _csv_bytes(table)),)
+            out += ["", f"[header past the page cap: the whole header is in the sidecar `{_TABLE_SIDECAR}`]"]
+        elif cut or rows_kept < len(rows):
             sidecars = ((_TABLE_SIDECAR, _csv_bytes(table)),)
             out += [
                 "",

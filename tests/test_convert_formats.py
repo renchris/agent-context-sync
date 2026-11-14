@@ -376,6 +376,25 @@ def test_xlsx_byte_cap_also_caps_rows(tmp_path: Path) -> None:
     assert "[row cap: first" in data.body and data.sidecars
 
 
+def test_xlsx_first_row_past_the_budget_rides_in_the_sidecar_c1676(tmp_path: Path) -> None:
+    """B13 round 39 C1676: `_table_lines` kept the first row whatever its size (``shown > 0``), so a sheet
+    whose first row passed the budget made a page past the cap; that row now goes to the sidecar only, and
+    the page keeps the header and the row-cap note."""
+    book = openpyxl.Workbook()
+    sheet = book.active
+    assert sheet is not None
+    sheet.title = "Contoso notes"
+    sheet.append(["Contoso " + "x" * 20_000, "a"])
+    sheet.append(["short", "b"])
+    src = tmp_path / "long.xlsx"
+    book.save(src)
+    data = XlsxConverter(replace(CFG, max_page_bytes=8000)).convert(src, name="long.xlsx")[1]
+    assert len(data.body.encode()) <= 8000
+    assert "[row cap: first 0 of 2 non-empty rows shown; every row is in the sidecar" in data.body
+    rows = list(csv.reader(io.StringIO(data.sidecars[0][1].decode())))
+    assert rows[1][1] == "Contoso " + "x" * 20_000 and len(rows) == 3
+
+
 def test_xlsx_streaming_path_above_threshold(tmp_path: Path, fixture_files: dict[str, Path]) -> None:
     conv = XlsxConverter(replace(CFG, xlsx_stream_threshold_bytes=0, max_rows_per_sheet=2))
     units = conv.convert(fixture_files["sample.xlsx"], name="sample.xlsx")
@@ -3676,6 +3695,77 @@ def test_csv_row_cap_sidecar(tmp_path: Path) -> None:
     )
     assert "[row cap: first 10 of 50 rows shown; every row is in the sidecar `full-table.csv`]" in u.body
     assert u.sidecars[0][0] == "full-table.csv" and u.sidecars[0][1].decode().count("\n") == 51
+
+
+_WIDE_HEADER = ",".join(f"Contoso column {i:03d} with a long descriptive name" for i in range(200)) + "\n"
+_OVER_CAP_TABLES: dict[str, tuple[str, str]] = {
+    "an oversized header": ("wide.csv", _WIDE_HEADER + "1,2,3\n4,5,6\n"),
+    "an oversized single first row": ("one.csv", "id,note\n1," + "x" * 10_000 + "\n"),
+    "an oversized first row, then small rows": (
+        "first.csv",
+        "id,note\n1," + "x" * 10_000 + "\n" + "".join(f"{i},short\n" for i in range(2, 8)),
+    ),
+    "a multi-byte cell cut at a character": ("utf8.csv", "id,note\n1," + "é€" * 4_000 + "\n"),
+    "a tab-separated first row": ("one.tsv", "id\tnote\n1\t" + "y|z\\" * 3_000 + "\n"),
+}
+
+
+@pytest.mark.parametrize(("name", "text"), _OVER_CAP_TABLES.values(), ids=_OVER_CAP_TABLES.keys())
+def test_a_table_whose_header_or_first_row_passes_the_cap_rides_in_its_sidecar_c1676(
+    tmp_path: Path, name: str, text: str
+) -> None:
+    """B13 round 39 C1676: the header, its delimiter and the first row were kept whatever their size, and
+    the sidecar came only when a row was dropped, so a one-row CSV with a 10,000-character cell made a
+    10,076-byte page at a 2,000-byte cap and no sidecar. When those three lines do not fit, the page shows
+    no GFM table (a cut inside one can split an escape or a character), only a fenced head of the raw text
+    and the row-cap note, and `full-table.csv` holds every row; the guarded page, banner and digest footer
+    included, stays within the cap."""
+    cfg = replace(CFG, max_page_bytes=2000)
+    src = _write(tmp_path, name, text)
+    u = _one(PlainTextConverter(cfg).convert(src, name=name))
+    delimiter = "," if name.endswith(".csv") else "\t"
+    table = list(csv.reader(io.StringIO(text), delimiter=delimiter))
+    assert u.sidecars == (("full-table.csv", u.sidecars[0][1]),)
+    assert list(csv.reader(io.StringIO(u.sidecars[0][1].decode()))) == table, "every row, round-tripped"
+    rows = len(table) - 1
+    assert f"[row cap: first 0 of {rows} row{'s' if rows != 1 else ''} shown; every row is in the" in u.body
+    assert not [line for line in u.body.splitlines() if line.startswith("|")], "no GFM table cut short"
+    assert _open_fence(u.body) is None and "\ufffd" not in u.body
+    assert text.startswith(u.body.split("\n", 3)[3].split("\n```", 1)[0].lstrip("\n")), "a raw head"
+    (page,) = Registry.default(cfg).for_name(name).convert(src, name=name)  # type: ignore[union-attr]
+    assert len(page.body.encode("utf-8")) <= 2000
+
+
+def test_a_cut_tables_head_keeps_its_header_past_far_backticks_and_a_wide_header_says_so_c1676(
+    tmp_path: Path,
+) -> None:
+    """B13 round 39 C1676 (this lane's review): the raw head's fence is sized from the head, so 500
+    backticks far down the file do not leave the head empty; and a header-only CSV past the cap says its
+    header is in the sidecar, never `first 0 of 0 rows`."""
+    cfg = replace(CFG, max_page_bytes=2000)
+    far = "a,b\n" + "x" * 3000 + ",1\ny," + "`" * 500 + "\n"
+    u = _one(PlainTextConverter(cfg).convert(_write(tmp_path, "far.csv", far), name="far.csv"))
+    assert u.body.splitlines()[2:4] == ["```csv", "a,b"]
+    wide = "h" * 3000 + ",h2\n"
+    w = _one(PlainTextConverter(cfg).convert(_write(tmp_path, "wide.csv", wide), name="wide.csv"))
+    note = "[header past the page cap: the whole header is in the sidecar `full-table.csv`]"
+    assert w.body.endswith(note + "\n")
+    assert "row cap" not in w.body and w.sidecars[0][1].decode() == wide
+
+
+def test_a_table_under_the_cap_is_unchanged_and_a_row_capped_one_still_shows_its_rows_c1676(
+    tmp_path: Path,
+) -> None:
+    """B13 round 39 C1676: only a table whose first three lines pass the budget changes: one under the cap
+    renders as before, with no sidecar, and one whose later rows pass it keeps its GFM head."""
+    cfg = replace(CFG, max_page_bytes=2000)
+    small = _one(PlainTextConverter(cfg).convert(_write(tmp_path, "s.csv", "id,v\n1,2\n"), name="s.csv"))
+    assert small.body == "CSV table: 1 data row x 2 columns\n\n| id | v |\n|---|---|\n| 1 | 2 |\n"
+    assert small.sidecars == ()
+    long = "id,v\n" + "".join(f"{i},{'w' * 40}\n" for i in range(200))
+    capped = _one(PlainTextConverter(cfg).convert(_write(tmp_path, "l.csv", long), name="l.csv"))
+    assert capped.body.splitlines()[2:4] == ["| id | v |", "|---|---|"]
+    assert "[row cap: first 0 of" not in capped.body and capped.sidecars[0][0] == "full-table.csv"
 
 
 def test_big_text_is_capped_with_closed_fence(tmp_path: Path) -> None:
