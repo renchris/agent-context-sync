@@ -2698,6 +2698,55 @@ first, on lane RA's sha; C1442, C1486; the CLI wave's `--json` items last), E 4 
 39's kit (C1411 with C1422, C1412, C1413, C1416, C1417, C1418, C1419, C1420 with C1424 and C1470, C1477), C1471's
 housekeeping, and the hand-offs above (C1491 with C1457, C1468 and C1479; C1459 with C1469).
 
+### B13 round 38 landed (2026-11-13)
+
+All five lanes landed, and the prompt is v37 (`ded96e18`, lane D's commit on lane RB's C1447 marks: the escaped marks
+say "a hidden or control character", and step 1 quotes every mark whole on one block line, C1402). Notes
+`lanes/r38-<lane>.md`, lead notes `round29/lead-notes.md`. All 85 confirmed items are built: 66 in the lanes' 50
+commits (`2764de31..eef0bee4`, with the CLI conventions wave's commits between them; every landed tip's CI green,
+read back by the lead) and the lead's 19. What the notes record as not built is an option inside an item, each with
+its measured reason: C1427's [ok] and C1408's listing key (ruling 130 keeps the WARN, keyed on doctor's detail), C1426's
+`above` pointer (ruling 131), C1409's OCR half and C1410's head-note sentence (each makes its stopped copy worse),
+C1444's sweep of every NEXT format (it would restate `_PLACEHOLDER`), C1443's `hold_cut` half (built in lane RB's
+both-reports row), and C1448's and C1428's other readings (a check message, not a pointer; a stop that never meets a
+lost hold). Lane E narrowed ruling 132: the zero-byte screen is keyed on the name's suffix in `convert._identity`, not
+on `_GuardedConverter.options`, because the converter-wide option moved `.rtf`'s key with and without an OCR engine
+(three tests red); recorded in §16.248. Of the lead's 19, the kit items are in round 39's script
+(`round39/tools/edit.py`, `harvest-lead.txt`, `remove-worktrees.sh`, 18 kit scripts in `round39/tools/kit/` with their
+own `kit-test.sh`, 95 checks); C1471's housekeeping is done (four class-B worktrees removed, three backlog rows closed);
+and the hand-offs landed in the CLI conventions wave's queue: tenant-probes.md's exit 78 row (C1491 with C1457, C1468
+and C1479, round 37's C1305) as `6194dae7`, while C1462's `test_cli_modes.py` half and the CLI plan's superseded quotes
+(C1459 with C1469) are that wave's, so round 39's harvest checks them.
+
+| Lane | Landed (lane commits) |
+|---|---|
+| E | `2764de31..2de3409e` (3) |
+| B | `07075b21..eb039936` (15), `76e5866a` (C1431's test holds free disk space still), `eef0bee4` (C1414) |
+| RA | `48308e1f..3ab52a34` (7: ruling 126's Python half first), in one land with RB and D |
+| RB | `288de077..5eb91615` (13), `c7788dfe`, `1688663c`, `a6e50324`, `3b797a10` (ruling 126's shell half, the recut's legend, C1434's install half, the review), `c6d8227c` (C1434's report words, the one red CI test) |
+| D | `85ccd5f9`, `9b2272d4`, `ded96e18` (v37), `b25b047c`, `877a47ab` |
+
+Learnings: from the first fire (2026-11-13 05:5x) to the last land took about 23 hours, against round 37's 50.
+Lanes sent each other their words first and three of them landed in one run, so the queue held five lands, not
+fifteen. Two things cost the time. First, lanes RA, RB and D died together at about 09:50Z on an API error (403,
+"Please run /login"), which also cleared their goals, just after RB's joint land had gone red on one test
+(`test_readme_prompt_asks_a_mac_already_set_up_for_no_folder`: C1407's new MISSING_NEXT lacked the person-owned
+clause). `cc-wake` refused them (their last heartbeat was a turn in flight) and `cc-lr recover` refuses that class, so
+the lead fired one successor in RB's worktree (pane 1852) that fixed the wording, picked lane D's last two commits,
+found three more stale tests in its pre-gate and landed all 29 commits on its first full gate. When the operator
+logged the three old sessions back in, the lead told them to stand down; RA's branch had meanwhile been rewritten
+(C1434 without a `timeout` note word), which the successor was told and its gate settled. Second, a lane B test
+(C1431's report-hooks test) compared two doctor runs that print live free disk space, C1462's race, and turned the
+CLI conventions wave's trunk run red once; lane B pinned `_disk_free` and landed the fix alone within the hour. A test
+that runs doctor twice must hold free space still. Third, C1434's report took a step's limit from its elapsed seconds, which a loaded local gate never saw because it skips timing tests; CI did (`877a47ab`, red), and the successor's `c6d8227c` landed over the red trunk with `--allow-red-trunk` after reading the log. Last, the Mac's directory service stopped answering user lookups (`pwd.getpwuid` failed, so every pytest run died at import) and held lane B's C1414 for about ten hours, until the 19:01 reboot.
+
+Round 39: the round 38 workflow (`round38/round38-workflow.js` through `round39/tools/edit.py` and `edit-xvendor.py`,
+codex-only: the allow rule for `~/.claude/scripts/agy-review.sh` is still the operator's, backlog `8ed9dae0fbc0`)
+with the harvest list in `round39/tools/harvest-lead.txt`, on this section's landed tip, BASE `5bf1911e`, ids C1601
+and up, prompt v37 (v36's block from `702fcff5`), outputs `round39/`. While its slots run, the lead reads trunk with
+`git ls-remote`, never a fetch in the operator checkout (C1470). The stop rule names Codex and Gemini: a clean round
+without Gemini goes to the operator before the loop closes.
+
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be
