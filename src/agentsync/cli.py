@@ -5682,6 +5682,32 @@ def _is_read(args: argparse.Namespace) -> bool:
     return command in _READ_COMMANDS
 
 
+def _version_fields(tokens: Sequence[str]) -> int | None:
+    """``--version --json``'s ``--fields``, which argparse never sees: its one field is ``version``, and any
+    other name is the same usage refusal every command gives (B13 round 39: ``--fields bogus`` exited 0)."""
+    raw: str | None = None
+    for i, t in enumerate(tokens):
+        if t == "--fields":
+            raw = tokens[i + 1] if i + 1 < len(tokens) else ""
+        elif t.startswith("--fields="):
+            raw = t.removeprefix("--fields=")
+    return None if raw is None else _check_fields(raw, ("version",))
+
+
+def _check_fields(raw: str, valid: Sequence[str]) -> int | None:
+    """Keep ``raw``'s comma-separated fields, or refuse (exit 2) naming each unknown field and the valid."""
+    asked = tuple(f.strip() for f in raw.split(",") if f.strip())
+    unknown = [f for f in asked if f not in valid] if asked else [raw]
+    if unknown:
+        return _refused(
+            f"error: --fields: unknown field {', '.join(map(repr, unknown))}; "
+            f"valid fields: {', '.join(valid)}",
+            EXIT_USAGE,
+        )
+    _json_options.fields = asked
+    return None
+
+
 def _select_fields(args: argparse.Namespace) -> int | None:
     """``--fields`` (R252, R454): the fields to keep, or a usage refusal (exit 2) when ``--json`` is not
     given, the command prints no document, or a field is not in its result schema, which the line lists."""
@@ -5700,16 +5726,7 @@ def _select_fields(args: argparse.Namespace) -> int | None:
         )
     if not valid:
         return _refused(f"error: --fields: `{command}` prints no document to select fields from", EXIT_USAGE)
-    asked = tuple(f.strip() for f in raw.split(",") if f.strip())
-    unknown = [f for f in asked if f not in valid] if asked else [raw]
-    if unknown:
-        return _refused(
-            f"error: --fields: unknown field {', '.join(map(repr, unknown))}; "
-            f"valid fields: {', '.join(valid)}",
-            EXIT_USAGE,
-        )
-    _json_options.fields = asked
-    return None
+    return _check_fields(raw, valid)
 
 
 def _main(argv: Sequence[str] | None) -> int:
@@ -5722,6 +5739,9 @@ def _main(argv: Sequence[str] | None) -> int:
     _json_options.help = clio.json_mode() and "--version" not in tokens
     if clio.json_mode() and "--version" in tokens:
         if not {"-h", "--help"} & set(tokens):
+            refused = _version_fields(tokens)
+            if refused is not None:
+                return refused
             _emit({"version": __version__})
             return EXIT_OK
         # --help wins (R086); argparse would act on whichever came first

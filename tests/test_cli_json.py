@@ -86,6 +86,23 @@ def test_version_json_is_one_document(capsys: pytest.CaptureFixture[str]) -> Non
     assert capsys.readouterr().out == f"agentsync {__version__}\n"
 
 
+@pytest.mark.parametrize("fields", [["--fields", "version"], ["--fields=version"]])
+def test_version_json_keeps_its_one_field(fields: list[str], capsys: pytest.CaptureFixture[str]) -> None:
+    assert cli.main(["--version", "--json", *fields]) == cli.EXIT_OK
+    assert json.loads(capsys.readouterr().out) == {"version": __version__}
+
+
+@pytest.mark.parametrize("raw", ["bogus", "version,bogus", ""])
+def test_version_json_refuses_an_unknown_field(raw: str, capsys: pytest.CaptureFixture[str]) -> None:
+    """B13 round 39: ``--version --json --fields bogus`` printed the document and exited 0, as argparse never
+    sees a --version run; it is the usage refusal every command gives, naming ``version`` as the valid one."""
+    assert cli.main(["--version", "--json", "--fields", raw]) == cli.EXIT_USAGE
+    out, err = capsys.readouterr()
+    assert out == ""
+    doc = json.loads(err)
+    assert doc["reason"] == "usage" and doc["message"].endswith("valid fields: version"), doc
+
+
 @pytest.mark.parametrize("verb", ["status", "curate", "sync"])
 def test_no_ansi_and_clean_streams_in_json(
     verb: str, initialised: Config, capsys: pytest.CaptureFixture[str]
