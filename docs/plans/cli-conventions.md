@@ -2600,45 +2600,46 @@ verbs and options were treated as additive, and help text as editable.
 | U-A1b | landed | 820c69dd | clio's JSON documents, `confirm` and `bug_report`. |
 | U-A2 | landed | 7c4f775e6 | install.sh's closed-stdout handling and JSON routing layer (fd 9/8 behind `JSON_RUN`). |
 | U-B1a | landed | 9393c37b | Usage checked first, abbreviations refused, hints name their noun. |
-| U-B1b | queued | | cli.py on clio: signals, closed pipes, runnable fixes; "Nothing was changed" only for reads, other interrupted commands say "Stopped." (R294). |
+| U-B1b | landed | 027b192b | cli.py on clio: signals, closed pipes, runnable fixes; "Nothing was changed" only for reads, other interrupted commands say "Stopped." (R294). |
 | U-B2 | landed | feedd8ef | fsutil, atomic writes, locked holds file; carries its CLI half, so a failed push never exits 0. |
 | U-B3 | landed | b76ce5f21 | Remote text sanitized at its source; one login-hint spelling. |
-| U-B4 | queued | | Opt-in `--json` for errors, status, curate and sync. |
-| U-B5 | queued | | `--json` documents for every other command. |
+| U-B4 | landed | 707c6ae7 | Opt-in `--json` for errors, status, curate and sync. |
+| U-B5 | landed | c2ab2d12 | `--json` documents for every other command. |
 | U-B6 | done, no code | | K15 measured: `--version` 0.28 to 0.97 s under load, `import agentsync.cli` 838 ms; over 200 ms, kept (packet 23118d0a47d3). |
 | U-B7 | landed | 798fa709 | install.sh help, `=` forms, `--` terminator, a checkout that must be agentsync. |
 | U-B8 | landed | 9e2ec5bd | install.sh help names no test seam; glossary; what the list writes. |
-| U-B9 | queued | | Bounded downloads and syncs (first sync 3600 s, status 900 s, uv installer 900 s); launcher swap keeps the old one. |
-| U-B10 | queued | | A stop reaches the whole running tree; a refused kickstart is named. |
-| U-B11 | queued | | Folder list takes `--all` and `--limit`; odd names print escaped. |
-| U-B12 | queued | | `--json` on the folder list. |
+| U-B9 | landed | 49aae9e2 | Bounded downloads and syncs (first sync 3600 s, status 900 s, uv installer 900 s); launcher swap keeps the old one. |
+| U-B10 | landed | b06a5fe9 | A stop reaches the whole running tree; a refused kickstart is named. |
+| U-B11 | landed | 8528ea2a | Folder list takes `--all` and `--limit`; odd names print escaped. |
+| U-B12 | landed | 1cc27a89 | `--json` on the folder list. |
 | U-B13 | landed | fb399c59 | tenant-probes test harness, a dry run that writes nothing, `=` forms, `--version`. |
 | U-B14 | landed | cacd160e | tenant-probes help that fits, rewritten error lines, remote text cleaned. |
-| U-B15 | queued | | tenant-probes one-line failures, clean stop on signals, atomic locked store; about 606+/81- (past the 500 sizing), kept as one green commit. |
-| U-B16 | queued | | tenant-probes `--json` for every outcome. |
-| U-B17 | queued | | install.sh `--version --json`; `--help` wins in either order. B-17.2 not built: D16 open (KISS K17). |
-| U-C1 | queued, narrowed | | Built (b) `help` verb, (c) `--version` at any depth, (e) 80-column help, K69 grouping and examples. Skipped (a) and (d): keep packet and D13. |
-| U-C1b | queued | | `--help --json`, `help --all --json`, `help search`, hidden `--fields`. |
-| U-C2a | queued, narrowed | | `-y/--yes` on purge and compact-history, accepted and ignored; step 2 skipped (it rewrites default output for a flag with no effect). |
+| U-B15 | landed | 743e15fd | tenant-probes one-line failures, clean stop on signals, atomic locked store; about 606+/81- (past the 500 sizing), kept as one green commit. |
+| U-B16 | landed | 63a12d0c | tenant-probes `--json` for every outcome. |
+| U-B17 | landed | 544b4dd7 | install.sh `--version --json`; `--help` wins in either order. B-17.2 not built: D16 open (KISS K17). |
+| U-C1 | landed, narrowed | 7a702081 | Built (b) `help` verb, (c) `--version` at any depth, (e) 80-column help, K69 grouping and examples. Skipped (a) and (d): keep packet and D13. |
+| U-C1b | landed | 9aed904c | `--help --json`, `help --all --json`, `help search`, hidden `--fields`. |
+| U-C2a | landed, narrowed | f320bfcd | `-y/--yes` on purge and compact-history, accepted and ignored; step 2 skipped (it rewrites default output for a flag with no effect). |
 | U-C2b | skipped | | K4's consent gate changes purge's exit code; kept out by the keep packet (K4 not chosen). |
-| U-C3 | queued | | Catch-all bug report instead of a traceback; job log keeps the traceback (D34 A). |
-| U-C4a/b | queued, narrowed | | Tests only: output modes and widths pinned as they are. Stream moves not built: K1 open. |
-| U-C5 | queued, narrowed | | `login --no-open` only. Broker-rung deadline not built (see Conflicts); non-interactive refusal skipped: K12 open. |
+| U-C3 | landed | 5f86ef0d | Catch-all bug report instead of a traceback; job log keeps the traceback (D34 A). |
+| U-C4a/b | landed, narrowed | b34cc20a | Tests only: output modes and widths pinned as they are. Stream moves not built: K1 open. |
+| U-C5 | landed, narrowed | 39cee183 | `login --no-open` only. Broker-rung deadline not built (see Conflicts); non-interactive refusal skipped: K12 open. |
 | U-C6 | skipped | | K6 option (b) already on trunk; K66 is D37, open. |
 | U-C7 | skipped | | D13 open, kept B. |
 | U-C8 | skipped | | K16 open (frozen surface). |
 | U-C8b | skipped | | D36 open, kept B. |
-| U-C9 | queued, narrowed | | uv installer pinned to 0.12.17 with its SHA-256 (D22 A), synopsis line for `--report-only`; no dry-run hash line (D14 B); C-9.1 rejections and C-9.3 skipped. |
-| U-C10 | queued | | install.sh `--timeout`, `--debug`, `--cwd`, `--non-interactive` (D21 B); `--dry-run` and `--config` stay usage errors. |
-| U-C11 | queued | | install.sh short help ending at `# -- end of help --` (D29 B re-point). |
-| U-C12 | queued, narrowed | | C-12.2 with D33 A (an unfinished probe exits 1), C-12.3 Part 1 doc line, `--max-downloads 0` text. C-12.1 (D32), C-12.3 Part 2 and C-12.4 rejections skipped. |
-| U-C13 | queued, lands last | | §16.300.30 exceptions record and its test, one row per kept conflict; R151 row dropped (C-2 gate not built). |
+| U-C9 | landed, narrowed | 4187a6fe | uv installer pinned to 0.12.17 with its SHA-256 (D22 A), synopsis line for `--report-only`; no dry-run hash line (D14 B); C-9.1 rejections and C-9.3 skipped. |
+| U-C10 | landed | f74e28cd | install.sh `--timeout`, `--debug`, `--cwd`, `--non-interactive` (D21 B); `--dry-run` and `--config` stay usage errors. |
+| U-C11 | landed | 8176d47a | install.sh short help ending at `# -- end of help --` (D29 B re-point). |
+| U-C12 | landed, narrowed | 248e6a0a | C-12.2 with D33 A (an unfinished probe exits 1), C-12.3 Part 1 doc line, `--max-downloads 0` text. C-12.1 (D32), C-12.3 Part 2 and C-12.4 rejections skipped. |
+| U-C13 | landed | 526fa1e2 | §16.300.30 exceptions record and its test, one row per kept conflict; R151 row dropped (C-2 gate not built). |
 | U-C14a | skipped | | D14 ruled B. |
 | U-C14b | skipped | | D28 ruled B. |
 | U-C15 | skipped | | D38 open, kept B. |
 | U-C16 | skipped | | D10 open, kept B. |
 | U-C17 | skipped | | D17 ruled B; D20 open. |
-| U-docs | queued | | This section and two current CONTRACTS lines. |
+| U-docs | landed | cbc4a604 | This section and two current CONTRACTS lines. |
+| U-vfields | landed | b74445af | `--version --json --fields` refuses a field name the version document does not carry (it exited 0). |
 
 Wave C triage: 5 built, 6 narrowed, 10 skipped.
 
