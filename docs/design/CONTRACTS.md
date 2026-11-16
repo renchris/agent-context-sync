@@ -42144,6 +42144,15 @@ same line's parenthesis and §16.251's C1648 passage already said `0x80 to 0x9F 
 Test: `test_the_c1670_line_names_every_byte_bash_32_writes_in_octal_c1859`, which holds the line to
 `BASH32_UTF8_OCTAL`.
 
+**The lane brief's zsh note says to brace a variable a colon follows** (C1823; docs only; `docs/lanes/COMMON.md`). Two
+read-only `git show "$S:src/..."` reads in the Bash tool failed with `unknown revision`, since zsh reads the letter
+after `$var:` as a modifier: `"$S:tests/x"` silently becomes `<sha>ests/x` (`:t`), and `"$S:src/x"` stops with
+`bad substitution` and skips the rest of the command line, double quotes or not. The zsh note, after C1207's `=`
+sentence, gives the rule (brace any variable a colon follows, `"${S}:src/agentsync/cli.py"`), not the finder's closed
+list, since `:l`, `:u` and `:a` hit launcher/, uv.lock and a/ too. Test:
+`test_the_kit_note_says_to_brace_a_variable_a_colon_follows_c1823`, which pins the sentence after C1207's and, where
+zsh is installed, runs the three forms in `zsh -f` and the braced one in /bin/bash.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units

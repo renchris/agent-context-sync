@@ -1709,7 +1709,10 @@ not agentsync's. The Bash tool's shell here is zsh, while sb and the kit scripts
 to a file and read `$?` straight after: `sb '<cmd>' > logs/x.log 2>&1; rc=$?; echo "rc=$rc"` (not `status=`, which
 zsh holds read-only). Quote any word that starts with `=` (`echo '====='`, never `echo =====` or `[ a == b ]`): zsh
 reads it as a command name, stops with `= not found`, and skips the rest of the command; to mark the parts of a
-read's output, use dashes (`echo '--- notes ---'`), which neither shell expands (round 37 C1207). The diff and shasum checks
+read's output, use dashes (`echo '--- notes ---'`), which neither shell expands (round 37 C1207). Brace any variable a colon follows (`git show "${S}:src/agentsync/cli.py"`, never `"$S:src/..."`): zsh reads
+the letter after `$var:` as a modifier (`:s`, `:t`, `:h`, `:l`, `:u`, `:a`, `:r`, `:e` and others), so `$S:tests/x`
+silently becomes `<sha>ests/x` and `$S:src/x` stops with `bad substitution`, skipping the rest of the command; double
+quotes do not prevent it, and bash reads `${S}:` the same way (round 40 C1823). The diff and shasum checks
 above end in the checker, so their `$?` is right as written (round 35 C907). Build any file list inside a kit script
 (/bin/bash) and run that script by path. Never use zsh parameter-expansion flags in the Bash tool, such as
 `${(f)"$(...)"}` or any `${(...)...}`: Claude Code's removal check refuses them as `could not be checked for dangerous

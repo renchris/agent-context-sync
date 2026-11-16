@@ -12818,3 +12818,37 @@ def test_the_c1670_line_names_every_byte_bash_32_writes_in_octal_c1859() -> None
         "**§16.245's C1670 line names 0xAD among the bytes bash 3.2 writes in octal** (C1859; docs only)."
         in (section)
     )
+
+
+def test_the_kit_note_says_to_brace_a_variable_a_colon_follows_c1823() -> None:
+    """B13 round 40 C1823: two read-only `git show "$S:src/..."` reads in the Bash tool failed, since zsh read
+    `:s` after `$S` as a modifier, a slip like C1207's `=` word. The zsh note says to brace any variable a
+    colon follows, as a rule rather than a closed list (`:l`, `:u` and `:a` hit launcher/, uv.lock and a/),
+    and what zsh does with the two forms, checked here in zsh when it is installed."""
+    lanes = _page("docs/lanes/COMMON.md")
+    note = lanes[
+        lanes.index("is the cleaner's doing, not agentsync's.") : lanes.index("Tools CI lacks (round 18)")
+    ]
+    flat = " ".join(note.split())
+    rule = (
+        'Brace any variable a colon follows (`git show "${S}:src/agentsync/cli.py"`, never `"$S:src/..."`):'
+        " zsh reads the letter after `$var:` as a modifier (`:s`, `:t`, `:h`, `:l`, `:u`, `:a`, `:r`, `:e`"
+        " and others), so `$S:tests/x` silently becomes `<sha>ests/x` and `$S:src/x` stops with `bad"
+        " substitution`, skipping the rest of the command; double quotes do not prevent it, and bash reads"
+        " `${S}:` the same way (round 40 C1823)."
+    )
+    assert rule in flat
+    assert flat.index("(round 37 C1207).") < flat.index(rule) < flat.index("The diff and shasum checks")
+    zsh = shutil.which("zsh")
+    if zsh is None:
+        return
+
+    def run(*argv: str) -> subprocess.CompletedProcess[str]:
+        env = {"PATH": "/usr/bin:/bin", "S": "abc123"}
+        return subprocess.run(argv, capture_output=True, text=True, env=env, check=False)
+
+    assert run(zsh, "-f", "-c", 'print -r -- "$S:tests/x"').stdout == "abc123ests/x\n"
+    bad = run(zsh, "-f", "-c", 'print -r -- "$S:src/x"; print after')
+    assert "bad substitution" in bad.stderr and "after" not in bad.stdout
+    assert run(zsh, "-f", "-c", 'print -r -- "${S}:src/x"').stdout == "abc123:src/x\n"
+    assert run("/bin/bash", "-c", 'echo "${S}:src/x"').stdout == "abc123:src/x\n"
