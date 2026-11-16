@@ -42153,6 +42153,23 @@ list, since `:l`, `:u` and `:a` hit launcher/, uv.lock and a/ too. Test:
 `test_the_kit_note_says_to_brace_a_variable_a_colon_follows_c1823`, which pins the sentence after C1207's and, where
 zsh is installed, runs the three forms in `zsh -f` and the braced one in /bin/bash.
 
+**The CI record carries rounds 38 and 39, re-timed with gh, and the limit stays 100** (C1866 with C1874; docs only;
+`CLAUDE.md`, `.github/workflows/ci.yml`, `docs/lanes/COMMON.md`). CLAUDE.md's ci paragraph and ci.yml's note ended at
+round 37's twenty-three jobs (feedd8ef to 248e6a0a, 50:20 to 75:09), while 108 commits ran after them and three jobs
+passed the stated head of 76 minutes. Every ci job on main from 702fcff5 to 7253d365 was read with
+`gh api .../attempts/<n>/jobs`, and the tests from each slowest job's log. Round 38's fourteen jobs (702fcff5 to
+f320bfcd) took 52:53 to 71:54 (9aed904c, pytest's step 71:16 at 8147 tests); two attempts failed a test, 4187a6fe's
+first (a doctor-lines test), rerun green, and 877a47ab's one (a hung-status time limit), never rerun, the next commit
+green; runners waited 21:52, 16:31 and 15:36. Round 39's nineteen (853fab34 to 63deb83d) took 51:20 to 80:33
+(b74445af, pytest's step 79:55 at 8513 tests); 4d3ba971's first attempt failed at 62:55 when pandoc was stopped by
+SIGABRT in `test_html_data_uri_images_never_reach_the_page` (pandoc's own crash line is lane E's C1872, §16.258),
+rerun green; runners waited 50:10 (293c8081), 39:19 (4d3ba971's rerun, counted from the rerun's start, not the run's
+creation) and 31:45 (526fa1e2). 7253d365, round 40's base, took 77:50 and opens round 40's bracket. The range is 18 to
+81, both guides and the note carry both brackets, the waits and the failed attempts, and `timeout-minutes` stays 100,
+19:27 above the slowest: the slowest rose about 5 minutes a round (66:14, 75:09, 80:33), so it is raised at the next
+round whose slowest job comes within 15 minutes of it. Test: `test_claude_md_gives_cis_time_and_its_limit`, which pins
+both brackets in CLAUDE.md and the note, the waits, and the limit at least 15 minutes above the head.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units

@@ -257,7 +257,12 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
     248e6a0a) took 50:20 to 75:09, all green on attempt 1, three past 70, the slowest, 1cc27a89, only 14:51
     under the limit, and runs waited 38:17, 35:43 and 31:16 for a runner: the range is 18 to 76, the guides
     and the note add the twenty-three and the waits, and the limit is 100, 24 above the range's head; C1290's
-    sentence keeps the 90 it set."""
+    sentence keeps the 90 it set. B13 round 40 C1866 with C1874: rounds 38 and 39 were in neither file;
+    re-timed with gh, round 38's fourteen jobs (702fcff5 to f320bfcd) took 52:53 to 71:54 with two failed
+    attempts, and round 39's nineteen (853fab34 to 63deb83d) 51:20 to 80:33, its slowest, b74445af, 19:27
+    under the limit, one pandoc SIGABRT attempt rerun green, and runs waited 50:10, 39:19 and 31:45: the
+    range is 18 to 81, the guides and the note add both brackets and 7253d365, which opens round 40's, and
+    the 100 stays while the slowest is 15 minutes or more under it."""
     guide = " ".join((ROOT / "CLAUDE.md").read_text(encoding="utf-8").split())
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     [limit] = re.findall(r"^jobs:\n  test:\n(?:    .*\n)*?    timeout-minutes: (\d+)\n", ci, re.M)
@@ -271,40 +276,50 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
     assert "about 18 to 62 minutes" not in guide and "about 18 to 67 minutes" not in guide
     assert "(one waited 21 minutes, another 17)" not in guide
     assert (
-        "`ci` takes about 18 to 76 minutes once its job starts (measured October and November 2026; 24 at"
+        "`ci` takes about 18 to 81 minutes once its job starts (measured October and November 2026; 24 at"
         " 5120 tests, and the same tests and source ran 24 and then 21 minutes on two runs; the eight jobs"
         " from eaed1034 to fcafd734 took 18:05 to 28:34; the nine from fcafd734 to 7a54f938 took 19:29 to"
         " 31:21; the thirteen from ed901cd3 to b1f4a087 took 24:34 to 32:18; the ten from c93fcd96 to"
         " 3ec66a92 took 30:06 to 36:24, 5685 tests on the slowest and pytest's step 35:46; the nine from"
-        " f04c61db to d1f72d6f took 26:53 to 40:01 but one, 49:59 on d1f72d6f, a docs-only commit, 6050 tests"
-        " and pytest's step 49:26; the seven after it, from 71388552 to b2724d9c, took 30:19 to 44:27, the"
-        " slowest on 3f1dee54, 6191 tests and pytest's step 43:58; the nine after those, from 673a72a0 to"
-        " fa32c452, took 35:36 to 51:10, six past 45, the slowest on b2b88e5d, 6345 tests and pytest's step"
-        " 50:28; the sixteen after those, from ccf696b7 to c8a4298b, took 37:56 to 59:43, four past 50, the"
-        " slowest on 2919a7b9, 6468 tests and pytest's step 59:08, and one attempt lost its runner and its"
-        " rerun was green; the twelve after those, from 7f132615 to 357f6d5b, took 43:35 to 57:05, all green"
-        " on attempt 1, the slowest on 76dc4e8f, 6631 tests and pytest's step 56:38; the fourteen after"
-        " those, from 62b8a943 to 7a3be9af, took 41:28 to 58:25, all green on attempt 1, the slowest on"
-        " 9cb86828, 6706 tests and pytest's step 57:51; the eight after those, from 7b23a0a7 to 4e0e8604,"
+        " f04c61db to d1f72d6f took 26:53 to 40:01 but one, 49:59 on d1f72d6f, a docs-only commit, 6050"
+        " tests and pytest's step 49:26; the seven after it, from 71388552 to b2724d9c, took 30:19 to 44:27,"
+        " the slowest on 3f1dee54, 6191 tests and pytest's step 43:58; the nine after those, from 673a72a0"
+        " to fa32c452, took 35:36 to 51:10, six past 45, the slowest on b2b88e5d, 6345 tests and pytest's"
+        " step 50:28; the sixteen after those, from ccf696b7 to c8a4298b, took 37:56 to 59:43, four past 50,"
+        " the slowest on 2919a7b9, 6468 tests and pytest's step 59:08, and one attempt lost its runner and"
+        " its rerun was green; the twelve after those, from 7f132615 to 357f6d5b, took 43:35 to 57:05, all"
+        " green on attempt 1, the slowest on 76dc4e8f, 6631 tests and pytest's step 56:38; the fourteen"
+        " after those, from 62b8a943 to 7a3be9af, took 41:28 to 58:25, all green on attempt 1, the slowest"
+        " on 9cb86828, 6706 tests and pytest's step 57:51; the eight after those, from 7b23a0a7 to 4e0e8604,"
         " took 43:16 to 57:17, all green on attempt 1, the slowest on b948dfa7, 7133 tests and pytest's step"
         " 56:47; the twelve after those, from 4288dd6a to 06ee4f6d, took 45:36 to 61:22, one past 60, the"
-        " slowest on dacdf5ba, 7292 tests and pytest's step 60:36, and one attempt failed a test at 36:27 and"
-        " its rerun was green at 46:36; the eleven after those, from d8385ef6 to b781e539, took 44:12 to"
+        " slowest on dacdf5ba, 7292 tests and pytest's step 60:36, and one attempt failed a test at 36:27"
+        " and its rerun was green at 46:36; the eleven after those, from d8385ef6 to b781e539, took 44:12 to"
         " 59:43, nine past 50, all green on attempt 1, the slowest on d62ac148, 7580 tests and pytest's step"
         " 59:16; the eighteen after those, from 7c4f775e to e6577c15, took 41:17 to 66:14, sixteen past 50"
         " and six past 60, all green on attempt 1, the slowest on 4b5ff40f, 7706 tests and pytest's step"
-        " 65:38; the twenty-three after those, from feedd8ef to 248e6a0a, took 50:20 to 75:09, twelve past 60"
-        " and three past 70, all green on attempt 1, the slowest on 1cc27a89, 8035 tests and pytest's step"
-        " 73:47; one run took 34 on a runner loaded 5 to 8 per core), plus any wait for a macOS runner,"
-        " counted from the run appearing to its job starting (one waited 63 minutes, on ef12f28f, another 50,"
-        " one 21, on d8385ef6, one 25, on 820c69dd, one 16, on 0c6b1207, one 38, on 19b1f575, one 36, on"
-        " 63a12d0c, one 31, on c2ab2d12, and earlier ones 48 and 46); the job's limit is"
+        " 65:38; the twenty-three after those, from feedd8ef to 248e6a0a, took 50:20 to 75:09, twelve past"
+        " 60 and three past 70, all green on attempt 1, the slowest on 1cc27a89, 8035 tests and pytest's"
+        " step 73:47; the fourteen after those, from 702fcff5 to f320bfcd, took 52:53 to 71:54, six past 60"
+        " and one past 70, the slowest on 9aed904c, 8147 tests and pytest's step 71:16, and two attempts"
+        " failed a test, 4187a6fe's at 69:46, whose rerun was green at 65:37, and 877a47ab's at 60:12, never"
+        " rerun, the next commit's run green; the nineteen after those, from 853fab34 to 63deb83d, took"
+        " 51:20 to 80:33, seventeen past 60 and six past 70, the slowest on b74445af, 8513 tests and"
+        " pytest's step 79:55, and one attempt failed at 62:55 when pandoc was stopped by SIGABRT in a"
+        " conversion test, and its rerun was green at 66:15; 7253d365, round 40's base, took 77:50, 8513"
+        " tests and pytest's step 77:20; one run took 34 on a runner loaded 5 to 8 per core), plus any wait"
+        " for a macOS runner, counted from the run appearing to its job starting (one waited 63 minutes, on"
+        " ef12f28f, another 50, one 21, on d8385ef6, one 25, on 820c69dd, one 16, on 0c6b1207, one 38, on"
+        " 19b1f575, one 36, on 63a12d0c, one 31, on c2ab2d12, one 22, on 877a47ab, one 17, on 5bf1911e, one"
+        " 16, on c6d8227c, one 50, on 293c8081, one 39, on 4d3ba971's rerun, counted from the rerun's start,"
+        " one 32, on 526fa1e2, and earlier ones 48 and 46); the job's limit is"
         f" {limit} minutes (`timeout-minutes` in ci.yml), and a wait does not count against it."
     ) in guide
-    assert int(limit) - 76 >= 20 and int(limit) == 100  # about 20 minutes above the range's head (75:09)
+    # about 20 minutes above the range's head (80:33), and at least 15 (B13 round 40 C1866)
+    assert int(limit) - 81 >= 15 and int(limit) == 100
     lanes = _page("docs/lanes/COMMON.md")
     assert (
-        "CI takes 18 to 76 minutes a run (the slowest, 75:09, in round 37), and a run can wait over an hour"
+        "CI takes 18 to 81 minutes a run (the slowest, 80:33, in round 39), and a run can wait over an hour"
         " for a macOS runner first (63:27 in round 31); its limit is"
         f" {limit} "
     ) in lanes
@@ -324,7 +339,8 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
         and "18 to 60 minutes" not in lanes
         and "18 to 62 minutes" not in lanes
         and "18 to 67 minutes" not in lanes
-        and "round 30 C372, round 31 C571, round 32 C662, round 35 C985, round 37 C1290, round 38 C1460)"
+        and "round 30 C372, round 31 C571, round 32 C662, round 35 C985, round 37 C1290, round 38 C1460,"
+        " round 40 C1866)"
         in lanes
         and f"its limit is {limit} " in lanes
     )
@@ -384,6 +400,24 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
         " left 90 only 14:51 above it, so it is 100: 24:51 above it; runner waits reached 38:17 (19b1f575),"
         " 35:43 (63a12d0c) and 31:16 (c2ab2d12), not counted against timeout-minutes (B13 round 38 C1460,"
         " C1473)."
+    ) in note
+    # B13 round 40 C1866 with C1874: rounds 38 and 39, re-timed with gh; the 100 stays 19:27 above the slowest
+    assert (
+        "Round 38's fourteen jobs (702fcff5 to f320bfcd) took 52:53 to 71:54, six past 60 and one past 70"
+        " (the slowest 9aed904c, pytest's step 71:16 at 8147 tests), so 100 stays 28:06 above them; two"
+        " attempts failed a test: 4187a6fe's first at 69:46, its rerun green at 65:37, and 877a47ab's one at"
+        " 60:12, never rerun, the next commit's run green; runner waits reached 21:52 (877a47ab), 16:31"
+        " (5bf1911e) and 15:36 (c6d8227c), not counted against timeout-minutes (B13 round 40 C1866, C1874)."
+    ) in note
+    assert (
+        "Round 39's nineteen jobs (853fab34 to 63deb83d) took 51:20 to 80:33, all green on their last attempt"
+        " (4d3ba971's first attempt failed at 62:55 when pandoc was stopped by SIGABRT in a conversion test,"
+        " its rerun 66:15), seventeen past 60 and six past 70 (the slowest b74445af, pytest's step 79:55 at"
+        " 8513 tests), so 100 stays 19:27 above them; the slowest rose about 5 minutes a round (66:14, 75:09,"
+        " 80:33), so the limit is raised at the next round whose slowest job comes within 15 minutes of it;"
+        " runner waits reached 50:10 (293c8081), 39:19 (4d3ba971's rerun, counted from the rerun's start) and"
+        " 31:45 (526fa1e2), not counted against timeout-minutes (B13 round 40 C1866, C1874). 7253d365, round"
+        " 40's base, took 77:50 (pytest's step 77:20 at 8513 tests)."
     ) in note
     assert "(measured October 2026;" not in guide
     assert "Round 24's ten jobs (c93fcd96 to 3ec66a92) took 30:06 to 36:24, all green on attempt 1" in note

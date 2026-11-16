@@ -63,6 +63,17 @@ name: ci
 # pytest's step 73:47 at 8035 tests), which left 90 only 14:51 above it, so it is 100: 24:51 above it; runner waits
 # reached 38:17 (19b1f575), 35:43 (63a12d0c) and 31:16 (c2ab2d12), not counted against timeout-minutes (B13 round 38
 # C1460, C1473).
+# Round 38's fourteen jobs (702fcff5 to f320bfcd) took 52:53 to 71:54, six past 60 and one past 70 (the slowest
+# 9aed904c, pytest's step 71:16 at 8147 tests), so 100 stays 28:06 above them; two attempts failed a test: 4187a6fe's
+# first at 69:46, its rerun green at 65:37, and 877a47ab's one at 60:12, never rerun, the next commit's run green;
+# runner waits reached 21:52 (877a47ab), 16:31 (5bf1911e) and 15:36 (c6d8227c), not counted against timeout-minutes (B13
+# round 40 C1866, C1874). Round 39's nineteen jobs (853fab34 to 63deb83d) took 51:20 to 80:33, all green on their last
+# attempt (4d3ba971's first attempt failed at 62:55 when pandoc was stopped by SIGABRT in a conversion test, its rerun
+# 66:15), seventeen past 60 and six past 70 (the slowest b74445af, pytest's step 79:55 at 8513 tests), so 100 stays
+# 19:27 above them; the slowest rose about 5 minutes a round (66:14, 75:09, 80:33), so the limit is raised at the next
+# round whose slowest job comes within 15 minutes of it; runner waits reached 50:10 (293c8081), 39:19 (4d3ba971's rerun,
+# counted from the rerun's start) and 31:45 (526fa1e2), not counted against timeout-minutes (B13 round 40 C1866, C1874).
+# 7253d365, round 40's base, took 77:50 (pytest's step 77:20 at 8513 tests).
 on:
   workflow_dispatch:
   push:
