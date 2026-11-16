@@ -38,7 +38,7 @@ from pptx.util import Inches
 import exec_stub
 from agentsync import cycle as cycle_mod
 from agentsync import policy
-from agentsync.config import ConvertConfig
+from agentsync.config import MIN_PAGE_BYTES, ConvertConfig
 from agentsync.convert import ConverterCache, convert_file, image, ocr
 from agentsync.convert import diagram as diagram_mod
 from agentsync.convert import eml as eml_mod
@@ -3837,6 +3837,30 @@ def test_a_table_whose_header_or_first_row_passes_the_cap_rides_in_its_sidecar_c
     assert text.startswith(u.body.split("\n", 3)[3].split("\n```", 1)[0].lstrip("\n")), "a raw head"
     (page,) = Registry.default(cfg).for_name(name).convert(src, name=name)  # type: ignore[union-attr]
     assert len(page.body.encode("utf-8")) <= 2000
+
+
+_AT_THE_MINIMUM: dict[str, tuple[str, str]] = {
+    "an oversized header": ("wide.csv", "Contoso " + "h" * 20_000 + ",b\n1,2\n"),
+    "an oversized first row": ("first.csv", "id,note\n1," + "x" * 20_000 + "\n2,short\n"),
+    "a tab-separated first row": ("one.tsv", "id\tnote\n1\t" + "y|z\\" * 6_000 + "\n"),
+}
+
+
+@pytest.mark.parametrize(("name", "text"), _AT_THE_MINIMUM.values(), ids=_AT_THE_MINIMUM.keys())
+def test_a_table_page_stays_within_the_8_kib_minimum_and_below_it_gets_a_shorter_head_c1886(
+    tmp_path: Path, name: str, text: str
+) -> None:
+    """B13 round 40 C1886 with C1888, C1851 and C1860 (ruling 140): the table budget's 1,024-byte floor made a
+    1,346-byte page at any cap up to 1,345. At the smallest cap a config accepts (`MIN_PAGE_BYTES`, 8,192),
+    the guarded page, banner and digest footer included, stays within it and the sidecar holds every row; a
+    ConvertConfig built below the minimum, as unit tests build one, gets a shorter head, never a floor."""
+    src = _write(tmp_path, name, text)
+    table = list(csv.reader(io.StringIO(text), delimiter="," if name.endswith(".csv") else "\t"))
+    for cap in (MIN_PAGE_BYTES, 1200):
+        (page,) = Registry.default(replace(CFG, max_page_bytes=cap)).for_name(name).convert(src, name=name)  # type: ignore[union-attr]
+        assert len(page.body.encode("utf-8")) <= cap, cap
+        assert page.sidecars[0][0] == "full-table.csv"
+        assert list(csv.reader(io.StringIO(page.sidecars[0][1].decode()), delimiter=",")) == table
 
 
 def test_a_cut_tables_head_keeps_its_header_past_far_backticks_and_a_wide_header_says_so_c1676(

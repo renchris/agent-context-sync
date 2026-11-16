@@ -370,7 +370,7 @@ def _sheet_body(sheet: _Sheet, *, total: int, width: int, cfg: ConvertConfig) ->
         out += ["[empty sheet]", ""]
     else:
         reserve = 4096 + 200 * (len(sheet.comments) + len(sheet.objects))
-        budget = max(1024, cfg.max_page_bytes - reserve)
+        budget = max(0, cfg.max_page_bytes - reserve)  # no floor under the cap (B13 round 40 C1886)
         lines, shown = _table_lines(sheet, rows, sheet.shown, budget, cfg.max_rows_per_sheet)
         out += lines
         out.append("")
@@ -773,7 +773,7 @@ class XlsxConverter:
             rows = sheet.rows()
             if rows:
                 used = sum(len(x.encode("utf-8")) + 1 for x in out)
-                budget = max(1024, self._cfg.max_page_bytes - 4096 - used)
+                budget = max(0, self._cfg.max_page_bytes - 4096 - used)
                 lines, shown = _table_lines(sheet, rows, sheet.shown, budget, self._cfg.max_rows_per_sheet)
                 if shown:
                     out += [f"## First {shown} of {plural(total_rows, 'non-empty row')}", "", *lines, ""]

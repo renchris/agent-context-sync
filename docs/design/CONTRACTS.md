@@ -1411,6 +1411,7 @@ class ConvertConfig:
     xlsx_stream_threshold_bytes: int = 20 * 1000**2
     max_rows_per_sheet: int = 5000
     max_page_bytes: int = 1_000_000  # hard cap before a unit is split / row-capped with a sidecar
+    # Amended 2026-11-16, §16.258 C1886: a config sets at least 8 KiB (MIN_PAGE_BYTES); pages stay within any cap it accepts
     pandoc_path: Path | None = None  # None = the pypandoc_binary bundled pandoc, by absolute path
     # Amended 2026-10-17, §16.114 Q62: None = that pandoc, or on macOS its native arm64 copy when installed
     ocr: bool = True  # False = never build or run the on-device OCR helper (§16.25)
@@ -41954,6 +41955,10 @@ Amended 2026-11-16, §16.258 C1848: the xlsx half held for the sheet pages only.
 streamed Schema's first-row values were whole and neither table was budgeted, so this test's own workbook gave a
 20,288-byte index at an 8,000-byte cap; each value is now cut before escaping and each table counts against the
 running total, so every xlsx page stays within the cap.
+Amended 2026-11-16, §16.258 C1886, C1888, C1851, C1860: so the guarded page stays within any cap the config accepts,
+8 KiB (`config.MIN_PAGE_BYTES`, 8,192) or more; a smaller `[convert] max_page_bytes` is a ConfigError at load. Below
+2,048 bytes the budget's 1,024-byte floor gave a 1,346-byte page at any cap up to 1,345; the floor is 0 now, so a
+`ConvertConfig` built below the minimum in code gets a shorter head.
 
 ### 16.254 Round 39: the compaction promise, recording downloads and the guides (2026-11-14, wave B13 round 39 lane D)
 
@@ -42147,6 +42152,29 @@ still never reads it. Tests:
 through `Registry.default`),
 `test_convert_formats.py::test_an_xlsx_index_past_the_cap_lists_the_sheets_that_fit_and_says_so_c1848` (24 sheets)
 and `test_convert_formats.py::test_a_streamed_schema_past_the_cap_names_the_sidecar_and_leaves_the_rows_their_room_c1848`.
+
+**A page cap under 8 KiB is refused at load, and no budget keeps a floor** (C1886, C1888, C1851 and C1860, one defect
+from four findings, built once; `agentsync.config`, `agentsync.convert.text`, `agentsync.convert.xlsx`; amends
+§16.253 C1676, with a dated line at the ConvertConfig row in §15). `parse_size` took any size of 0 or more, and
+`PlainTextConverter._table`'s budget, `max(1024, max_page_bytes - 1024)`, kept 1,024 bytes for the table at any cap
+up to 2,048, so the reserve for the note, the banner and the digest footer shrank to the cap less 1,024: a
+200-column header gave a 1,346-byte guarded page at every cap up to 1,345 (the verifiers' runs at 7253d365), and
+xlsx's two `max(1024, cap - 4096 - ...)` budgets broke the cap below about 5 KB. `config.MIN_PAGE_BYTES` is 8,192,
+which clears xlsx's 4,096-byte reserve, the banner, the footer and the notes; a `[convert] max_page_bytes` under it
+is `ConfigError("[convert]: max_page_bytes must be at least 8 KiB (8192), got N")` at load (with the file's own
+prefix), while the default 1,000,000 and `"8KiB"` load as before. It is checked at parse, not in
+`ConvertConfig.__post_init__`, so code that builds one at 400 or 1,200, as unit tests do, keeps working, and the three
+floors are now `max(0, ...)`: such a config gets a shorter head, never a page the floor pushes past it. At any cap
+of 2,048 or more the floor change alone moves no byte, so neither emitter moves for it. C1851's and C1860's
+documented-floor fixes are superseded by the minimum: `_table`'s docstring, the ConvertConfig comment and the C1676
+paragraph now say the page stays within any cap the config accepts. `tests/test_review_fixes.py`'s three
+`max_page_bytes = 2000` configs (the brief named two; the C1888 verifier's line list missed the third, at the H2
+cutoff test) load 8,192 now, each body still past it (the H2 test's runbook grows to 400 lines, its edit to line
+390). Tests:
+`test_config.py::test_a_page_cap_under_8_kib_is_refused_at_load_and_the_default_and_8kib_load_c1886` and
+`test_convert_formats.py::test_a_table_page_stays_within_the_8_kib_minimum_and_below_it_gets_a_shorter_head_c1886`
+(an oversized header, an oversized first row and a TSV through `Registry.default` at 8,192 and at a built 1,200,
+the guarded page within the cap and the sidecar round-tripping every row).
 
 ### 16.259 Round 40: the guides: the dollar-quote row, the record of round 39's installer work, and CI timings (2026-11-16, wave B13 round 40 lane D)
 

@@ -9,10 +9,12 @@ import pytest
 
 from agentsync.config import (
     DEFAULT_EXCLUDES,
+    MIN_PAGE_BYTES,
     RETIRE_ADVICE,
     SOURCE_ID_RE,
     BreakerConfig,
     Config,
+    ConvertConfig,
     append_to_config,
     default_config_text,
     derive_source_id,
@@ -272,6 +274,24 @@ def test_convert_ocr_is_one_boolean_key_that_defaults_to_on(tmp_path: Path) -> N
     for dropped in ('ocr_languages = ["en-US"]', "ocr_max_pages = 7"):
         with pytest.raises(ConfigError, match="unknown key"):
             parse(f"[convert]\n{dropped}\n", tmp_path)
+
+
+def test_a_page_cap_under_8_kib_is_refused_at_load_and_the_default_and_8kib_load_c1886(
+    tmp_path: Path,
+) -> None:
+    """B13 round 40 C1886 with C1888 (ruling 140): parse_size took any size, and below 2,048 bytes the CSV
+    table's 1,024-byte budget floor made a 1,346-byte page at caps up to 1,345, so `max_page_bytes` was no
+    hard cap. A [convert] max_page_bytes under MIN_PAGE_BYTES (8 KiB) is a ConfigError at load naming the
+    minimum; the default and `8KiB` load as before. A ConvertConfig built in code is not checked."""
+    assert MIN_PAGE_BYTES == 8192
+    assert parse("", tmp_path).convert.max_page_bytes == 1_000_000
+    assert parse('[convert]\nmax_page_bytes = "8KiB"\n', tmp_path).convert.max_page_bytes == 8192
+    assert parse("[convert]\nmax_page_bytes = 8192\n", tmp_path).convert.max_page_bytes == 8192
+    for low in ("0", "1024", "2000", "8191", '"1KiB"'):
+        got = r"\[convert\]: max_page_bytes must be at least 8 KiB \(8192\), got \d+$"
+        with pytest.raises(ConfigError, match=got):
+            parse(f"[convert]\nmax_page_bytes = {low}\n", tmp_path)
+    assert ConvertConfig(max_page_bytes=400).max_page_bytes == 400
 
 
 def test_sample_config_fixture(sample_config: Config, local_source_dir: Path) -> None:

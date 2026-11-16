@@ -171,13 +171,15 @@ class PlainTextConverter:
         Every line counts against the budget, the header, its delimiter and the first row included: when
         those three alone do not fit, no GFM table is shown (a cut inside one can split a ``\\|`` escape, a
         ``<br>`` or a character), only a fenced head of the raw text cut at a line or character boundary,
-        and the sidecar holds every row (B13 round 39 C1676).  The budget leaves room for the row-cap note
-        and the sidecar digest footer, so a page stays within ``max_page_bytes``."""
+        and the sidecar holds every row (B13 round 39 C1676).  The budget leaves 1,024 bytes for the note, the
+        banner and the sidecar digest footer, so a page stays within any ``max_page_bytes`` the config
+        accepts (8 KiB or more, ``config.MIN_PAGE_BYTES``); a ConvertConfig built below that gets a shorter
+        head, never a floor (B13 round 40 C1886, C1851)."""
         header, rows = table[0], table[1:]
         shown = rows[: self._cfg.max_rows_per_sheet]
         out = [f"{kind} table: {plural(len(rows), 'data row')} x {plural(len(header), 'column')}", ""]
         table_lines = _gfm_table([_cell(h) for h in header], ([_cell(c) for c in r] for r in shown))
-        budget = max(1024, self._cfg.max_page_bytes - 1024)
+        budget = max(0, self._cfg.max_page_bytes - 1024)
         used = sum(len(x.encode("utf-8")) + 1 for x in out)
         sizes = [len(line.encode("utf-8")) + 1 for line in table_lines]
         cut = used + sum(sizes[:3]) > budget

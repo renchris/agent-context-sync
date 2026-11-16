@@ -822,7 +822,7 @@ def test_sg07_token_like_file_names_do_not_block_the_commit(tmp_path: Path) -> N
 
 
 def test_sg08_credential_past_the_page_cap_is_caught_in_the_sidecar(tmp_path: Path) -> None:
-    config, src = make_env(tmp_path, extra="\n[convert]\nmax_page_bytes = 2000\n")
+    config, src = make_env(tmp_path, extra="\n[convert]\nmax_page_bytes = 8192\n")
     body = "".join(f"line {n}: harmless runbook text\n" for n in range(400))
     (src / "big-runbook.md").write_text(f"# Runbook\n\n{body}aws key {AWS_KEY}\n", encoding="utf-8")
     report = run(config)
@@ -833,7 +833,7 @@ def test_sg08_credential_past_the_page_cap_is_caught_in_the_sidecar(tmp_path: Pa
 
 
 def test_sg08_text_sidecars_carry_the_banner_and_the_page_lists_their_digest(tmp_path: Path) -> None:
-    config, src = make_env(tmp_path, extra="\n[convert]\nmax_page_bytes = 2000\n")
+    config, src = make_env(tmp_path, extra="\n[convert]\nmax_page_bytes = 8192\n")
     body = "".join(f"line {n}: harmless runbook text\n" for n in range(400))
     (src / "big.md").write_text(f"# Big\n\n{body}", encoding="utf-8")
     assert run(config).exit_code == 0
@@ -1276,12 +1276,12 @@ def test_unbaselined_drive_keeps_enumerating_in_full(tmp_path: Path, monkeypatch
 
 def test_h2_cutoff_sees_a_sidecar_change_past_the_cap(tmp_path: Path) -> None:
     """correctness-h2-cutoff-ignores-sidecars."""
-    config, src = make_env(tmp_path, extra="\n[convert]\nmax_page_bytes = 2000\n")
-    lines = [f"line {n:03d}: original text here\n" for n in range(200)]
+    config, src = make_env(tmp_path, extra="\n[convert]\nmax_page_bytes = 8192\n")
+    lines = [f"line {n:03d}: original text here\n" for n in range(400)]  # 12,000 bytes, past 8 KiB
     big = src / "big.md"
     big.write_text("# Big\n\n" + "".join(lines), encoding="utf-8")
     assert run(config).exit_code == 0
-    lines[190] = "line 190: EDITED!! text here\n"  # same length, far past the page cap
+    lines[390] = "line 390: EDITED!! text here\n"  # same length, far past the page cap
     big.write_text("# Big\n\n" + "".join(lines), encoding="utf-8")
     os.utime(big, ns=(1, 9_000_000_000))
     report = run(config)

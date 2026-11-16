@@ -210,6 +210,7 @@ class ConvertConfig:
     xlsx_stream_threshold_bytes: int = 20 * 1000**2
     max_rows_per_sheet: int = 5000
     max_page_bytes: int = 1_000_000  # hard cap before a unit is split / row-capped with a sidecar
+    # a config sets at least MIN_PAGE_BYTES (8 KiB); pages stay within any cap it accepts (B13 round 40 C1886)
     # None = the pypandoc_binary bundled pandoc, or on macOS its native arm64 copy when the operator installed
     # one (convert.pandoc.resolved_pandoc, CONTRACTS §16.114), by absolute path
     pandoc_path: Path | None = None
@@ -314,6 +315,13 @@ class Config:
 # ---------------------------------------------------------------------------------------------------------
 
 
+MIN_PAGE_BYTES = 8192
+"""The smallest ``[convert] max_page_bytes`` a config may set: below it the converters' fixed reserves (xlsx's
+4,096 bytes, the untrusted-content banner, the sidecar digest footer and the cut notes) leave a page no room,
+so a smaller cap is a ConfigError at load; a ConvertConfig built in code is not checked (B13 round 40 C1886,
+C1888)."""
+
+
 def parse_size(value: object, *, where: str) -> int:
     """Parse a byte count: a non-negative int, or a string like ``"500MB"`` / ``"2GiB"``."""
     if isinstance(value, bool):
@@ -328,6 +336,14 @@ def parse_size(value: object, *, where: str) -> int:
             unit = (m.group(2) or "b").lower()
             return int(float(m.group(1)) * _SIZE_UNITS[unit])
     raise ConfigError(f'{where}: expected a size such as 1073741824 or "1GiB", got {value!r}')
+
+
+def _page_cap(table: Mapping[str, Any], where: str) -> int:
+    """``[convert] max_page_bytes``, refused below :data:`MIN_PAGE_BYTES` (B13 round 40 C1886)."""
+    cap = parse_size(table.get("max_page_bytes", 1_000_000), where=f"{where}: max_page_bytes")
+    if cap < MIN_PAGE_BYTES:
+        raise ConfigError(f"{where}: max_page_bytes must be at least 8 KiB ({MIN_PAGE_BYTES}), got {cap}")
+    return cap
 
 
 def _check_keys(table: Mapping[str, Any], allowed: frozenset[str], where: str) -> None:
@@ -572,7 +588,7 @@ def parse_config(text: str, *, config_path: Path) -> Config:
             c.get("xlsx_stream_threshold_bytes", 20 * 1000**2), where=f"{cw}: xlsx_stream_threshold_bytes"
         ),
         max_rows_per_sheet=_int(c, "max_rows_per_sheet", cw, 5000, minimum=1),
-        max_page_bytes=parse_size(c.get("max_page_bytes", 1_000_000), where=f"{cw}: max_page_bytes"),
+        max_page_bytes=_page_cap(c, cw),
         pandoc_path=expand(pandoc) if pandoc else None,
         ocr=_bool(c, "ocr", cw, True),
         recordings=_bool(c, "recordings", cw, True),
