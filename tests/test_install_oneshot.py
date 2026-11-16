@@ -9025,6 +9025,75 @@ def _cloud(env: dict[str, str]) -> Path:
     return Path(env["HOME"]) / "Library" / "CloudStorage"
 
 
+def test_a_report_over_300_listed_folders_still_cuts_the_last_one_c1836(env: dict[str, str]) -> None:
+    """B13 round 40 C1836: agent_words_name opened a process substitution for every listed folder inside
+    redaction_pairs' command substitution, and /bin/bash 3.2 segfaults once one has opened about 255 of them.
+    With 250 to 450 listed folders most --report-only runs wrote no report, and some went out public with the
+    names past the crash in clear, since no reader of redaction_pairs checked how it ended. No process
+    substitution is left in agent_words_name or own_word_folder, redaction_pairs ends `return 0`, and its
+    three readers fail closed through REDACT_FAILED_FILE, which write_fallback_report refuses the report on.
+    With 300 listed folders, a friction row naming the last one is cut in both files the run writes."""
+    cloud = _cloud(env) / "OneDrive-Contoso"
+    for i in range(1, 301):
+        (cloud / f"Kestrel Ledger {i:03d} Plan").mkdir(parents=True)
+    assert install_sh(env, "--log-start", started("Claude Code")).returncode == 0
+    assert install_sh(env, "--list-folders", "-a", timeout=600).returncode == 0
+    said = "picked Kestrel Ledger 300 Plan and Kestrel Ledger 011 Plan"
+    assert install_sh(env, "--log", "2", "deviation", said, "-").returncode == 0
+    cp = install_sh(env, "--report-only", timeout=600)
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert "could not write the setup report" not in cp.stdout + cp.stderr
+    for path in (report_path(env), report_path(env).parent / "bring-back.md"):
+        text = path.read_text(encoding="utf-8")
+        assert "Kestrel" not in text and "Ledger" not in text, path
+    [row] = [ln for ln in report_path(env).read_text(encoding="utf-8").splitlines() if "| deviation |" in ln]
+    assert re.search(r"\| picked <folder-\d+> and <folder-\d+> \|", row), row
+
+
+def _install_function(name: str) -> str:
+    """install.sh's top-level function ``name``, from its ``name() {`` line to its closing ``}`` line."""
+    code = INSTALL_SH.read_text(encoding="utf-8")
+    [one] = re.findall(rf"^{name}\(\) {{ .*}}$", code, flags=re.M) or [None]
+    if one:
+        return one
+    return f"{name}() {{" + code.split(f"\n{name}() {{", 1)[1].split("\n}\n", 1)[0] + "\n}"
+
+
+@pytest.mark.parametrize("reader", ["agent_word_values", "redact_stream"])
+def test_a_reader_of_the_pairs_that_fails_marks_the_report_refused_c1836(
+    env: dict[str, str], tmp_path: Path, reader: str
+) -> None:
+    """B13 round 40 C1836: a redaction_pairs that ends non-zero (bash 3.2 crashed it part way through its
+    list) is no shorter list: its reader prints nothing, returns 1 and marks REDACT_FAILED_FILE, which
+    write_fallback_report sets and refuses the report on, rather than write it public with the names past the
+    crash in clear. redaction_pairs itself ends `return 0`, so its status is never its last loop body's."""
+    assert _install_function("redaction_pairs").endswith("\n\treturn 0\n}")
+    mark = tmp_path / "redact"
+    script = "\n".join(
+        [
+            "set -uo pipefail",
+            "redaction_pairs() { printf 'Kestrel Plan\\t<folder-1>\\tf\\n'; return 139; }",
+            "agent_words_name() { return 1; }",
+            _install_function("redact_failed"),
+            _install_function(reader),
+            f'out="$(printf "picked Kestrel Plan\\n" | {reader})"; rc=$?',
+            'printf "rc=%s out=[%s] marked=%s\\n" "$rc" "$out" "$([ -f "$REDACT_FAILED_FILE" ] && echo yes)"',
+        ]
+    )
+    cp = subprocess.run(
+        [BASH32, "-c", script],
+        capture_output=True,
+        text=True,
+        env={**env, "REDACT_FAILED_FILE": str(mark), "LC_ALL": "C"},
+        check=False,
+    )
+    assert cp.stdout == "rc=1 out=[] marked=yes\n", cp.stdout + cp.stderr
+    report = _install_function("write_fallback_report")
+    assert report.count('[ ! -f "$REDACT_FAILED_FILE" ] || exit 1') == 2, (
+        "after the body and after the legend"
+    )
+
+
 def test_list_folders_prints_depth_2_and_3_folders_sorted(env: dict[str, str]) -> None:
     cs = _cloud(env)
     for d in (

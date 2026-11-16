@@ -2700,11 +2700,22 @@ CUT_HOME='applications|code|desktop|dev|development|documents|downloads|git|libr
 # word and every word one of CUT_AGENT, the generated block's setup_report._AGENT_WORDS. A folder only step 1's list
 # printed with such a name is not registered, or "GitHub Copilot CLI" in the Agent: line read "GitHub
 # <folder-N> CLI" in the Summary and the issue link (B13 round 9 K1, K47).
+# No process substitution: bash 3.2 crashes once one command substitution has opened about 255 of them,
+# and this runs once per listed folder inside redaction_pairs' (B13 round 40 C1836). The words split as
+# read -d '' split them: no newline in IFS, as setup_report's separators hold none.
 agent_words_name() {
-	local w any=""
+	local w any="" low f=""
 	local -a ws=()
+	low="$(printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]'
+		printf x)"
+	low="${low%x}"
+	case $- in *f*) f=1 ;; esac
+	set -f
 	# shellcheck disable=SC2141 # the backslash is a separator, as in setup_report._SEP_RE
-	IFS=$' \t_\\-' read -r -d '' -a ws < <(printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]') || true
+	local IFS=$' \t_\\-'
+	# shellcheck disable=SC2206 # split on IFS by design, with globbing off
+	ws=($low)
+	[ -n "$f" ] || set +f
 	for w in ${ws[@]+"${ws[@]}"}; do
 		case "$w" in
 		"") ;;
@@ -3561,10 +3572,13 @@ redaction_pairs() {
 	# below the home folder, the path from its first part that names something, and that part alone, after the
 	# leading generic_home_dir, dot, own-container and own-word parts; anywhere else, the whole path.
 	own_word_folder() { # NAME: made only of this report's words, product words, digits and words under 3 letters
-		local w
+		local w low
 		local -a ws=()
-		read -r -a ws < <(printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]' |
-			LC_ALL=C sed -E 's/([a-z])([0-9])/\1 \2/g; s/([0-9])([a-z])/\1 \2/g; s/[^0-9a-z]+/ /g') || true
+		# its own split class, digits apart from letters; no process substitution (B13 round 40 C1836): a
+		# here-string, whose read takes the first line as the process substitution's did
+		low="$(printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]' |
+			LC_ALL=C sed -E 's/([a-z])([0-9])/\1 \2/g; s/([0-9])([a-z])/\1 \2/g; s/[^0-9a-z]+/ /g')" || true
+		read -r -a ws <<<"$low" || true
 		for w in ${ws[@]+"${ws[@]}"}; do
 			[ "${#w}" -ge 3 ] || continue
 			case "$w" in *[!0-9]*) ;; *) continue ;; esac
@@ -4067,6 +4081,9 @@ pacv=\1/p' || true
 			fi
 		done <<<"$w"
 	done < <(hold_values)
+	# its status is its own, never the last loop body's: a reader takes a non-zero one, a crash past bash
+	# 3.2's process-substitution limit included, as pairs it never got (B13 round 40 C1836)
+	return 0
 }
 # The values a governance or policy error quotes, as setup_report.Redactor matches them by pattern (B13 round 16
 # T3, round 17 U93): the remote URL in "remote <name> (<url>) exists but [governance] allow_remote", "... is not
@@ -4126,6 +4143,10 @@ repo_slug() { # owner/repo of ISSUE_URL: redact_stream holds this repository's o
 	local s="${ISSUE_URL#https://github.com/}"
 	printf '%s' "${s%%/issues/*}"
 }
+# A reader of redaction_pairs that did not get every pair fails closed (B13 round 40 C1836): it marks
+# REDACT_FAILED_FILE, which write_fallback_report sets, and that report is refused rather than written with the
+# names no pair covered in clear. A pipeline stage cannot set a flag its parent reads, so the mark is a file.
+redact_failed() { [ -z "${REDACT_FAILED_FILE:-}" ] || : >"$REDACT_FAILED_FILE"; }
 # The shell twin of setup_report.Redactor.redact_agent (B13 round 19 W17; round 20 X40, X81): where the report
 # prints an agent's name, a configured folder or source id made only of coding-agent product words
 # (agent_words_name) stays as written where it stands as a word of that name, so "GitHub Copilot CLI" beside a
@@ -4139,10 +4160,14 @@ repo_slug() { # owner/repo of ISSUE_URL: redact_stream holds this repository's o
 # and gov_value_sed's own markers are \001 and \003); agent_restore puts it back and, when it did, creates
 # the file $AGENT_KEPT_FILE for the legend's clause.
 agent_word_values() { # "a<TAB>value" for each configured folder or source value agent_protect keeps, "o<TAB>value" for every other
-	local v p
+	local v p raw
+	raw="$(redaction_pairs 2>/dev/null)" || {
+		redact_failed
+		return 1
+	}
 	while IFS=$'\t' read -r v p _; do
 		case "$p" in "<folder-"*">" | "<source-"*">") if agent_words_name "$v"; then printf 'a\t%s\n' "$v"; else printf 'o\t%s\n' "$v"; fi ;; esac
-	done < <(redaction_pairs 2>/dev/null)
+	done <<<"$raw"
 }
 agent_protect() {
 	local vals
@@ -4351,8 +4376,14 @@ redact_stream() {
 	# setup_report._PURGE_ID_RE writes it: the id runs to a blank, backtick or quote, and one already a
 	# placeholder stays (B13 round 30 ruling 35, lane RA's report half). The pairs are read once, before the
 	# stream, and typed_note_cut takes them with the configured folders' CloudStorage parts (B13 round 39 C1601).
-	local pairs cfg
-	pairs="$(redaction_pairs </dev/null | LC_ALL=C awk -F '\t' '{ k = $1; if ($3 == "f" || $3 == "j" || $3 == "o") gsub(/[ \t_\\-]/, "", k); print length(k) "\t" $0 }' |
+	local pairs="" cfg raw
+	# read whole first, so a crash part way through is a failure, never a shorter list (B13 round 40 C1836)
+	raw="$(redaction_pairs </dev/null)" || {
+		redact_failed
+		cat >/dev/null
+		return 1
+	}
+	[ -z "$raw" ] || pairs="$(printf '%s\n' "$raw" | LC_ALL=C awk -F '\t' '{ k = $1; if ($3 == "f" || $3 == "j" || $3 == "o") gsub(/[ \t_\\-]/, "", k); print length(k) "\t" $0 }' |
 		LC_ALL=C sort -t "$(printf '\t')" -k1,1nr -s | LC_ALL=C cut -f 2-)"
 	cfg="$({ [ -f "$CONFIG" ] && config_path_values; } </dev/null 2>/dev/null | LC_ALL=C sed -n 's#^.*/Library/CloudStorage/[^/]*/##p')" || cfg=""
 	LC_ALL=C sed -E "s/\\\$'([^'\\\\]|\\\\.)*'?/<path>/g" |
@@ -6230,7 +6261,10 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	local low org_item apps="" heads e email="" inword="" inword_ex="" ag="one made of coding-agent product words (Copilot, GitHub Copilot)"
 	[ -n "$used" ] || used=" ~ <tmp> <user> <name> <org-[0-9] <link-[0-9] <mdmhost> <proxy-[0-9] <folder-[0-9] <source-[0-9] <path> <label> <remote> <value> "
 	local pairs generic=" " shown
-	pairs="$(redaction_pairs 2>/dev/null || true)"
+	pairs="$(redaction_pairs 2>/dev/null)" || {
+		redact_failed
+		return 1
+	}
 	# The <folder-N> item's clauses, each only where the report shows what it explains (B13 round 11 M3, as
 	# round 10 L1 for the items): step 1's list where one of its folders was registered; the whole-word rule
 	# where a configured name every drive has (a pair of flag w) has its placeholder in the body; the list-only
@@ -6747,8 +6781,9 @@ write_fallback_report() { # RC WHY
 		umask 077
 		AGENT_KEPT_FILE="$tmp.agent"
 		HOLD_WORD_FILE="$tmp.hold"
-		export AGENT_KEPT_FILE HOLD_WORD_FILE
-		rm -f "$AGENT_KEPT_FILE" "$HOLD_WORD_FILE"
+		REDACT_FAILED_FILE="$tmp.redact"
+		export AGENT_KEPT_FILE HOLD_WORD_FILE REDACT_FAILED_FILE
+		rm -f "$AGENT_KEPT_FILE" "$HOLD_WORD_FILE" "$REDACT_FAILED_FILE"
 		fallback_body "$1" "$2" "$friction" | strip_run_pids | agent_protect | redact_stream | agent_restore |
 			scrub_exclude_lists >"$tmp"
 		AGENT_KEPT=""
@@ -6756,6 +6791,10 @@ write_fallback_report() { # RC WHY
 		HOLD_WORD_SHOWN=""
 		[ ! -f "$HOLD_WORD_FILE" ] || HOLD_WORD_SHOWN="$(LC_ALL=C tr -cd '0-9' <"$HOLD_WORD_FILE")" HOLD_WORD_SHOWN="${HOLD_WORD_SHOWN:-1}"
 		rm -f "$AGENT_KEPT_FILE" "$HOLD_WORD_FILE"
+		# a reader of the pairs that failed (bash 3.2 crashed it part way) refuses the report: written, it would
+		# go out public with the names no pair covered in clear, and bring-back.md with it (B13 round 40 C1836).
+		# The marker, not the pipeline's status, which any stage's harmless non-zero exit would set.
+		[ ! -f "$REDACT_FAILED_FILE" ] || exit 1
 		# the issue form, after redaction (a login may match the URL's owner); none for a private copy (G65).
 		# What it fills is read from the redacted Summary just written.
 		fallback_issue_link "$tmp"
@@ -6765,8 +6804,9 @@ write_fallback_report() { # RC WHY
 			fallback_redaction "$LINK_FIELDS" "$used" "$tmp"
 			[ -n "$PRIVATE_ONLY" ] || printf '\n%s\n' "$LINK"
 		} >>"$tmp"
+		[ ! -f "$REDACT_FAILED_FILE" ] || exit 1
 	) 2>/dev/null || {
-		rm -f "$tmp"
+		rm -f "$tmp" "$tmp.redact"
 		return 1
 	}
 	mv -f "$tmp" "$REPORT_PATH" || { # no temp file stays beside the report (B13 round 11 M84)
