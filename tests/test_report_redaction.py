@@ -1260,10 +1260,17 @@ character _LIST_ESCAPED_RE matches, and a blank, each between two made-up words.
 
 
 def _listed(name: str, *, old: bool = False) -> str:
-    """``name`` in step 1's list spelling (B13 round 40 C1802: octal for every escaped character but \\n, \\t
-    and \\r), or with ``old`` its spelling before C1802 (``?``), as folder_spellings gives them."""
-    spellings = setup_report.folder_spellings(name)
-    return spellings[1 if old else 0] if spellings else name
+    """``name`` in step 1's list spelling (B13 round 40 C1802: \\n for LF and 0x1E, \\t, \\r, octal per UTF-8
+    byte for every other escaped character), or with ``old`` its spelling before C1802 (``?``), each built
+    directly, never by index into folder_spellings, which deduplicates its spellings."""
+    table = setup_report._LIST_ESCAPES_OLD if old else setup_report._LIST_LETTERS
+
+    def one(m: re.Match[str]) -> str:
+        if m.group() in table:
+            return table[m.group()]
+        return "?" if old else setup_report._octal_bytes(m.group())
+
+    return setup_report._LIST_ESCAPED_RE.sub(one, name)
 
 
 def _r126_lines(n: int, name: str) -> list[str]:
