@@ -2696,23 +2696,42 @@ CUT_REFUSED_HEADS="this is a row step 1 marked |step 1 shows this folder's name 
 CUT_FIXED='Users|Library|Application|Support|CloudStorage|Volumes|Applications'
 CUT_HOME='applications|code|desktop|dev|development|documents|downloads|git|library|projects|repos|sites|source|src|work|workspace'
 # Whether a folder name is made of coding-agent product words only ("Copilot", "github-copilot"), as
-# setup_report._agent_words reads it: in lower case, split on runs of blanks, "_", "\" and "-", at least one
+# setup_report._agent_words reads it: in lower case, split on runs of the block's CUT_SEP, at least one
 # word and every word one of CUT_AGENT, the generated block's setup_report._AGENT_WORDS. A folder only step 1's list
 # printed with such a name is not registered, or "GitHub Copilot CLI" in the Agent: line read "GitHub
 # <folder-N> CLI" in the Summary and the issue link (B13 round 9 K1, K47).
+# The run between a value's words in the shell's patterns, as a bracket expression: CUT_SEP's bytes but
+# agent_protect's two delimiters \004 and \005, so a run never crosses a protected word, which always opens
+# with \004; built from the block, never typed (B13 round 40 C1890 with C1837). Its nibble bytes \016 to \035
+# stay: ESC is one, and leaving them out printed q3<ESC>plans in clear, which the agentsync report cuts.
+SEP_RUN_AWK='function seprun(    k, c, o, d) {
+	o = ""
+	d = ""
+	for (k = 1; k < 128; k++) {
+		c = sprintf("%c", k)
+		if (c !~ ENVIRON["CUT_SEP"] || k == 4 || k == 5) continue
+		if (c == "-") d = c
+		else if (c == "\\" || c == "]" || c == "^") o = o "\\" c
+		else o = o c
+	}
+	return "[" o d "]"
+}
+'
 # No process substitution: bash 3.2 crashes once one command substitution has opened about 255 of them,
 # and this runs once per listed folder inside redaction_pairs' (B13 round 40 C1836). The words split as
 # read -d '' split them: no newline in IFS, as setup_report's separators hold none.
 agent_words_name() {
 	local w any="" low f=""
 	local -a ws=()
-	low="$(printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]'
+	# in lower case, every CUT_SEP byte a blank, so the words split where setup_report._agent_words splits them
+	# (report_cuts.SEPARATORS: every C0 control but LF and CR, and DEL, beside the blank, tab, "_", "\" and "-"; B13
+	# round 40 C1890 with C1837)
+	low="$(CUT_SEP="$CUT_SEP" AW_NAME="$1" LC_ALL=C awk 'BEGIN { s = tolower(ENVIRON["AW_NAME"]); gsub(ENVIRON["CUT_SEP"], " ", s); printf "%s", s }'
 		printf x)"
 	low="${low%x}"
 	case $- in *f*) f=1 ;; esac
 	set -f
-	# shellcheck disable=SC2141 # the backslash is a separator, as in setup_report._SEP_RE
-	local IFS=$' \t_\\-'
+	local IFS=' '
 	# shellcheck disable=SC2206 # split on IFS by design, with globbing off
 	ws=($low)
 	[ -n "$f" ] || set +f
@@ -4194,14 +4213,14 @@ agent_protect() {
 		return 0
 		;;
 	esac
-	VALS="$vals" LC_ALL=C awk '
-		function rx(v,    m, j, r) { # its words in lower case, any run of blanks, "_", "-" or "\" or none between them
-			m = split(tolower(v), W, /[ \t_\\-]+/); r = ""
+	VALS="$vals" CUT_SEP="$CUT_SEP" LC_ALL=C awk "$SEP_RUN_AWK"'
+		function rx(v,    m, j, r) { # its words in lower case, any run of CUT_SEP but the markers, or none, between them
+			m = split(tolower(v), W, ENVIRON["CUT_SEP"] "+"); r = ""
 			for (j = 1; j <= m; j++) if (W[j] != "") r = r (r == "" ? "" : sep) W[j]
 			return r
 		}
 		BEGIN {
-			sep = "[ \t_\\\\-]*"
+			sep = seprun() "*"
 			m = split(ENVIRON["VALS"], L, "\n")
 			for (i = 1; i <= m; i++) {
 				v = substr(L[i], 3)
@@ -4398,14 +4417,14 @@ redact_stream() {
 		cat >/dev/null
 		return 1
 	}
-	[ -z "$raw" ] || pairs="$(printf '%s\n' "$raw" | LC_ALL=C awk -F '\t' '{ k = $1; if ($3 == "f" || $3 == "j" || $3 == "o") gsub(/[ \t_\\-]/, "", k); print length(k) "\t" $0 }' |
+	[ -z "$raw" ] || pairs="$(printf '%s\n' "$raw" | CUT_SEP="$CUT_SEP" LC_ALL=C awk -F '\t' '{ k = $1; if ($3 == "f" || $3 == "j" || $3 == "o") gsub(ENVIRON["CUT_SEP"], "", k); print length(k) "\t" $0 }' |
 		LC_ALL=C sort -t "$(printf '\t')" -k1,1nr -s | LC_ALL=C cut -f 2-)"
 	cfg="$({ [ -f "$CONFIG" ] && config_path_values; } </dev/null 2>/dev/null | LC_ALL=C sed -n 's#^.*/Library/CloudStorage/[^/]*/##p')" || cfg=""
 	LC_ALL=C sed -E "s/\\\$'([^'\\\\]|\\\\.)*'?/<path>/g" |
 		LC_ALL=C sed -E "s/(^|[^A-Za-z0-9_-])(purge (--queue --forget )?id=)[^<[:space:]\`'\"][^[:space:]\`'\"]*/\\1\\2<its id>/g" |
 		LC_ALL=C sed -E -f <(gov_value_sed) | hold_cut |
 		REDACT_PAIRS="$pairs" REPO_SLUG="$(repo_slug)" \
-		FIXED_PHRASES="$FIXED_CAPS_PHRASES|$FIXED_VALUE_PHRASES" AGENTSYNC_VERBS="$AGENTSYNC_VERBS" LC_ALL=C awk '
+		FIXED_PHRASES="$FIXED_CAPS_PHRASES|$FIXED_VALUE_PHRASES" AGENTSYNC_VERBS="$AGENTSYNC_VERBS" CUT_SEP="$CUT_SEP" LC_ALL=C awk "$SEP_RUN_AWK"'
 	# The line is kept as pieces, plain text or a placeholder (held): a later pair never matches inside a
 	# placeholder an earlier one wrote ("<name>" stays whole beside a folder named "name"), as in the Python
 	# report, which replaces in one pass. A held piece ends in ">" or "~", or is followed by no word character,
@@ -4443,7 +4462,7 @@ redact_stream() {
 		nt = 0; cur = ""
 		for (i = 1; i <= length(v); i++) { # its words: split at separators and at CamelCase boundaries (_tokens)
 			c = substr(v, i, 1)
-			if (c ~ /[ \t_-]/ || c == "\\") { if (cur != "") tok[++nt] = cur; cur = ""; continue }
+			if (c ~ SEPC) { if (cur != "") tok[++nt] = cur; cur = ""; continue } # CUT_SEP (C1890)
 			p = substr(v, i - 1, 1); q = substr(v, i + 1, 1)
 			# a byte outside ASCII before the capital is read as a small letter ("CaféPlans")
 			if (cur != "" && c ~ /[A-Z]/ && (p ~ /[a-z0-9]/ || p ~ "[\200-\377]" || (p ~ /[A-Z]/ && q ~ /[a-z]/))) { tok[++nt] = cur; cur = "" }
@@ -4454,7 +4473,7 @@ redact_stream() {
 		a = ""
 		# the list spelling\047s \t, \n and \r between words are separators too, as the TAB, newline or return they
 		# stand for (B13 round 38 C1414: a whitespace escape in sources.toml is read as a space)
-		for (i = 1; i <= nt; i++) a = a (i > 1 ? (jn ? "([ \t_\\\\-]|\\\\[tnr])+" : "([ \t_\\\\-]|\\\\[tnr])*") : "") letters(tok[i], 0, 0)
+		for (i = 1; i <= nt; i++) a = a (i > 1 ? (jn ? "(" SEPR "|\\\\[tnr])+" : "(" SEPR "|\\\\[tnr])*") : "") letters(tok[i], 0, 0)
 		if (jn && nt >= 2) { # "HoMe": a small letter, then the next word\047s capital, as written
 			b = ""
 			for (i = 1; i <= nt; i++) {
@@ -4601,6 +4620,8 @@ redact_stream() {
 		return 0
 	}
 	BEGIN {
+		SEPC = ENVIRON["CUT_SEP"] # a separator byte, the block\047s class (B13 round 40 C1890 with C1837)
+		SEPR = seprun() # the run between a value\047s words: CUT_SEP but agent_protect\047s delimiters
 		STOP = " \t\r\f\v\"\047`()[]{},;" # foreign_home_cut\047s: setup_report._CUT_BYTES less the newline (ruling 112)
 		slug = tolower(ENVIRON["REPO_SLUG"])
 		n = split(ENVIRON["FIXED_PHRASES"], fp, "|"); nfp = 0
@@ -4621,11 +4642,11 @@ redact_stream() {
 			if ((index(f[2], "<proxy-") || index(f[2], "<link-")) && !(f[3] == "f" || f[3] == "j" || f[3] == "o")) lv[k] = tolower(f[1]) # a link: ignore_case (B13 round 17 U61)
 			if (f[3] == "i" || f[3] == "h") lv[k] = tolower(f[1]) # a project folder: ignore_case, a whole word (B13 round 18 V46)
 			if (f[3] == "f" || f[3] == "j" || f[3] == "o") { fz[k] = 1; fuzzy(k, f[1], f[3] == "j"); og[k] = f[3] == "o" }
-			if (og[k]) { okey[k] = tolower(f[1]); gsub(/[ \t_\\-]/, "", okey[k]) }
+			if (og[k]) { okey[k] = tolower(f[1]); gsub(SEPC, "", okey[k]) }
 		}
 		nv = split(ENVIRON["AGENTSYNC_VERBS"], verb, "|") # longest first, as setup_report.agentsync_verbs
 		for (k = 1; k <= np; k++) { # the pairs whose value begins with any verb, as keep_verb\047s verb_longer
-			pn = tolower(val[k]); gsub(/[ \t_\\-]/, "", pn)
+			pn = tolower(val[k]); gsub(SEPC, "", pn)
 			for (x = 1; x <= nv; x++) { vn = verb[x]; gsub(/-/, "", vn); if (index(pn, vn) == 1) { vpair[k] = 1; break } }
 		}
 		nh = split("# agentsync setup report|## Summary|## Agent friction log|## Environment|## Installer|" \
@@ -4851,8 +4872,8 @@ foreign_home_cut() {
 # [PAIRS CONFIGURED]: redact_stream's pairs and the configured folders' CloudStorage parts (B13 round 39 C1601).
 typed_note_cut() {
 	TYPED_FIXED="$CUT_FIXED" TYPED_DRIVE="$CUT_DRIVE" TYPED_HOME="$CUT_HOME" TYPED_KEPT="$CUT_PROVIDER_KEPT" \
-		TYPED_CHECK="${1:+1}" TYPED_PAIRS="${1:-}" TYPED_CFG="${2:-}" LC_ALL=C awk '
-	function norm(v) { v = tolower(v); gsub(/[ \t_\\-]/, "", v); return v }
+		TYPED_CHECK="${1:+1}" TYPED_PAIRS="${1:-}" TYPED_CFG="${2:-}" CUT_SEP="$CUT_SEP" LC_ALL=C awk '
+	function norm(v) { v = tolower(v); gsub(ENVIRON["CUT_SEP"], "", v); return v }
 	BEGIN {
 		# the placeholders of configured folders: a pair whose value is a part of a configured CloudStorage path
 		n = split(ENVIRON["TYPED_CFG"], w, "\n")

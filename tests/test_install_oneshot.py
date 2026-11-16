@@ -23617,6 +23617,65 @@ def _fuzzy_report(
     ].removesuffix(" | -")
 
 
+@pytest.mark.parametrize("ch", ["\b", "\x1b", "\x7f"])
+def test_both_reports_split_a_folder_name_at_every_separator_byte_c1890(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch, ch: str
+) -> None:
+    """B13 round 40 C1890 with C1837: the shell's fuzzy() split a name only at a blank, tab, "_", "\\" or "-"
+    and joined its words with that class, while the agentsync report reads report_cuts.SEPARATORS (every C0
+    control but LF and CR, and DEL), so with a folder ``q3<BS>plans`` the shell printed ``q3 plans``,
+    ``q3-plans`` and ``q3_plans`` in clear. Every shell splitter reads the generated block's CUT_SEP now: both
+    reports cut all five spellings alike. Lower case, so no CamelCase alias stands in for the separator."""
+    shell, python = _fuzzy_report(
+        env,
+        monkeypatch,
+        [f"q3{ch}plans"],
+        f"q3 plans and q3-plans and q3_plans and q3plans and q3{ch}plans end",
+    )
+    assert shell == python == " and ".join(["<folder-1>"] * 5) + " end", (shell, python)
+
+
+def test_agent_words_split_as_the_agentsync_report_splits_them_c1837() -> None:
+    """B13 round 40 C1837: agent_words_name split a folder name on its own typed class, so
+    ``GitHub<VT>Copilot`` and ``Copilot<SOH>Cursor``, product words to setup_report._agent_words, were not to
+    the shell. It splits on the block's CUT_SEP now, with no process substitution (C1836), and agrees name by
+    name."""
+    code = INSTALL_SH.read_text(encoding="utf-8")
+    [block] = re.findall(r"^# BEGIN report_cuts\n(.*?)^# END report_cuts$", code, flags=re.M | re.S)
+    func = "agent_words_name() {" + code.split("\nagent_words_name() {", 1)[1].split("\n}\n", 1)[0] + "\n}"
+    names = [
+        "GitHub\vCopilot",
+        "Copilot\x01Cursor",
+        "claude\x7fcodex",
+        "Contoso\x01Copilot",
+        "Copilot\nCursor",
+    ]
+    names += ["github-copilot", "Copilot", "Copilot\tCursor", "Copilot\\Cursor", "", "Copilot\r"]
+    script = "\n".join([block, func, 'for n in "$@"; do agent_words_name "$n" && echo yes || echo no; done'])
+    cp = subprocess.run(
+        [BASH32, "-c", script, "x", *names], capture_output=True, text=True, check=True, env={"LC_ALL": "C"}
+    )
+    assert cp.stdout.split() == ["yes" if setup_report._agent_words(n) else "no" for n in names], cp.stdout
+
+
+def test_a_folder_pair_never_runs_across_a_kept_agent_word_c1890(env: dict[str, str]) -> None:
+    """B13 round 40 C1890: CUT_SEP holds agent_protect's delimiters \\004 and \\005, so a folder pair whose
+    words take CUT_SEP's run between them could match across a protected product word. The run leaves them
+    out: with ``q3 plans`` and ``Copilot`` configured, the agent ``q3 copilot plans`` keeps every word in the
+    friction log's Agent: line."""
+    lib = _cloud(env) / "OneDrive-Contoso"
+    tables = []
+    for n, name in enumerate(("q3 plans", "Copilot")):
+        (lib / name).mkdir(parents=True)
+        tables.append(local_source_table(f"s{n}", lib / name))
+    _write_config(env, *tables)
+    friction_path(env).parent.mkdir(parents=True, exist_ok=True)
+    friction_path(env).write_text("Attempt: 2026-10-10T00:00:00Z\nPrompt: v15\nAgent: q3 copilot plans\n")
+    assert install_sh(env, "--report-only").returncode == 0
+    text = report_path(env).read_text(encoding="utf-8")
+    assert "Agent: q3 copilot plans" in text, [ln for ln in text.splitlines() if "Agent:" in ln]
+
+
 @pytest.mark.parametrize(
     ("name", "said"),
     [
@@ -25211,6 +25270,7 @@ def test_the_shells_agent_spans_keep_only_a_product_word_standing_alone(tmp_path
         [
             "set -euo pipefail",
             *re.findall(r"(?ms)" + _REPORT_CUTS_BLOCK, INSTALL_SH.read_text(encoding="utf-8")),
+            *re.findall(r"(?ms)^SEP_RUN_AWK='.*?^'$", INSTALL_SH.read_text(encoding="utf-8")),  # C1890
             *(
                 _shell_function(f)
                 for f in ("agent_words_name", "agent_word_values", "agent_protect", "agent_restore")
