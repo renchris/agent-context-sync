@@ -3311,7 +3311,7 @@ redaction_pairs() {
 		# of the block's CUT_DEL_ESCAPED spellings of DEL, as setup_report._toml_spellings aliases it (B13 round 40
 		# ruling 137, C1840 with C1887's shell half): `path = "...\u0001..."` printed the name in clear
 		case "$1" in
-		*[$'\001'-$'\037'$'\177'\"\\]*)
+		*[[:cntrl:]\"\\]*) # a class, never a byte range, which bash collates by the locale (VT and FF fell out)
 			while IFS= read -r v; do
 				[ -z "$v" ] || [ "$v" = "$1" ] || emit_pair "$v" "$2" "$(spelled_flag "$v" "${3:-}")" utf8
 			done <<<"$(TOML_NAME="$1" DEL_FORMS="$CUT_DEL_ESCAPED" LC_ALL=C awk 'BEGIN {
