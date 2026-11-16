@@ -1680,10 +1680,11 @@ shown_arg() {
 ORIG_ARGS=""  # every option given, for a re-run after a failure (install.log's args=); the option loop fills it
 ORIG_SHOWN="" # the same as a NEXT shows it (shown_arg)
 BASE_ARGS=""  # the same without --source-local FOLDER, for a re-run once the folders are in the config
-ALL_ARGS=""   # every argument as given, for install.out; --source-local=F as --source-local F, for its redaction
+ALL_ARGS=""   # every argument as given, for install.out; --source-local=F and --cwd=D as two words, for their redaction
 for a in "$@"; do
 	case "$a" in
 	--source-local=*) ALL_ARGS="$ALL_ARGS --source-local $(printf '%q' "${a#--source-local=}")" ;;
+	--cwd=*) ALL_ARGS="$ALL_ARGS --cwd $(printf '%q' "${a#--cwd=}")" ;; # its word kept whole beside a $'..' value (C1835)
 	*) ALL_ARGS="$ALL_ARGS $(printf '%q' "$a")" ;;
 	esac
 done
@@ -1823,6 +1824,15 @@ debug_line() { # NAME VALUE: under --debug, one line on stderr (install.out keep
 	local v="$2" tilde='~'
 	case "$HOME" in /?*) v="${v//"$HOME"/$tilde}" ;; esac
 	printf 'debug: %s %s\n' "$1" "$v" >&2
+}
+# A path for debug_line in printf %q's one-line form, the home's own %q form written as ~: a newline in the
+# working folder or the config path never starts a line no cut reads, and the cwd and the paths under it are
+# spelled alike, so the report cuts a debug: source or config path under that cwd (B13 round 40 C1835)
+debug_path() { # PATH
+	local v h tilde='~'
+	v="$(printf '%q' "$1")" h="$(printf '%q' "$HOME")"
+	case "$h" in /?*) case "$v" in "$h" | "$h"/*) v="$tilde${v#"$h"}" ;; esac ;; esac
+	printf '%s' "$v"
 }
 fail() {
 	local rc=$? # the failed command's status (every caller is `cmd || fail ...`)
@@ -2661,8 +2671,9 @@ generic_home_dir() {
 # provider folder the path cuts keep after CloudStorage (CUT_PROVIDER_KEPT, C1626, C1634); the separator class;
 # every format character safe_shown drops (CUT_CF, C1628, C1672); and bash 3.2's octal bytes. Generated in the
 # checkout, never read from the installed agentsync, which may be older (C1655). One group, for shellcheck: the
-# table holds values only some readers take (CUT_APPS and CUT_DOMAINS name its parts; the CUT_HEADS_* rows
-# and CUT_REFUSED_HEADS, B13 round 40 ruling 137, are the argument forms both reports read a path after).
+# table holds values only some readers take (CUT_DOMAINS and CUT_Q32_OCTAL, which no shell code reads, name its
+# parts; the CUT_HEADS_* rows, CUT_REFUSED_HEADS, CUT_APPS and CUT_FREE_*, B13 round 40 ruling 137, are the argument
+# forms typed_note_cut reads a path after, and CUT_SEP every shell splitter's class, C1890 with C1837).
 # shellcheck disable=SC2034
 {
 # BEGIN report_cuts
@@ -3188,7 +3199,7 @@ redaction_pairs() {
 	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x links walked lk
 	local port k folders_seen=$'\n' ph b auth sep tail rw keys key m sp top folder_keys=$'\n' FUZZY
 	local tables=0 ids=" " hp beside own_state own_docs own_cache own_logs fl
-	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=() listed=() rooted=() placed=()
+	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=() listed=() rooted=() placed=() cfgpaths=()
 	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
 	# (written with printf %q, which read without -r undoes; a $'..' form is unquoted by the loop after it).
 	# LC_ALL=C: under a UTF-8 locale BSD sed stops at the first byte that is not UTF-8 and every later line is
@@ -3216,7 +3227,7 @@ redaction_pairs() {
 	}
 	if [ -f "$CONFIG" ]; then
 		while IFS= read -r line; do
-			known+=("$line")
+			known+=("$line") cfgpaths+=("$line")
 		done < <(config_path_values)
 	fi
 	if [ -f "$SETUP_LOG" ]; then
@@ -3393,7 +3404,7 @@ redaction_pairs() {
 		u="$(shown_arg "$w")" # as a NEXT's re-run shows it (B13 round 16 T35)
 		[ "$u" = "$v" ] || printf '%s\t%s\t\n' "--source-local $u" "--source-local <path>"
 	done
-	if [ -d "$cs" ]; then
+	if [ -d "$cs" ] || [ "${#cfgpaths[@]}" -gt 0 ]; then # a configured tenant with no CloudStorage left (C1862)
 		# The organisation, team or account after the app's name ("<app>-<domain>", as setup_report._org_of
 		# reads it): not a bare app name, Personal, Business or Work, nor a name repeating the app's (Box-Box).
 		# An account's email address too (GoogleDrive-<address>): the shell has no email pattern. An organisation
@@ -3404,23 +3415,20 @@ redaction_pairs() {
 		# U61, as setup_report._build_redactor since round 16 T40)
 		orgs_seen=$'\n'
 		links=() walked=$'\n'
-		for e in "$cs"/OneDrive-* "$cs"/*; do
-			[ -e "$e" ] || [ -L "$e" ] || continue
-			case "$walked" in *$'\n'"$e"$'\n'*) continue ;; esac
-			walked+="$e"$'\n'
-			e="$(basename "$e")"
+		org_entry() { # ENTRY: one provider folder's name, on disk or a configured source's
+			local e="$1"
 			case "$e" in
 			*-*) ;;
-			*) continue ;;
+			*) return 0 ;;
 			esac
 			org="${e#*-}"
 			org="${org#SharedLibraries-}"
 			case "$org" in
-			"${e%%-*}" | "" | [Pp]ersonal | [Pp]ersonal\ * | [Bb]usiness | [Ww]ork) continue ;;
+			"${e%%-*}" | "" | [Pp]ersonal | [Pp]ersonal\ * | [Bb]usiness | [Ww]ork) return 0 ;;
 			esac
 			if [ -L "$cs/$e" ]; then
 				links+=("$e")
-				continue
+				return 0
 			fi
 			low="$(recase lower "$org")"
 			if [ "${org#* }" = "$org" ] && context_org_word "$low"; then
@@ -3435,9 +3443,9 @@ redaction_pairs() {
 					for c in .sharepoint.com -my.sharepoint.com .onmicrosoft.com; do add_pair "$low$c" "<org-$n>$c"; done
 				fi
 				add_pair "$e" "${e%"$org"}<org-$x>"
-				continue
+				return 0
 			fi
-			case "$orgs_seen" in *$'\n'"$org"$'\n'*) continue ;; esac
+			case "$orgs_seen" in *$'\n'"$org"$'\n'*) return 0 ;; esac
 			# another spelling of one (GoogleDrive-CONTOSO beside Box-Contoso) takes the number it has, as the
 			# Python report's _norm key (B13 round 10 L66), and still a pair of its own: an accented spelling
 			# or one with other separators is no match of the first one's pattern
@@ -3460,6 +3468,25 @@ redaction_pairs() {
 			# whole-word printed in clear inside a longer word, MyStatusTeam). A joined name (flag j) stays as it is
 			[ "$FUZZY" != f ] || FUZZY=o
 			add_pair "$org" "<org-$x>" "$FUZZY"
+		}
+		for e in "$cs"/OneDrive-* "$cs"/*; do
+			[ -e "$e" ] || [ -L "$e" ] || continue
+			case "$walked" in *$'\n'"$e"$'\n'*) continue ;; esac
+			walked+="$e"$'\n'
+			org_entry "$(basename "$e")"
+		done
+		# then each configured source's provider folder, from sources.toml, in config order, whether or not it
+		# is on disk, as setup_report._build_redactor registers _org_of of every configured source under
+		# CloudStorage: a signed-out tenant (its provider folder gone) printed in clear in every line that
+		# named it, where the agentsync report numbered it (B13 round 40 C1862). Same body, same numbering:
+		# what is on disk first, OneDrive first
+		for e in ${cfgpaths[@]+"${cfgpaths[@]}"}; do
+			case "$e" in \~/*) e="$HOME/${e#\~/}" ;; esac
+			case "$e" in "$cs"/?*) e="${e#"$cs"/}" ;; *) continue ;; esac
+			e="$cs/${e%%/*}"
+			case "$walked" in *$'\n'"$e"$'\n'*) continue ;; esac
+			walked+="$e"$'\n'
+			org_entry "${e##*/}"
 		done
 		# a link named as an organisation is that organisation's (OneDrive-Contoso (1) beside OneDrive-Contoso): a
 		# word-named one is matched only in its entries' names, so the link's name takes its pair (F42, F55)
@@ -4872,7 +4899,10 @@ foreign_home_cut() {
 # [PAIRS CONFIGURED]: redact_stream's pairs and the configured folders' CloudStorage parts (B13 round 39 C1601).
 typed_note_cut() {
 	TYPED_FIXED="$CUT_FIXED" TYPED_DRIVE="$CUT_DRIVE" TYPED_HOME="$CUT_HOME" TYPED_KEPT="$CUT_PROVIDER_KEPT" \
-		TYPED_CHECK="${1:+1}" TYPED_PAIRS="${1:-}" TYPED_CFG="${2:-}" CUT_SEP="$CUT_SEP" LC_ALL=C awk '
+		TYPED_PAIRS="${1:-}" TYPED_CFG="${2:-}" CUT_SEP="$CUT_SEP" TYPED_HP="$CUT_HEADS_PROVIDER" \
+		TYPED_HF="$CUT_HEADS_FIRST_UNKNOWN" TYPED_HC="$CUT_HEADS_CWD" TYPED_HU="$CUT_HEADS_UNDER_CWD" \
+		TYPED_HEADS="$CUT_REFUSED_HEADS" TYPED_APPS="$CUT_APPS" TYPED_FH="$CUT_FREE_HEAD" TYPED_FE="$CUT_FREE_END" \
+		TYPED_FT="$CUT_FREE_TRAIL" LC_ALL=C awk '
 	function norm(v) { v = tolower(v); gsub(ENVIRON["CUT_SEP"], "", v); return v }
 	BEGIN {
 		# the placeholders of configured folders: a pair whose value is a part of a configured CloudStorage path
@@ -4880,7 +4910,16 @@ typed_note_cut() {
 		for (i = 1; i <= n; i++) { m = split(w[i], cp, "/"); for (j = 1; j <= m; j++) if (cp[j] != "") cfgkey[norm(cp[j])] = 1 }
 		n = split(ENVIRON["TYPED_PAIRS"], w, "\n")
 		for (i = 1; i <= n; i++) { split(w[i], cp, "\t"); if (cp[2] ~ /^<(folder|library)-[0-9]+>$/ && (norm(cp[1]) in cfgkey)) cfgph[cp[2]] = 1 }
-		check = ENVIRON["TYPED_CHECK"] == "1"
+		# the argument forms both reports read a path after, each head a row of the block (B13 round 40 ruling
+		# 137): the provider rule\047s, the first-unknown one\047s (add-source), the cwd one\047s and the
+		# under-cwd one\047s; the refusal heads a refused name runs to the last of (C1833); and the free-text
+		# head, its word\047s end and its trailing signs (C1862)
+		nhp = split(ENVIRON["TYPED_HP"], hp, "|"); nhf = split(ENVIRON["TYPED_HF"], hf, "|")
+		nhc = split(ENVIRON["TYPED_HC"], hc, "|"); nhu = split(ENVIRON["TYPED_HU"], hu, "|")
+		nh = split(ENVIRON["TYPED_HEADS"], head, "|")
+		appre = "^(" ENVIRON["TYPED_APPS"] ")-"
+		fh = ENVIRON["TYPED_FH"]; fe = ENVIRON["TYPED_FE"]; ft = ENVIRON["TYPED_FT"]
+		dcwd = ""
 		n = split(ENVIRON["TYPED_FIXED"], w, "|"); for (i = 1; i <= n; i++) fixed[w[i]] = 1
 		n = split(ENVIRON["TYPED_DRIVE"], w, "|"); for (i = 1; i <= n; i++) drive[w[i]] = 1
 		n = split(ENVIRON["TYPED_HOME"], w, "|"); for (i = 1; i <= n; i++) home[w[i]] = 1
@@ -4893,7 +4932,9 @@ typed_note_cut() {
 	# below a kept one, a folder no configured source names (a refused look-alike, a name only step 1\047s list
 	# or install.log gave) is cut at the provider folder, so it reads `<Provider>-<org-N>/<path>`, never a
 	# <folder-N> of its own (B13 round 39 C1601 with C1656, as setup_report.Redactor.listed_only)
-	function cfgonly(r,    n, p, x, t, u) {
+	# CK set: a placeholder part must be a configured folder\047s (the provider rule); unset: any placeholder is
+	# known. The part check always runs (B13 round 40 C1832: with no pairs, or after add-source, it never ran)
+	function cfgonly(r, ck,    n, p, x, t, u) {
 		u = "" # unquoted first, as setup_report reads the word (`My\ Drive` is the generic My Drive)
 		for (x = 1; x <= length(r); x++) { t = substr(r, x, 1); if (t == "\\" && x < length(r)) t = substr(r, ++x, 1); u = u t }
 		n = split(u, p, "/")
@@ -4901,13 +4942,75 @@ typed_note_cut() {
 			if (p[x] == "" || p[x] == "." || p[x] == ".." || (p[x] in fixed) || (p[x] in drive) || (tolower(p[x]) in home)) continue
 			if (p[x] !~ /^(<[a-z]+(-[0-9]+)?>)+$/) return 0
 			t = p[x]
-			while (match(t, /<(folder|library)-[0-9]+>/)) { if (!(substr(t, RSTART, RLENGTH) in cfgph)) return 0; t = substr(t, RSTART + RLENGTH) }
+			while (ck && match(t, /<(folder|library)-[0-9]+>/)) { if (!(substr(t, RSTART, RLENGTH) in cfgph)) return 0; t = substr(t, RSTART + RLENGTH) }
 		}
 		return 1
 	}
-	# after each of three heads: `--source-local `, install.sh\047s `is not an existing folder: ` and a dry
-	# run\047s `add-source ` word, which keeps a folder\047s number (ck 0), as setup_report cuts them
-	function slcut(l) { return slone(slone(slone(l, "--source-local ", check), "is not an existing folder: ", check), "add-source ", 0) }
+	# after each head the block holds, by its rule, as setup_report cuts them (B13 round 40 ruling 137): the
+	# provider rule\047s `--source-local `, `--source-local=` (C1831 with C1881) and install.sh\047s `is not an
+	# existing folder: `; the first-unknown rule\047s `add-source `, which keeps every placeholder and cuts at
+	# its first unknown part (C1832); the cwd rule\047s `--cwd `, `--cwd=` and `debug: cwd `, the value cut as
+	# _cut_path cuts it, the word --cwd kept (C1835); the under-cwd rule\047s `debug: source ` and `debug:
+	# config `, cut only under that run\047s `debug: cwd ` folder; then the free-text pass (C1862)
+	function slcut(l,    k) {
+		for (k = 1; k <= nhp; k++) l = slone(l, hp[k], "provider")
+		for (k = 1; k <= nhf; k++) l = slone(l, hf[k], "first")
+		for (k = 1; k <= nhc; k++) l = (hc[k] ~ /^debug: / ? dbcwd(l, hc[k]) : slone(l, hc[k], "cwd"))
+		for (k = 1; k <= nhu; k++) l = dbunder(l, hu[k])
+		return freecut(l)
+	}
+	# where a refused name ends: the offset of the last ": <head>" of the block\047s CUT_REFUSED_HEADS, 0 for
+	# none, as setup_report._SOURCE_LOCAL_REFUSED_RE and report_words_cut read it (B13 round 40 C1833)
+	function lasthead(r,    k, o, x, p, best) {
+		best = 0
+		for (k = 1; k <= nh; k++) {
+			p = r; o = 0
+			while ((x = index(p, ": " head[k])) > 0) { o += x; if (o > best) best = o; p = substr(p, x + 1) }
+		}
+		return best
+	}
+	function unq(r,    x, t, u) { # a bare word unquoted: `\ ` is a blank
+		u = ""
+		for (x = 1; x <= length(r); x++) { t = substr(r, x, 1); if (t == "\\" && x < length(r)) t = substr(r, ++x, 1); u = u t }
+		return u
+	}
+	# `debug: cwd `\047s value, to the line\047s first ` | ` or its end, cut as _cut_path cuts it; the value as the
+	# line holds it is the folder the under-cwd heads compare with (C1835)
+	function dbcwd(l, hd,    a, r, e, v) {
+		if ((a = index(l, hd)) == 0) return l
+		r = substr(l, a + length(hd)); e = index(r, " | "); v = e ? substr(r, 1, e - 1) : r
+		if (v == "") return l
+		dcwd = v
+		return substr(l, 1, a + length(hd) - 1) cut(v) substr(r, length(v) + 1)
+	}
+	# `debug: source <kind> <path>` and `debug: config <path>`: the path, to the line\047s first ` | ` or its
+	# end, cut only when it is that cwd folder or lies under it (C1835)
+	function dbunder(l, hd,    a, r, e, v, kd, b) {
+		if ((a = index(l, hd)) == 0 || dcwd == "") return l
+		r = substr(l, a + length(hd)); e = index(r, " | "); v = e ? substr(r, 1, e - 1) : r
+		kd = ""
+		if (hd == "debug: source ") { if ((b = index(v, " ")) == 0) return l; kd = substr(v, 1, b); v = substr(v, b + 1) }
+		if (v != dcwd && index(v, (dcwd ~ /\/$/ ? dcwd : dcwd "/")) != 1) return l
+		return substr(l, 1, a + length(hd) - 1) kd cut(v) substr(r, length(kd v) + 1)
+	}
+	# a `~/Library/CloudStorage/<App>-<word>` word on any line, after every other cut: one CUT_PROVIDER_KEPT
+	# does not keep reads `~/Library/CloudStorage/<path>`, never numbered, its trailing CUT_FREE_TRAIL signs
+	# kept after; the word runs to a CUT_FREE_END byte (B13 round 40 C1862, as setup_report._FREE_PROVIDER_RE)
+	function freecut(l,    out, a, r, i, w, j, p, t) {
+		out = ""
+		while ((a = index(l, fh)) > 0) {
+			out = out substr(l, 1, a - 1); r = substr(l, a + length(fh))
+			i = 1
+			while (i <= length(r) && substr(r, i, 1) !~ fe) i++
+			w = substr(r, 1, i - 1); j = index(w, "/"); p = j ? substr(w, 1, j - 1) : w
+			if (p !~ appre) { out = out fh; l = r; continue }
+			if (p ~ kept) { out = out fh w; l = substr(r, i); continue }
+			t = w
+			while (t != "" && index(ft, substr(t, length(t), 1))) t = substr(t, 1, length(t) - 1)
+			out = out fh "<path>" substr(w, length(t) + 1); l = substr(r, i)
+		}
+		return out l
+	}
 	# where a bare not-a-folder name ends: the last ` (see --help)` before the line\047s end, `;,.:`, ` | ` or
 	# ` · `, else the line\047s end, as setup_report._NOT_A_FOLDER_RE and the recut\047s name_end read it
 	function nfend(r,    t, o, x, p, z, e) {
@@ -4919,15 +5022,17 @@ typed_note_cut() {
 		}
 		return e ? e : length(r) + 1
 	}
-	function slone(l, hd, ck,    out, a, q, w, i, c, e, j) {
+	function slone(l, hd, rule,    out, a, q, w, i, c, e, j, x, lh, u, t) {
 		out = ""
 		while ((a = index(l, hd)) > 0) {
 			out = out substr(l, 1, a + length(hd) - 1); l = substr(l, a + length(hd))
 			q = substr(l, 1, 1); q = (q == "\"" || q == "\047") ? q : ""
-			if (substr(l, length(q) + 1, length(cs)) != cs) continue
-			i = length(q) + 1; w = ""
+			if (rule != "cwd" && substr(l, length(q) + 1, length(cs)) != cs) continue
+			i = length(q) + 1; w = ""; lh = 0
 			if (q == "" && hd == "is not an existing folder: ") { # a name with blanks, taken whole
 				i = nfend(l); w = substr(l, 1, i - 1)
+			} else if (q == "" && hd == "--source-local " && (x = lasthead(l)) > 1) { # a refused name, to its last head
+				i = x; w = substr(l, 1, i - 1); lh = 1
 			} else while (i <= length(l)) { # a bare word ends at a blank or a quote, a quoted one at its own
 				c = substr(l, i, 1)
 				if (q != "" ? c == q : (c == " " || c == "\t" || c == "\"" || c == "\047")) break
@@ -4935,10 +5040,15 @@ typed_note_cut() {
 				w = w c; i++
 			}
 			e = length(w)
-			if (q == "" && hd != "is not an existing folder: ") while (e > 0 && index(")]}.,;:`", substr(w, e, 1))) e--
+			if (q == "" && hd != "is not an existing folder: " && !lh) while (e > 0 && index(")]}.,;:`", substr(w, e, 1))) e--
+			if (rule != "provider") { # first-unknown and cwd: the unquoted word cut as _cut_path cuts it
+				u = unq(substr(w, 1, e)); t = cut(u)
+				if (u == "" || t == u) { out = out q; l = substr(l, length(q) + 1); continue }
+				out = out q t substr(w, e + 1); l = substr(l, i); continue
+			}
 			j = index(substr(w, length(cs) + 1), "/")
 			c = j ? substr(w, length(cs) + 1, j - 1) : substr(w, length(cs) + 1, e - length(cs))
-			if (c == "" || (c ~ kept && (!ck || !j || cfgonly(substr(w, length(cs) + j + 1, e - length(cs) - j))))) {
+			if (c == "" || (c ~ kept && (!j || cfgonly(substr(w, length(cs) + j + 1, e - length(cs) - j), 1)))) {
 				out = out q; l = substr(l, length(q) + 1); continue
 			}
 			out = out q cs (c ~ kept ? c "/" : "") "<path>" substr(w, e + 1); l = substr(l, i)
@@ -6480,7 +6590,9 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 		say "  wrote in its dollar-quote form (\$'...'), cut whole, so doctor's fix reads open ~/<path> in Finder once, which"
 		say "  install.log uses for a name with a tab or another control character, a curly apostrophe, an en dash, a"
 		say "  decomposed accent or many precomposed ones, such as É, ß, í or ł, and under the C locale for any accent (any"
-		say "  character outside ASCII)"
+		# ruling 138's one divergence, named where the cut is described (B13 round 40, C1801 with C1857)
+		say "  character outside ASCII); one right after --source-local, --source-local= or add-source is cut whole here,"
+		say "  where the agentsync report shows it decoded in double quotes and cut by its argument's rule"
 		;;
 	esac
 	# as setup_report._LEGEND words them (B13 round 16 T3, round 17 U93)
@@ -7302,7 +7414,7 @@ report_new_marks() {
 # by another build (report_build_other, which fails closed), also takes the fixed-word cuts of install.sh's own
 # words: the folder after `is not an existing folder: ` (up to its last ` (see --help)` before the line's end,
 # `;,.:`, ` | ` or ` · `, else the line's end; C1299 with C1250, C1436) and the name in a `--source-local <name>:
-# <head>` refusal, up to the last `: ` before one of REFUSED_HEADS (C1432). Each name becomes <path> unless _cut_path
+# <head>` refusal, up to the last `: ` before one of the block's CUT_REFUSED_HEADS (C1432, C1833). Each name becomes <path> unless _cut_path
 # could have printed it: its last part `<path>` and every earlier part empty, `~`, `.`, `..`, placeholders only, a
 # CUT_FIXED, CUT_DRIVE or CUT_HOME word, or a known app's folder after CloudStorage, bare or `<App>-<placeholder>`
 # (never a literal tenant), so `X<path>`,
@@ -7352,11 +7464,9 @@ recut_note() {
 	rm -f "$out"
 	return 1
 }
-# setup_report._REFUSED_HEADS: the words every source_local_refused call opens with (a test keeps them equal)
-REFUSED_HEADS="this is a row step 1 marked |step 1 shows this folder's name |its name is step 1's escaped form |this is how step 1 shows a folder "
 # report_recut's fixed-word cuts of another build's render, on stdin
 report_words_cut() {
-	CUT_FIXED="$CUT_FIXED" CUT_DRIVE="$CUT_DRIVE" CUT_HOME="$CUT_HOME" CUT_HEADS="$REFUSED_HEADS" CUT_KEPT="$CUT_PROVIDER_KEPT" LC_ALL=C awk \
+	CUT_FIXED="$CUT_FIXED" CUT_DRIVE="$CUT_DRIVE" CUT_HOME="$CUT_HOME" CUT_HEADS="$CUT_REFUSED_HEADS" CUT_KEPT="$CUT_PROVIDER_KEPT" LC_ALL=C awk \
 		-v m="is not an existing folder: " -v t=" (see --help)" -v sl="--source-local " '
 	BEGIN {
 		n = split(ENVIRON["CUT_FIXED"], w, "|"); for (i = 1; i <= n; i++) fixed[w[i]] = 1
@@ -10842,9 +10952,9 @@ if [ -z "$SOURCE" ]; then
 	resolve_source
 fi
 if [ "$DEBUG_RUN" -eq 1 ]; then
-	debug_line cwd "$PWD"
-	debug_line source "$SOURCE_KIND $SOURCE"
-	debug_line config "$CONFIG"
+	debug_line cwd "$(debug_path "$PWD")"
+	debug_line source "$SOURCE_KIND $(debug_path "$SOURCE")"
+	debug_line config "$(debug_path "$CONFIG")"
 	printf -v dbg 'first-sync=%ss first-run-wait=%ss lock-wait=%ss' "$FIRST_SYNC_LIMIT" "$WAIT_SECONDS" "$REINSTALL_WAIT"
 	debug_line limits "$dbg"
 fi

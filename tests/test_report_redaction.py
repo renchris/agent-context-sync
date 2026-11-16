@@ -1504,6 +1504,61 @@ _C1626_ROWS = (
         '--source-local "~/Library/CloudStorage/OneDrive-Fabrikam/Acme \\"Q3\\" Plans" --dry-run',
         '--source-local "~/Library/CloudStorage/<path>" --dry-run',
     ),
+    # B13 round 40 C1831 with C1881 (ruling 137): the = form, bare, double- and single-quoted, after an
+    # unregistered tenant and after a registered one with an unconfigured folder
+    (
+        "ran --source-local=~/Library/CloudStorage/OneDrive-Fabrikam/Plans once",
+        "ran --source-local=~/Library/CloudStorage/<path> once",
+    ),
+    (
+        'ran --source-local="~/Library/CloudStorage/OneDrive-Fabrikam/Plans" once',
+        'ran --source-local="~/Library/CloudStorage/<path>" once',
+    ),
+    (
+        "args=--source-local='~/Library/CloudStorage/OneDrive-Fabrikam/Plans' --dry-run",
+        "args=--source-local='~/Library/CloudStorage/<path>' --dry-run",
+    ),
+    (
+        "ran --source-local=~/Library/CloudStorage/OneDrive-Contoso/Wombat\\ Plans once",
+        "ran --source-local=~/Library/CloudStorage/OneDrive-<org-1>/<path> once",
+    ),
+    # C1832: add-source keeps every placeholder and cuts at its first unknown part, bare, double-quoted and
+    # hyphenated; a configured folder's number stays
+    (
+        "ran agentsync add-source ~/Library/CloudStorage/OneDrive-Contoso/Wombat\\ Plans and it failed",
+        "ran agentsync add-source ~/Library/CloudStorage/OneDrive-<org-1>/<path> and it failed",
+    ),
+    (
+        'ran agentsync add-source "~/Library/CloudStorage/OneDrive-Contoso/Wombat Plans" and it failed',
+        'ran agentsync add-source "~/Library/CloudStorage/OneDrive-<org-1>/<path>" and it failed',
+    ),
+    (
+        "ran agentsync add-source ~/Library/CloudStorage/OneDrive-Contoso/Wombat-Plans and it failed",
+        "ran agentsync add-source ~/Library/CloudStorage/OneDrive-<org-1>/<path> and it failed",
+    ),
+    (
+        "ran agentsync add-source ~/Library/CloudStorage/OneDrive-Contoso/Northwind\\ Plans again",
+        "ran agentsync add-source ~/Library/CloudStorage/OneDrive-<org-1>/<folder-1> again",
+    ),
+    # C1833: a refused name runs to the last refusal head, never to its first blank
+    (
+        "usage error: --source-local ~/Library/CloudStorage/OneDrive-Contoso/Wombat Plans: its name is step "
+        "1's escaped form of another folder there",
+        "usage error: --source-local ~/Library/CloudStorage/OneDrive-<org-1>/<path>: its name is step 1's "
+        "escaped form of another folder there",
+    ),
+    (
+        "usage error: --source-local ~/Library/CloudStorage/OneDrive-Contoso/Wombat Plans: this is a row "
+        "step 1 marked x",
+        "usage error: --source-local ~/Library/CloudStorage/OneDrive-<org-1>/<path>: this is a row step 1 "
+        "marked x",
+    ),
+    (
+        "usage error: --source-local ~/Library/CloudStorage/OneDrive-Fabrikam/Wombat Plans: its name is step "
+        "1's escaped form of another folder there",
+        "usage error: --source-local ~/Library/CloudStorage/<path>: its name is step 1's escaped form of "
+        "another folder there",
+    ),
 )
 
 
@@ -1534,6 +1589,72 @@ def test_both_reports_cut_an_unregistered_tenant_after_cloudstorage_c1626(
     assert shell.split(" | deviation | ", 1)[1] == f"{want} | -", shell
     assert python.split(" | deviation | ", 1)[1] == f"{want} | -", python
     assert "Fabrikam" not in text
+
+
+def test_the_shell_cuts_a_refused_name_under_a_configured_folder_whole_c1833(
+    env: dict[str, str],  # noqa: F811
+) -> None:
+    """B13 round 40 C1833: under a configured folder, a refused name with a blank printed its tail in the
+    shell report (`<path> Plans:`); it runs to the last refusal head now. The agentsync report numbers the
+    configured folder there (`<folder-1>/<path>`) where the shell cuts at the provider folder, the safer
+    side, so only the shell line is held."""
+    lib = Path(env["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso"
+    (lib / "Northwind Plans").mkdir(parents=True)
+    cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text(local_source_table("s0", lib / "Northwind Plans"), encoding="utf-8")
+    said = (
+        "usage error: --source-local ~/Library/CloudStorage/OneDrive-Contoso/Northwind Plans/Wombat Plans: "
+        "its name is step 1's escaped form of another folder there"
+    )
+    text = _shell_report(
+        env,
+        f"Attempt: 2026-10-12T10:00:00Z\nPrompt: v15\n"
+        f"2026-10-12T10:00:01Z | step 2 | deviation | {said} | -\n",
+    )
+    [shell] = [ln for ln in text.splitlines() if " | step 2 | deviation | " in ln]
+    assert "OneDrive-<org-1>/<path>: its name is step 1's escaped form" in shell, shell
+    assert "Wombat" not in text and " Plans:" not in shell, shell
+
+
+def test_both_reports_number_a_configured_tenant_whose_provider_folder_is_gone_c1862(
+    env: dict[str, str],  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """B13 round 40 C1862 (ruling 137; privacy): the shell registered a tenant only from the provider folders
+    on disk, so a configured source whose provider folder is gone (signed out) printed its tenant in clear on
+    doctor's listable line and in free text, where the agentsync report, which registers every configured
+    source's tenant from sources.toml, printed `OneDrive-<org-2>`. The shell registers them too, after the
+    disk walk, in config order; and a `~/Library/CloudStorage/<App>-<word>` word no value registers reads
+    `~/Library/CloudStorage/<path>` in both, never numbered."""
+    cs = Path(env["HOME"]) / "Library" / "CloudStorage"
+    alder, cedar = cs / "OneDrive-Fabrikam" / "Alder", cs / "OneDrive-Contoso" / "Cedar"
+    for d in (alder, cedar):
+        d.mkdir(parents=True)
+    cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text(local_source_table("s0", alder) + local_source_table("s1", cedar), encoding="utf-8")
+    (cs / "OneDrive-Fabrikam" / "Alder").rmdir()
+    (cs / "OneDrive-Fabrikam").rmdir()
+    said = [
+        "[FAIL] source.s0.listable — ~/Library/CloudStorage/OneDrive-Fabrikam/Alder does not exist",
+        "saw ~/Library/CloudStorage/OneDrive-Fabrikam/Alder, then",
+        "saw ~/Library/CloudStorage/OneDrive-Northwind/Birch, then",
+    ]
+    rows = [f"2026-10-12T10:00:0{i}Z | step 2 | deviation | {s} | -" for i, s in enumerate(said, 1)]
+    text = _shell_report(env, "Attempt: 2026-10-12T10:00:00Z\nPrompt: v15\n" + "\n".join(rows) + "\n")
+    shell = [
+        ln.split(" | deviation | ", 1)[1] for ln in text.splitlines() if " | step 2 | deviation | " in ln
+    ]
+    monkeypatch.setenv("HOME", env["HOME"])
+    red = setup_report._build_redactor(setup_report._Run(cfg, setup_report.ReportHooks(), 12.0))
+    python = [ln.split(" | deviation | ", 1)[1] for ln in setup_report._redact_lines(red, rows)]
+    assert shell == python, (shell, python)
+    assert shell[0].startswith(
+        "[FAIL] source.s0.listable — ~/Library/CloudStorage/OneDrive-<org-2>/<folder-1>"
+    )
+    assert shell[2] == "saw ~/Library/CloudStorage/<path>, then | -", shell
+    assert "Fabrikam" not in text and "Northwind" not in text
 
 
 def test_both_reports_cut_a_refused_look_alike_at_its_provider_folder_c1601(

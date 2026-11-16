@@ -3745,8 +3745,11 @@ def test_the_shell_report_reads_past_a_dollar_quoted_install_log_word(
         "and every word bash or doctor's fix wrote in its dollar-quote form ($'...'), cut whole, so doctor's "
         "fix reads open ~/<path> in Finder once, which install.log uses for a name with a tab or another "
         "control character, a curly apostrophe, an en dash, a decomposed accent or many precomposed ones, "
-        "such as É, ß, í or ł, and under the C locale for any accent (any character outside ASCII)"
+        "such as É, ß, í or ł, and under the C locale for any accent (any character outside ASCII); one "
+        "right after --source-local, --source-local= or add-source is cut whole here, where the agentsync "
+        "report shows it decoded in double quotes and cut by its argument's rule"
     ), "the Redaction text is not itself redacted, and reads plainly (B13 R7; round 38 C1493; round 39 C1648)"
+    # B13 round 40 ruling 138: the one divergence between the reports is named where the cut is described
     # B13 round 39 C1601: a CloudStorage argument no configured source names keeps only its provider folder
     assert (
         "one under CloudStorage that names no configured folder, a refused one among them, kept only to its "
@@ -4116,10 +4119,12 @@ def test_the_typed_cuts_word_lists_are_the_shells_and_the_reports() -> None:
 def test_every_source_local_refusal_opens_with_a_head_both_reports_cut_after_c1432() -> None:
     """B13 round 38 C1432 (ruling 126; privacy): the Python report and install.sh's recut cut a refused
     --source-local name up to the last `: ` before one of setup_report._REFUSED_HEADS, so every
-    source_local_refused call's words open with one of them, and the shell's REFUSED_HEADS is that list."""
+    source_local_refused call's words open with one of them, and the shell's list is that one: the generated
+    block's CUT_REFUSED_HEADS since B13 round 40 C1833 (ruling 137), report_cuts.REFUSED_HEADS."""
     text = INSTALL_SH.read_text(encoding="utf-8")
-    [heads] = re.findall(r'(?m)^REFUSED_HEADS="(.*)"$', text)
-    assert tuple(heads.split("|")) == setup_report._REFUSED_HEADS
+    [heads] = re.findall(r'(?m)^CUT_REFUSED_HEADS="(.*)"$', text)
+    assert tuple(heads.split("|")) == setup_report._REFUSED_HEADS == report_cuts.REFUSED_HEADS
+    assert not re.search(r"(?m)^REFUSED_HEADS=", text), "one list, the block's"
     calls = re.findall(r'source_local_refused "\$\((?:[^()"]|"[^"]*")*\)" "([^"]*)"', text)
     assert text.count("\tsource_local_refused ") == len(calls), calls
     assert len(calls) >= 7, calls
@@ -9023,6 +9028,46 @@ def test_the_shell_report_only_names_this_checkouts_commit(env: dict[str, str], 
 
 def _cloud(env: dict[str, str]) -> Path:
     return Path(env["HOME"]) / "Library" / "CloudStorage"
+
+
+@pytest.mark.parametrize("form", ["blank", "equals"])
+def test_the_shell_report_cuts_a_cwd_folder_on_the_run_header_and_debug_lines_c1835(
+    env: dict[str, str], form: str
+) -> None:
+    """B13 round 40 C1835 (ruling 137; privacy): the CLI conventions wave's --cwd and --debug put a private
+    project folder in install.out's run header (`install.sh --cwd ~/Projects/<name>`) and its `debug: cwd`,
+    `debug: source` and `debug: config` lines, and the report printed them. The shell report cuts the --cwd
+    value as _cut_path does, keeps the word --cwd and `debug: cwd`, and cuts a debug source or config path
+    only under that cwd; install.sh writes `--cwd=D` as two words and the debug paths through %q, so a blank
+    or a newline in the folder never leaves a line no cut reads."""
+    cwd = Path(env["HOME"]) / "Projects" / "acquisition Fabrikam Deal"
+    (cwd / "cfg").mkdir(parents=True)
+    run = {**env, "AGENTSYNC_CONFIG": "cfg/sources.toml"}
+    arg = ["--cwd", str(cwd)] if form == "blank" else [f"--cwd={cwd}"]
+    cp = install_sh(run, *arg, "--debug", "--source-local", "./missing-thing")
+    assert cp.returncode == 2, cp.stdout + cp.stderr
+    out = install_out(env).read_text(encoding="utf-8")
+    assert "debug: cwd ~/Projects/acquisition\\ Fabrikam\\ Deal" in out, out
+    assert "debug: config ~/Projects/acquisition\\ Fabrikam\\ Deal/cfg/sources.toml" in out, out
+    [header] = [ln for ln in out.splitlines() if ln.startswith("# run=")]
+    assert f" install.sh --cwd {cwd.parent}/acquisition\\ Fabrikam\\ Deal --debug " in header, header
+    # the shell fallback copies no install.out line, so an agent's friction rows quote them, as the property
+    # test feeds both reports
+    quoted = [header, *(ln for ln in out.splitlines() if ln.startswith("debug: "))]
+    rows = "".join(
+        f"2026-10-10T00:00:0{i}Z | step 2 | deviation | {q} | -\n" for i, q in enumerate(quoted, 1)
+    )
+    friction_path(env).write_text(f"Attempt: 2026-10-10T00:00:00Z\nPrompt: v15\n{rows}", encoding="utf-8")
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    for path in (report_path(env), report_path(env).parent / "bring-back.md"):
+        text = path.read_text(encoding="utf-8")
+        assert "Fabrikam" not in text and "acquisition" not in text, [
+            ln for ln in text.splitlines() if "Fabrikam" in ln or "acquisition" in ln
+        ]
+    text = report_path(env).read_text(encoding="utf-8")
+    assert " install.sh --cwd ~/Projects/<path> --debug " in text, text
+    assert "| debug: cwd ~/Projects/<path> |" in text and "| debug: config ~/Projects/<path> |" in text, text
 
 
 def test_a_report_over_300_listed_folders_still_cuts_the_last_one_c1836(env: dict[str, str]) -> None:
