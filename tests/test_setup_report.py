@@ -28115,6 +28115,8 @@ def test_the_run_header_and_debug_lines_cut_a_cwd_folder_c1835() -> None:
         "debug: config /Users/dana/Projects/Fabrikam Deal/cfg/sources.toml",
         "debug: config /Users/dana/agent-context/sources.toml",
         "2026-11-16T00:00:00Z | step 1 | deviation | debug: cwd /Users/dana/Projects/Fabrikam Deal | -",
+        "# run=r5 2026-11-16T00:00:00Z install.sh --cwd . --debug",  # punctuation alone: kept
+        "use --cwd , then --cwd ..",
     ]
     out = setup_report._redact_lines(red, lines).splitlines()
     assert out == [
@@ -28127,6 +28129,8 @@ def test_the_run_header_and_debug_lines_cut_a_cwd_folder_c1835() -> None:
         "debug: config ~/Projects/<path>",
         "debug: config ~/agent-context/sources.toml",
         "2026-11-16T00:00:00Z | step 1 | deviation | debug: cwd ~/Projects/<path> | -",
+        "# run=r5 2026-11-16T00:00:00Z install.sh --cwd . --debug",
+        "use --cwd , then --cwd ..",
     ]
 
 

@@ -18614,6 +18614,8 @@ def _source_local_shown(red: Redactor, m: re.Match[str]) -> str:
         bare = re.fullmatch(r"((?:\\.|[^\\])*?)([)\]}.,;:`]*)", word, re.DOTALL)
         if bare is not None:
             word, tail = bare.group(1), bare.group(2)
+        if not word:  # a word of punctuation alone (`--cwd .`) stays as written, as the shell keeps it
+            return m.group(0)
     if re.fullmatch(r"\$'(?:[^'\\]|\\.)*'", word) or re.fullmatch(r'"(?:[^"\\]|\\.)*"', word):
         opened, closed = '"', '"'
     elif re.fullmatch(r"'[^']*'", word):
