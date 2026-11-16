@@ -2674,6 +2674,7 @@ CUT_HEADS_FIRST_UNKNOWN='add-source '
 CUT_HEADS_CWD='--cwd |--cwd=|debug: cwd '
 CUT_HEADS_UNDER_CWD='debug: source |debug: config '
 CUT_DEL_ESCAPED='\u007F|\u007f'
+# shellcheck disable=SC2088
 CUT_FREE_HEAD='~/Library/CloudStorage/'
 CUT_FREE_END='[\040\011\042\047\140]'
 CUT_FREE_TRAIL=')]}.,;:'
