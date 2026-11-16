@@ -41911,7 +41911,7 @@ and `test_contracts.py::test_c1450s_option_is_credited_as_a_second_guard_c1645`.
 
 **A zero-byte image or recording is `empty`, before any helper runs** (C1647; `agentsync.convert.image`,
 `agentsync.convert.recording`; amends §16.233 C930 and §16.238 C1050, with a dated line at §16.28). C930's and
-C1050's rule, that no bytes have no type to disagree with the name, held for eleven typed names but not these: with
+C1050's rule, that no bytes have no type to disagree with the name, held for fourteen typed names but not these: with
 engines a zero-byte `.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.tif`, `.tiff`, `.webp`, `.heic` or `.heif` read `not
 an image on-device OCR reads (...)`, classed `image not readable`, and a zero-byte `.mp4`, `.m4v` or `.mov` read `not a
 recording on-device reading supports (MP4, M4V, MOV)`, classed `other` (the verifier's stub engines at 853fab348).
@@ -41927,6 +41927,8 @@ of `NOT_IMAGES`),
 `test_convert_recording.py::test_a_zero_byte_recording_is_empty_before_any_helper_runs_c1647` and
 `test_convert_recording.py::test_a_zero_byte_image_or_recording_is_classed_empty_and_never_cached_c1647` (through
 `Registry.default` with an OCR and a media engine: `quarantine_class` gives `empty`, and the cache has no entry).
+Amended 2026-11-16, §16.258 C1852: `fourteen typed names` read `eleven`, the count C930's test listed; the Office
+guard's C930 branch held `.pptx`, `.xlsm` and `.vsdm` too.
 
 **A table whose header or first row passes the page cap rides in its sidecar** (C1676; `agentsync.convert.text`,
 `agentsync.convert.xlsx`). `ConvertConfig.max_page_bytes` is a hard cap, but `PlainTextConverter._table` kept the
@@ -42208,6 +42210,18 @@ C1849. Test: `test_convert_formats.py::test_a_csv_field_past_the_csv_modules_lim
 the default limit: 131,073- and 200,000-character fields give a table with no sidecar, a 1,200,000-character one
 the cut table's note and `full-table.csv` only, round-tripping every row, an unclosed quote over 200,000 characters
 `Text (csv)`, and a higher limit is kept).
+
+**A zero-byte file is `empty` under fourteen typed names, not eleven** (C1852; docs and tests; amends §16.253 C1647;
+ruling 141). The C1647 paragraph gave C930's rule `eleven` typed names, and
+`test_convert_image.py::test_a_zero_byte_image_is_empty_and_never_reaches_the_helper_c1647`'s docstring 11: the
+count C930's parametrized test listed. `policy.screen_file` answers `empty` for every name in `OOXML_SUFFIXES`,
+so `.pptx`, `.xlsm` and `.vsdm` were `empty` too, and the default registry with no OCR or media engine gives `empty`
+for fourteen of its 28 names: `.docx`, `.drawio`, `.eml`, `.msg`, `.odt`, `.pdf`, `.potx`, `.pptx`, `.teams.json`,
+`.vsdm`, `.vsdx`, `.vtt`, `.xlsm` and `.xlsx` (the verifier's sweep at 7253d365, measured again here). The paragraph
+says fourteen with a dated line, the docstring 14, and C930's test takes the three names. No code changes. Tests:
+`test_convert_family.py::test_the_typed_names_a_zero_byte_file_is_empty_under_are_fourteen_and_the_docs_say_so_c1852`
+(the registry's own answer equals the list, and both texts say fourteen) and
+`test_convert_family.py::test_a_zero_byte_file_under_a_typed_name_is_one_empty_stub_c930` (now fourteen cases).
 
 ### 16.259 Round 40: the guides: the dollar-quote row, the record of round 39's installer work, and CI timings (2026-11-16, wave B13 round 40 lane D)
 

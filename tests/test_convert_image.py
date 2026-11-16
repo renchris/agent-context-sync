@@ -368,10 +368,10 @@ def test_a_file_that_is_no_raster_image_never_reaches_the_helper(
 def test_a_zero_byte_image_is_empty_and_never_reaches_the_helper_c1647(
     tmp_path: Path, engine: ocr.OcrEngine, name: str
 ) -> None:
-    """B13 round 39 C1647: C930's rule, no bytes have no type to disagree with the name, held for 11 typed
-    names but not images: a zero-byte picture read `not an image on-device OCR reads`, classed `image not
-    readable`. The empty head is ``empty-output`` before the raster test, and no helper runs; a short or
-    wrong-type head keeps its own reason (the NOT_IMAGES cases)."""
+    """B13 round 39 C1647: C930's rule, no bytes have no type to disagree with the name, held for 14 typed
+    names (B13 round 40 C1852) but not images: a zero-byte picture read `not an image on-device OCR reads`,
+    classed `image not readable`. The empty head is ``empty-output`` before the raster test, and no helper
+    runs; a short or wrong-type head keeps its own reason (the NOT_IMAGES cases)."""
     src = tmp_path / name
     src.write_bytes(b"")
     with pytest.raises(UnreadableSourceError) as refused:

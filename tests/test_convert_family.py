@@ -266,10 +266,39 @@ def _tries(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     return tries
 
 
-@pytest.mark.parametrize(
-    "suffix",
-    [".potx", ".vsdx", ".docx", ".xlsx", ".msg", ".drawio", ".pdf", ".eml", ".odt", ".teams.json", ".vtt"],
+_ZERO_BYTE_TYPED = (
+    *(".potx", ".vsdx", ".docx", ".xlsx", ".msg", ".drawio", ".pdf", ".eml", ".odt", ".teams.json", ".vtt"),
+    *(".pptx", ".xlsm", ".vsdm"),  # B13 round 40 C1852: the Office guard's C930 branch held these too
 )
+"""Every name the default registry (no OCR or media engine) answers ``empty`` for at zero bytes."""
+
+
+def test_the_typed_names_a_zero_byte_file_is_empty_under_are_fourteen_and_the_docs_say_so_c1852(
+    tmp_path: Path,
+) -> None:
+    """B13 round 40 C1852 (ruling 141): CONTRACTS' C1647 paragraph said C930's rule `held for eleven typed
+    names`, and test_convert_image.py's docstring 11, the count C930's test listed; the Office guard's C930
+    branch held `.pptx`, `.xlsm` and `.vsdm` too, so the default registry answers `empty` for fourteen. The
+    list, the registry's own answer and both texts agree."""
+    registry = Registry.default(ConvertConfig())
+    empty = []
+    for suffix in sorted(registry.extensions()):
+        src = tmp_path / f"zero{suffix}"
+        src.write_bytes(b"")
+        try:
+            registry.for_name(src.name).convert(src, name=src.name)  # type: ignore[union-attr]
+        except UnreadableSourceError as exc:
+            if str(exc) == policy_mod.EMPTY_OUTPUT_REASON:
+                empty.append(suffix)
+    assert sorted(empty) == sorted(_ZERO_BYTE_TYPED) and len(_ZERO_BYTE_TYPED) == 14
+    root = Path(__file__).resolve().parents[1]
+    contracts = " ".join((root / "docs/design/CONTRACTS.md").read_text(encoding="utf-8").split())
+    assert "held for fourteen typed names" in contracts and "held for eleven typed names" not in contracts
+    image = " ".join((root / "tests/test_convert_image.py").read_text(encoding="utf-8").split())
+    assert "held for 14 typed names" in image and "held for 11 typed names" not in image
+
+
+@pytest.mark.parametrize("suffix", _ZERO_BYTE_TYPED)
 def test_a_zero_byte_file_under_a_typed_name_is_one_empty_stub_c930(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, suffix: str
 ) -> None:
@@ -278,7 +307,7 @@ def test_a_zero_byte_file_under_a_typed_name_is_one_empty_stub_c930(
     with the name, and the report's class list has ``empty``. Each is one ``empty-output`` stub, read once
     over three syncs.  B13 round 36 C1050 with C1117 (ruling 118): a zero-byte ``.pdf``, ``.eml``, ``.odt``
     or ``.teams.json`` was a ``conversion failed`` tried 3 times and a ``.vtt`` ``other``; each converter now
-    says ``empty`` for zero bytes itself."""
+    says ``empty`` for zero bytes itself.  B13 round 40 C1852: ``.pptx``, ``.xlsm`` and ``.vsdm`` too."""
     config, src = make_env(tmp_path)
     name = f"Contoso zero{suffix}"
     (src / name).write_bytes(b"")
