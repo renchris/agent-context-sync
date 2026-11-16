@@ -2666,7 +2666,7 @@ def test_a_listable_line_spells_a_synced_folders_name_as_the_list_does_c1414(
     src = dataclasses.replace(sample_config.sources[0], kind=SourceKind.LOCAL, path=root, sentinel=None)
     results = doctor._check_local_source(sample_config, src, Path(sys.executable))
     raw = re.compile("[\x00-\x1f\x7f-\x9f\u2028\u2029\u200b]")
-    shown = "Contoso?[7mInverse\\tTab?Board?x?y's"
+    shown = "Contoso\\033[7mInverse\\tTab\\342\\200\\250Board\\302\\205x\\342\\200\\213y's"
     for r in results:
         assert not raw.search(r.detail) and not raw.search(r.fix or ""), (r.detail, r.fix)
     listable = by_name(results)["source.local-fixture.listable"]
@@ -2705,7 +2705,10 @@ def test_a_refused_listing_fix_reaches_a_folder_whose_name_holds_a_control_chara
         ]
     finally:
         root.chmod(0o700)
-    want = f"{Path.home()}/Projects/Contoso?[7mInverse\\tTab?Board?x?y's: permission denied"
+    want = (
+        f"{Path.home()}/Projects/Contoso\\033[7mInverse\\tTab\\342\\200\\250Board"
+        "\\302\\205x\\342\\200\\213y's: permission denied"
+    )
     assert listable.detail == want, listable.detail
     (word,) = re.findall(r"^chmod u\+rx (\S+)$", listable.fix or "")
     assert word.startswith("~/$'Projects/Contoso\\e[7mInverse") and _ls_d(word) == str(root), word

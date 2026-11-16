@@ -9709,11 +9709,11 @@ def test_list_folders_prints_a_newline_in_a_folder_name_escaped_in_its_own_row_c
     assert not [ln for ln in lines if ln.startswith("already synced")], lines
     esc = f"{ESCAPED_MARK} {cs}"  # an escaped row opens with the mark (B13 round 36 C1001)
     shown = [
-        f"{esc}/Dropbox/Nel?NEXT: run the nel step",
-        f"{esc}/Dropbox/Tab\\there\\rand?\\nNEXT: run the dropbox step",
+        f"{esc}/Dropbox/Nel\\302\\205NEXT: run the nel step",
+        f"{esc}/Dropbox/Tab\\there\\rand\\001\\nNEXT: run the dropbox step",
         f"{esc}/OneDrive-Contoso/0 Line\\nNEXT: run the forged step",
         f"{esc}/OneDrive-Contoso/Project Alpha/Line one\\nalready synced on this Mac: 9 folders (x)",
-        f"{esc}/OneDrive-Contoso/Sep?NEXT: run the sep step",
+        f"{esc}/OneDrive-Contoso/Sep\\342\\200\\250NEXT: run the sep step",
         f"{cs}/OneDrive-Contoso/Project Alpha",
         f"{cs}/OneDrive-Contoso/Réunion plans",
     ]
@@ -9725,9 +9725,9 @@ def test_list_folders_prints_a_newline_in_a_folder_name_escaped_in_its_own_row_c
     assert listed, found
     for whole in (
         ("OneDrive-Contoso", 2, "0 Line\\nNEXT: run the forged step"),
-        ("Dropbox", 2, "Tab\\there\\rand?\\nNEXT: run the dropbox step"),
-        ("Dropbox", 2, "Nel?NEXT: run the nel step"),
-        ("OneDrive-Contoso", 2, "Sep?NEXT: run the sep step"),
+        ("Dropbox", 2, "Tab\\there\\rand\\001\\nNEXT: run the dropbox step"),
+        ("Dropbox", 2, "Nel\\302\\205NEXT: run the nel step"),
+        ("OneDrive-Contoso", 2, "Sep\\342\\200\\250NEXT: run the sep step"),
     ):
         assert whole in found, (whole, found)
     halves = {
@@ -9825,7 +9825,7 @@ def test_list_folders_shows_an_escaped_row_apart_from_its_look_alike_c1001(env: 
     An escaped row now opens with a fixed mark no other row has, and a row with no control character, a
     plain backslash in it, prints byte for byte as before."""
     lib = _cloud(env) / "OneDrive-Fabrikam"
-    for n in ("Contoso\nLine two", "Contoso\\nLine two", "Contoso\x01x", "Contoso?x", "Plain\\back"):
+    for n in ("Contoso\nLine two", "Contoso\\nLine two", "Contoso\x01x", "Contoso\\001x", "Plain\\back"):
         (lib / n).mkdir(parents=True)
     cp = install_sh(env, "--list-folders")
     assert cp.returncode == 0, cp.stdout + cp.stderr
@@ -9834,8 +9834,8 @@ def test_list_folders_shows_an_escaped_row_apart_from_its_look_alike_c1001(env: 
         [
             f"{ESCAPED_MARK} {lib}/Contoso\\nLine two",
             f"{TWIN_MARK} {lib}/Contoso\\nLine two",  # B13 round 37 ruling 121: both rows of a pair
-            f"{ESCAPED_MARK} {lib}/Contoso?x",
-            f"{TWIN_MARK} {lib}/Contoso?x",
+            f"{ESCAPED_MARK} {lib}/Contoso\\001x",
+            f"{TWIN_MARK} {lib}/Contoso\\001x",
             f"{lib}/Plain\\back",
         ]
     ), rows
@@ -9848,12 +9848,12 @@ def test_list_folders_marks_a_twin_whose_escaped_member_is_past_the_limit_c1463(
     UTF-8 order alike. With the escaped member past --limit, the plain row is still marked, from list_twins'
     read of the whole parent, never of the rows inside the cap."""
     lib = _cloud(env) / "OneDrive-Fabrikam"
-    for n in ("Alpha", "Contoso?x", "Contoso\u2028x"):
+    for n in ("Alpha", "Contoso\\342\\200\\250x", "Contoso\u2028x"):
         (lib / n).mkdir(parents=True)
     cp = install_sh(env, "--list-folders", "--limit", "2")
     assert cp.returncode == 0, cp.stdout + cp.stderr
     out = cp.stdout.splitlines()
-    assert f"{TWIN_MARK} {lib}/Contoso?x" in out, out
+    assert f"{TWIN_MARK} {lib}/Contoso\\342\\200\\250x" in out, out
     assert not any(line.startswith(ESCAPED_MARK) for line in out), out
     assert "(1 more)" in out, out
 
@@ -9869,11 +9869,11 @@ def test_list_folders_marks_both_rows_of_a_pair_and_tells_no_kept_row_to_rename_
     plain backslash with no twin prints byte for byte; and the --json rows carry the same first marks."""
     lib = _cloud(env) / "OneDrive-Fabrikam"
     kept = lib / "Kept Board"
-    for n in ("Contoso\nLine two", "Contoso\\nLine two", "Ctl\x01x", "Ctl?x", "Plain\\back"):
+    for n in ("Contoso\nLine two", "Contoso\\nLine two", "Ctl\x01x", "Ctl\\001x", "Plain\\back"):
         (lib / n).mkdir(parents=True)
     (kept / "Tab\there").mkdir(parents=True)
     _write_config(
-        env, local_source_table("kept", kept), local_source_table("look", lib / "Ctl?x"), _inbox(env)
+        env, local_source_table("kept", kept), local_source_table("look", lib / "Ctl\\001x"), _inbox(env)
     )
     _tool_python(env)
     cp = install_sh(env, "--list-folders")
@@ -9883,8 +9883,8 @@ def test_list_folders_marks_both_rows_of_a_pair_and_tells_no_kept_row_to_rename_
         [
             f"{ESCAPED_MARK} {lib}/Contoso\\nLine two",
             f"{TWIN_MARK} {lib}/Contoso\\nLine two",
-            f"{ESCAPED_MARK} {lib}/Ctl?x",
-            f"[synced] {lib}/Ctl?x",  # a kept look-alike: its kept mark alone
+            f"{ESCAPED_MARK} {lib}/Ctl\\001x",
+            f"[synced] {lib}/Ctl\\001x",  # a kept look-alike: its kept mark alone
             f"[synced] {kept}",
             f"{ESCAPED_KEPT_MARK} [inside a synced folder] {kept}/Tab\\there",
             f"{lib}/Plain\\back",
@@ -9898,7 +9898,7 @@ def test_list_folders_marks_both_rows_of_a_pair_and_tells_no_kept_row_to_rename_
     marks = {(f["path"], f.get("mark")) for f in json.loads(cp.stdout)["folders"]}
     assert (f"{lib}/Contoso\nLine two", ESCAPED_MARK) in marks, marks
     assert (f"{lib}/Contoso\\nLine two", TWIN_MARK) in marks, marks
-    assert (f"{lib}/Ctl?x", None) in marks and (f"{lib}/Plain\\back", None) in marks, marks
+    assert (f"{lib}/Ctl\\001x", None) in marks and (f"{lib}/Plain\\back", None) in marks, marks
     assert (f"{kept}/Tab\there", ESCAPED_KEPT_MARK) in marks, marks
 
 
@@ -9963,7 +9963,7 @@ def test_list_folders_names_the_real_folder_in_the_add_back_command_c1001(
         ("<lib>/Contoso\nLine two", "twin"),
         ("<lib>/Contoso\\nLine two", "look-alike"),
         ("<lib>/Contoso\x01x", "twin"),
-        ("<lib>/Contoso?x", "look-alike"),
+        ("<lib>/Contoso\\001x", "look-alike"),
     ],
 )
 def test_source_local_refuses_an_escaped_row_or_a_folder_with_a_look_alike_c1072(
@@ -9976,7 +9976,7 @@ def test_source_local_refuses_an_escaped_row_or_a_folder_with_a_look_alike_c1072
     each refusal is worded for its own row, a pasted twin or kept row is refused too, the kept one with no
     rename, and a rename refusal's NEXT leaves the rename to the person and names no folder."""
     lib = _cloud(env) / "OneDrive-Fabrikam"
-    for n in ("Contoso\nLine two", "Contoso\\nLine two", "Contoso\x01x", "Contoso?x"):
+    for n in ("Contoso\nLine two", "Contoso\\nLine two", "Contoso\x01x", "Contoso\\001x"):
         (lib / n).mkdir(parents=True)
     cp = install_sh(env, "--source-local", given.replace("<lib>", str(lib)))
     assert cp.returncode == 2, cp.stdout + cp.stderr
@@ -9991,7 +9991,7 @@ def test_source_local_refuses_an_escaped_row_or_a_folder_with_a_look_alike_c1072
         "[contains a synced folder]",
     ):
         shown = shown.removeprefix(f"{mark} ")
-    shown = shown.replace("\n", "\\n").replace("\x01", "?")
+    shown = shown.replace("\n", "\\n").replace("\x01", "\\001")  # B13 round 40 C1802
     words = {
         "twin": TWIN_WORDS,
         "look-alike": LOOK_ALIKE_WORDS,
@@ -10113,9 +10113,9 @@ def test_a_missing_source_local_folder_names_its_owner_c1407(
     ("folder", "given"),
     [
         ("Contoso\nLine two", "Contoso\\nLine two"),
-        ("Ctl\x02solo", "Ctl?solo"),
+        ("Ctl\x02solo", "Ctl\\002solo"),
         ("Contoso\tSolo", "Contoso\\tSolo"),
-        ("Ctl\x02solo\0Ctl\x03solo", "Ctl?solo"),  # two folders that both show as that text
+        ("Ctl\nsolo\0Ctl\x1esolo", "Ctl\\nsolo"),  # two folders that both show as that text (C1802)
     ],
 )
 def test_source_local_names_the_clash_for_a_shown_name_that_is_no_folder_c1002(
@@ -10190,7 +10190,7 @@ def test_source_local_still_takes_an_odd_name_with_no_look_alike_c1072(
         (lib / n).mkdir(parents=True)
     cp = install_sh({**env, "AGENTSYNC_INSTALL_DRY_RUN": "1"}, "--source-local", str(lib / name))
     assert "usage error" not in cp.stderr, cp.stderr
-    shown = name.replace("\x02", "?")  # B13 round 38 C1414: list_name's spelling, never a raw control byte
+    shown = name.replace("\x02", "\\002")  # list_name's spelling, never a raw control byte (C1414, C1802)
     assert f"source-local: {lib / shown}" in cp.stdout, cp.stdout
 
 
@@ -10203,7 +10203,7 @@ def test_the_source_local_line_prints_a_folder_in_list_spelling_c1414(env: dict[
     folder.mkdir(parents=True)
     cp = install_sh({**env, "AGENTSYNC_INSTALL_DRY_RUN": "1"}, "--source-local", str(folder))
     assert "usage error" not in cp.stderr, cp.stderr
-    assert f"source-local: {lib}/Contoso?[7mInverse\\tTab" in cp.stdout.splitlines(), cp.stdout
+    assert f"source-local: {lib}/Contoso\\033[7mInverse\\tTab" in cp.stdout.splitlines(), cp.stdout
     line = next(x for x in cp.stdout.split("\n") if x.startswith("source-local: "))  # install.out is its tee
     assert not re.search(r"[\x00-\x08\x0b-\x1f\x7f]", line), line
 
@@ -10266,7 +10266,7 @@ def test_the_shell_reader_of_the_folder_list_takes_both_wordings_of_the_escaped_
         f"{ESCAPED_MARK_OLD} {cs}/Old one\\nTwo\n"
         f"{ESCAPED_KEPT_MARK_OLD} [synced] {cs}/Old kept\\tTab\n"
         "# run=2 2026-11-13T10:00:00Z install.sh --list-folders\n"
-        f"{ESCAPED_MARK} {cs}/New?one\n"
+        f"{ESCAPED_MARK} {cs}/New\\001one\n"
         f"{ESCAPED_KEPT_MARK} [inside a synced folder] {cs}/New kept\\nTwo\n",
         encoding="utf-8",
     )
@@ -10281,7 +10281,7 @@ def test_the_shell_reader_of_the_folder_list_takes_both_wordings_of_the_escaped_
     assert cp.stdout.splitlines() == [
         f"{cs}/Old one\\nTwo",
         f"{cs}/Old kept\\tTab",
-        f"{cs}/New?one",
+        f"{cs}/New\\001one",
         f"{cs}/New kept\\nTwo",
     ], cp.stdout
 
@@ -12481,13 +12481,13 @@ def test_list_folders_marks_a_look_alike_another_provider_listed_while_one_was_d
     look-alike a provider that did list showed unmarked, and step 2 then refused it. It now runs then too:
     both rows of the Dropbox pair are marked, the denied list's exit 4 unchanged."""
     cs = _cloud(env)
-    for d in ("OneDrive-Contoso/FY26 Projects", "Dropbox/Contoso?x", "Dropbox/Contoso\x01x"):
+    for d in ("OneDrive-Contoso/FY26 Projects", "Dropbox/Contoso\\001x", "Dropbox/Contoso\x01x"):
         (cs / d).mkdir(parents=True)
     _write_exe(Path(env["PATH"].split(":")[0]) / "find", STUB_FIND_EPERM)
     cp = install_sh(env, "--list-folders")
     assert cp.returncode == 4, cp.stdout + cp.stderr
     assert sorted(cp.stdout.splitlines()[:-1]) == sorted(
-        [f"{ESCAPED_MARK} {cs}/Dropbox/Contoso?x", f"{TWIN_MARK} {cs}/Dropbox/Contoso?x"]
+        [f"{ESCAPED_MARK} {cs}/Dropbox/Contoso\\001x", f"{TWIN_MARK} {cs}/Dropbox/Contoso\\001x"]
     ), cp.stdout
 
 
@@ -17772,13 +17772,13 @@ def test_a_twin_past_the_list_limit_keeps_its_name_out_of_an_older_render_c1655(
     kept that row, which it cannot strip, and printed the escaped twin's name. Its render now falls back to
     install.sh's own report, which names no folder from it."""
     lib = Path(env["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso"
-    for name in ("Alpha", "Northwind?x", "Northwind\u2028x"):
+    for name in ("Alpha", "Northwind\\342\\200\\250x", "Northwind\u2028x"):
         (lib / name).mkdir(parents=True)
     listed = install_sh(env, "--list-folders", "--limit", "2")
     assert listed.returncode in (0, 3), listed.stdout + listed.stderr
     out = Path(env["HOME"]) / "agent-context" / "setup" / "install.out"
     assert TWIN_MARK in out.read_text(encoding="utf-8"), out.read_text(encoding="utf-8")
-    (lib / "Northwind?x").rename(lib / "Beta")
+    (lib / "Northwind\\342\\200\\250x").rename(lib / "Beta")
     env = _renderer_home(env, "older", stamp="0123456789ab" * 3)
     cp = install_sh(env, "--report-only")
     assert cp.returncode == 0, cp.stdout + cp.stderr

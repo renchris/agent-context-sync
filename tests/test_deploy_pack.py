@@ -3955,11 +3955,11 @@ def test_k59_gives_each_escape_step_1_shows_c1281() -> None:
     awk = script.split("LIST_ESC_AWK='function esc(", 1)[1].split("function escd(", 1)[0]
     shows = dict(re.findall(r'if \(c == "(\\036|\\t|\\r)"\) o = o "\\\\(\w)"', awk))
     assert shows == {"\\036": "n", "\\t": "t", "\\r": "r"}
-    assert 'else if (c ~ /[[:cntrl:]]/) o = o "?"' in awk
+    assert "else if (c ~ /[[:cntrl:]]/) o = o oct(s, i, 1)" in awk  # B13 round 40 C1802: \\ooo a byte
     [row] = [ln for ln in _feedback_page().splitlines() if ln.startswith("| K59 |")]
     assert (
         "a newline, tab or carriage return as `\\n`, `\\t` or `\\r` and other control characters as `?`"
-        " (B13 round 37 C1281)"
+        " (B13 round 37 C1281; since B13 round 40 C1802, as `\\ooo` for each byte)"
     ) in row
     assert "(a real `\\n`, `\\t`, `\\r` or `?` in another name)" in row
     assert "a newline as `\\n` and other control characters as `?`" not in row
@@ -4007,7 +4007,8 @@ def test_the_guides_name_every_character_the_list_escapes_c1455() -> None:
     assert r'if (c == "\036") o = o "\\n"' in script
     said = (
         r"a carriage return as `\r`, and any other control character, a line or paragraph separator, or an"
-        r" invisible bidi or zero-width character as `?`; a name holding the record separator, 0x1E, shows it"
+        r" invisible bidi or zero-width character as a backslash and three octal digits for each of its"
+        r" bytes, DEL as `\177`; a name holding the record separator, 0x1E, shows it"
         r" as `\n` too), so the row is not the folder's own name"
     )
     guide = " ".join(_page("docs/deploy/README.md").split())

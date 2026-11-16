@@ -159,7 +159,7 @@
 #                           there, or not synced on this Mac), or in a SharePoint library not synced on this Mac beside its
 #                           organization's OneDrive folder, keeps exit 0, and the NEXT: names it: step 2's
 #                           status names its fix. A folder whose name holds a control character, a bidi
-#                           control or a zero-width character is shown escaped (\n, \t, \r, else ?) after
+#                           control or a zero-width character is shown escaped (\n, \t, \r, else \ooo per byte) after
 #                           "[name holds a hidden or control character: rename it to sync it] " ("[name holds
 #                           a hidden or control character] " before a synced one), and a folder whose name
 #                           reads as such a row's after "[name reads as another folder there: rename one of
@@ -2912,7 +2912,8 @@ listed_folder_names() {
 # TAB in a folder name is the two characters \t: read raw, the fuzzy match took "\" as a separator and the name
 # printed in clear (B13 round 20 X75). A whitespace escape (\t, \n, \r, \u0009, \u000A, \u000D) is one space,
 # which the fuzzy match takes as any run of blanks and the pair format carries (and its list spelling \t, \n or \r
-# as a separator); \b and \f are their bytes, which the list spelling shows as ? (B13 round 38 C1414); another
+# as a separator); \b and \f are their bytes, which the list spelling shows as \010 and \014 (B13 round 38 C1414;
+# round 40 C1802); another
 # \uXXXX or \UXXXXXXXX is its UTF-8 bytes (json.dumps writes only control characters so); \\ and \" are \ and ".
 config_path_values() {
 	[ -f "$CONFIG" ] || return 0
@@ -2935,7 +2936,7 @@ config_path_values() {
 				out = out substr(v, 1, i - 1); e = substr(v, i + 1, 1); v = substr(v, i + 2)
 				x = "0123456789ABCDEFabcdef"
 				if (e ~ /^[tnr]$/) out = out " "
-				else if (e == "b") out = out "\010" # its byte, which the list spelling shows as ? (C1414)
+				else if (e == "b") out = out "\010" # its byte, which the list spelling shows as \010 (C1414, C1802)
 				else if (e == "f") out = out "\014"
 				else if (e == "u" && match(v, "^[" x "][" x "][" x "][" x "]") ||
 					e == "U" && match(v, "^[" x "][" x "][" x "][" x "][" x "][" x "][" x "][" x "]")) {
@@ -3262,6 +3263,16 @@ redaction_pairs() {
 		# Any length: only a two-letter name part, which short_name screens, comes here without add_pair.
 		local v nfc="" nfd="" bare ascii='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
 		ascii+=' !"#$%&'\''()*+,./:;<=>?@[\]^_`{|}~-'
+		# a list row's own text (a name only step 1's list gave, in its octal spelling) in the "?" spelling
+		# too, one "?" a character: a lead or single byte's \ooo is "?", the continuation bytes after it go,
+		# as setup_report registers both spellings of a name it reads on disk (B13 round 40 C1802)
+		case "$1" in
+		*\\[0-3][0-7][0-7]*)
+			v="$(LIST_NAME="$1" LC_ALL=C awk 'BEGIN { s = ENVIRON["LIST_NAME"]; gsub(/\\[013][0-7][0-7]/, "\001", s)
+				gsub(/\001(\\2[0-7][0-7])+/, "\001", s); gsub(/\001/, "?", s); printf "%s", s }')"
+			[ "$v" = "$1" ] || emit_pair "$v" "$2" "${3:-}" utf8
+			;;
+		esac
 		case "$1" in *[!"$ascii"]*) ;; *) emit_pair "$@" && return 0 ;; esac
 		emit_pair "$1" "$2" "${3:-}" utf8
 		nfd="$(printf '%s' "$1" | LC_ALL=C /usr/bin/iconv -f UTF-8 -t UTF-8-MAC 2>/dev/null)" || nfd=""
@@ -3276,11 +3287,15 @@ redaction_pairs() {
 			[ -z "$v" ] || [ "$v" = "$1" ] || emit_pair "$v" "$2" "${3:-}" utf8
 		done
 		# and as step 1's list, the source-local line and the refusals print it (list_name's escapes: \n, \t, \r,
-		# else ?), as setup_report.folder_spellings has it (B13 round 38 C1414, ruling 126); LIST_ESC_AWK is set
+		# else \ooo per UTF-8 byte), as setup_report.folder_spellings has it (B13 round 38 C1414, ruling 126;
+		# round 40 C1802), and in the "?" form an older install.out or friction log holds; LIST_ESC_AWK is set
 		# before any report is written
 		if [ -n "${LIST_ESC_AWK:-}" ]; then
-			v="$(LIST_NAME="$1" LC_ALL=C awk "$LIST_ESC_AWK"'BEGIN { s = ENVIRON["LIST_NAME"]; gsub(/\n/, "\036", s); printf "%s", esc(s) }')"
-			[ -z "$v" ] || [ "$v" = "$1" ] || emit_pair "$v" "$2" "${3:-}" utf8
+			# one per line: neither spelling holds a newline, which each escapes
+			while IFS= read -r v; do
+				[ -z "$v" ] || [ "$v" = "$1" ] || emit_pair "$v" "$2" "${3:-}" utf8
+			done <<<"$(LIST_NAME="$1" LC_ALL=C awk "$LIST_ESC_AWK"'BEGIN { s = ENVIRON["LIST_NAME"]; gsub(/\n/, "\036", s)
+				o = esc(s); escq = 1; q = esc(s); print o; if (q != o) print q }')"
 		fi
 		# and as text.safe_text prints it, its blanks at either end gone, as setup_report._alias_escaped aliases
 		# it (B13 round 38 C1439, ruling 126): one word that is a generic folder or product word (C1635, checked
@@ -9794,17 +9809,26 @@ LIST_ESC_AWK='function esc(s,    o, i, c) {
 		if (c == "\036") o = o "\\n"
 		else if (c == "\t") o = o "\\t"
 		else if (c == "\r") o = o "\\r"
-		else if (c ~ /[[:cntrl:]]/) o = o "?"
+		# every other escaped character is its UTF-8 bytes in octal, so DEL and U+200B are two rows, never
+		# one "?" (B13 round 40 C1802); escq set gives the "?" form of rounds 36 to 39, an alias only
+		else if (c ~ /[[:cntrl:]]/) o = o oct(s, i, 1)
 		# a C1 control (U+0080-U+009F, NEL among them) and U+2028, U+2029: line breaks to Python\047s
 		# splitlines, which the report reads install.out with, though not to LC_ALL=C (C932 review)
-		else if (c == "\302" && substr(s, i + 1, 1) ~ /[\200-\237]/) { o = o "?"; i++ }
+		else if (c == "\302" && substr(s, i + 1, 1) ~ /[\200-\237]/) { o = o oct(s, i, 2); i++ }
 		# and the bidi and zero-width ones, which reorder or hide what a path reads as: U+200B-U+200F,
 		# U+202A-U+202E, U+2060, U+2066-U+2069, U+FEFF and U+061C (U-B11)
-		else if (c == "\342" && substr(s, i + 1, 2) ~ /^(\200[\213-\217\250-\256]|\201[\240\246-\251])$/) { o = o "?"; i += 2 }
-		else if (c == "\357" && substr(s, i + 1, 2) == "\273\277") { o = o "?"; i += 2 }
-		else if (c == "\330" && substr(s, i + 1, 1) == "\234") { o = o "?"; i++ }
+		else if (c == "\342" && substr(s, i + 1, 2) ~ /^(\200[\213-\217\250-\256]|\201[\240\246-\251])$/) { o = o oct(s, i, 3); i += 2 }
+		else if (c == "\357" && substr(s, i + 1, 2) == "\273\277") { o = o oct(s, i, 3); i += 2 }
+		else if (c == "\330" && substr(s, i + 1, 1) == "\234") { o = o oct(s, i, 2); i++ }
 		else o = o c
 	}
+	return o
+}
+function oct(s, i, n,    k, o) { # the N bytes of S from I, each \ooo; one "?" under escq (the old form)
+	if (escq) return "?"
+	if (!octn) { for (k = 1; k < 256; k++) octb[sprintf("%c", k)] = sprintf("\\%03o", k); octn = 1 }
+	o = ""
+	for (k = 0; k < n; k++) o = o octb[substr(s, i + k, 1)]
 	return o
 }
 function escd(s) { return s ~ /[[:cntrl:]]|\302[\200-\237]|\342\200[\213-\217\250-\256]|\342\201[\240\246-\251]|\357\273\277|\330\234/ }

@@ -159,16 +159,26 @@ U+2060, U+2066-U+2069, U+FEFF and U+061C (U-B11). A change to that awk changes t
 names too, so a commit that widens one and not the other is red."""
 
 
+def list_escaped_char(m: re.Match[str]) -> str:
+    """One character :data:`_LIST_ESCAPED_RE` matched, as step 1's list spells it (install.sh's
+    ``LIST_ESC_AWK``): a newline or RS ``\\n``, a tab ``\\t``, a CR ``\\r``, and any other one a backslash and
+    three octal digits per UTF-8 byte (DEL ``\\177``, U+200B ``\\342\\200\\213``), so two folders that differ
+    by which hidden character they hold print as two rows, never as one ``?`` (B13 round 40 C1802)."""
+    ch = m.group()
+    return _LIST_ESCAPES.get(ch) or "".join(f"\\{b:03o}" for b in ch.encode("utf-8"))
+
+
 def list_shown_name(name: str) -> str:
     """``name`` as step 1's list shows a kept folder's row (install.sh's ``LIST_ESC_AWK``, byte for byte): a
     newline, or the RS it travels as, becomes ``\\n``, a tab ``\\t``, a CR ``\\r``, and any other character
-    :data:`_LIST_ESCAPED_RE` matches ``?``, behind :data:`ESCAPED_KEPT_MARK` and a space; a backslash and a
-    ``?`` stay as they are, and a name with none of them is unchanged. The alarm and ``sync -v`` spell a
-    folder so, so its name matches its step 1 row, never a look-alike twin's (B13 round 37 C1244: they
+    :data:`_LIST_ESCAPED_RE` matches its octal bytes (:func:`list_escaped_char`), behind
+    :data:`ESCAPED_KEPT_MARK` and a space; a backslash and a ``?`` stay as they are, and a name with none of
+    them is unchanged. The alarm and ``sync -v`` spell a folder so, so its name matches its step 1 row, never
+    a look-alike twin's (B13 round 37 C1244: they
     printed ``repr``, whose ``'Line one\\nNEXT'`` was the list's text of the other folder of a twin pair)."""
     if not _LIST_ESCAPED_RE.search(name):
         return name
-    return f"{ESCAPED_KEPT_MARK} " + _LIST_ESCAPED_RE.sub(lambda m: _LIST_ESCAPES.get(m.group(), "?"), name)
+    return f"{ESCAPED_KEPT_MARK} " + _LIST_ESCAPED_RE.sub(list_escaped_char, name)
 
 
 def quoted_shown_name(name: str) -> str:

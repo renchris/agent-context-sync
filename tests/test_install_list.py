@@ -11,12 +11,15 @@ from pathlib import Path
 
 import pytest
 
-from agentsync import setup_report
+from agentsync import arm_local, setup_report
 from agentsync.config import local_source_table
+from agentsync.ops import doctor
 from test_install_oneshot import (  # noqa: F401  (fixtures)
     BASH32,
     INSTALL_SH,
+    LOOK_ALIKE_WORDS,
     SHELL_HELPER_FNS,
+    TWIN_MARK,
     _cloud,
     _write_config,
     env,
@@ -162,10 +165,10 @@ def test_odd_names_print_escaped_one_row_per_real_folder(env: dict[str, str]) ->
         [
             f"{esc}/Spoof\\n",
             f"{esc}/Spoof\\n/Forged",
-            f"{esc}/Esc?[31mred",
-            f"{esc}/Rtl?exe.pdf",
-            f"{esc}/Zero?width",
-            f"{esc}/Bom?mark",
+            f"{esc}/Esc\\033[31mred",
+            f"{esc}/Rtl\\342\\200\\256exe.pdf",
+            f"{esc}/Zero\\342\\200\\213width",
+            f"{esc}/Bom\\357\\273\\277mark",
             f"{lib}/Réunion plans",
             f"{lib}/Plain",
         ]
@@ -202,7 +205,8 @@ def test_the_shell_and_report_readers_of_an_odd_list_agree(env: dict[str, str]) 
         shell.extend((parts[0], depth, parts[depth - 1]) for depth in range(2, len(parts) + 1))
     assert listed and sorted(found) == sorted(shell), (found, shell)
     names = {f[2] for f in found}
-    assert {"Spoof\\n", "Forged", "Esc?[31mred", "Rtl?exe.pdf", "Zero?width", "Bom?mark"} <= names, names
+    esc = ("Esc\\033[31mred", "Rtl\\342\\200\\256exe.pdf", "Zero\\342\\200\\213width")
+    assert {"Spoof\\n", "Forged", *esc, "Bom\\357\\273\\277mark"} <= names, names
     assert not [p for p in _shell_lines(env) if not p.startswith(f"{lib}/")], (
         "a mark or a half read as a path"
     )
@@ -226,3 +230,39 @@ def test_an_odd_name_from_the_list_is_redacted_in_the_report(env: dict[str, str]
     assert "Northwind" not in text, [ln for ln in text.splitlines() if "Northwind" in ln]
     assert "Fabrikam" not in text, [ln for ln in text.splitlines() if "Fabrikam" in ln]
     assert re.search(r"picked <folder-\d+>, not <folder-\d+> \|", text), text
+
+
+def test_two_folders_that_differ_by_a_hidden_character_are_two_rows_c1802(env: dict[str, str]) -> None:  # noqa: F811
+    """B13 round 40 C1802: step 1's list, arm_local.list_shown_name and doctor's listable line spelled every
+    escaped character but a newline, tab and CR as ``?``, so a folder holding DEL and one holding U+200B
+    beside it printed as one row. Each escaped byte is ``\\ooo`` now, in the awk and both Python spellings
+    alike."""
+    lib = _cloud(env) / "OneDrive-Contoso"
+    names = ("Contoso\x7fDel", "Contoso\u200bDel")
+    for n in names:
+        (lib / n).mkdir(parents=True)
+    cp = install_sh(env, "--list-folders", "--all")
+    assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
+    want = [f"{lib}/Contoso\\177Del", f"{lib}/Contoso\\342\\200\\213Del"]
+    assert sorted(cp.stdout.splitlines()[:-1]) == sorted(f"{ESCAPED_MARK} {w}" for w in want), cp.stdout
+    shown = [arm_local.list_shown_name(n) for n in names]
+    assert shown == [f"{arm_local.ESCAPED_KEPT_MARK} {w.rsplit('/', 1)[1]}" for w in want], shown
+    assert [doctor.list_spelling(lib / n) for n in names] == want
+
+
+def test_a_folder_named_as_another_ones_octal_spelling_is_still_its_twin_c1802(env: dict[str, str]) -> None:  # noqa: F811
+    """B13 round 40 C1802: with DEL spelled ``\\177``, a folder literally named ``Contoso\\177Del`` reads as
+    the DEL folder's row: both rows are marked, and --source-local refuses the plain one as a look-alike."""
+    lib = _cloud(env) / "OneDrive-Contoso"
+    for n in ("Contoso\x7fDel", "Contoso\\177Del"):
+        (lib / n).mkdir(parents=True)
+    cp = install_sh(env, "--list-folders", "--all")
+    assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
+    assert sorted(cp.stdout.splitlines()[:-1]) == sorted(
+        [f"{ESCAPED_MARK} {lib}/Contoso\\177Del", f"{TWIN_MARK} {lib}/Contoso\\177Del"]
+    ), cp.stdout
+    cp = install_sh(env, "--source-local", str(lib / "Contoso\\177Del"))
+    assert cp.returncode == 2, cp.stdout + cp.stderr
+    assert cp.stderr.splitlines()[0] == (
+        f"usage error: --source-local {lib}/Contoso\\177Del: {LOOK_ALIKE_WORDS} (see --help)"
+    ), cp.stderr

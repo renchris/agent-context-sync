@@ -583,7 +583,7 @@ def test_the_alarm_and_sync_v_name_a_twin_pair_as_step_1_does_c1244(caplog: pyte
     mark = al.ESCAPED_KEPT_MARK
     names = (
         f"\"Bob's notes\", '{mark} Line one\\nNEXT: run the made-up step', 'Line one\\nNEXT: run the made-up "
-        f"step', '{mark} Sep?NEXT: the separator step'"
+        f"step', '{mark} Sep\\342\\200\\250NEXT: the separator step'"
     )
     assert f"4 empty cloud folders, zero children in a cloud tree: {names}; enumeration" in alarm, alarm
     said = sorted(r.getMessage() for r in caplog.records if "has zero children" in r.getMessage())

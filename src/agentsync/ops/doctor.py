@@ -862,13 +862,14 @@ def ansi_c_word(text: str) -> str:
 
 def list_spelling(path: Path | str) -> str:
     """``path`` as a detail line shows it: each character :data:`arm_local._LIST_ESCAPED_RE` matches spelled
-    as step 1's list spells a folder's name (``\\n``, ``\\t``, ``\\r``, else ``?``; install.sh's
-    ``LIST_ESC_AWK``), with no mark, so a name never sends an escape sequence to the terminal; a path with
-    none is unchanged. The setup report aliases this spelling (B13 round 38 C1414, ruling 126)."""
+    as step 1's list spells a folder's name (``\\n``, ``\\t``, ``\\r``, else ``\\ooo`` per UTF-8 byte;
+    install.sh's ``LIST_ESC_AWK``, :func:`arm_local.list_escaped_char`, B13 round 40 C1802), with no mark,
+    so a name never sends an escape sequence to the terminal; a path with none is unchanged. The setup report
+    aliases this spelling (B13 round 38 C1414, ruling 126)."""
     text = str(path)
     if not arm_local._LIST_ESCAPED_RE.search(text):
         return text
-    return arm_local._LIST_ESCAPED_RE.sub(lambda m: arm_local._LIST_ESCAPES.get(m.group(), "?"), text)
+    return arm_local._LIST_ESCAPED_RE.sub(arm_local.list_escaped_char, text)
 
 
 def _quoted(text: str) -> str:
