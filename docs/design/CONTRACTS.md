@@ -41959,6 +41959,9 @@ Amended 2026-11-16, §16.258 C1886, C1888, C1851, C1860: so the guarded page sta
 8 KiB (`config.MIN_PAGE_BYTES`, 8,192) or more; a smaller `[convert] max_page_bytes` is a ConfigError at load. Below
 2,048 bytes the budget's 1,024-byte floor gave a 1,346-byte page at any cap up to 1,345; the floor is 0 now, so a
 `ConvertConfig` built below the minimum in code gets a shorter head.
+Amended 2026-11-16, §16.258 C1849: a cut table's note reads `[table past the page cap: the raw head above shows its
+start; every row is in the sidecar `full-table.csv`]`, with no count, in place of `[row cap: first 0 of N rows
+shown; ...]`, which was false when the raw head of a wide table of short fields held whole records.
 
 ### 16.254 Round 39: the compaction promise, recording downloads and the guides (2026-11-14, wave B13 round 39 lane D)
 
@@ -42175,6 +42178,21 @@ cutoff test) load 8,192 now, each body still past it (the H2 test's runbook grow
 `test_convert_formats.py::test_a_table_page_stays_within_the_8_kib_minimum_and_below_it_gets_a_shorter_head_c1886`
 (an oversized header, an oversized first row and a TSV through `Registry.default` at 8,192 and at a built 1,200,
 the guarded page within the cap and the sidecar round-tripping every row).
+
+**A cut table's note counts no rows** (C1849; `agentsync.convert.text`; amends §16.253 C1676). `_table` decides the
+cut on the GFM sizes of the header, its delimiter and the first row, about 4 bytes a short cell (`| x `), while the
+raw head costs about 2 (`x,`), so on the cut path `kept` was empty and the note said `first 0 of N rows shown`
+whatever the raw head held: 120 one-character columns and 10 rows at a 2,000-byte cap showed the header and three
+whole records under `[row cap: first 0 of 10 rows shown; ...]` (the verifier's run at 7253d365). The cut page's
+note is now `[table past the page cap: the raw head above shows its start; every row is in the sidecar
+`full-table.csv`]`: "its start", since the head can end at a character boundary, no count, since the `CSV table:`
+line already gives the rows, and no "row cap", since the byte cap made the cut. The GFM path's `[row cap: first N of
+M rows shown; ...]`, the header-only note and xlsx's notes are unchanged. text's `_EMITTER_VERSION` is 1.0.2 (with
+C1807), so a new conversion misses the cache once; `outdated` does not read it. Tests:
+`test_convert_formats.py::test_a_cut_wide_tables_note_never_says_no_row_is_shown_while_its_head_holds_whole_records_c1849`
+(1,000 one-character columns, 10 rows, `max_rows_per_sheet` 2, at 8,192 through `Registry.default`: the head holds
+the header and two whole records) and C1676's
+`test_a_table_whose_header_or_first_row_passes_the_cap_rides_in_its_sidecar_c1676`, which now pins the new note.
 
 ### 16.259 Round 40: the guides: the dollar-quote row, the record of round 39's installer work, and CI timings (2026-11-16, wave B13 round 40 lane D)
 

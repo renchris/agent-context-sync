@@ -26,7 +26,7 @@ from agentsync.errors import ConversionError
 from agentsync.model import RenderedUnit, UnitKind
 from agentsync.text import plural
 
-_EMITTER_VERSION = "1.0.1"  # B13 round 39 C1676: a table row past the page cap goes to the sidecar
+_EMITTER_VERSION = "1.0.2"  # B13 round 40 C1849: a cut table's note points at the raw head and the sidecar
 _TABLE_SIDECAR = "full-table.csv"
 _FENCE_LANG: dict[str, str] = {
     ".txt": "text",
@@ -171,10 +171,11 @@ class PlainTextConverter:
         Every line counts against the budget, the header, its delimiter and the first row included: when
         those three alone do not fit, no GFM table is shown (a cut inside one can split a ``\\|`` escape, a
         ``<br>`` or a character), only a fenced head of the raw text cut at a line or character boundary,
-        and the sidecar holds every row (B13 round 39 C1676).  The budget leaves 1,024 bytes for the note, the
-        banner and the sidecar digest footer, so a page stays within any ``max_page_bytes`` the config
-        accepts (8 KiB or more, ``config.MIN_PAGE_BYTES``); a ConvertConfig built below that gets a shorter
-        head, never a floor (B13 round 40 C1886, C1851)."""
+        and the sidecar holds every row (B13 round 39 C1676); its note counts no rows, since the head of a
+        wide table of short fields can hold whole records (B13 round 40 C1849).  The budget leaves 1,024
+        bytes for the note, the banner and the sidecar digest footer, so a page stays within any
+        ``max_page_bytes`` the config accepts (8 KiB or more, ``config.MIN_PAGE_BYTES``); a ConvertConfig
+        built below that gets a shorter head, never a floor (B13 round 40 C1886, C1851)."""
         header, rows = table[0], table[1:]
         shown = rows[: self._cfg.max_rows_per_sheet]
         out = [f"{kind} table: {plural(len(rows), 'data row')} x {plural(len(header), 'column')}", ""]
@@ -198,7 +199,14 @@ class PlainTextConverter:
         if cut and not rows:
             sidecars = ((_TABLE_SIDECAR, _csv_bytes(table)),)
             out += ["", f"[header past the page cap: the whole header is in the sidecar `{_TABLE_SIDECAR}`]"]
-        elif cut or rows_kept < len(rows):
+        elif cut:  # the raw head may hold whole records; no count of them (B13 round 40 C1849)
+            sidecars = ((_TABLE_SIDECAR, _csv_bytes(table)),)
+            out += [
+                "",
+                "[table past the page cap: the raw head above shows its start; every row is in the sidecar "
+                f"`{_TABLE_SIDECAR}`]",
+            ]
+        elif rows_kept < len(rows):
             sidecars = ((_TABLE_SIDECAR, _csv_bytes(table)),)
             out += [
                 "",

@@ -3830,13 +3830,40 @@ def test_a_table_whose_header_or_first_row_passes_the_cap_rides_in_its_sidecar_c
     table = list(csv.reader(io.StringIO(text), delimiter=delimiter))
     assert u.sidecars == (("full-table.csv", u.sidecars[0][1]),)
     assert list(csv.reader(io.StringIO(u.sidecars[0][1].decode()))) == table, "every row, round-tripped"
-    rows = len(table) - 1
-    assert f"[row cap: first 0 of {rows} row{'s' if rows != 1 else ''} shown; every row is in the" in u.body
+    assert u.body.endswith("\n\n" + _CUT_TABLE_NOTE + "\n") and "row cap" not in u.body
     assert not [line for line in u.body.splitlines() if line.startswith("|")], "no GFM table cut short"
     assert _open_fence(u.body) is None and "\ufffd" not in u.body
     assert text.startswith(u.body.split("\n", 3)[3].split("\n```", 1)[0].lstrip("\n")), "a raw head"
     (page,) = Registry.default(cfg).for_name(name).convert(src, name=name)  # type: ignore[union-attr]
     assert len(page.body.encode("utf-8")) <= 2000
+
+
+_CUT_TABLE_NOTE = (
+    "[table past the page cap: the raw head above shows its start; every row is in the sidecar "
+    "`full-table.csv`]"
+)
+
+
+def test_a_cut_wide_tables_note_never_says_no_row_is_shown_while_its_head_holds_whole_records_c1849(
+    tmp_path: Path,
+) -> None:
+    """B13 round 40 C1849: the cut is decided on the GFM sizes (about 4 bytes a short cell) while the raw head
+    costs about 2 (`x,`), so a wide table of short fields cut at the cap still showed its header and whole
+    records in the raw head, and the note said `[row cap: first 0 of 10 rows shown; ...]`. The cut page's note
+    points at the raw head and the sidecar and counts nothing; the banner line still gives the row count."""
+    header = ",".join(chr(97 + i % 26) for i in range(1000)) + "\n"
+    text = header + "".join(",".join(str((r + i) % 10) for i in range(1000)) + "\n" for r in range(10))
+    cfg = replace(CFG, max_page_bytes=MIN_PAGE_BYTES, max_rows_per_sheet=2)
+    src = _write(tmp_path, "wide.csv", text)
+    (page,) = Registry.default(cfg).for_name("wide.csv").convert(src, name="wide.csv")  # type: ignore[union-attr]
+    body = page.body
+    assert len(body.encode("utf-8")) <= MIN_PAGE_BYTES
+    lines = text.splitlines()
+    head = body.split("```csv\n", 1)[1].split("\n```", 1)[0].splitlines()
+    assert head[:3] == lines[:3], "the raw head holds the header and two whole records"
+    assert "CSV table: 10 data rows x 1000 columns" in body and _CUT_TABLE_NOTE in body
+    assert "first 0" not in body and "row cap" not in body
+    assert list(csv.reader(io.StringIO(page.sidecars[0][1].decode()))) == [ln.split(",") for ln in lines]
 
 
 _AT_THE_MINIMUM: dict[str, tuple[str, str]] = {
