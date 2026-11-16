@@ -4149,8 +4149,8 @@ def test_install_sh_carries_the_report_cuts_block_byte_for_byte_ruling_133() -> 
     text = INSTALL_SH.read_text(encoding="utf-8")
     [block] = re.findall(r"(?ms)" + _REPORT_CUTS_BLOCK, text)
     assert block + "\n" == report_cuts.shell_block()
-    names = re.findall(r"(?m)^([A-Z_0-9]+)='", block)
-    assert len(names) == 10, names
+    names = re.findall(r"""(?m)^([A-Z_0-9]+)=['"]""", block)  # CUT_REFUSED_HEADS holds an apostrophe
+    assert len(names) == 18, names  # B13 round 40 ruling 137: the argument forms' rows, CUT_ALIAS_FORMS gone
     for name in names:
         assert len(re.findall(rf"(?m)^\s*{name}\+?=", text)) == 1, name
     assert "import report_cuts" not in text and "report_cuts import" not in text, (
@@ -4158,6 +4158,18 @@ def test_install_sh_carries_the_report_cuts_block_byte_for_byte_ruling_133() -> 
     )
     assert '"|$CUT_AGENT|"' in _shell_function("agent_words_name")
     assert '"|$CUT_DRIVE|"' in _shell_function("generic_folder")
+    # ruling 137's rows are read: each head typed_note_cut cuts after, and CUT_SEP by every splitter (C1890)
+    typed = _shell_function("typed_note_cut")
+    for row in (
+        "HEADS_PROVIDER",
+        "HEADS_FIRST_UNKNOWN",
+        "HEADS_CWD",
+        "HEADS_UNDER_CWD",
+        "REFUSED_HEADS",
+        "FREE_HEAD",
+    ):
+        assert f'"$CUT_{row}"' in typed, row
+    assert '"$CUT_SEP"' in _shell_function("agent_words_name") and '"$CUT_SEP"' in typed
 
 
 @pytest.mark.parametrize(
