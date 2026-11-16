@@ -85,11 +85,13 @@ FORMAT_RANGES = (
     (0xE0001, 0xE0001),
     (0xE0020, 0xE007F),
 )
-"""Every format character (general category Cf) in Unicode 14.0 to 15.1, the Unicode of Python 3.11 to 3.13,
-as code-point ranges (15.0 added U+0890, U+0891 and U+13439 to U+1343F; 15.1 and 16.0 added none). ``text.
-safe_text`` drops the Cf set of the Python it runs on; install.sh's ``safe_shown`` drops this one, so the two
-agree on any supported Python (B13 round 39 C1628 with C1672). A test holds the running Python's set inside
-it."""
+"""Every format character (general category Cf) in Unicode 14.0 to 16.0, the Unicode of Python 3.11 to 3.14,
+as code-point ranges. U+0890 and U+0891 were already Cf in 14.0; 15.0 added U+13439 to U+1343F; 15.1 and 16.0
+added none (B13 round 40 C1838 with C1858). ``text.safe_text`` drops the Cf set of the Python it runs
+on; install.sh's ``safe_shown`` drops this one (B13 round 39 C1628 with C1672), so the two agree on Python
+3.12 and later. On 3.11 (Unicode 14.0) ``safe_shown`` also drops U+13439 to U+1343F, which ``safe_text``
+keeps: the shell's spelling of such a name loses those 7 characters. A test holds the running Python's set
+inside it."""
 
 BASH32_UTF8_OCTAL = frozenset({*range(0x80, 0xA0), 0xAD})
 """The bytes macOS's /bin/bash 3.2.57 writes as ``\\ooo`` in ``printf %q`` under a UTF-8 locale (measured

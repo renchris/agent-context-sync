@@ -28192,3 +28192,23 @@ def test_folder_spellings_walks_its_own_order_and_keeps_the_old_list_form_c1889_
         new, old = setup_report.folder_spellings(name)[:2]
         assert red.redact(f"saw {new} x") == f"saw <folder-{n}> x", new
         assert re.fullmatch(r"saw <folder-\d> x", red.redact(f"saw {old} x")), old  # one ? for both: either
+
+
+def test_the_format_ranges_docstring_tells_the_unicode_history_c1838_c1858() -> None:
+    """B13 round 40 C1838 with C1858: FORMAT_RANGES' docstring said 15.0 added U+0890 and U+0891, which 14.0
+    already had, and that both reports agree on any supported Python; §16.251's C1628 list ran to U+1343F,
+    past Python 3.11's 26. The history is measured here against the running Python where it can be."""
+    doc = " ".join(
+        (report_cuts.__doc__ or "").split()
+    )  # module docs stay; the attribute docstring is read below
+    src = Path(report_cuts.__file__).read_text(encoding="utf-8")
+    block = " ".join(src.split("FORMAT_RANGES = (", 1)[1].split('"""', 2)[1].split())
+    assert "U+0890 and U+0891 were already Cf in 14.0" in block and "15.0 added U+13439 to U+1343F" in block
+    assert "agree on Python 3.12 and later" in block and "15.0 added U+0890" not in block, doc
+    if unicodedata.unidata_version.startswith("14."):
+        assert all(unicodedata.category(chr(c)) == "Cn" for c in range(0x13439, 0x13440))
+    assert unicodedata.category("࢐") == "Cf"  # Cf in every Unicode the table names
+    text = " ".join(
+        (Path(__file__).parents[1] / "docs/design/CONTRACTS.md").read_text(encoding="utf-8").split()
+    )
+    assert "U+110CD, U+13430 to U+13438, U+1BCA0" in text and "U+110CD, U+13430 to U+1343F," not in text

@@ -41640,12 +41640,16 @@ uncollapsed note, a bare, an escaped-blank and a quoted argument cut, three kept
 
 **safe_shown drops every format character safe_text drops** (C1628 with C1672; ruling 133; privacy;
 `scripts/install.sh`). `safe_shown`'s own byte list kept 26 of the 163 Cf characters Python 3.11's `safe_text`
-drops (U+0890, U+0891, U+08E2, U+110BD, U+110CD, U+13430 to U+1343F, U+1BCA0 to U+1BCA3, U+1D173 to U+1D17A), so a
+drops (U+0890, U+0891, U+08E2, U+110BD, U+110CD, U+13430 to U+13438, U+1BCA0 to U+1BCA3, U+1D173 to U+1D17A), so a
 name holding one had a spelling no pair matched. It now drops the table's `CUT_CF` (`report_cuts.FORMAT_RANGES`, every
 Cf of Unicode 14 to 15.1, the Pythons 3.11 to 3.13 agentsync runs on, one UTF-8 alternative a code point), read
 through ENVIRON, its other rules unchanged; it is a top-level function now, which C1627 calls from
 `fallback_redaction`. Test:
 `test_install_oneshot.py::test_safe_shown_drops_every_format_character_the_running_python_knows_c1628_c1672` (every Cf the running Python knows, between two words, equal to `safe_text(...).strip()`).
+Amended 2026-11-16, §16.255 C1858: the list read U+13430 to U+1343F, 33 code points; the 26 Python 3.11 knows end at
+U+13438, since Unicode 15.0 added U+13439 to U+1343F (33 under Python 3.13's 170). U+0890 and U+0891 were Cf in 14.0
+already, and the two reports agree on Python 3.12 and later: on 3.11 `safe_shown` also drops U+13439 to U+1343F,
+which `safe_text` keeps (C1838).
 
 **A folder safe_text prints as a report word makes the shell report private only too** (C1627 with C1671 and C1681;
 ruling 133; amends §16.246 C1439; privacy; `scripts/install.sh`). A folder named a zero-width space or a word joiner
@@ -42156,6 +42160,13 @@ args= form only through the pinned test (dated line at §16.251), and the agents
 and cut as its section says, where the shell fallback report cuts it whole`, its pinned words kept. Tests:
 `test_report_redaction.py::test_the_one_kept_divergence_is_pinned_in_both_reports_ruling_138` and the legend
 assertion in `test_a_dollar_quoted_word_no_alias_covers_is_cut_whole_c1656_c1670`.
+
+**The table's Unicode history is right** (C1838, C1858; docs only; dated line at §16.251 C1628).
+`report_cuts.FORMAT_RANGES`' docstring said Unicode 15.0 added U+0890 and U+0891, which 14.0 already had, and that
+the two reports agree on any supported Python; they agree on 3.12 and later, and on 3.11 `safe_shown` also drops
+U+13439 to U+1343F, which that Python's `safe_text` keeps. The table stays as it is. §16.251's C1628 list read
+U+13430 to U+1343F where Python 3.11's 26 end at U+13438. `folder_spellings`' docstring names 0xAD beside 0x80 to
+0x9F (C1859's half). Test: `test_the_format_ranges_docstring_tells_the_unicode_history_c1838_c1858`.
 
 ### 16.256 Round 40: the installer: the shell report reads every argument form from the table, no bash 3.2 crash on a long folder list, and one spelling per escaped byte (2026-11-16, wave B13 round 40 lane RB)
 

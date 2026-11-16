@@ -5595,25 +5595,25 @@ def _bash32_body(value: str, letters: Mapping[str, str]) -> str:
 
 def folder_spellings(value: str) -> list[str]:
     """Every spelling of a folder name ``value`` a line agentsync prints can show it in, beside the TOML ones
-    :func:`_alias_escaped` registers (B13 round 38 C1414, C1439; ruling 126), in the order this function
-    walks them (B13 round 40 C1889: no table orders them; install.sh's ``add_forms`` lists its own): first
-    step 1's list spelling (``arm_local.list_shown_name`` without its mark: ``\\t``, ``\\n`` (0x1E too),
-    ``\\r``, and every other character :data:`_LIST_ESCAPED_RE` matches as a backslash and three octal
-    digits per UTF-8 byte, B13 round 40 C1802), which install.sh's ``source-local:`` line and doctor's
-    ``source.<id>.listable`` details print, then the older list spelling, ``?`` for each such character
-    (``\\n`` for 0x1E), kept so an older install.out or friction log is still cut (C1802); then the body of
-    the ``$'...'`` word doctor's fix commands write (:data:`_DOCTOR_LETTERS`); then the bodies of the one
-    install.sh's ``printf %q`` writes (:data:`_PRINTF_LETTERS`), each with ``\\E`` and then ``\\e`` for an
-    ESC: under ``LC_ALL=C``, where every non-ASCII byte is octal, which matches any name; as bash 3.2 writes
-    it under UTF-8, a non-ASCII character byte by byte (:func:`_bash32_body`, B13 round 39 C1670 with
-    C1636, ruling 134), which matches a name with a multibyte escaped character or an accent such as ``É``
-    whose bytes hold 0x80 to 0x9F; and last every escaped character in octal and other characters as they
-    are, the only spelling of a name like ``Café`` with an ESC or a BEL as a later bash writes it under
-    UTF-8, so it stays (C1649). A name whose UTF-8 word no body matches is still safe: install.sh writes a
-    folder through ``%q`` only after ``--source-local ``, which the report cuts by structure, and every
-    ``$'...'`` word left after the aliases is cut whole to ``<path>`` (:data:`_ANSI_C_WORD_RE`, C1656). None
-    for a name :data:`_LIST_ESCAPED_RE` finds nothing in. ``safe_text``'s spelling, which drops a format
-    character, is registered by :func:`_alias_escaped` with its own guard."""
+    :func:`_alias_escaped` registers (B13 round 38 C1414, C1439; ruling 126), in the order this function walks
+    them (B13 round 40 C1889: no table orders them; install.sh's ``add_forms`` lists its own): first step 1's
+    list spelling (``arm_local.list_shown_name`` without its mark: ``\\t``, ``\\n`` (0x1E too), ``\\r``, and
+    every other character :data:`_LIST_ESCAPED_RE` matches as a backslash and three octal digits per UTF-8
+    byte, B13 round 40 C1802), which install.sh's ``source-local:`` line and doctor's ``source.<id>.listable``
+    details print, then the older list spelling, ``?`` for each such character (``\\n`` for 0x1E), kept so an
+    older install.out or friction log is still cut (C1802); then the body of the ``$'...'`` word doctor's fix
+    commands write (:data:`_DOCTOR_LETTERS`); then the bodies of the one install.sh's ``printf %q`` writes
+    (:data:`_PRINTF_LETTERS`), each with ``\\E`` and then ``\\e`` for an ESC: under ``LC_ALL=C``, where every
+    non-ASCII byte is octal, which matches any name; as bash 3.2 writes it under UTF-8, a non-ASCII character
+    byte by byte (:func:`_bash32_body`, B13 round 39 C1670 with C1636, ruling 134), which matches a name with
+    a multibyte escaped character or an accent such as ``É`` whose bytes hold 0x80 to 0x9F or 0xAD (C1859);
+    and last every escaped character in octal and other characters as they are, the only spelling of a name
+    like ``Café`` with an ESC or a BEL as a later bash writes it under UTF-8, so it stays (C1649). A name
+    whose UTF-8 word no body matches is still safe: install.sh writes a folder through ``%q`` only after
+    ``--source-local ``, which the report cuts by structure, and every ``$'...'`` word left after the aliases
+    is cut whole to ``<path>`` (:data:`_ANSI_C_WORD_RE`, C1656). None for a name :data:`_LIST_ESCAPED_RE`
+    finds nothing in. ``safe_text``'s spelling, which drops a format character, is registered by
+    :func:`_alias_escaped` with its own guard."""
     if not _LIST_ESCAPED_RE.search(value):
         return []
     listed = _LIST_ESCAPED_RE.sub(lambda m: _LIST_LETTERS.get(m.group()) or _octal_bytes(m.group()), value)
