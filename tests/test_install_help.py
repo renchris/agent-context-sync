@@ -239,7 +239,8 @@ def test_a_refused_source_local_folder_name_stays_out_of_the_report_c1278(
     arg = {
         "twin": str(lib / "Northwind Board\nMinutes"),
         "marked": f"{ESCAPED_MARK} {lib}/Northwind Board\\nMinutes",
-        "missing twin": str(lib / "Northwind Board\x01Minutes").replace("\x01", "?"),
+        # step 1's spelling of the 0x01 folder, octal since B13 round 40 C1802
+        "missing twin": str(lib / "Northwind Board\x01Minutes").replace("\x01", "\\001"),
     }[given]
     if given == "missing twin":
         (lib / "Northwind Board\x01Minutes").mkdir()
@@ -272,7 +273,7 @@ def test_each_refused_source_local_name_outside_cloudstorage_stays_out_of_every_
         f"[synced] {projects}/Deals Alpha Kept",
         str(projects / "Deals Alpha\nBoard"),
         str(projects / "Deals Alpha\\nBoard"),
-        str(projects / "Deals Alpha?Bid"),
+        str(projects / "Deals Alpha\\001Bid"),  # the 0x01 folder's list spelling (C1802)
     ][head]
     cp = install_sh(env, "--source-local", arg)
     assert cp.returncode == 2, cp.stdout + cp.stderr

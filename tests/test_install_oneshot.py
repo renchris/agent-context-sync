@@ -23164,6 +23164,7 @@ def test_the_shell_report_redacts_a_project_folder_and_a_vanished_sources_folder
             "repo_slug() { echo contoso/agentsync; }",
             'id() { case "$1" in -un) echo jdoe ;; -F) echo "Jane Doe" ;; esac; }',
             *(ln for ln in text.splitlines() if ln.startswith(("GENERIC_SOURCE_IDS=", "GOVERNANCE_TYPED"))),
+            *_SHELL_GLOBALS_RE.findall(text),  # CUT_FIXED and CUT_HOME: add-source's cut() reads them (C1832)
             f"FOLDERS=() CONFIG={config} SETUP_LOG=/nonexistent DOCTOR_LOG={doctor_log}",
             f"INSTALL_OUT={out}",
             f"SELF_FILE={INSTALL_SH}",
@@ -23187,7 +23188,8 @@ def test_the_shell_report_redacts_a_project_folder_and_a_vanished_sources_folder
     # numbered as the Python report numbers them: the configured one, then the vanished roots in byte order
     shown = cp.stdout.splitlines()
     assert shown[:4] == [
-        "add-source '~/Projects/<folder-3>' and '~/Library/CloudStorage/OneDrive-Fabrikam/<folder-2>'",
+        # B13 round 40 C1862 (ruling 137): an unregistered tenant in free text reads <path>, never numbered
+        "add-source '~/Projects/<folder-3>' and '~/Library/CloudStorage/<path>'",
         "configured: ~/Projects/<folder-1>; <folder-1>; <folder-3>; <folder-2>",
         "Projects, Contoso and the inbox stay: ~/agent-context/inbox",
         "<folder-5> | <folder-6>",
