@@ -41487,6 +41487,11 @@ backreference and an ERE no case flag), held byte for byte by lane RB's test (§
 table from the installed agentsync. Test: `test_the_report_cuts_table_is_what_both_reports_read_ruling_133` (the
 running Python's Cf set inside the table's, the block valid bash whose values an awk reads as the Python reads
 them).
+Amended 2026-11-16, §16.255 C1889: neither builder read `ALIAS_FORMS`, so it and `CUT_ALIAS_FORMS` are gone: the alias
+forms are not table data, and each builder lists its own spellings, Python in `folder_spellings` (the list spelling,
+its older `?` form, doctor's body, then the `printf %q` bodies) and `_alias_escaped` (the TOML spellings and
+`safe_text`'s), the shell in `add_forms`, which has no doctor form. The table holds the argument forms both reports
+parse instead (§16.255, ruling 137).
 
 **A name holding a control byte is matched in every separator spelling** (C1629; ruling 133; data integrity). The
 separators were a blank, a tab, `_`, `\` and `-`, so `Q3<BS>Plans` was one token and its blank, hyphen and underscore
@@ -41711,6 +41716,14 @@ writes `printf %q` of the whole path) is decoded and cut by structure in the age
 §16.245's `a byte-wise miss is safe` rests on) and cut whole to `<path>` by the shell's older stage, so the two print
 `~/Library/CloudStorage/OneDrive-<org-1>/<folder-N>` and `<path>` there; neither prints a name. The property test puts
 its `$'...'` mid-path, where both agree.
+Amended 2026-11-16, §16.255 C1887: the test takes the table as `config.local_source_table` writes it, DEL escaped
+by `config.toml_string` itself, and add-source's real echo (`path = "..."`, from that writer) in both DEL spellings,
+`\u007F` and `\u007f`, which both reports now alias for a name and its shown spelling (C1840).
+Amended 2026-11-16, §16.255 C1863: the same holds for `--source-local=` and a dry run's `add-source` word, and for
+install.log's real args= form, `printf %q` of the whole path (C1839): the shell report prints `<path>` and the agentsync
+report the decoded cut in double quotes, neither a name, `$'`, an octal escape or U+FFFD, with the same verdict.
+`test_the_one_kept_divergence_is_pinned_in_both_reports_ruling_138` pins the pair (ruling 138), and the property
+test's every-line-form claim leaves out only that word.
 
 **The recut note says which <path> is its own** (C1604; ruling 135; amends §16.246 C1406; `scripts/install.sh`). An
 older build writes `<path>` itself (`set exclude = [<path>] in [[source]]`, an item path in a log line), and the
@@ -42048,7 +42061,84 @@ with `--dry-run`, each exiting 78 with nothing new under its folder.
 
 ### 16.255 Round 40: the report: every argument form a row of the shared table, the kept dollar-quote difference pinned, and zero-byte conversions (2026-11-16, wave B13 round 40 lane RA)
 
-Reserved for round 40 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 40").
+Round 40's lane RA items (`docs/plans/bring-back-ocr.md`, "B13 round 40"; specs `round40/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's rulings 137 and 138 settle it). A dated line this round writes reads
+`Amended 2026-11-16, §16.255 C<n>`. The Python half of rulings 137 and 138 lands with lane RB's shell half in one
+`scripts/ship-land.sh` run (§16.256), so trunk never carries one half.
+
+**Every argument form either report parses is a row of the table** (C1889, C1833's rows; ruling 137; privacy; data
+integrity; dated line at §16.250 C1629). Ruling 133's table held the values both
+reports cut by but not the forms they parse, so the shell's hand-kept heads drifted again. `report_cuts.PATH_HEADS`
+lists each head a path follows, each with its `PATH_RULES` rule: `provider` for `--source-local `, `--source-local=`
+and `is not an existing folder: `; `first_unknown` for `add-source `; `cwd` for `--cwd `, `--cwd=` and `debug: cwd `;
+and `under_cwd` for `debug: source ` and `debug: config `. `REFUSED_HEADS` moves there from
+`setup_report._REFUSED_HEADS` (now that tuple itself): the refused name runs from the line's first `--source-local `
+to the last `: ` before a head. `DEL_ESCAPED` holds `\u007F`, as `config.toml_string` writes it (a test holds the
+two equal), and `\u007f`; `FREE_PROVIDER_HEAD`, `FREE_WORD_END` and `FREE_WORD_TRAIL` hold the free-text provider
+pass. `shell_block()` writes `CUT_HEADS_PROVIDER`, `CUT_HEADS_FIRST_UNKNOWN`, `CUT_HEADS_CWD`, `CUT_HEADS_UNDER_CWD`,
+`CUT_DEL_ESCAPED`, `CUT_FREE_HEAD`, `CUT_FREE_END`, `CUT_FREE_TRAIL` and, in double quotes since one head holds an
+apostrophe, `CUT_REFUSED_HEADS`; install.sh's readers take them (§16.256). `ALIAS_FORMS`, which neither builder read,
+is gone (C1889, dated line at §16.250). `_SOURCE_LOCAL_RE` reads its one-word heads from the table and
+`_HEAD_RULE` gives each its rule. Tests: `test_the_table_holds_the_argument_forms_both_reports_read_ruling_137`
+(bash reads each row back as written) and
+`test_report_redaction.py::test_every_row_of_the_table_is_a_case_of_the_property_test_ruling_137`, which fails for a
+row no line form of the property test reads.
+
+**A nested `--source-local` word reads one way in both reports** (C1882 with C1834; ruling 137; data integrity).
+The shell report read a word under a kept provider folder at that folder (`cfgonly`) and the agentsync report at its
+first unknown part, so one install.log line showed `OneDrive-<org-1>/<path>` in one and
+`OneDrive-<org-1>/Documents/<path>` or `.../<folder-1>/<path>` in the other. Python moves: `_cut_path` takes a
+`configured` set, `Redactor.configured_held` (the `<folder-N>` and `<library-N>` of every configured CloudStorage
+source's parts, as the shell's `cfgph`), and under the `provider` rule (`_source_local_shown` for `--source-local`
+words, `_not_a_folder_shown` for not-a-folder and refused names) keeps a word under a kept provider folder whole only
+when every later part is empty, `.`, `..`, a fixed macOS component, a generic folder, a home folder in any case or
+placeholders whose every folder and library is configured; otherwise it reads `<Provider>-<org-N>/<path>`. Typed
+notes and add-source's word keep the first-unknown cut, as the shell's `cut()` and `slone(..., 0)` do. Tests:
+`test_a_source_local_word_keeps_its_provider_folder_unless_every_part_is_known_c1882_c1834`,
+`test_report_redaction.py::test_both_reports_cut_a_nested_source_local_word_at_its_provider_folder_c1882_c1834` and
+the Redactor in `test_a_source_local_argument_never_shows_a_folder_the_redactor_does_not_know`, which declares
+`Client Alpha` configured: alone it keeps `<folder-1>`, below it `Dropbox/<path>`.
+
+**add-source's echo of a DEL folder is cut** (C1840, C1887; privacy; dated line at §16.251 C1601). `config.toml_string` writes DEL as
+`\u007F`, and add-source echoes the table into install.out, but `_alias_escaped` registered only `json.dumps`'s
+spelling, which leaves DEL raw, so both reports printed the folder in clear. `_alias_escaped` registers
+`toml_string`'s spelling and, for a name holding DEL, both `DEL_ESCAPED` spellings, for the name and for its shown
+spelling, since an alias matches one case only. Test:
+`test_add_sources_echo_of_a_del_folder_is_cut_in_either_case_c1840_c1887`; the property test feeds the real echo.
+
+**The run header's `--cwd` and the debug lines are cut** (C1835's reader; ruling 137; privacy). The CLI conventions
+wave's `--cwd` and `--debug` put a private project folder in install.out's run header and its `debug:` lines. The
+agentsync report cuts the word after `--cwd ` and `--cwd=` as `_cut_path` does (a relative word too; a `$'...'` word
+whole, by the usual stage), keeping the word `--cwd`; `_DEBUG_RE` reads a `debug: ` head's raw value to the line's
+first ` | ` or its end, cuts `debug: cwd`'s value as `_cut_path` does, and cuts a `debug: source` path (after its kind
+word) or a `debug: config` path only when it lies under that run's last `debug: cwd` folder. This covers an older
+install.out too, since the report reads it as it reads every line. Test:
+`test_the_run_header_and_debug_lines_cut_a_cwd_folder_c1835`.
+
+**An unregistered tenant in free text is cut** (C1862's free-text pass; ruling 137; privacy). After every other cut,
+a `~/Library/CloudStorage/<App>-<word>` word on any line goes through the provider rule: a part after the head that
+begins with a `PROVIDER_APPS` name and a hyphen and that `provider_kept_pattern()` does not keep reads
+`~/Library/CloudStorage/<path>`, never numbered, the word's trailing `)]}.,;:` kept after it. A tenant written
+without that head stays the documented residual. Test:
+`test_an_unregistered_tenant_in_free_text_reads_cloudstorage_path_c1862`; the property test's free-text and
+doctor's-detail lines lost their Fabrikam exemption.
+
+**One spelling per escaped character in step 1's list, the old one still cut** (C1802's report half).
+`folder_spellings` gives the list spelling as step 1 now writes it (`\n` for LF and 0x1E, `\t`, `\r`, every other
+escaped character a backslash and three octal digits per UTF-8 byte), then the older one (`?`), so an older
+install.out or friction log is still cut; its docstring names the order it really walks (C1889). Test:
+`test_folder_spellings_walks_its_own_order_and_keeps_the_old_list_form_c1889_c1802`. C1890's docstring at
+`test_a_name_holding_a_control_byte_is_matched_in_every_separator_spelling_c1629` now says the test runs the Python
+Redactor only.
+
+**The kept dollar-quote difference is pinned and named** (C1839, C1863, C1864, C1801, C1857; ruling 138; makes worse
+True for C1801 and C1863: no output changes, so the agentsync report keeps one folder one way, ruling 49, and the
+shell never decodes a body no pair covers, ruling 134; dated line at §16.251 C1601). The property test's lines now carry install.log's real
+args= form only through the pinned test (dated line at §16.251), and the agentsync legend's `<path>` item adds, after
+`in Finder once`, `but one right after --source-local, --source-local= or add-source, shown decoded in double quotes
+and cut as its section says, where the shell fallback report cuts it whole`, its pinned words kept. Tests:
+`test_report_redaction.py::test_the_one_kept_divergence_is_pinned_in_both_reports_ruling_138` and the legend
+assertion in `test_a_dollar_quoted_word_no_alias_covers_is_cut_whole_c1656_c1670`.
 
 ### 16.256 Round 40: the installer: the shell report reads every argument form from the table, no bash 3.2 crash on a long folder list, and one spelling per escaped byte (2026-11-16, wave B13 round 40 lane RB)
 
