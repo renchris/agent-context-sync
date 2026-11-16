@@ -2750,6 +2750,50 @@ def test_a_tcc_line_spells_a_synced_folders_name_as_the_list_does_c1640(
         assert _ls_d(word) == str(root), word
 
 
+_C1846_STATES = {
+    # state: (folders made under CloudStorage, the root's provider folder, words of that state's fix)
+    "other account": (["OneDrive-Fabrikam/x"], "OneDrive-{org}", "while another OneDrive folder is there"),
+    "signed out, missing": ([], "OneDrive-{org}", "is missing, then run"),
+    "signed out, stale": (["OneDrive-{org}"], "OneDrive-{org}", "is empty, then run"),
+    "library, missing": (
+        ["OneDrive-{org}/x"],
+        "OneDrive-SharedLibraries-{org}",
+        "is missing while OneDrive-",
+    ),
+    "library, empty": (
+        ["OneDrive-{org}/x", "OneDrive-SharedLibraries-{org}"],
+        "OneDrive-SharedLibraries-{org}",
+        "is empty while OneDrive-",
+    ),
+}
+
+
+@pytest.mark.parametrize("org", ["Con\x1b[31mtoso", "Con\ntoso"], ids=["ESC", "newline"])
+@pytest.mark.parametrize("state", list(_C1846_STATES))
+def test_a_missing_sources_fix_spells_its_provider_and_organization_as_the_list_does_c1846(
+    sample_config: Config, state: str, org: str
+) -> None:
+    """B13 round 40 C1846: C1640 spelled _missing_source_fix's provider folder, app and organization through
+    list_spelling, but its test put the control in a leaf folder under a plain OneDrive-Contoso, whose fix
+    names only the app, so putting the three back raw left every test green. Here the organization holds the
+    control mid-name (org_of strips its ends) in each of the five states that print the provider folder or the
+    organization: no raw control reaches the fix, which names both as the list spells them."""
+    made, provider_name, words = _C1846_STATES[state]
+    cloud = Path.home() / "Library" / "CloudStorage"
+    cloud.mkdir(parents=True, exist_ok=True)
+    for rel in made:
+        (cloud / rel.format(org=org)).mkdir(parents=True)
+    provider = cloud / provider_name.format(org=org)
+    root = provider / "Docs"
+    src = dataclasses.replace(sample_config.sources[0], id="onedrive", kind=SourceKind.LOCAL, path=root)
+    fix = doctor._missing_source_fix(src, root)
+    raw = re.compile("[\x00-\x1f\x7f-\x9f\u2028\u2029\u200b]")
+    assert not raw.search(fix), fix
+    assert words in fix and doctor.list_spelling(provider) in fix, fix
+    if state.startswith("library"):
+        assert f"OneDrive-{doctor.list_spelling(org)} is there" in fix, fix
+
+
 @pytest.mark.parametrize(
     "name", ["ok\x1b[31mRED", "FAKE\nline", "Board\tTab", "Line\u2028Two", "a\x85b", "Zero\u200bWidth"]
 )

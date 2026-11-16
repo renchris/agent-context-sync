@@ -42055,6 +42055,15 @@ did: its text page without `--json`, `--fields` or not (R086), and `--version --
 so. Tests: `test_cli_json.py::test_a_help_flag_page_refuses_fields_as_help_does_c1856` (eight spellings),
 `::test_a_help_text_page_still_wins_over_fields_c1856` and `::test_version_without_json_refuses_fields_c1845`.
 
+**C1640's list spelling of a missing source's provider and organization is under test** (C1846; test only).
+`doctor._missing_source_fix` prints the provider folder and the organization through `list_spelling` since C1640,
+but its test put the control in a leaf folder under a plain `OneDrive-Contoso`, whose fix names only the app, so
+the three calls put back raw left every test green. Test:
+`test_ops_doctor.py::test_a_missing_sources_fix_spells_its_provider_and_organization_as_the_list_does_c1846`, an
+organization holding ESC or a newline mid-name (`org_of` strips its ends) in the five states that print it (another
+account, signed out with the folder missing or empty, a SharePoint library missing or empty): no raw control, the
+list spelling of both.
+
 ### 16.258 Round 40: the converters: every page within the cap, an 8 KiB minimum, and long CSV fields (2026-11-16, wave B13 round 40 lane E)
 
 Reserved for round 40 lane E of B13.
