@@ -7274,11 +7274,12 @@ def test_an_unchanged_recording_keeps_its_page_while_the_ocr_helper_fails_c1442(
     """B13 round 38 C1442 (ruling 127; data integrity): C1268 gave a recording waiting on a failed OCR helper
     the OCR-down words while the media helper is ready, but C1286's keep path took only the image converter's
     pages, so a recording whose mtime alone moved during the outage lost its transcript to the OCR-down stub.
-    It is kept: the page byte for byte, the row settled, nothing counted, and once the helper works the next
+    It is kept: the page byte for byte, nothing counted as OCR-unread, and once the helper works the next
     cycle reads no piece again. B13 round 39 C1641: the keep path copied and hashed the recording to compare
     it, outside the recording pass and its budget, in an interactive sync too (spec S0 rules 4 and 5); it is
     kept unread in every mode, and its row waits for the recording pass (DEFERRED, RECORDING_WAITS), which
-    status counts with the recordings, never as a file to sync again (rule 3). C1679: a label rule never
+    status counts with the recordings, never as a file to sync again (rule 3); C1442's row was settled, it no
+    longer is (B13 round 40 C1885). C1679: a label rule never
     withholds a recording, so one waits, and is kept, under a label rule too
     (which reads it again once the helper works, as any label rule does)."""
     config = config_with(tmp_path, meetings)
