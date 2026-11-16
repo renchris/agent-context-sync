@@ -1325,9 +1325,9 @@ def misplaced_kind(role, path):
 
 
 print(role, (role != "-" and misplaced_kind(role, found[0])) or "")'
-# Its first line, and with_timeout's status, so step 1 tells a stop at its limit from an error (B13 round 40
-# C1867, C1876): a caller that needs no status takes `|| true`.
 misplaced_reader() { # PYTHON [SRC]
+	# its first line, and with_timeout's status, so step 1 tells a stop at its limit from an error (B13 round 40
+	# C1867, C1876): a caller that needs no status takes `|| true`
 	local out rc=0
 	out="$(with_timeout 10 "$1" -I -c "$MISPLACED_PY" "$CONFIG" ${2:+"$2"} 2>/dev/null)" || rc=$?
 	printf '%s\n' "${out%%$'\n'*}"
@@ -1449,8 +1449,8 @@ if gov and queue is not None:  # whether a hold in force refuses the hand run, a
     else:
         said += ",queue-free"
 print(said)'
-# Its first line and with_timeout's status, as misplaced_reader's (B13 round 40 C1867, C1876).
 lost_hold_reader() { # PYTHON [SRC]
+	# its first line and with_timeout's status, as misplaced_reader's (B13 round 40 C1867, C1876)
 	local out rc=0
 	out="$(with_timeout 10 "$1" -I -c "$LOST_HOLD_PY" "$CONFIG" ${2:+"$2"} 2>/dev/null)" || rc=$?
 	printf '%s\n' "${out%%$'\n'*}"
@@ -2737,7 +2737,7 @@ agent_words_name() {
 	# in lower case, every CUT_SEP byte a blank, so the words split where setup_report._agent_words splits them
 	# (report_cuts.SEPARATORS: every C0 control but LF and CR, and DEL, beside the blank, tab, "_", "\" and "-"; B13
 	# round 40 C1890 with C1837)
-	low="$(CUT_SEP="$CUT_SEP" AW_NAME="$1" LC_ALL=C awk 'BEGIN { s = tolower(ENVIRON["AW_NAME"]); gsub(ENVIRON["CUT_SEP"], " ", s); printf "%s", s }'
+	low="$(CUT_SEP="$CUT_SEP" WORDS_NAME="$1" LC_ALL=C awk 'BEGIN { s = tolower(ENVIRON["WORDS_NAME"]); gsub(ENVIRON["CUT_SEP"], " ", s); printf "%s", s }'
 		printf x)"
 	low="${low%x}"
 	case $- in *f*) f=1 ;; esac
@@ -4926,10 +4926,10 @@ foreign_home_cut() {
 # [PAIRS CONFIGURED]: redact_stream's pairs and the configured folders' CloudStorage parts (B13 round 39 C1601).
 typed_note_cut() {
 	TYPED_FIXED="$CUT_FIXED" TYPED_DRIVE="$CUT_DRIVE" TYPED_HOME="$CUT_HOME" TYPED_KEPT="$CUT_PROVIDER_KEPT" \
-		TYPED_PAIRS="${1:-}" TYPED_CFG="${2:-}" CUT_SEP="$CUT_SEP" TYPED_HP="$CUT_HEADS_PROVIDER" \
-		TYPED_HF="$CUT_HEADS_FIRST_UNKNOWN" TYPED_HC="$CUT_HEADS_CWD" TYPED_HU="$CUT_HEADS_UNDER_CWD" \
-		TYPED_HEADS="$CUT_REFUSED_HEADS" TYPED_APPS="$CUT_APPS" TYPED_FH="$CUT_FREE_HEAD" TYPED_FE="$CUT_FREE_END" \
-		TYPED_FT="$CUT_FREE_TRAIL" LC_ALL=C awk '
+		TYPED_PAIRS="${1:-}" TYPED_CFG="${2:-}" CUT_SEP="$CUT_SEP" TYPED_PROVIDER="$CUT_HEADS_PROVIDER" \
+		TYPED_FIRST="$CUT_HEADS_FIRST_UNKNOWN" TYPED_CWDS="$CUT_HEADS_CWD" TYPED_UNDER="$CUT_HEADS_UNDER_CWD" \
+		TYPED_HEADS="$CUT_REFUSED_HEADS" TYPED_APPS="$CUT_APPS" TYPED_FREEHEAD="$CUT_FREE_HEAD" TYPED_FREEEND="$CUT_FREE_END" \
+		TYPED_FREETRAIL="$CUT_FREE_TRAIL" LC_ALL=C awk '
 	function norm(v) { v = tolower(v); gsub(ENVIRON["CUT_SEP"], "", v); return v }
 	BEGIN {
 		# the placeholders of configured folders: a pair whose value is a part of a configured CloudStorage path
@@ -4941,11 +4941,11 @@ typed_note_cut() {
 		# 137): the provider rule\047s, the first-unknown one\047s (add-source), the cwd one\047s and the
 		# under-cwd one\047s; the refusal heads a refused name runs to the last of (C1833); and the free-text
 		# head, its word\047s end and its trailing signs (C1862)
-		nhp = split(ENVIRON["TYPED_HP"], hp, "|"); nhf = split(ENVIRON["TYPED_HF"], hf, "|")
-		nhc = split(ENVIRON["TYPED_HC"], hc, "|"); nhu = split(ENVIRON["TYPED_HU"], hu, "|")
+		nhp = split(ENVIRON["TYPED_PROVIDER"], hp, "|"); nhf = split(ENVIRON["TYPED_FIRST"], hf, "|")
+		nhc = split(ENVIRON["TYPED_CWDS"], hc, "|"); nhu = split(ENVIRON["TYPED_UNDER"], hu, "|")
 		nh = split(ENVIRON["TYPED_HEADS"], head, "|")
 		appre = "^(" ENVIRON["TYPED_APPS"] ")-"
-		fh = ENVIRON["TYPED_FH"]; fe = ENVIRON["TYPED_FE"]; ft = ENVIRON["TYPED_FT"]
+		fh = ENVIRON["TYPED_FREEHEAD"]; fe = ENVIRON["TYPED_FREEEND"]; ft = ENVIRON["TYPED_FREETRAIL"]
 		dcwd = ""
 		n = split(ENVIRON["TYPED_FIXED"], w, "|"); for (i = 1; i <= n; i++) fixed[w[i]] = 1
 		n = split(ENVIRON["TYPED_DRIVE"], w, "|"); for (i = 1; i <= n; i++) drive[w[i]] = 1
