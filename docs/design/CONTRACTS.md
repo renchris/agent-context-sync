@@ -42064,6 +42064,20 @@ organization holding ESC or a newline mid-name (`org_of` strips its ends) in the
 account, signed out with the folder missing or empty, a SharePoint library missing or empty): no raw control, the
 list spelling of both.
 
+**compaction_state reads the history once** (C1847; efficiency, no output moves). On every status, doctor and
+STATE.md write, `compaction_state` ran `git rev-list --all --topo-order --reverse --parents --timestamp` twice:
+`compaction_due`, then the lone-root check or the overdue test, each read the whole history again (and a commit
+landing in between could split the two reads). It reads `_commit_graph` once and passes it to `compaction_due`'s new
+`graph=` keyword, twice, and to `_lone_old_root`, which now takes the graph; `compaction_due` without it reads its
+own, as `cycle` calls it. Every string `test_deploy_pack.py` pins in both functions stands byte for byte. Test:
+`test_governance.py::test_compaction_state_reads_the_history_once_on_every_path_c1847` (ok, overdue, due and a lone
+old root, one read each).
+
+**The C1442 test's docstring says what it tests** (C1885; docs only). Its C1442 sentence still said the row was
+settled and nothing counted, though C1641 leaves it `DEFERRED` with `RECORDING_WAITS` and counted with the
+recordings; it says nothing is counted as OCR-unread, and the C1641 sentence notes the row is no longer settled. No
+test reads a docstring, so none fails without it.
+
 ### 16.258 Round 40: the converters: every page within the cap, an 8 KiB minimum, and long CSV fields (2026-11-16, wave B13 round 40 lane E)
 
 Reserved for round 40 lane E of B13.

@@ -2303,6 +2303,38 @@ def test_a_write_through_a_link_into_a_folder_it_cannot_write_is_a_handled_refus
     assert (gov / "holds.json").is_symlink() and json.loads(target.read_text()) == {"holds": []}
 
 
+def test_compaction_state_reads_the_history_once_on_every_path_c1847(
+    tmp_path: Path, tmp_docs_repo: Path, tmp_state_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 40 C1847: compaction_state ran `git rev-list --all` twice on every call, on each status,
+    doctor and STATE.md write: compaction_due, then the lone-root check or the overdue test, each read the
+    whole history again. It reads it once and passes it to both: ok, a lone old root, due and overdue."""
+    reads: list[Path] = []
+    real = gv._commit_graph
+
+    def counted(repo: Path, extra: Any) -> Any:
+        reads.append(repo)
+        return real(repo, extra)
+
+    monkeypatch.setattr(gv, "_commit_graph", counted)
+    repo = tmp_docs_repo
+
+    def state(gov: gv.GovernanceConfig, when: datetime = NOW) -> str:
+        reads.clear()
+        found, _line = gv.compaction_state(repo, gov, now=when)
+        assert len(reads) == 1, (found, reads)
+        return found
+
+    assert state(gv.GovernanceConfig()) == "ok"
+    _dated_repo(repo)
+    assert state(gv.GovernanceConfig()) == "overdue"
+    assert state(gv.GovernanceConfig(history_days=30, compaction_slack_days=20)) == "due"
+    monkeypatch.setattr(gv, "_commit_graph", real)
+    gv.compact_history(make_config(tmp_path, repo, tmp_state_dir), now=NOW)
+    monkeypatch.setattr(gv, "_commit_graph", counted)
+    assert state(gv.GovernanceConfig()) == "ok"  # the lone old root
+
+
 def test_a_hold_list_created_while_it_is_read_is_read_never_a_link_to_nothing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

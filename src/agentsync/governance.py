@@ -6344,27 +6344,34 @@ def _squash_set(graph: Sequence[tuple[str, list[str], int]], cutoff_ts: int) -> 
     return out
 
 
-def compaction_due(repo: Path, gov: GovernanceConfig, *, now: datetime | None = None) -> bool:
+def compaction_due(
+    repo: Path,
+    gov: GovernanceConfig,
+    *,
+    now: datetime | None = None,
+    graph: Sequence[tuple[str, list[str], int]] | None = None,
+) -> bool:
     """True when some commit (other than a lone root) is older than history_days + compaction_slack_days, so a
-    scheduled compaction should run (the slack keeps history shas stable between weekly-ish runs)."""
-    repo = expand(repo)
-    if not (repo / ".git").exists():
-        return False
-    graph = _commit_graph(repo, [])
+    scheduled compaction should run (the slack keeps history shas stable between weekly-ish runs). ``graph``:
+    the history's :func:`_commit_graph` when the caller read it already, as :func:`compaction_state` does once
+    for every test it makes (B13 round 40 C1847)."""
+    if graph is None:
+        repo = expand(repo)
+        if not (repo / ".git").exists():
+            return False
+        graph = _commit_graph(repo, [])
     cutoff = int((_now(now) - timedelta(days=gov.history_days + gov.compaction_slack_days)).timestamp())
     old = _squash_set(graph, cutoff)
     return len(old) > 1 or any(ps for sha, ps, _ in graph if sha in old)
 
 
-def _lone_old_root(repo: Path, days: int, now: datetime | None) -> bool:
-    """True when history holds a commit older than ``days`` though :func:`compaction_due` says none is due:
-    the one old commit is a lone root, which compaction keeps (the snapshot a compaction left keeps its old
-    date, and a first commit may have aged before syncs began; B13 round 39 C1678)."""
-    repo = expand(repo)
-    if not (repo / ".git").exists():
-        return False
+def _lone_old_root(graph: Sequence[tuple[str, list[str], int]], days: int, now: datetime | None) -> bool:
+    """True when history (``graph``, :func:`_commit_graph`'s) holds a commit older than ``days`` though
+    :func:`compaction_due` says none is due: the one old commit is a lone root, which compaction keeps (the
+    snapshot a compaction left keeps its old date, and a first commit may have aged before syncs began; B13
+    round 39 C1678)."""
     cutoff = int((_now(now) - timedelta(days=days)).timestamp())
-    return any(ts < cutoff for _sha, _ps, ts in _commit_graph(repo, []))
+    return any(ts < cutoff for _sha, _ps, ts in graph)
 
 
 def compaction_state(repo: Path, gov: GovernanceConfig, *, now: datetime | None = None) -> tuple[str, str]:
@@ -6376,15 +6383,18 @@ def compaction_state(repo: Path, gov: GovernanceConfig, *, now: datetime | None 
     if gov.archive:
         return "ok", ARCHIVE_KEEPS_HISTORY
     span = gov.history_days + gov.compaction_slack_days
-    if not compaction_due(repo, gov, now=now):
-        if _lone_old_root(repo, span, now):  # never "no commit", which git log would contradict (C1678)
+    repo = expand(repo)
+    # the history is read once for every test below: it was read twice on each path (C1847)
+    graph = _commit_graph(repo, []) if (repo / ".git").exists() else []
+    if not compaction_due(repo, gov, now=now, graph=graph):
+        if _lone_old_root(graph, span, now):  # never "no commit", which git log would contradict (C1678)
             return "ok", (
                 f"nothing older than {plural(span, 'day')} but the root commit, which compaction keeps "
                 f"(history_days {gov.history_days} + slack)"
             )
         return "ok", f"no commit older than {plural(span, 'day')} (history_days {gov.history_days} + slack)"
     late = dataclasses.replace(gov, compaction_slack_days=2 * gov.compaction_slack_days)
-    if compaction_due(repo, late, now=now):
+    if compaction_due(repo, late, now=now, graph=graph):
         return (
             "overdue",
             f"history holds commits older than "
