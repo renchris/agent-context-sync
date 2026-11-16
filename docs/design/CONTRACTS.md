@@ -42222,7 +42222,11 @@ folder or lies under it. A bare `--source-local ` name runs to the last `: <head
 (`lasthead`), whose block row replaces install.sh's own `REFUSED_HEADS`, which `report_words_cut` read too.
 install.sh writes `--cwd=D` as `--cwd D` in the run header, and `debug: cwd`, `debug: source`'s path and
 `debug: config` through `printf %q` (`debug_path`, the home's %q form as `~`), so a newline never starts a line no cut
-reads and the paths under the cwd are spelled as it is. Tests:
+reads and the paths under the cwd are spelled as it is. `add_forms` also registers a name in add-source's TOML
+echo (`config.toml_string`: json.dumps's escapes, DEL in each of `CUT_DEL_ESCAPED`'s spellings, C1840 with C1887's
+shell half), and an escaped spelling holding a backslash (that echo, step 1's octal list spelling) as a literal pair
+(`spelled_flag`): the fuzzy pattern reads a backslash as a separator, so `\342\201\240Music` printed
+`\<folder-1>`. Ruling 133's property test found both on the joint tree. Tests:
 `test_report_redaction.py::test_both_reports_cut_an_unregistered_tenant_after_cloudstorage_c1626` (its rows for the
 `=` form bare and quoted, add-source bare, quoted, hyphenated and kept, and three refused names),
 `test_the_shell_cuts_a_refused_name_under_a_configured_folder_whole_c1833`,
