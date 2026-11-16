@@ -30,10 +30,13 @@ from agentsync.errors import ConversionError
 from agentsync.model import RenderedUnit, UnitKind
 from agentsync.text import plural
 
-_EMITTER_VERSION = "1.0.1"  # B13 round 39 C1676: a first row past the page cap goes to the sidecar
+_EMITTER_VERSION = "1.0.2"  # B13 round 40 C1848: the index and a streamed schema stay within the page cap
 _INDEX_TERM_LIMIT = 400  # distinct terms kept on 00-index (most frequent first, then listed sorted)
 _TERM_MAX_CHARS = 80  # a text cell up to this long is one term; longer text contributes its words
 _HEADER_LIMIT = 30  # column headers listed per sheet on 00-index
+_HEADER_CHARS = 600  # a sheet's headers cell on 00-index, cut before escaping (B13 round 40 C1848)
+_FIRST_ROW_CHARS = 200  # a streamed Schema's first-row value, cut before escaping (B13 round 40 C1848)
+_INDEX_RESERVE = 1024  # room under the cap for the index's cut notes, its term list and the banner
 _WORD_RE = re.compile(r"[^\W\d_][\w'\u2019-]{2,}", re.UNICODE)
 _WS_RE = re.compile(r"\s+")
 
@@ -312,6 +315,45 @@ def _table_lines(
     return lines, shown
 
 
+def _cut_value(text: str, limit: int) -> str:
+    """``text`` cut to ``limit`` characters ending ``…``; cut before :func:`_cell` escapes it, so a cut never
+    splits a ``\\|`` escape, a ``<br>`` or a character (B13 round 40 C1848)."""
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _fit(out: list[str], lines: list[str], room: int) -> int:
+    """Append ``lines`` to ``out`` while the page so far stays within ``room`` bytes; return how many fit."""
+    used = sum(len(x.encode("utf-8")) + 1 for x in out)
+    kept = 0
+    for line in lines:
+        size = len(line.encode("utf-8")) + 1
+        if used + size > room:
+            break
+        out.append(line)
+        used += size
+        kept += 1
+    return kept
+
+
+def _fit_table(out: list[str], table: list[str], room: int) -> int:
+    """Append a GFM ``table`` to ``out`` within ``room`` bytes, a row at a time; return the rows listed.  A
+    header or delimiter that does not fit leaves no table at all."""
+    kept = _fit(out, table, room)
+    if kept < 2:
+        del out[len(out) - kept :]
+        return 0
+    return kept - 2
+
+
+def _listed(out: list[str], heading: str, lines: list[str], *, room: int, what: str, where: str = "") -> None:
+    """One index list under ``heading``, its lines within ``room`` bytes, a cut note naming the count."""
+    out += [heading, ""]
+    kept = _fit(out, lines, room)
+    if kept < len(lines):
+        out.append(f"[{what} truncated at the page size cap: {kept} of {len(lines)} listed{where}]")
+    out.append("")
+
+
 def _sheet_body(sheet: _Sheet, *, total: int, width: int, cfg: ConvertConfig) -> tuple[str, bytes | None]:
     """Markdown for one sheet unit plus the CSV sidecar bytes when rows were capped."""
     hidden = " (hidden sheet)" if sheet.hidden else ""
@@ -366,8 +408,14 @@ def _index_body(
     streamed: bool,
     max_bytes: int,
 ) -> str:
-    """The workbook's grep-recall surface: every sheet, its range and headers, names, objects, terms."""
+    """The workbook's grep-recall surface: every sheet, its range and headers, names, objects, terms.
+
+    Each list counts against one running total within ``max_bytes`` less :data:`_INDEX_RESERVE`, and a
+    sheet's headers cell is cut to :data:`_HEADER_CHARS` before escaping, so the page stays within the cap
+    with any number of sheets; a list past it ends in a note, the sheet list's naming each sheet's own page,
+    which shows its headers (B13 round 40 C1848).  A list under the budget renders byte for byte as before."""
     out = ["# Workbook index", ""]
+    room = max_bytes - _INDEX_RESERVE
     mode = (
         " Streamed (above the size threshold): each sheet page is a schema + sample summary."
         if streamed
@@ -380,25 +428,30 @@ def _index_body(
     ]
     rows = []
     for s in sheets:
-        heads = ", ".join(s.headers()[:_HEADER_LIMIT])
+        heads = _join_limited(s.headers()[:_HEADER_LIMIT], limit=_HEADER_CHARS, sep=", ")
         title = s.title + (" (hidden)" if s.hidden else "")
         ncols = 0 if s.bounds is None else s.bounds[3] - s.bounds[1] + 1
         rows.append([str(s.number), _cell(title), s.used_range, str(len(s.rows())), str(ncols), _cell(heads)])
     if rows:
-        out += _gfm_table(["#", "Sheet", "Used range", "Rows", "Columns", "Column headers"], rows)
+        table = _gfm_table(["#", "Sheet", "Used range", "Rows", "Columns", "Column headers"], rows)
+        listed = _fit_table(out, table, room)
+        if listed < len(rows):
+            sheets_n = plural(len(rows), "sheet")
+            out.append(
+                f"[sheet list truncated at the page size cap: {listed} of {sheets_n} listed; "
+                "each sheet's own page has its headers]"
+            )
         out.append("")
     if chartsheets:
-        out += [
-            "## Chart sheets",
-            "",
-            *(f"- [chartsheet: {_escape_line(c)} — open the workbook to view]" for c in chartsheets),
-            "",
-        ]
+        charts = [f"- [chartsheet: {_escape_line(c)} — open the workbook to view]" for c in chartsheets]
+        _listed(out, "## Chart sheets", charts, room=room, what="chart sheet list")
     if defined:
-        out += ["## Defined names", "", *(f"- {n}: {_code(v)}" for n, v in defined), ""]
+        names = [f"- {n}: {_code(v)}" for n, v in defined]
+        _listed(out, "## Defined names", names, room=room, what="defined-name list")
     objects = [f"- {s.title}: {line[2:]}" for s in sheets for line in s.objects]
     if objects:
-        out += ["## Charts, pivots and images", "", *objects, ""]
+        where = "; each sheet's own page lists its own"
+        _listed(out, "## Charts, pivots and images", objects, room=room, what="object list", where=where)
     counter: Counter[str] = Counter()
     for s in sheets:
         counter.update(s.terms)
@@ -548,7 +601,8 @@ def _stream_sheet(number: int, ws: Any, wsf: Any, cfg: ConvertConfig) -> tuple[_
     schema_rows = []
     for c in sorted(types):
         tlabel = ", ".join(f"{k} {n}" for k, n in sorted(types[c].items(), key=lambda kv: (-kv[1], kv[0])))
-        schema_rows.append([_col_letter(c), _cell(heads.get(c, "")), tlabel, str(nonempty[c])])
+        first = _cell(_cut_value(heads.get(c, ""), _FIRST_ROW_CHARS))
+        schema_rows.append([_col_letter(c), first, tlabel, str(nonempty[c])])
     schema = (
         _gfm_table(["Column", "First-row value", "Types (count)", "Non-empty"], schema_rows)
         if schema_rows
@@ -706,11 +760,20 @@ class XlsxConverter:
                 f"every row is in the sidecar `{sc}`",
                 "",
             ]
-            if schema:
-                out += ["## Schema", "", *schema, ""]
+            if schema:  # within the cap less the rows' reserve; the rows' budget is what is left (C1848)
+                out += ["## Schema", ""]
+                columns = len(schema) - 2
+                listed = _fit_table(out, schema, self._cfg.max_page_bytes - 4096)
+                if listed < columns:
+                    out.append(
+                        f"[schema cut at the page size cap: {listed} of {plural(columns, 'column')} listed; "
+                        f"every cell is in the sidecar `{sc}`]"
+                    )
+                out.append("")
             rows = sheet.rows()
             if rows:
-                budget = max(1024, self._cfg.max_page_bytes - 4096 - sum(len(x) + 1 for x in out))
+                used = sum(len(x.encode("utf-8")) + 1 for x in out)
+                budget = max(1024, self._cfg.max_page_bytes - 4096 - used)
                 lines, shown = _table_lines(sheet, rows, sheet.shown, budget, self._cfg.max_rows_per_sheet)
                 if shown:
                     out += [f"## First {shown} of {plural(total_rows, 'non-empty row')}", "", *lines, ""]

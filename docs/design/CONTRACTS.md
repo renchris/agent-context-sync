@@ -41950,6 +41950,10 @@ guarded page within the cap, the sidecar round-tripping every row, no GFM line, 
 `test_convert_formats.py::test_a_cut_tables_head_keeps_its_header_past_far_backticks_and_a_wide_header_says_so_c1676`,
 `test_convert_formats.py::test_a_table_under_the_cap_is_unchanged_and_a_row_capped_one_still_shows_its_rows_c1676`
 and `test_convert_formats.py::test_xlsx_first_row_past_the_budget_rides_in_the_sidecar_c1676`.
+Amended 2026-11-16, §16.258 C1848: the xlsx half held for the sheet pages only. The 00-index's headers cell and a
+streamed Schema's first-row values were whole and neither table was budgeted, so this test's own workbook gave a
+20,288-byte index at an 8,000-byte cap; each value is now cut before escaping and each table counts against the
+running total, so every xlsx page stays within the cap.
 
 ### 16.254 Round 39: the compaction promise, recording downloads and the guides (2026-11-14, wave B13 round 39 lane D)
 
@@ -42117,7 +42121,32 @@ test reads a docstring, so none fails without it.
 
 ### 16.258 Round 40: the converters: every page within the cap, an 8 KiB minimum, and long CSV fields (2026-11-16, wave B13 round 40 lane E)
 
-Reserved for round 40 lane E of B13.
+Round 40's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 40"; specs `round40/items/C<n>.md`, the
+verifier's corrected fix built; ruling 140 for the page cap, ruling 141 for C1852). A dated line this round writes
+reads `Amended 2026-11-16, §16.258 C<n>`.
+
+**The workbook index and a streamed schema stay within the page cap** (C1848; `agentsync.convert.xlsx`; amends
+§16.253 C1676). C1676 bounded each sheet page's table, but `_index_body` listed each sheet's first 30 headers whole
+and budgeted only its term list, and `_stream_sheet` put each first-row value whole into the Schema, whose rows the
+streamed page never counted: C1676's own workbook (one 20,008-character first cell) gave a 20,288-byte index at an
+8,000-byte cap and a 20,488-byte streamed summary, and four sheets of thirty 97-character headers a 12,345-byte
+index (the verifier's runs at 7253d365). Each value is now cut before `_cell` escapes it, so a cut never splits a
+`\|` escape, a `<br>` or a character: the index's headers cell through `_join_limited` at 600 characters, a streamed
+first-row value at 200, each ending `…`. The index's sheet table, chart sheets, defined names and objects then count
+against one running total within the cap less 1,024 bytes (the term list keeps its own 256), and a list past it ends
+in a note: `[sheet list truncated at the page size cap: N of M sheets listed; each sheet's own page has its
+headers]` (the chart-sheet, defined-name and object lists the same, without the clause, the objects' naming each
+sheet's own page). The streamed Schema fills the cap less the rows' 4,096-byte reserve and past it says `[schema cut
+at the page size cap: N of M columns listed; every cell is in the sidecar `<sidecar>`]`; only the streamed path,
+whose sidecar is always attached, names the sidecar, since a full-path sheet whose rows all fit has none. The rows'
+budget is taken from what the page holds after the schema, counted in bytes. A list under the budget renders byte
+for byte as before; xlsx's `_EMITTER_VERSION` is 1.0.2, so a new conversion misses the cache once, and `outdated`
+still never reads it. Tests:
+`test_convert_formats.py::test_every_xlsx_page_stays_within_the_cap_with_an_oversized_first_row_or_many_headers_c1848`
+(C1676's workbook and four sheets of thirty long headers, full and streamed, every guarded page within 8,192 bytes
+through `Registry.default`),
+`test_convert_formats.py::test_an_xlsx_index_past_the_cap_lists_the_sheets_that_fit_and_says_so_c1848` (24 sheets)
+and `test_convert_formats.py::test_a_streamed_schema_past_the_cap_names_the_sidecar_and_leaves_the_rows_their_room_c1848`.
 
 ### 16.259 Round 40: the guides: the dollar-quote row, the record of round 39's installer work, and CI timings (2026-11-16, wave B13 round 40 lane D)
 

@@ -395,6 +395,109 @@ def test_xlsx_first_row_past_the_budget_rides_in_the_sidecar_c1676(tmp_path: Pat
     assert rows[1][1] == "Contoso " + "x" * 20_000 and len(rows) == 3
 
 
+def _xlsx_pages(src: Path, cap: int, *, streamed: bool) -> tuple[RenderedUnit, ...]:
+    """Every guarded page of ``src`` through Registry.default at ``cap``, on the full or streamed path."""
+    cfg = replace(
+        CFG,
+        max_page_bytes=cap,
+        xlsx_stream_threshold_bytes=0 if streamed else CFG.xlsx_stream_threshold_bytes,
+    )
+    return Registry.default(cfg).for_name(src.name).convert(src, name=src.name)  # type: ignore[union-attr]
+
+
+def _long_header_book(path: Path, *, sheets: int, columns: int = 30, width: int = 100) -> Path:
+    book = openpyxl.Workbook()
+    for n in range(sheets):
+        ws = book.active if n == 0 else book.create_sheet()
+        assert ws is not None
+        ws.title = f"Contoso {n + 1}"
+        ws.append([f"Contoso | header {n}-{c} " + "h" * (width - 22) for c in range(columns)])
+        ws.append([str(c) for c in range(columns)])
+    book.save(path)
+    return path
+
+
+@pytest.mark.parametrize("streamed", [False, True], ids=["full", "streamed"])
+def test_every_xlsx_page_stays_within_the_cap_with_an_oversized_first_row_or_many_headers_c1848(
+    tmp_path: Path, streamed: bool
+) -> None:
+    """B13 round 40 C1848: the 00-index listed each sheet's first 30 headers whole and a streamed Schema each
+    first-row value whole, and neither table was budgeted, so C1676's own workbook (one 20,008-character
+    first cell) gave a 20,288-byte index at an 8,000-byte cap, and four sheets of thirty 100-character headers
+    a 12,345-byte one. Each value is cut before escaping (the index cell at 600 characters, a first-row value
+    at 200, each ending `…`) and the tables count against the running total, so every guarded page, banner
+    and footer included, stays within the cap at the 8 KiB minimum, on the full and the streamed path."""
+    book = openpyxl.Workbook()
+    ws = book.active
+    assert ws is not None
+    ws.title = "Contoso notes"
+    ws.append(["Contoso " + "x" * 20_000, "a"])
+    ws.append(["short", "b"])
+    one = tmp_path / "long.xlsx"
+    book.save(one)
+    four = _long_header_book(tmp_path / "four.xlsx", sheets=4)
+    for src in (one, four):
+        pages = _xlsx_pages(src, 8192, streamed=streamed)
+        assert len(pages) == (2 if src is one else 5)
+        assert [p.unit_id for p in pages if len(p.body.encode("utf-8")) > 8192] == []
+    index = _xlsx_pages(one, 8192, streamed=streamed)[0].body
+    assert "| Contoso " + "x" * 590 in index and "x" * 600 not in index and "…" in index
+    four_index = _xlsx_pages(four, 8192, streamed=streamed)[0].body
+    assert four_index.count("\\| header ") > 4 and "…" in four_index and "\\…" not in four_index
+    assert "truncated at the page size cap" not in four_index
+    if streamed:
+        summary = _xlsx_pages(one, 8192, streamed=True)[1].body
+        assert "| A | Contoso " + "x" * 191 + "… | text 2 | 2 |" in summary and "x" * 192 not in summary
+
+
+def test_an_xlsx_index_past_the_cap_lists_the_sheets_that_fit_and_says_so_c1848(tmp_path: Path) -> None:
+    """B13 round 40 C1848: a cut headers cell alone does not bound the index, since its sheet table grows a
+    row per sheet; past the budget it stops and says how many sheets it listed and where each sheet's headers
+    are (its own page; the streamed path's too), and the page stays within the cap."""
+    src = _long_header_book(tmp_path / "many.xlsx", sheets=24)
+    for streamed in (False, True):
+        pages = _xlsx_pages(src, 8192, streamed=streamed)
+        assert len(pages) == 25 and [p.unit_id for p in pages if len(p.body.encode("utf-8")) > 8192] == []
+        index = pages[0].body
+        found = re.search(
+            r"\[sheet list truncated at the page size cap: (\d+) of 24 sheets listed; each "
+            r"sheet's own page has its headers\]",
+            index,
+        )
+        assert found and 0 < int(found.group(1)) < 24
+        assert index.count("\n| ") == int(found.group(1)) + 1, "the header line and each listed sheet"
+        assert "sidecar" not in index
+
+
+def test_a_streamed_schema_past_the_cap_names_the_sidecar_and_leaves_the_rows_their_room_c1848(
+    tmp_path: Path,
+) -> None:
+    """B13 round 40 C1848: the streamed Schema was rendered whole and the rows' budget taken from what was
+    left with a 1,024-byte floor, so 120 columns of long first-row values made a summary past the cap. The
+    schema stops at the cap less the rows' 4,096-byte reserve and names the sidecar, which the streamed path
+    always attaches and which holds every cell."""
+    book = openpyxl.Workbook()
+    ws = book.active
+    assert ws is not None
+    ws.title = "Contoso wide"
+    ws.append([f"Contoso first-row value {c} " + "v" * 300 for c in range(120)])
+    ws.append([str(c) for c in range(120)])
+    src = tmp_path / "wide.xlsx"
+    book.save(src)
+    pages = _xlsx_pages(src, 8192, streamed=True)
+    assert [p.unit_id for p in pages if len(p.body.encode("utf-8")) > 8192] == []
+    summary = pages[1].body
+    found = re.search(
+        r"\[schema cut at the page size cap: (\d+) of 120 columns listed; every cell is in the "
+        r"sidecar `01-contoso-wide\.csv`\]",
+        summary,
+    )
+    assert found and 0 < int(found.group(1)) < 120
+    assert pages[1].sidecars[0][0] == "01-contoso-wide.csv"
+    cells = list(csv.reader(io.StringIO(pages[1].sidecars[0][1].decode())))
+    assert cells[1][120] == "Contoso first-row value 119 " + "v" * 300
+
+
 def test_xlsx_streaming_path_above_threshold(tmp_path: Path, fixture_files: dict[str, Path]) -> None:
     conv = XlsxConverter(replace(CFG, xlsx_stream_threshold_bytes=0, max_rows_per_sheet=2))
     units = conv.convert(fixture_files["sample.xlsx"], name="sample.xlsx")
