@@ -7473,6 +7473,7 @@ def test_a_source_local_argument_keeps_its_quotes_in_the_installer_embed() -> No
     red.add("home", "/Users/jdoe")
     red.add("org", "Contoso")
     red.add("folder", "Project Beta - General", fuzzy=True)
+    red.configured_held = {"<folder-1>"}  # a configured folder, as _build_redactor records it (C1882)
     root = "/Users/jdoe/Library/CloudStorage/OneDrive-Contoso"
     shown = "~/Library/CloudStorage/OneDrive-<org-1>/<folder-1>"
     lines = [

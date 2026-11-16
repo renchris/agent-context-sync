@@ -5823,9 +5823,10 @@ def _build_redactor(r: _Run) -> Redactor:
     mine = {c.casefold() for _sid, _provider, comps in cloud_sources for c in comps}
     mine |= {path.name.casefold() for path in project_paths}
     red.configured_names = frozenset(mine)
-    for _sid, _provider, comps in cloud_sources:
-        for c in comps:
-            red.configured_held.update(re.findall(r"<(?:folder|library)-\d+>", red.redact(c)))
+    for _sid, _provider, comps in cloud_sources:  # a lookup, never redact(), which counts and judges words
+        red.configured_held.update(
+            held for c in comps if (held := red._known(c)) and re.fullmatch(r"<(?:folder|library)-\d+>", held)
+        )
     only = [name for _provider, _depth, name in listed if _agent_words(name) and name.casefold() not in mine]
     only_words = frozenset(w for name in only for w in _SEP_RE.split(name.casefold()) if w)
     r.agent_named = (len(only) if listing_ok else None, configured, only_words)
