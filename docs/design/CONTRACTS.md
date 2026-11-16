@@ -24090,6 +24090,10 @@ check. v26's step 1 tells the person (below). Tests: `test_list_folders_says_ste
 Amended 2026-10-19, §16.136 V9, V21, V36: `config_errors` also prints `remote` (a docs-repo remote `[governance]`
 does not allow, read only when that table loads) and `state-table` (a table page that cannot be read under a schema
 that reads), which the NEXT names; the second stops step 2 at its status or first sync, not its config step.
+Amended 2026-11-16, §16.256 C1867: a stop at a reader's own limit (`config_errors` and `vanished_folders` at 5 s,
+`misplaced_reader` and `lost_hold_reader` at 10 s) no longer changes nothing: it drops `(none is needed)` for one
+clause naming `~/.local/bin/agentsync status`, and the log line adds `config_err=timeout`; a reader that fails with an
+error still says nothing.
 
 **Setup prompt v26** (U29, U32, U97 and U12's prompt half; lane E's and U2's words). U12, U29, U32 and U97 need prompt
 text, so the prompt is **setup prompt v26**: `SETUP_PROMPT_COMPAT`, `PROMPT_VERSION`, step 1's `prompt v26` and
@@ -40694,6 +40698,8 @@ step 1 shows a folder name's newline as `\n` and every other control character a
 take a `\t` row for a real backslash and a t. K59 now says a newline, tab or carriage return shows as `\n`, `\t` or
 `\r` and other control characters as `?`, and its look-alike can hold any of the four. Test:
 `test_k59_gives_each_escape_step_1_shows_c1281`, which reads the three escapes and the `?` arm from `LIST_ESC_AWK`.
+Amended 2026-11-16, §16.256 C1802: other escaped characters show as `\ooo` for each byte now; K59 says so after its
+C1281 clause, and the test reads the `oct(s, i, 1)` arm in place of the `?` one.
 
 **Setup prompt v36: a step 1 row is choosable exactly when step 2 takes it** (C1275 with C1201, C1242, C1308 and C1309,
 ruling 121; amends §16.239 C1072). Lane RB's ruling 121 commit marks both rows of a twin pair, the plain one with
@@ -40783,6 +40789,9 @@ folder, is never aliased, and `Redactor.word_named_shown` makes that report priv
 and each character `_LIST_ESCAPED_RE` matches, in each line form) and its `build_report` twin
 `test_a_folder_name_prints_in_no_spelling_through_the_report_ruling_126`; `_separator_lines()` takes each
 `_LIST_ESCAPED_RE` character as a path byte, and both reports still agree on every slot.
+Amended 2026-11-16, §16.256 C1802: step 1's list spelling writes every escaped character but a newline, tab and CR
+as `\ooo` per UTF-8 byte now, never `?`; both reports alias that spelling and keep the `?` one an older install.out
+or friction log holds.
 
 Amended 2026-11-14, §16.250 C1670, C1649, C1635: `printf %q`'s UTF-8 body above matches only a name whose escaped
 characters are all ASCII and whose other characters hold no byte 0x80 to 0x9F or 0xAD (`Café` with an ESC or a
@@ -41499,6 +41508,8 @@ spellings printed in clear, where install.sh's pairs split at the byte. The clas
 those five, every other C0 control and DEL, never LF or CR, so no match spans two lines. Tests:
 `test_a_name_holding_a_control_byte_is_matched_in_every_separator_spelling_c1629`,
 `test_a_folder_name_holding_a_control_byte_is_redacted_alike_in_both_reports_c1629`.
+Amended 2026-11-16, §16.256 C1890: install.sh's pairs did not split at the byte then; every shell splitter reads
+`CUT_SEP` since, so both reports cut the same spellings.
 
 **A provider folder that names no organisation is kept** (C1634; ruling 133; dated line at §16.245 C1481). `_cut_path`
 kept a provider folder only as an app's name and placeholders, so `Box-Box/<folder-1>` and
@@ -41724,6 +41735,12 @@ install.log's real args= form, `printf %q` of the whole path (C1839): the shell 
 report the decoded cut in double quotes, neither a name, `$'`, an octal escape or U+FFFD, with the same verdict.
 `test_the_one_kept_divergence_is_pinned_in_both_reports_ruling_138` pins the pair (ruling 138), and the property
 test's every-line-form claim leaves out only that word.
+Amended 2026-11-16, §16.256 C1832: an `add-source` word keeps every placeholder and is cut at its first unknown part,
+`OneDrive-<org-1>/<path>` for a folder no pair covers, as the agentsync report cuts it; the shell kept the whole word.
+Amended 2026-11-16, §16.256 C1862: a configured source's tenant is registered from sources.toml in both reports,
+its provider folder on disk or not, and a `~/Library/CloudStorage/<App>-<word>` word on any line goes through the
+provider rule, an unkept, unregistered one reading `~/Library/CloudStorage/<path>`; only a tenant written without that
+prefix prints alike in both.
 
 **The recut note says which <path> is its own** (C1604; ruling 135; amends §16.246 C1406; `scripts/install.sh`). An
 older build writes `<path>` itself (`set exclude = [<path>] in [[source]]`, an item path in a log line), and the
@@ -42142,7 +42159,110 @@ assertion in `test_a_dollar_quoted_word_no_alias_covers_is_cut_whole_c1656_c1670
 
 ### 16.256 Round 40: the installer: the shell report reads every argument form from the table, no bash 3.2 crash on a long folder list, and one spelling per escaped byte (2026-11-16, wave B13 round 40 lane RB)
 
-Reserved for round 40 lane RB of B13.
+Round 40's lane RB items (`docs/plans/bring-back-ocr.md`, "B13 round 40"; specs `round40/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's rulings 137 and 138 settle it). A dated line this round writes in another
+section reads `Amended <date>, §16.256 C<n>: ...`.
+
+**No bash 3.2 crash over a long folder list, and a report is refused when its pairs are cut** (C1836; ruling 137;
+privacy; data integrity; `scripts/install.sh`). `agent_words_name` opened a process substitution for every listed
+folder and folder pair, inside `redaction_pairs`' command substitution, and /bin/bash 3.2.57 segfaults once one
+command substitution has opened about 255 of them (254 do not); no reader checked how `redaction_pairs` ended, so with
+250 to 450 listed folders most `--report-only` runs wrote no report and some went out public with the names past the
+crash in clear. `agent_words_name` and `own_word_folder` (which keeps its own split class, digits apart from letters)
+open none now; `redaction_pairs` ends `return 0`, so its status is never its last loop body's; and its three readers,
+`redact_stream`, `fallback_redaction` and `agent_word_values`, read it whole first and fail closed through
+`REDACT_FAILED_FILE`: each prints nothing, returns 1 and marks the file, which `write_fallback_report` sets and, after
+the body and after the legend, refuses the report on (`could not write the setup report`), since a public report and
+its bring-back.md would carry the names in clear. The marker, never the pipeline's status, which any stage's harmless
+non-zero exit sets. Measured on /bin/bash 3.2.57: before, 270 listed folders crashed 2 of 3 runs and 300 each run;
+after, every run at 270 to 450 wrote a report with each folder cut. Tests:
+`test_install_oneshot.py::test_a_report_over_300_listed_folders_still_cuts_the_last_one_c1836` and
+`test_a_reader_of_the_pairs_that_fails_marks_the_report_refused_c1836`.
+
+**A step 1 reader stopped at its own limit is no all-clear** (C1867 with C1876; `scripts/install.sh`; dated line at §16.130 U12). `config_errors`
+and `vanished_folders` run under `with_timeout 5`, `misplaced_reader` and `lost_hold_reader` under 10, and step 1 read
+a stop at that limit (143) as nothing to say (U12), so on a busy Mac its NEXT ended `(none is needed)` over a state
+file step 2 then stopped on (the land gate's one re-run-cleared failure, 63deb83d0's). The two 10 s readers return
+`with_timeout`'s status now (a caller that needs none takes `|| true`); a reader that stopped at its limit
+(`at_limit`) drops `(none is needed)` for one clause, `; step 1's check of agentsync's config and state did not finish
+within its time limit (this Mac was busy), so step 2 may still stop on it: ~/.local/bin/agentsync status names any
+such stop`, and step 1's `step_end` line logs `config_err=timeout`; the exit code is unchanged, and a reader that fails
+with an error still says nothing. gate.sh is unchanged. Test:
+`test_install_oneshot.py::test_list_folders_says_no_none_is_needed_when_its_state_reader_stops_at_its_limit_c1867`
+(the installed venv's sitecustomize holds config_errors' program 6 s; the same venv with no hold still says `(none is
+needed)`).
+
+**One spelling per escaped byte in step 1's list** (C1802; ruling 137; `scripts/install.sh`,
+`src/agentsync/arm_local.py`, `src/agentsync/ops/doctor.py`, `docs/deploy/README.md`,
+`docs/deploy/setup-feedback.md`; dated lines at §16.245 C1414 and §16.244 C1281). Step 1's list, `arm_local.list_shown_name` and doctor's `listable` detail
+(`doctor.list_spelling`) wrote every escaped character but a newline, tab and CR as `?`, so a folder holding DEL and
+one holding U+200B beside it printed as one row. `LIST_ESC_AWK`'s `esc` writes each such character's UTF-8 bytes as
+`\ooo` (DEL `\177`, U+200B `\342\200\213`) from a byte-to-octal table built once, `arm_local.list_escaped_char` the
+same for both Python spellings, so the c1244 pin still holds awk and Python byte for byte; the shell report's
+`add_forms` registers the new spelling and the old `?` one (`escq`), which older install.out and friction logs hold,
+as setup_report.folder_spellings keeps it (lane RA). The twin check reads the new form unchanged: a folder literally
+named `Contoso\177Del` beside the DEL folder is still both rows marked and refused. Tests:
+`test_install_list.py::test_two_folders_that_differ_by_a_hidden_character_are_two_rows_c1802` and
+`test_a_folder_named_as_another_ones_octal_spelling_is_still_its_twin_c1802`; the look-alike tests take the octal
+twin in place of the `?` one.
+
+**The shell report reads every argument form from the table** (C1832, C1835, C1831 with C1881, C1833; ruling
+137; privacy; `scripts/install.sh`; dated line at §16.251 C1601). `typed_note_cut`'s `slcut` read three heads typed in its own
+text, so the `--source-local=` form kept an unregistered tenant and an unconfigured folder in clear (C1831 with
+C1881), an `add-source` word skipped the part check and kept every folder (C1832), a refused name ended at its first
+blank (C1833), and `--cwd` and `--debug`'s lines (the CLI conventions wave's) printed a private project folder
+(C1835). `slcut` now takes every head from the generated block, by its rule: `CUT_HEADS_PROVIDER` (`--source-local `,
+`--source-local=`, `is not an existing folder: `) keeps a word under a kept provider folder only when every later part
+is fixed, generic, a home folder or a configured folder's placeholder (`cfgonly` with its configured check, which now
+always runs), else `<Provider>-<org-N>/<path>`; `CUT_HEADS_FIRST_UNKNOWN` (`add-source `) prints `cut()` of the
+unquoted word, so every placeholder stays and the first unknown part is `<path>`; `CUT_HEADS_CWD` cuts `--cwd ` and
+`--cwd=`'s one shell word, and `debug: cwd `'s value to the line's first ` | `, as `_cut_path` cuts, the word `--cwd`
+kept; `CUT_HEADS_UNDER_CWD` (`debug: source `, `debug: config `) cuts a path only when it is that run's `debug: cwd`
+folder or lies under it. A bare `--source-local ` name runs to the last `: <head>` of `CUT_REFUSED_HEADS`
+(`lasthead`), whose block row replaces install.sh's own `REFUSED_HEADS`, which `report_words_cut` read too.
+install.sh writes `--cwd=D` as `--cwd D` in the run header, and `debug: cwd`, `debug: source`'s path and
+`debug: config` through `printf %q` (`debug_path`, the home's %q form as `~`), so a newline never starts a line no cut
+reads and the paths under the cwd are spelled as it is. Tests:
+`test_report_redaction.py::test_both_reports_cut_an_unregistered_tenant_after_cloudstorage_c1626` (its rows for the
+`=` form bare and quoted, add-source bare, quoted, hyphenated and kept, and three refused names),
+`test_the_shell_cuts_a_refused_name_under_a_configured_folder_whole_c1833`,
+`test_install_oneshot.py::test_the_shell_report_cuts_a_cwd_folder_on_the_run_header_and_debug_lines_c1835` (both
+forms, a name with blanks, a relative AGENTSYNC_CONFIG), `test_every_source_local_refusal_opens_with_a_head_both_reports_cut_after_c1432`,
+and ruling 133's property test, whose lines lane RA draws from the table's rows.
+
+**A configured tenant is registered with its provider folder gone, and a free-text tenant is cut** (C1862's shell
+half; ruling 137; privacy; `scripts/install.sh`; dated line at §16.251 C1601). The shell registered a tenant only
+from the provider folders on disk, so a configured source signed out of its app printed its tenant in clear on
+doctor's listable line and in free text, where the agentsync report, which registers every configured source's tenant
+from sources.toml, printed `OneDrive-<org-2>`. `redaction_pairs` now registers each configured source's provider
+folder from sources.toml after the disk walk, in config order, through the walk's own body (`org_entry`), so it takes
+the number the agentsync report gives it; and `slcut` ends with a free-text pass over every `CUT_FREE_HEAD` word, to a
+`CUT_FREE_END` byte, in which a provider folder `CUT_APPS` names that `CUT_PROVIDER_KEPT` does not keep reads
+`~/Library/CloudStorage/<path>`, never numbered, its `CUT_FREE_TRAIL` signs kept after. A tenant written without that
+head stays the documented residual. Test:
+`test_report_redaction.py::test_both_reports_number_a_configured_tenant_whose_provider_folder_is_gone_c1862` (a gone
+provider folder on doctor's FAIL line and in free text, and an unconfigured one in free text, both reports alike).
+
+**Every shell splitter reads the block's separator class** (C1890 with C1837; ruling 137; privacy;
+`scripts/install.sh`; dated line at §16.250 C1629). `CUT_SEP` was generated and read by nothing: `fuzzy()` split a name at a blank, tab, `_`, `\`
+or `-` only, so with a folder `q3<BS>plans` the shell printed `q3 plans`, `q3-plans` and `q3_plans` in clear, and
+`agent_words_name` said no to `GitHub<VT>Copilot`, which the agentsync report reads as product words. `fuzzy()`'s
+tokenizer and join, the pairs' sort key, the organisation key, keep_verb's pair key, `typed_note_cut`'s `norm()` and
+`agent_protect`'s `rx` and `sep` read `CUT_SEP` through ENVIRON, and `agent_words_name` replaces each `CUT_SEP` byte by
+a blank in one awk (no process substitution, C1836). The run between a value's words is `SEP_RUN_AWK`'s `seprun()`,
+built from `CUT_SEP` but `agent_protect`'s delimiters `\004` and `\005`, so a pair never runs across a protected
+product word, which always opens with `\004`; its nibble bytes `\016` to `\035` stay separators, since ESC is one and
+leaving them out kept `q3<ESC>plans` in clear (measured; the spec's marker list named them too). Tests:
+`test_install_oneshot.py::test_both_reports_split_a_folder_name_at_every_separator_byte_c1890` (BS, ESC, DEL),
+`test_agent_words_split_as_the_agentsync_report_splits_them_c1837`,
+`test_a_folder_pair_never_runs_across_a_kept_agent_word_c1890`.
+
+**The shell legend names the one kept divergence** (ruling 138; C1801 with C1857's shell half; `scripts/install.sh`).
+The `<path>` item's dollar-quote sentence stays and ends `; one right after --source-local, --source-local= or
+add-source is cut whole here, where the agentsync report shows it decoded in double quotes and cut by its argument's
+rule`, so both legends name the pair ruling 138 pins; its words before the closing `)` of `(any character outside
+ASCII)`, which the guide's `<path>` row quotes, are unchanged. Test:
+`test_install_oneshot.py::test_the_shell_report_reads_past_a_dollar_quoted_install_log_word`.
 
 ### 16.257 Round 40: help and version runs refuse --fields, login keeps --no-open, and a zero-byte recording is empty (2026-11-16, wave B13 round 40 lane B)
 
