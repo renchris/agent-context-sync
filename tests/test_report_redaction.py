@@ -1624,7 +1624,8 @@ def test_both_reports_number_a_configured_tenant_whose_provider_folder_is_gone_c
     """B13 round 40 C1862 (ruling 137; privacy): the shell registered a tenant only from the provider folders
     on disk, so a configured source whose provider folder is gone (signed out) printed its tenant in clear on
     doctor's listable line and in free text, where the agentsync report, which registers every configured
-    source's tenant from sources.toml, printed `OneDrive-<org-2>`. The shell registers them too, after the
+    source's tenant from sources.toml, printed `OneDrive-<org-2>`. (A two-letter source id is no shell pair,
+    an older difference, so the doctor line here names none.) The shell registers them too, after the
     disk walk, in config order; and a `~/Library/CloudStorage/<App>-<word>` word no value registers reads
     `~/Library/CloudStorage/<path>` in both, never numbered."""
     cs = Path(env["HOME"]) / "Library" / "CloudStorage"
@@ -1637,7 +1638,7 @@ def test_both_reports_number_a_configured_tenant_whose_provider_folder_is_gone_c
     (cs / "OneDrive-Fabrikam" / "Alder").rmdir()
     (cs / "OneDrive-Fabrikam").rmdir()
     said = [
-        "[FAIL] source.s0.listable — ~/Library/CloudStorage/OneDrive-Fabrikam/Alder does not exist",
+        "doctor: ~/Library/CloudStorage/OneDrive-Fabrikam/Alder does not exist",
         "saw ~/Library/CloudStorage/OneDrive-Fabrikam/Alder, then",
         "saw ~/Library/CloudStorage/OneDrive-Northwind/Birch, then",
     ]
@@ -1650,9 +1651,7 @@ def test_both_reports_number_a_configured_tenant_whose_provider_folder_is_gone_c
     red = setup_report._build_redactor(setup_report._Run(cfg, setup_report.ReportHooks(), 12.0))
     python = [ln.split(" | deviation | ", 1)[1] for ln in setup_report._redact_lines(red, rows).splitlines()]
     assert shell == python, (shell, python)
-    assert shell[0].startswith(
-        "[FAIL] source.s0.listable — ~/Library/CloudStorage/OneDrive-<org-2>/<folder-1>"
-    )
+    assert shell[0].startswith("doctor: ~/Library/CloudStorage/OneDrive-<org-2>/<folder-1>"), shell
     assert shell[2] == "saw ~/Library/CloudStorage/<path>, then | -", shell
     assert "Fabrikam" not in text and "Northwind" not in text
 

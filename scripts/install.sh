@@ -3286,6 +3286,10 @@ redaction_pairs() {
 		[ "${#1}" -ge 3 ] || return 0
 		add_forms "$@"
 	}
+	# An escaped spelling (step 1's list, add-source's TOML echo) holding a backslash is matched byte for byte,
+	# never fuzzily: the fuzzy pattern reads its backslash as a separator, so `\342\201\240Music` matched from its
+	# 342 and printed `\<folder-1>` (B13 round 40 C1802, found by ruling 133's property test). FLAG otherwise.
+	spelled_flag() { case "$1" in *\\*) ;; *) printf '%s' "$2" ;; esac; } # SPELLING FLAG
 	add_forms() { # VALUE PLACEHOLDER [w]: emit_pair for the value as written, in NFC and in NFD, as the Python
 		# report matches it: a Finder-made name is NFD on disk and an agent types it NFC, or the reverse.
 		# iconv's UTF-8-MAC is macOS's decomposed form; a value that is not UTF-8 adds no other form. Printable
@@ -3309,7 +3313,7 @@ redaction_pairs() {
 		case "$1" in
 		*[$'\001'-$'\037'$'\177'\"\\]*)
 			while IFS= read -r v; do
-				[ -z "$v" ] || [ "$v" = "$1" ] || emit_pair "$v" "$2" "${3:-}" utf8
+				[ -z "$v" ] || [ "$v" = "$1" ] || emit_pair "$v" "$2" "$(spelled_flag "$v" "${3:-}")" utf8
 			done <<<"$(TOML_NAME="$1" DEL_FORMS="$CUT_DEL_ESCAPED" LC_ALL=C awk 'BEGIN {
 				for (k = 1; k < 32; k++) e[sprintf("%c", k)] = sprintf("\\u%04x", k)
 				e["\b"] = "\\b"; e["\f"] = "\\f"; e["\n"] = "\\n"; e["\r"] = "\\r"; e["\t"] = "\\t"
@@ -3346,7 +3350,7 @@ redaction_pairs() {
 		if [ -n "${LIST_ESC_AWK:-}" ]; then
 			# one per line: neither spelling holds a newline, which each escapes
 			while IFS= read -r v; do
-				[ -z "$v" ] || [ "$v" = "$1" ] || emit_pair "$v" "$2" "${3:-}" utf8
+				[ -z "$v" ] || [ "$v" = "$1" ] || emit_pair "$v" "$2" "$(spelled_flag "$v" "${3:-}")" utf8
 			done <<<"$(LIST_NAME="$1" LC_ALL=C awk "$LIST_ESC_AWK"'BEGIN { s = ENVIRON["LIST_NAME"]; gsub(/\n/, "\036", s)
 				o = esc(s); escq = 1; q = esc(s); print o; if (q != o) print q }')"
 		fi
