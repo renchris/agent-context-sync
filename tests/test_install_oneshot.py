@@ -43,6 +43,7 @@ import threading
 import time
 import unicodedata
 import urllib.parse
+import venv
 from collections.abc import Callable, Iterable, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -11723,6 +11724,62 @@ def misplaced_fix(role: str, kind: str, kept: str = "") -> str:
     if role == "precord":
         return f"keeping a copy, they move it aside{SHUT_OPEN}{precord}"
     return f"keeping a copy, they move it aside{SHUT_OPEN}"
+
+
+STEP1_CHECK_CUT = (
+    "; step 1's check of agentsync's config and state did not finish within its time limit (this Mac was "
+    "busy), so step 2 may still stop on it: ~/.local/bin/agentsync status names any such stop"
+)
+"""Step 1's clause when one of its state readers stopped at its own limit (B13 round 40 C1867, C1876)."""
+
+
+def _slow_tool_python(env: dict[str, str], marker: str, seconds: float) -> Path:
+    """The installed agentsync's interpreter as a real venv, whose sitecustomize holds back the one ``-c``
+    program holding ``marker`` (read from sys.orig_argv) for ``seconds``: install.sh's own reader, past its
+    own limit, with no seam in install.sh. A .pth puts this checkout's site-packages on its path, so
+    agentsync imports as _tool_python's wrapper gives it."""
+    root = Path(env["HOME"]) / ".local" / "share" / "uv" / "tools" / "agentsync"
+    venv.EnvBuilder(with_pip=False, symlinks=True).create(root)
+    site = root / "lib" / f"python{sys.version_info[0]}.{sys.version_info[1]}" / "site-packages"
+    outer = [p for p in sys.path if p.endswith("site-packages") and Path(p).is_dir()]
+    (site / "zz_outer.pth").write_text(
+        "".join(f"import site; site.addsitedir({p!r})\n" for p in outer), encoding="utf-8"
+    )
+    (site / "sitecustomize.py").write_text(
+        f"import sys, time\nif any({marker!r} in a for a in getattr(sys, 'orig_argv', ())):\n"
+        f"    time.sleep({seconds})\n",
+        encoding="utf-8",
+    )
+    return root / "bin" / "python"
+
+
+def test_list_folders_says_no_none_is_needed_when_its_state_reader_stops_at_its_limit_c1867(
+    env: dict[str, str],
+) -> None:
+    """B13 round 40 C1867, C1876: config_errors runs under with_timeout 5, and its caller read any non-zero
+    exit, 143 at the limit included, as "nothing to say" (U12), so on a busy Mac step 1's NEXT ended "(none is
+    needed)" over a state file step 2 then stopped on (the land gate's one re-run-cleared failure). A reader
+    stopped at its own limit now drops that all-clear for one clause naming status, and step 1's step_end
+    line logs config_err=timeout; the exit code is unchanged. Its reader is held 6 s by the installed venv's
+    sitecustomize; the same config and venv with no hold still says "(none is needed)"."""
+    marker = "from agentsync.policy import load_policy"
+    code = INSTALL_SH.read_text(encoding="utf-8")
+    assert code.count(marker) == 1, "the marker names config_errors' program alone"
+    assert marker in code.split("\nconfig_errors() {", 1)[1].split("\n}\n", 1)[0]
+    _config_step_2_stops_on(env, "clean-real")
+    _slow_tool_python(env, marker, 0)
+    clean = install_sh(env, "--list-folders")
+    assert clean.returncode == 0, clean.stdout + clean.stderr
+    assert last_line(clean).endswith("(none is needed)"), last_line(clean)
+    _slow_tool_python(env, marker, 6)
+    cp = install_sh(env, "--list-folders")
+    assert cp.returncode == clean.returncode, cp.stdout + cp.stderr
+    assert "(none is needed)" not in last_line(cp), last_line(cp)
+    assert last_line(cp).endswith(STEP1_CHECK_CUT), last_line(cp)
+    head = f"NEXT: this Mac already syncs 1 folder, and a re-run keeps it: run {INSTALL_SH}, with one "
+    assert last_line(cp).startswith(head), last_line(cp)
+    logged = install_log(env)[-2]
+    assert logged.endswith(" config_err=timeout"), logged
 
 
 def misplaced_tail(role: str, kind: str = "folder", kept: str = "") -> str:

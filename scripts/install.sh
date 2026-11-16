@@ -1325,8 +1325,13 @@ def misplaced_kind(role, path):
 
 
 print(role, (role != "-" and misplaced_kind(role, found[0])) or "")'
+# Its first line, and with_timeout's status, so step 1 tells a stop at its limit from an error (B13 round 40
+# C1867, C1876): a caller that needs no status takes `|| true`.
 misplaced_reader() { # PYTHON [SRC]
-	with_timeout 10 "$1" -I -c "$MISPLACED_PY" "$CONFIG" ${2:+"$2"} 2>/dev/null | head -n 1 || true
+	local out rc=0
+	out="$(with_timeout 10 "$1" -I -c "$MISPLACED_PY" "$CONFIG" ${2:+"$2"} 2>/dev/null)" || rc=$?
+	printf '%s\n' "${out%%$'\n'*}"
+	return "$rc"
 }
 # Whether agentsync's hold list lost a hold its records keep as set and not released (governance.lost_holds,
 # B13 round 28 I87, I89: holds.json moved aside, rewritten as no holds, or a hold only a record names), which
@@ -1444,8 +1449,12 @@ if gov and queue is not None:  # whether a hold in force refuses the hand run, a
     else:
         said += ",queue-free"
 print(said)'
+# Its first line and with_timeout's status, as misplaced_reader's (B13 round 40 C1867, C1876).
 lost_hold_reader() { # PYTHON [SRC]
-	with_timeout 10 "$1" -I -c "$LOST_HOLD_PY" "$CONFIG" ${2:+"$2"} 2>/dev/null | head -n 1 || true
+	local out rc=0
+	out="$(with_timeout 10 "$1" -I -c "$LOST_HOLD_PY" "$CONFIG" ${2:+"$2"} 2>/dev/null)" || rc=$?
+	printf '%s\n' "${out%%$'\n'*}"
+	return "$rc"
 }
 # The words for the queue's hand run under a hold, one rule for both tails (B13 round 34 ruling 93):
 # ",queue-held" takes the release, ",queue-free" the plain run, ",queue-maybe" a dry run first, since a hold on
@@ -9853,7 +9862,7 @@ list_folders() {
 	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks marks synced="" unlisted="" unread="" kept="" built
 	local TWIN_DEADLINE="" # list_twins' bound, set to deadline's only once a provider was denied or asked (C1464)
 	local line missing=0 gone=0 gonepaths="" others=0 other="" libs=0 libpaths="" apps="" tokens="" tok="" stuck=0 more=""
-	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vreal="" vplain="" vtail="" vlog="" cerr="" ctail="" clog="" stail="" crole="" clink="" cunread="" lwhat="" lfix="" lfact="" lown="" chbmode="" cshort="" cmis="" cmisread="" sfix="" cside="" codd="" fnoun="" stopsat="" chold=""
+	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vreal="" vplain="" vtail="" vlog="" cerr="" ctail="" clog="" stail="" crole="" clink="" cunread="" lwhat="" lfix="" lfact="" lown="" chbmode="" cshort="" cmis="" cmisread="" sfix="" cside="" codd="" fnoun="" stopsat="" chold="" ccut="" rcut="" rrc=0 rt0=0""
 	step_start list-folders
 	tmp="$(tmp_make -d)"
 	: >"$tmp/list0"
@@ -9937,7 +9946,12 @@ list_folders() {
 		# provider denied or still asking (that exit 4 comes first); a reader that fails changes nothing.
 		if [ -n "$synced" ] && [ -z "$denied$asking" ]; then
 			tail -n +3 "$tmp/marked" | LC_ALL=C grep -v '^\[' >"$tmp/unmarked" || true
-			if vanished_folders "$py" "$tmp/unmarked" >"$tmp/vanished" 2>/dev/null; then
+			# a reader stopped at its own limit (this Mac busy) is no all-clear: ccut drops "(none is needed)"
+			# below; one that fails with an error still says nothing (U12; B13 round 40 C1867, C1876)
+			rrc=0 rt0=$SECONDS
+			vanished_folders "$py" "$tmp/unmarked" >"$tmp/vanished" 2>/dev/null || rrc=$?
+			! at_limit "$rrc" "$rt0" 5 || ccut=1
+			if [ "$rrc" -eq 0 ]; then
 				vother="$(sed -n 1p "$tmp/vanished")"
 				case "$vother" in
 				'' | *[!0-9]*) vother=0 ;;
@@ -9956,9 +9970,19 @@ list_folders() {
 			# what step 2's config step stops on, in fixed words; a reader that fails says nothing (U12)
 			# the misplaced file as this checkout's code judges it, the build step 2 installs, else the installed
 			# build's (B13 round 28 I96)
-			cmisread="$(misplaced_reader "$py" "$repo/src")"
-			[ -n "$cmisread" ] || cmisread="$(misplaced_reader "$py")"
-			if config_errors "$py" "$cmisread" >"$tmp/cerr" 2>/dev/null; then
+			rrc=0 rt0=$SECONDS
+			cmisread="$(misplaced_reader "$py" "$repo/src")" || rrc=$?
+			! at_limit "$rrc" "$rt0" 10 || rcut=1
+			if [ -z "$cmisread" ]; then
+				rrc=0 rt0=$SECONDS
+				cmisread="$(misplaced_reader "$py")" || rrc=$?
+				! at_limit "$rrc" "$rt0" 10 || rcut=1
+			fi
+			[ -n "$cmisread" ] || [ -z "$rcut" ] || ccut=1
+			rcut="" rrc=0 rt0=$SECONDS
+			config_errors "$py" "$cmisread" >"$tmp/cerr" 2>/dev/null || rrc=$?
+			! at_limit "$rrc" "$rt0" 5 || ccut=1
+			if [ "$rrc" -eq 0 ]; then
 				cerr="$(LC_ALL=C grep -E '^(policy|governance|state|remote|state-table|state-access|state-owner|state-refused|state-side-access|state-side-owner|state-side-refused|state-side-notfile|state-dir-write|state-notfile|state-lost|state-notdir|state-file-access|state-file-owner|state-file-refused|state-file-notfile)$' "$tmp/cerr" | LC_ALL=C tr '\n' ',' || true)"
 				cerr="${cerr%,}"
 				crole="$(LC_ALL=C grep -E '^role-(lock|heartbeat|governance|holds|record|precord|queue|suppressed|audit)$' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
@@ -9972,8 +9996,15 @@ list_folders() {
 			fi
 			# a hold the hold list lost, as this checkout's governance judges it, else the installed build's
 			# (B13 round 29 ruling 27: C122, C197, C206)
-			chold="$(lost_hold_reader "$py" "$repo/src")"
-			[ -n "$chold" ] || chold="$(lost_hold_reader "$py")"
+			rrc=0 rt0=$SECONDS
+			chold="$(lost_hold_reader "$py" "$repo/src")" || rrc=$?
+			! at_limit "$rrc" "$rt0" 10 || rcut=1
+			if [ -z "$chold" ]; then
+				rrc=0 rt0=$SECONDS
+				chold="$(lost_hold_reader "$py")" || rrc=$?
+				! at_limit "$rrc" "$rt0" 10 || rcut=1
+			fi
+			[ -n "$chold" ] || [ -z "$rcut" ] || ccut=1
 		fi
 	fi
 	# Every synced folder is printed with its mark, so the reader can name each: the ones the list does not
@@ -10284,6 +10315,13 @@ list_folders() {
 			;;
 		esac
 		[ -z "$clog" ] || clog=" config_err=${clog#,}"
+	fi
+	# A reader stopped at its own limit saw nothing, so step 1 cannot say step 2 needs nothing: one clause in
+	# place of "(none is needed)", status named for the stop it may have missed, and its own word in the log
+	# (B13 round 40 C1867, C1876)
+	if [ -n "$ccut" ]; then
+		ctail="$ctail; step 1's check of agentsync's config and state did not finish within its time limit (this Mac was busy), so step 2 may still stop on it: ~/.local/bin/agentsync status names any such stop"
+		clog="${clog:- config_err=}${clog:+,}timeout"
 	fi
 	term="$(terminal_app)"
 	term="this terminal app${term:+ ($term)}"
@@ -11650,7 +11688,7 @@ state_misplaced() {
 	STATE_MISPLACED=""
 	STATE_MISPLACED_KIND=""
 	if [ "$DRY_RUN" -eq 0 ] && [ -x "$TOOL_PY" ] && [ -f "$CONFIG" ]; then
-		n="$(misplaced_reader "$TOOL_PY")"
+		n="$(misplaced_reader "$TOOL_PY")" || true
 	fi
 	STATE_MISPLACED_KIND="${n#* }"
 	misplaced_words "${n%% *}" "$STATE_MISPLACED_KIND" || return 1
@@ -11824,8 +11862,8 @@ state_stop_holds() {
 second_stop_words() { # EXCLUDE
 	local lost=""
 	SECOND="" ONCE="once it is fixed"
-	lost="$(lost_hold_reader "$TOOL_PY" "$repo/src")"
-	[ -n "$lost" ] || lost="$(lost_hold_reader "$TOOL_PY")"
+	lost="$(lost_hold_reader "$TOOL_PY" "$repo/src")" || true
+	[ -n "$lost" ] || lost="$(lost_hold_reader "$TOOL_PY")" || true
 	case ",$lost,:$1" in
 	*:suppressed) ;;
 	*,lost-suppressed,*:precord) SECOND=" and, on that same governance.suppressed line, a second FAIL that follows: the suppression list lost a purge the audit trail records, also the person's to fix" ;;
