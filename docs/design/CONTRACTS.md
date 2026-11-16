@@ -8666,7 +8666,13 @@ draw.io diagram), and a zero-byte file under an Office, Outlook or draw.io name 
 Amended 2026-11-08, §16.238 C1050, C1117: so is a zero-byte `.pdf`, `.eml`, `.odt`, `.teams.json` or `.vtt`, each
 converter saying so for zero bytes itself.
 Amended 2026-11-14, §16.253 C1647: and a zero-byte image (`.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.tif`, `.tiff`,
-`.webp`, `.heic`, `.heif`) or recording (`.mp4`, `.m4v`, `.mov`), once `image not readable` and `other`.
+`.webp`, `.heic`, `.heif`) or recording (`.mp4`, `.m4v`, `.mov`), once `image not readable` and `other`, where a
+converter reads it: an image with an OCR engine and no label rule, a recording with an OCR and a media engine and
+`[convert] recordings` on. Where none is registered it stays `no converter`, and while the OCR helper fails it takes
+the OCR-down stub (`waiting for the OCR helper`), never `empty`.
+Amended 2026-11-16, §16.259 C1853 (by §16.257 C1820): since 0da596765 a recording on this Mac listed at 0 bytes (not
+dataless, not a Graph item) is `empty` in every sync, interactive included, fetched with a probe budget and, its
+staged copy empty, converted with the whole registry; a dataless or Graph one is `empty` in the recording pass.
 Amended 2026-11-10, §16.240 C1267: the class `waiting for the OCR helper`, after `no converter` in
 `QUARANTINE_CLASSES`, for an image whose stub page says the OCR helper is not working, read from the page with or
 without a label rule (`_Mirror.read_image_pages`), never from the report's own OCR probe.
@@ -42521,6 +42527,17 @@ sentence, gives the rule (brace any variable a colon follows, `"${S}:src/agentsy
 list, since `:l`, `:u` and `:a` hit launcher/, uv.lock and a/ too. Test:
 `test_the_kit_note_says_to_brace_a_variable_a_colon_follows_c1823`, which pins the sentence after C1207's and, where
 zsh is installed, runs the three forms in `zsh -f` and the braced one in /bin/bash.
+
+**§16.28's C1647 line says where a zero-byte image or recording is `empty`** (C1853; docs only; ruling 141; dated line
+at §16.28). C1647's line under the class table said a zero-byte image or recording is `empty`, while
+`Registry.default` registers `image-ocr` only with an OCR engine and no label rule, and `recording-av` only with an
+OCR and a media engine and `[convert] recordings` on, and `convert_file` refuses a name with no converter
+(`no converter for .png`) before any zero-byte check; §16.253's own C1647 paragraph already said `with engines`. The
+line now names that condition, `no converter` without one, and the OCR-down stub during an outage, corrected in place
+as a fact about the code; a dated line after it records lane B's C1820 (0da596765, §16.257), from lane B's words: a
+recording on this Mac listed at 0 bytes is `empty` in every sync, a dataless or Graph one in the recording pass. Test:
+`test_the_class_tables_c1647_line_says_where_a_zero_byte_file_is_empty_c1853`, which reads the condition from
+`Registry.default`'s registrations.
 
 **The CI record carries rounds 38 and 39, re-timed with gh, and the limit stays 100** (C1866 with C1874; docs only;
 `CLAUDE.md`, `.github/workflows/ci.yml`, `docs/lanes/COMMON.md`). CLAUDE.md's ci paragraph and ci.yml's note ended at

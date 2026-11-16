@@ -25,7 +25,10 @@ import pytest
 
 import exec_stub
 from agentsync import publish, report_cuts
-from agentsync.convert import speech
+from agentsync.config import ConvertConfig
+from agentsync.convert import NO_CONVERTER_PREFIX, ConversionStatus, convert_file, speech
+from agentsync.convert.cache import ConverterCache
+from agentsync.convert.registry import Registry
 from agentsync.model import SourceKind
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -7291,10 +7294,13 @@ lane B's C1302 commit, which runs `xcrun --find git` through `deadline.run`."""
 _ROUND_40_D_PARAGRAPH_AMENDS = (
     ("16.251", "temp files go under a writable TMPDIR", "§16.259 C1854 (by §16.251 C1616)"),
     ("16.251", "install.sh carries the generated cut table", "§16.259 C1854 (by §16.251 C1633)"),
+    ("16.28", "Amended 2026-10-11 by §16.48 (R36): the class `damaged`", "§16.259 C1853 (by §16.257 C1820)"),
 )
 """Round 40 lane D's dated lines at §16.251 that C1854's claim reads beside a second: C1616's and C1633's
 records each sit right before another C1854 paragraph there, which the claim scan takes with it, so each is
-pinned in its own block, as :data:`_ROUND_37_D_PARAGRAPH_AMENDS` pins its lines."""
+pinned in its own block, as :data:`_ROUND_37_D_PARAGRAPH_AMENDS` pins its lines; and C1853's at the class
+table's dated block in §16.28, a section its claim names with no item, as :data:`_ROUND_39_E_PARAGRAPH_AMENDS`
+pins C1647's there."""
 
 _ROUND_35_RB_PARAGRAPH_AMENDS = (
     ("16.41", "Residuals: a cycle longer than the wait still meets the rebuild", "§16.231 C926"),
@@ -12901,3 +12907,45 @@ def test_the_kit_note_says_to_brace_a_variable_a_colon_follows_c1823() -> None:
     assert "bad substitution" in bad.stderr and "after" not in bad.stdout
     assert run(zsh, "-f", "-c", 'print -r -- "${S}:src/x"').stdout == "abc123:src/x\n"
     assert run("/bin/bash", "-c", 'echo "${S}:src/x"').stdout == "abc123:src/x\n"
+
+
+def test_the_class_tables_c1647_line_says_where_a_zero_byte_file_is_empty_c1853(tmp_path: Path) -> None:
+    """B13 round 40 C1853 (ruling 141): §16.28's C1647 line said a zero-byte image or recording is
+    `empty`, while Registry.default registers image-ocr only with an OCR engine and no label rule, and
+    recording-av only with an OCR and a media engine and recordings on, and convert_file refuses a name with
+    no converter before any zero-byte check. The line names that condition, `no converter` without one and
+    the OCR-down stub, and a dated line records lane B's C1820 (0da596765)."""
+    source = inspect.getsource(Registry.default)
+    assert "if ocr is not None and not content_policy.labels_active:" in source
+    assert "if ocr is not None and media is not None and cfg.recordings:" in source
+    plain = Registry.default(ConvertConfig())
+    empty_sha = hashlib.sha256(b"").hexdigest()
+    for name in ("a.png", "a.mp4"):
+        assert plain.for_name(name) is None
+        src = tmp_path / name
+        src.write_bytes(b"")
+        got = convert_file(
+            src,
+            name=name,
+            content_sha256=empty_sha,
+            canonical_sha256=empty_sha,
+            registry=plain,
+            cache=ConverterCache(tmp_path / "cache"),
+        )
+        assert got.status is ConversionStatus.REFUSED and got.reason == NO_CONVERTER_PREFIX + name[1:]
+    line = " ".join(
+        _contracts_section(
+            "Amended 2026-11-14, §16.253 C1647: and a zero-byte image", "\nAmended 2026-11-10"
+        ).split()
+    )
+    assert (
+        "once `image not readable` and `other`, where a converter reads it: an image with an OCR engine and"
+        " no label rule, a recording with an OCR and a media engine and `[convert] recordings` on. Where none"
+        " is registered it stays `no converter`, and while the OCR helper fails it takes the OCR-down stub"
+        " (`waiting for the OCR helper`), never `empty`."
+    ) in line
+    assert (
+        "Amended 2026-11-16, §16.259 C1853 (by §16.257 C1820): since 0da596765 a recording on this Mac"
+        in line
+    )
+    assert "is `empty` in every sync, interactive included" in line
