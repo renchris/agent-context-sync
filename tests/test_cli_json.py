@@ -473,7 +473,11 @@ def test_the_json_help_is_true_under_every_command_c1445(
     assert not any(f" {v} " in f" {cli.JSON_HELP} " for v in CLI_SURFACE["visible"]), cli.JSON_HELP
 
 
-@pytest.mark.parametrize("flags", [[], ["--device-code"]], ids=["browser", "device code"])
+@pytest.mark.parametrize(
+    "flags",
+    [[], ["--device-code"], ["--no-open"], ["--device-code", "--no-open"]],
+    ids=["browser", "device code", "no open", "device code no open"],
+)
 @pytest.mark.parametrize("verb", [["graph", "login"], ["login"]], ids=["graph login", "login"])
 def test_login_under_json_is_a_usage_error_before_any_sign_in_c1441(
     initialised: Config,
@@ -486,7 +490,9 @@ def test_login_under_json_is_a_usage_error_before_any_sign_in_c1441(
     code and the no-browser URL through text output JSON mode keeps quiet, then waited on a sign-in nobody
     could make. Printing the steps on stderr would break the one error line a --json caller reads, so login
     under --json is a usage error before MsalAuth is built: empty stdout, one error line, exit 2, a ``next``
-    without --json that keeps --device-code and the config. logout keeps its one document."""
+    without --json that keeps --device-code and the config. logout keeps its one document. B13 round 40 C1842
+    with C1883: the next step dropped --no-open, so following it ran the broker and a browser the person had
+    opted out of; it keeps --device-code, --no-open and the config, in that order, for both verbs."""
     built: list[object] = []
 
     class Refused(FakeAuth):

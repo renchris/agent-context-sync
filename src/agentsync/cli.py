@@ -4486,7 +4486,10 @@ def _cmd_graph(args: argparse.Namespace) -> int:
     action: str = args.action
     if action == "login" and clio.json_mode():
         # a usage error before any config loads or MsalAuth is built: one error line, empty stdout, exit 2
-        again = f"{loop.BIN} graph login{' --device-code' if args.device_code else ''}{_config_tail(args)}"
+        # the next step keeps the person's options: --no-open too, so it never falls back to the broker or a
+        # browser they opted out of (B13 round 40 C1842, C1883)
+        flags = (" --device-code" if args.device_code else "") + (" --no-open" if args.no_open else "")
+        again = f"{loop.BIN} graph login{flags}{_config_tail(args)}"
         clio.error_doc(
             clio.Reason.usage,
             LOGIN_NEEDS_TEXT,

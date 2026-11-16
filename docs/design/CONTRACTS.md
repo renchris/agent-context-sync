@@ -41308,6 +41308,8 @@ the `--config` the person gave (`_config_tail`). logout is not interactive and n
 `{"outcome": "signed_out"}`. Test: `test_cli_json.py::test_login_under_json_is_a_usage_error_before_any_sign_in_c1441`
 (`graph login` and `login`, with and without `--device-code`: nothing built, the error line and its `next`; logout's
 document; without --json the sign-in runs).
+Amended 2026-11-16, §16.257 C1842, C1883: the `next` keeps `--no-open` too, after `--device-code` and before the
+`--config` tail, so following it never runs the broker or a browser the person opted out of.
 
 **Under --json no text log reaches stderr, and a blocked sync says so** (C1484; ruling 128). `_setup_logging` attached
 agentsync's text handler in JSON mode too, so `sync --json -v` wrote timestamped text lines on stderr, and a sync the
@@ -42031,6 +42033,13 @@ for the OCR helper (it is not working; read once it does)` (`loop.RECORDING_OCR_
 `cli.OCR_WAIT_CLAUSE`), naming neither run. The state reason stays `RECORDING_WAITS`, which the recording pass's
 re-read keys read. Test: `test_cycle.py::test_a_recording_waiting_through_an_ocr_outage_waits_for_the_ocr_helper_c1841`
 (the C1442 setup, job installed or not; the usual words back after an interactive sync with the helper working).
+
+**graph login's next step keeps --no-open** (C1842 with C1883; amends §16.247 C1441). Under --json, `graph login`
+and its `login` alias refuse with a `next` that kept `--device-code` and the config but dropped `--no-open`, so a
+caller that followed it ran the broker and a browser the person had opted out of. `_cmd_graph` builds the flags in
+the order the run path reads them, `--device-code` then `--no-open`, before `_config_tail`. Test:
+`test_cli_json.py::test_login_under_json_is_a_usage_error_before_any_sign_in_c1441`, its flags now `[]`,
+`--device-code`, `--no-open` and both, for `graph login` and `login`.
 
 ### 16.258 Round 40: the converters: every page within the cap, an 8 KiB minimum, and long CSV fields (2026-11-16, wave B13 round 40 lane E)
 
