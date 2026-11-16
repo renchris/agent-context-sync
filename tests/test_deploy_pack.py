@@ -12949,3 +12949,52 @@ def test_the_class_tables_c1647_line_says_where_a_zero_byte_file_is_empty_c1853(
         in line
     )
     assert "is `empty` in every sync, interactive included" in line
+
+
+def test_the_guides_path_and_folder_rows_say_both_reports_cut_every_dollar_quote_word_c1855() -> None:
+    """B13 round 40 C1855 (ruling 138), with C1887: the guide's `<path>` row said only the shell fallback
+    report cuts every `$'...'` word, while since round 39 C1656 the agentsync report cuts each one too, but
+    one right after --source-local, --source-local= or add-source, which it shows decoded and cut by that
+    argument's rule where the shell cuts it whole; doctor's fix word folds into that cut. The `<folder-N>` row
+    names the TOML spellings of DEL both reports alias since lanes RA's and RB's round 40 run. Each claim is
+    held to the two legends and to report_cuts.DEL_ESCAPED and config.toml_string."""
+    from agentsync import config, setup_report  # noqa: PLC0415
+
+    guide = (ROOT / "docs" / "deploy" / "setup-feedback.md").read_text(encoding="utf-8")
+    row = next(line for line in guide.splitlines() if line.startswith("| `<path>` |"))
+    assert (
+        "in the shell fallback report (install.sh, when agentsync cannot run), every `$'...'` word" not in row
+    )
+    assert "and doctor's `$'...'` fix word, cut whole" not in row
+    assert (
+        "in both reports, every `$'...'` word, which install.log writes for a name with a tab or another"
+        " control character,"
+    ) in row
+    assert (
+        "(any character outside ASCII), cut whole (one left open runs to the line's end), so doctor's fix"
+        " reads `open ~/<path> in Finder once`: the shell fallback report (install.sh, when agentsync cannot"
+        " run) cuts every one, and the agentsync report (since B13 round 39, CONTRACTS §16.250 C1656, after"
+        " its aliases) every one but a word right after `--source-local `, `--source-local=` or `add-source"
+        " `, which it shows decoded in double quotes and cuts by that argument's rule, where the shell"
+        " fallback report cuts it whole (B13 round 40 ruling 138, CONTRACTS §16.255 and §16.256)"
+    ) in row
+    legend = " ".join(setup_report._LEGEND["path"].split())
+    assert "so doctor's fix reads open ~/<path> in Finder once, but one right after --source-local," in legend
+    assert "--source-local= or add-source, shown decoded in double quotes" in legend
+    assert "where the shell fallback report cuts it whole" in legend
+    install = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    said = " ".join(" ".join(re.findall(r'^\s*say "  ?(.*)"$', install, re.M)).split())
+    assert (
+        "one right after --source-local, --source-local= or add-source is cut whole here, where the agentsync"
+        " report shows it decoded in double quotes and cut by its argument's rule"
+    ) in said
+    folders = next(line for line in guide.splitlines() if line.startswith("| `<library-N>`, `<folder-N>`,"))
+    assert report_cuts.DEL_ESCAPED == ("\\u007F", "\\u007f")
+    assert "\\u007F" in config.toml_string("Contoso\x7fPlans")
+    assert (
+        "a configured folder elsewhere under the home folder from its project folder down (in the shell"
+        " fallback report since 2026-10-19); in both reports, since B13 round 40 (C1840 with C1887,"
+        " CONTRACTS §16.255 and §16.256), each such name in its escaped spellings too, a name holding DEL as"
+        " add-source's echoed TOML table writes it (`\\u007F`, `config.toml_string`) and as `\\u007f`, for"
+        " the name and its shown spelling;"
+    ) in folders

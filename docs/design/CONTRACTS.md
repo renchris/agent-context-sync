@@ -42539,6 +42539,21 @@ recording on this Mac listed at 0 bytes is `empty` in every sync, a dataless or 
 `test_the_class_tables_c1647_line_says_where_a_zero_byte_file_is_empty_c1853`, which reads the condition from
 `Registry.default`'s registrations.
 
+**The guide's `<path>` row says both reports cut every `$'...'` word, and its `<folder-N>` row names DEL's TOML
+spellings** (C1855 with C1887's guide half; docs only; ruling 138; `docs/deploy/setup-feedback.md`). The `<path>` row
+said only the shell fallback report cuts every `$'...'` word and named doctor's `$'...'` fix word apart for both,
+while since round 39 C1656 (§16.250) `Redactor.redact` cuts every such word left after its aliases too, but one right
+after `--source-local `, `--source-local=` or `add-source `, which the agentsync report shows decoded in double quotes
+and cuts by that argument's rule and the shell report cuts whole, ruling 138's one kept divergence. The row now says
+so in both legends' words (lane RA's `setup_report._LEGEND["path"]` at 7747b2890, lane RB's install.sh legend clause
+in the same run, §16.255 and §16.256), doctor's fix folded into the every-word cut, the legend quote that
+`test_the_guides_path_row_quotes_the_shell_reports_legend` reads kept, and the relative `--source-local` clause shell
+only as before. The `<folder-N>` row adds that both reports alias each folder name's escaped spellings, DEL as
+add-source's echoed TOML table writes it (`\u007F`, `config.toml_string`) and `\u007f` (`report_cuts.DEL_ESCAPED`),
+for the name and its shown spelling (C1840 with C1887, lanes RA and RB). Test:
+`test_the_guides_path_and_folder_rows_say_both_reports_cut_every_dollar_quote_word_c1855`, which holds the rows to
+both legends, `DEL_ESCAPED` and `toml_string`.
+
 **The CI record carries rounds 38 and 39, re-timed with gh, and the limit stays 100** (C1866 with C1874; docs only;
 `CLAUDE.md`, `.github/workflows/ci.yml`, `docs/lanes/COMMON.md`). CLAUDE.md's ci paragraph and ci.yml's note ended at
 round 37's twenty-three jobs (feedd8ef to 248e6a0a, 50:20 to 75:09), while 108 commits ran after them and three jobs
@@ -42548,13 +42563,14 @@ f320bfcd) took 52:53 to 71:54 (9aed904c, pytest's step 71:16 at 8147 tests); two
 first (a doctor-lines test), rerun green, and 877a47ab's one (a hung-status time limit), never rerun, the next commit
 green; runners waited 21:52, 16:31 and 15:36. Round 39's nineteen (853fab34 to 63deb83d) took 51:20 to 80:33
 (b74445af, pytest's step 79:55 at 8513 tests); 4d3ba971's first attempt failed at 62:55 when pandoc was stopped by
-SIGABRT in `test_html_data_uri_images_never_reach_the_page` (pandoc's own crash line is lane E's C1872, §16.258),
-rerun green; runners waited 50:10 (293c8081), 39:19 (4d3ba971's rerun, counted from the rerun's start, not the run's
-creation) and 31:45 (526fa1e2). 7253d365, round 40's base, took 77:50 and opens round 40's bracket. The range is 18 to
-81, both guides and the note carry both brackets, the waits and the failed attempts, and `timeout-minutes` stays 100,
-19:27 above the slowest: the slowest rose about 5 minutes a round (66:14, 75:09, 80:33), so it is raised at the next
-round whose slowest job comes within 15 minutes of it. Test: `test_claude_md_gives_cis_time_and_its_limit`, which pins
-both brackets in CLAUDE.md and the note, the waits, and the limit at least 15 minutes above the head.
+SIGABRT in `test_html_data_uri_images_never_reach_the_page` (pandoc's own crash line is lane E's C1872, 8d91fc41f,
+§16.258), rerun green; runners waited 50:10 (293c8081), 39:19 (4d3ba971's rerun, counted from the rerun's start, not
+the run's creation) and 31:45 (526fa1e2). 7253d365, round 40's base, took 77:50 and opens round 40's bracket. The
+range is 18 to 81, both guides and the note carry both brackets, the waits and the failed attempts, and
+`timeout-minutes` stays 100, 19:27 above the slowest: the slowest rose about 5 minutes a round (66:14, 75:09, 80:33),
+so it is raised at the next round whose slowest job comes within 15 minutes of it. Test:
+`test_claude_md_gives_cis_time_and_its_limit`, which pins both brackets in CLAUDE.md and the note, the waits, and the
+limit at least 15 minutes above the head.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
