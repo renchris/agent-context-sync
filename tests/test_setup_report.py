@@ -28214,6 +28214,7 @@ def test_the_format_ranges_docstring_tells_the_unicode_history_c1838_c1858() -> 
     assert "U+110CD, U+13430 to U+13438, U+1BCA0" in text and "U+110CD, U+13430 to U+1343F," not in text
 
 
+@pytest.mark.usefixtures("roomy_calls")
 @pytest.mark.parametrize("away", [False, True])
 def test_a_zero_byte_image_is_an_empty_stub_in_the_ocr_part_c1850(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, away: bool
@@ -28240,6 +28241,7 @@ def test_a_zero_byte_image_is_an_empty_stub_in_the_ocr_part_c1850(
     assert "other stub" not in parts["OCR"]
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_a_zero_byte_conversion_is_no_converter_cache_serve_c1821(fake_mac: dict[str, Path]) -> None:
     """B13 round 40 C1821 (ruling 141): a zero-byte file never reads the cache (C1466), but its conversion
     still records a row, so two syncs a run apart counted it as a conversion used again by a later run. The
