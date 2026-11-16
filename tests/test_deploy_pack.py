@@ -7253,6 +7253,14 @@ C1101's form, since round 36's C1101 replaced `cycle._cycle_ocr` with `_cycle_oc
 §16.232 C955's dated C1049 line and §16.237's C1049 paragraph, in lane B's C1277 marker: lane D writes them on
 lane B's C1302 commit, which runs `xcrun --find git` through `deadline.run`."""
 
+_ROUND_40_D_PARAGRAPH_AMENDS = (
+    ("16.251", "temp files go under a writable TMPDIR", "§16.259 C1854 (by §16.251 C1616)"),
+    ("16.251", "install.sh carries the generated cut table", "§16.259 C1854 (by §16.251 C1633)"),
+)
+"""Round 40 lane D's dated lines at §16.251 that C1854's claim reads beside a second: C1616's and C1633's
+records each sit right before another C1854 paragraph there, which the claim scan takes with it, so each is
+pinned in its own block, as :data:`_ROUND_37_D_PARAGRAPH_AMENDS` pins its lines."""
+
 _ROUND_35_RB_PARAGRAPH_AMENDS = (
     ("16.41", "Residuals: a cycle longer than the wait still meets the rebuild", "§16.231 C926"),
 )
@@ -7558,6 +7566,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_35_D_PARAGRAPH_AMENDS,
         *_ROUND_36_D_PARAGRAPH_AMENDS,
         *_ROUND_37_D_PARAGRAPH_AMENDS,
+        *_ROUND_40_D_PARAGRAPH_AMENDS,
         *_ROUND_34_B_PARAGRAPH_AMENDS,
         *_ROUND_35_B_PARAGRAPH_AMENDS,
         *_ROUND_36_B_PARAGRAPH_AMENDS,

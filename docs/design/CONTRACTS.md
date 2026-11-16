@@ -39543,6 +39543,10 @@ Loop, gitleaks, `yours` and `unexpected` kept).
 Amended 2026-11-10, §16.241 C1224, C1225: the Xcode and gitleaks lines change only after an Environment line the
 budget skipped (`envskip`), never on the Status line alone; a cut status has its own flag (`cutst`, C1223), and the
 Loop line's rewrite sets `loopspent` for the doctor bracket (C1222), one `nsw` string serving every bracket (ruling 123).
+Amended 2026-11-16, §16.259 C1854 (by §16.251 C1610): C1022's launchctl print line changes the same way since
+c3e100349: after an Environment line the budget skipped (`envskip`) it reads `not measured (the report's time limit
+was used up before launchctl print ran; plist absent|present)`; a spent Status alone keeps a real time-out's `did not
+answer in time` (ruling 123).
 
 **A background wait the budget shortened names the report's time limit** (C1040's install.sh half; ruling 115;
 `scripts/install.sh`). Lane RA's report now words a launchctl print wait the spent budget cut below its 5 s cap
@@ -41713,6 +41717,39 @@ ends `these N cut(s) are not counted above.`, and a render with no earlier `<pat
 `test_report_redaction.py::test_a_recut_of_another_builds_render_says_so_under_its_redaction_section_c1406` (the
 scoped note with an older exclude line, the plain one without).
 
+Amended 2026-11-16, §16.259 C1854 (by §16.251 C1616): temp files go under a writable TMPDIR (C1616;
+`scripts/install.sh`, e8dd5ede7). macOS `mktemp` with no template ignores TMPDIR for its per-user folder, so a
+sandbox's TMPDIR held none of install.sh's temp files (the uv pins file, and doctor's, the sync's and the loop's
+output). `tmp_make` makes each one, or a folder with `-d`, as `${TMPDIR%/}/agentsync.XXXXXX` when TMPDIR names a
+writable folder, and keeps the bare `mktemp` when it is missing or not writable, never /tmp and never `-t`, so a stale
+TMPDIR is never fatal under `set -e`. Test:
+`test_install_oneshot.py::test_temp_files_go_under_a_writable_tmpdir_c1616` (a writable TMPDIR holds the pins file and
+is empty after the run; a missing and a read-only one keep the bare mktemp, not /tmp, and still pin).
+
+Amended 2026-11-16, §16.259 C1854 (by §16.251 C1633): install.sh carries the generated cut table byte for byte (ruling
+133's shell half, fd241d532). `report_cuts.shell_block()`'s output sits once between `# BEGIN report_cuts` and
+`# END report_cuts`; every value it holds is assigned nowhere else in install.sh; the shell never imports the table
+from the installed agentsync, which may be older (C1655); and `agent_words_name` and `generic_folder` read `CUT_AGENT`
+and `CUT_DRIVE` from it. This is the test §16.250's `held byte for byte by lane RB's test (§16.251)` names:
+`test_install_oneshot.py::test_install_sh_carries_the_report_cuts_block_byte_for_byte_ruling_133`. Two harnesses that
+extract the redaction functions took a hand list of globals and missed a round's new ones, so they tested a shell with
+no verb hold and empty cut lists (C1633): every ENVIRON-fed `NAME="$GLOBAL"` those functions read is now in the
+generated block both function sets take, in `_SHELL_GLOBALS_RE`, or in the harness's own preamble. Test:
+`test_install_oneshot.py::test_every_global_the_shell_redaction_reads_is_in_its_harnesses_c1633`.
+
+Amended 2026-11-16, §16.259 C1854 (by §16.251 C1610): a stopped copy's Background runs line says launchctl print was
+skipped only after a skipped probe (C1610; `scripts/install.sh`, c3e100349; as ruling 123's Xcode rule). An ed901cd3
+copy whose budget ran out before sw_vers said launchctl print `did not answer in time`, though only doctor moves the
+deadline and it runs after Background runs, so that read was skipped too. After an Environment probe the budget
+skipped (`envskip`), and only then, a cut `.poll` or `.reconcile` line reads
+`not measured (the report's time limit was used up before launchctl print ran; plist absent|present)`; a spent Status
+alone (`spentst`) may follow a real launchctl time-out and keeps
+`not measured (launchctl print did not answer in time; plist absent|present)` (makes worse True for a `spentst` key).
+This lifts §16.236 C1022's `never ... the report's time limit was used up before ...` for that line, as §16.241 C1224
+lifted it for the Xcode line (the dated line there). Test:
+`test_install_oneshot.py::test_a_spent_copy_says_launchctl_print_was_skipped_only_after_a_skipped_probe_c1610` (a copy
+whose earlier probes were skipped, and one whose probes were measured, C1224's shape).
+
 ### 16.252 Round 39: --fields and log records follow the document, names in doctor's lines, and a recording kept during an OCR outage (2026-11-14, wave B13 round 39 lane B)
 
 Round 39's lane B items (`docs/plans/bring-back-ocr.md`, "B13 round 39"; specs `round39/items/C<n>.md`, the
@@ -42084,7 +42121,19 @@ Reserved for round 40 lane E of B13.
 
 ### 16.259 Round 40: the guides: the dollar-quote row, the record of round 39's installer work, and CI timings (2026-11-16, wave B13 round 40 lane D)
 
-Reserved for round 40 lane D of B13.
+Round 40's lane D items (`docs/plans/bring-back-ocr.md`, "B13 round 40"; specs `round40/items/C<n>.md`, the verifier's
+corrected fix built, as the lead's rulings 137 to 141 settle it). A dated line this round writes reads
+`Amended 2026-11-16, §16.259 C<n>`.
+
+**§16.251 records round 39's temp files, generated cut block and stopped-copy launchctl words** (C1854; docs only;
+dated lines at §16.251 C1616, C1633, C1610 and §16.236 C1022). §16.251's heading promised temp files under TMPDIR and
+§16.250 said the generated `# BEGIN report_cuts` block is `held byte for byte by lane RB's test (§16.251)`, while
+§16.251 named neither C1616 (e8dd5ede7), C1633 nor the block's test (fd241d532), nor C1610 (c3e100349); and §16.236
+C1022 still said a rewritten Background runs line is never `the report's time limit was used up before ...`, which
+C1610's rule now writes after a skipped probe. Each takes a dated line in §16.251 recording its rule and test, word
+for word from install.sh and tests/test_install_oneshot.py, and §16.236 takes one beside C1224's. No code changes.
+Test: `test_contracts.py::test_section_16_251_records_round_39s_temp_files_cut_block_and_launchctl_words_c1854`, which
+reads each named test from tests/test_install_oneshot.py and each rule from install.sh.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

@@ -686,6 +686,56 @@ def test_c1450s_option_is_credited_as_a_second_guard_c1645() -> None:
     assert ruling.splitlines()[-3] == line, "the dated line closes the ruling"
 
 
+def test_section_16_251_records_round_39s_temp_files_cut_block_and_launchctl_words_c1854() -> None:
+    """B13 round 40 C1854: §16.251's heading promised temp files under TMPDIR and §16.250 pointed there
+    for the generated block's byte-for-byte test, while §16.251 recorded neither C1616, C1633 nor C1610,
+    and §16.236 C1022 still said a rewritten Background runs line never says the time limit was used up.
+    §16.251 takes a dated line for each, naming its test as tests/test_install_oneshot.py defines it and
+    its rule as install.sh writes it, and §16.236 takes one beside C1224's."""
+    oneshot = (CONTRACTS.parents[2] / "tests" / "test_install_oneshot.py").read_text(encoding="utf-8")
+    install = (CONTRACTS.parents[2] / "scripts" / "install.sh").read_text(encoding="utf-8")
+    text = CONTRACTS.read_text(encoding="utf-8")
+    home = " ".join(text.split("\n### 16.251 ", 1)[1].split("\n### 16.252 ", 1)[0].split())
+    dated = {
+        item: next(
+            p
+            for p in home.split("Amended ")[1:]
+            if p.startswith(f"2026-11-16, §16.259 C1854 (by §16.251 {item}):")
+        )
+        for item in ("C1616", "C1633", "C1610")
+    }
+    tests = {
+        "C1616": ["test_temp_files_go_under_a_writable_tmpdir_c1616"],
+        "C1633": [
+            "test_install_sh_carries_the_report_cuts_block_byte_for_byte_ruling_133",
+            "test_every_global_the_shell_redaction_reads_is_in_its_harnesses_c1633",
+        ],
+        "C1610": ["test_a_spent_copy_says_launchctl_print_was_skipped_only_after_a_skipped_probe_c1610"],
+    }
+    for item, names in tests.items():
+        for name in names:
+            assert f"def {name}(" in oneshot, name
+            assert f"`test_install_oneshot.py::{name}`" in dated[item], (item, name)
+    assert 'mktemp "$@" "${TMPDIR%/}/agentsync.XXXXXX"' in install and "tmp_make() {" in install
+    assert (
+        "`${TMPDIR%/}/agentsync.XXXXXX`" in dated["C1616"] and "never /tmp and never `-t`" in dated["C1616"]
+    )
+    assert "# BEGIN report_cuts" in install and "# END report_cuts" in install
+    assert "held byte for byte by lane RB's test (§16.251)" in dated["C1633"]
+    skipped = "not measured (the report\\047s time limit was used up before launchctl print ran; plist "
+    assert skipped in install and "cp && envskip && envskip < FNR" in install
+    words = (
+        "`not measured (the report's time limit was used up before launchctl print ran; "
+        "plist absent|present)`"
+    )
+    assert words in dated["C1610"]
+    assert "`not measured (launchctl print did not answer in time; plist absent|present)`" in dated["C1610"]
+    c1022 = " ".join(text.split("\n### 16.236 ", 1)[1].split("\n### 16.237 ", 1)[0].split())
+    c1224 = c1022.index("Amended 2026-11-10, §16.241 C1224, C1225:")
+    at = c1022.index("Amended 2026-11-16, §16.259 C1854 (by §16.251 C1610): C1022's launchctl print line")
+    assert c1224 < at and words.strip("`") in c1022[at:]
+
+
 def test_every_item_paragraph_opens_after_a_blank_line_c1043() -> None:
     """B13 round 36 C1043: §16.232's C911 entry followed C937's last line with no blank line, so Markdown
     rendered it inside C937's paragraph. Every `**<title>** (C<n>` entry opens after a blank line."""
