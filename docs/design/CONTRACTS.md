@@ -41981,6 +41981,26 @@ the proof sits in test_deploy_pack.py. Test: `test_tenant_probes_row_78_says_an_
 which pins the row and runs tenant-probes.sh over an unparseable sources.toml and a `client_id = 12`, plain and
 with `--dry-run`, each exiting 78 with nothing new under its folder.
 
+### 16.255 Round 40: the report: every argument form a row of the shared table, the kept dollar-quote difference pinned, and zero-byte conversions (2026-11-16, wave B13 round 40 lane RA)
+
+Reserved for round 40 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 40").
+
+### 16.256 Round 40: the installer: the shell report reads every argument form from the table, no bash 3.2 crash on a long folder list, and one spelling per escaped byte (2026-11-16, wave B13 round 40 lane RB)
+
+Reserved for round 40 lane RB of B13.
+
+### 16.257 Round 40: help and version runs refuse --fields, login keeps --no-open, and a zero-byte recording is empty (2026-11-16, wave B13 round 40 lane B)
+
+Reserved for round 40 lane B of B13.
+
+### 16.258 Round 40: the converters: every page within the cap, an 8 KiB minimum, and long CSV fields (2026-11-16, wave B13 round 40 lane E)
+
+Reserved for round 40 lane E of B13.
+
+### 16.259 Round 40: the guides: the dollar-quote row, the record of round 39's installer work, and CI timings (2026-11-16, wave B13 round 40 lane D)
+
+Reserved for round 40 lane D of B13.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units

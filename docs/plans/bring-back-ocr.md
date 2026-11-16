@@ -2833,6 +2833,56 @@ prompt v37 (v36's block from `702fcff5` as the old copy, unchanged), outputs `ro
 reads trunk with `round40/tools/trunk.sh`, never a fetch in the operator checkout (C1470, C1661). The stop rule names
 Codex and Gemini: a clean round without Gemini goes to the operator before the loop closes.
 
+### B13 round 40: v37 rehearsal, cross-lane review, harvest, Codex beside Claude; Gemini not run (2026-11-16)
+
+Run `wf_76d2e989-043` on `7253d365` (BASE `d86a38a2`), codex-only, 107 agents with no errors after three resumes (one
+account's weekly limit, then one verifier twice stuck at a permission prompt on a lock-file probe): 79 confirmed (0
+turns, 19 wrongs, 60 small), 11 refuted (C1811, C1826, C1827, C1829, C1830, C1843, C1873, C1875, C1879, C1880, C1884).
+All six rehearsal scenarios passed on v37 with no turn, and no item needs prompt words, so the prompt stays v37. Eleven
+items are data integrity, all privacy: ruling 133's shared table held the values both reports cut by but not the
+argument forms they parse, so the shell report's hand-kept cuts leaked again: the `--source-local=` form skipped the
+cut (C1831 with C1881), the add-source cut kept an uncovered name (C1832), the refusal-head cut ended a name at its
+first blank (C1833), a nested `--source-local` read differently in each report (C1834 with C1882), a configured
+source's tenant printed once its provider folder was gone (C1862), the fallback report kept the old separator (C1890),
+about 280 or more listed folders crashed bash 3.2 in the shell report (C1836, older than this round; Codex disputed
+it, the verifier measured it), a DEL folder printed through add-source's TOML echo (C1840 with C1887), and the CLI
+conventions wave's `--cwd` and `--debug` put a private project folder in the public report (C1835). The other wrongs:
+`graph login --no-open --json`'s next step drops `--no-open` (C1842 with C1883) and `<cmd> --help --json --fields
+bogus` exits 0 (C1856), both in that wave's code, whose lead said on 2026-11-16 that the wave is closed and B13 builds
+them; a zero-byte recording on a Mac with no background sync waits by name with a WAITING ON YOU line (C1820); an OCR
+outage tells the person to run commands that cannot read the file (C1841); an xlsx page past the cap on an oversized
+first row (C1848); and two doc wrongs (C1854, C1855). Codex gave 18 opinions, one disputed (C1836). Gemini did not run:
+the allow rule for `~/.claude/scripts/agy-review.sh` is still the operator's (backlog `8ed9dae0fbc0`, C1878). A triage
+workflow (`wf_e7aa3d75-29f`) placed every item once.
+
+Lead rulings for round 40 (in `lanes/COMMON39.md`, mirrored in `docs/lanes/COMMON.md`): (137) every argument form
+either report parses is a row of ruling 133's table and a case of its one property test (the `=` form, nested paths,
+blanks, the refusal head, add-source's echo and DEL's TOML spelling, `--cwd` and the debug values, a gone provider
+folder, the separator), and C1836's crash is fixed by opening no process substitution in the name splitters, lanes RA
+and RB landing both halves in one run; (138) the one kept difference, a bare `$'...'` word after `--source-local` or
+`add-source` (the shell report cuts it whole, the agentsync report decodes and cuts it), is pinned by that test and
+named in both legends and setup-feedback.md; (139) help and version runs refuse `--fields` through b74445af's one
+pre-parse scan; (140) every converter page stays within `max_page_bytes`, now at least 8 KiB at config load; (141) a
+zero-byte file is empty in every reader that meets one, completing C1647. The calls under 90% are filed with their
+courses kept: decision `d24c7a8ee6bc` (conviction 70), veto window to 2026-11-18, which also records ruling 138 as the
+exception to round 39 packet `8ac14056ab04`'s call 3 (that packet is closed, so it takes no recheck).
+
+Convergence: confirmed as before, then 75, then 79; turns as before, then 0, then 0; wrongs as before, then 16, then
+19.
+
+Lanes (`--account auto`, CONTRACTS §16.255 to §16.259, plain `scripts/ship-land.sh` with the repo's own lock, scratch
+under `round40/`, back-channel pane 12 or its successor): RA 14 (ruling 137's rows, generator, Python reader and the
+property test's Python half first, sent to lane RB; ruling 138's pins; C1821 and C1850), RB 12 (C1835 first, then the
+shell reader of ruling 137, C1836's splitters and C1802's octal list spelling, landed with RA in one run), B 13 (C1820
+with C1806, C1841, C1842 with C1883, ruling 139's refusals), E 10 (ruling 140's page cap, C1807 with C1822, C1872's
+pandoc crash line), D 7 (C1854, C1855, C1853, C1859, C1866 with C1874, C1823). The lead holds 23: round 41's kit
+(C1803 with C1813, C1825 and C1828, C1804, C1805, C1809, C1810, C1812 with C1818, C1814, C1815 with C1817 and C1868,
+C1816, C1819, C1824, C1869, C1870, C1877), C1861 (this plan's round 39 section cites `909d6915`, which landed as
+`b74445af`), C1871 (the lead's lane-status reads ran `git fetch` in the operator checkout 13 times in round 39; round
+41's lane-status tool reads trunk with `git ls-remote` only, as C1661 says) and C1878 (Gemini). Round 41's kit also
+forbids lock-file and `rm` probes in the verifier's brief: round 40's verify:71 hung twice at a permission prompt on
+one.
+
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be
