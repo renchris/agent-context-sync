@@ -1840,23 +1840,23 @@ def test_the_one_kept_divergence_is_pinned_in_both_reports_ruling_138(
     unregistered and a generic-domain provider: neither line holds a name fragment, ``$'``, an octal escape or
     U+FFFD, and the verdicts match. A word ``%q`` writes with backslash escapes stays equal."""
     said = [ln for name in _DIVERGENT_NAMES for ln in _divergent_lines(name, locale, provider, env["HOME"])]
-    plain = _divergent_lines("Curate Notes", locale, provider, env["HOME"])
-    assert all("$'" not in ln for ln in plain), plain
-    shell, python, shell_private, python_private = _both_reports(
-        env, [*_DIVERGENT_NAMES, "Curate Notes"], [*said, *plain], locale
-    )
+    shell, python, shell_private, python_private = _both_reports(env, _DIVERGENT_NAMES, said, locale)
     assert shell_private == python_private, (shell_private, python_private)
-    assert len(shell) == len(python) == len(said) + len(plain), (len(shell), len(python))
+    assert len(shell) == len(python) == len(said), (len(shell), len(python))
     kept = r"~/Library/CloudStorage/(?:OneDrive-<org-\d+>|OneDrive-Personal)/<(?:folder-\d+|path)>"
     decoded = rf'"(?:{kept}|~/Library/CloudStorage/<path>)"'
-    for (a, b), ln in zip(zip(shell, python, strict=True), said, strict=True):
+    for (a, b), ln in zip(zip(shell[: len(said)], python[: len(said)], strict=True), said, strict=True):
         head = ln.split("$'", 1)[0]
-        assert a == f"{head}<path>" + (" first" if "=" in head else ""), (ln, a)
-        assert re.fullmatch(re.escape(head) + decoded + (" first" if "=" in head else ""), b), (ln, b)
+        assert a == f"{head}<path>" + (" first" if head.endswith("=") else ""), (ln, a)
+        assert re.fullmatch(re.escape(head) + decoded + (" first" if head.endswith("=") else ""), b), (ln, b)
         for text in (a, b):
             assert not re.search(r"Alder|Birch|Caf|\$'|\\[0-7]{3}|\ufffd", text), text
-    for a, b in zip(shell[len(said) :], python[len(said) :], strict=True):
-        assert a == b and "Curate" not in a, (a, b)
+    # alone, as the property test runs a single name: a word %q writes with backslash escapes stays equal
+    plain = _divergent_lines("Juniper Notes", locale, provider, env["HOME"])
+    assert all("$'" not in ln for ln in plain), plain
+    shell, python, shell_private, python_private = _both_reports(env, ["Juniper Notes"], plain, locale)
+    assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
+    assert not any("Juniper" in ln for ln in shell), shell
 
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
@@ -1868,7 +1868,8 @@ def test_both_reports_cut_a_nested_source_local_word_at_its_provider_folder_c188
     --source-local argument at its provider folder and the agentsync report at its first unknown part, so one
     install.log line showed two ways. Python moved to the shell's rule: a missing folder under Documents or
     under a configured folder, and a refused look-alike, read `OneDrive-<org-1>/<path>` in both reports; a
-    configured folder under Documents keeps its `<folder-N>` in both."""
+    configured folder under Documents keeps its `<folder-N>` in both. The refused name runs to the last head
+    on its line in both (C1833, lane RB's shell half, in the same land)."""
     lib = f"{env['HOME']}/Library/CloudStorage/OneDrive-Contoso"
     said = [
         f"start install.sh args=--source-local {lib}/Documents/Zephyr\\ Quarry",
@@ -1885,5 +1886,6 @@ def test_both_reports_cut_a_nested_source_local_word_at_its_provider_folder_c188
     org = "~/Library/CloudStorage/OneDrive-<org-1>"
     assert [ln.rsplit(" ", 1)[-1] if "args=" in ln else ln for ln in python[:2]] == [f"{org}/<path>"] * 2
     assert f"{org}/<path> (see --help)" in python[2] and f"{org}/<path>: " in python[3]
-    assert re.search(rf"{re.escape(org)}/Documents/<folder-\d>$", python[4]), python[4]
+    # a configured folder's every part is a configured value, Documents included, so both number it
+    assert re.search(rf"{re.escape(org)}/<folder-\d>/<folder-\d>$", python[4]), python[4]
     assert not any(w in ln for ln in shell + python for w in ("Zephyr", "Quarry", "Alder", "Cedar")), python
