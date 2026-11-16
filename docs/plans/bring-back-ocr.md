@@ -2787,6 +2787,52 @@ C1653 with C1678, C1651, C1654, C1660). The lead holds 23: round 40's kit (C1602
 C1666, C1606 to C1609, C1611 to C1615, C1617, C1618, C1620 to C1622), C1661, C1667 (Gemini) and C1669 (the CLI
 wave's queued C1462 half, checked when that wave closes).
 
+### B13 round 39 landed (2026-11-14)
+
+All five lanes landed, and the prompt stays v37 (`ded96e18`): no round 39 item needed prompt words. Notes
+`lanes/r39-<lane>.md`, lead notes `round29/lead-notes.md`. All 75 confirmed items are built: 52 in the lanes' 39
+commits (`0fd60f8d..73059cd1`, with the CLI conventions wave's commits between them; every landed tip's CI green, read
+back by the lead) and the lead's 23. Ruling 133's two halves landed in one run: lane RA's `report_cuts.py` table
+(`aa0f4091`) under lane RB's shell half and property test (`e8dd5ede..4d3ba971`), so no trunk commit carries one half.
+No lane left an item unbuilt. Two choices differ from a verifier's words, each with its measured reason in the lane's
+note: C1641's kept recording waits in the recording pass (DEFERRED, RECORDING_WAITS) instead of settling UNCHANGED,
+which left a stale transcript after the outage; and a `$'...'` word right after `--source-local` stays decoded and cut
+by structure in the Python report while the shell report cuts it whole (round 17 U10), recorded in §16.251 as the one
+known difference between the reports' cut lines, for round 40's harvest to check. Lane RB's ruling 133 property test
+found that `add-source` wrote a raw DEL into `sources.toml`, which TOML forbids, so the next command could not load
+the file; lane B built the fix (`42eac026`, R39-B1). A pre-existing `--version --json --fields bogus` exit 0 went to the
+CLI conventions wave's lead, who queued it (`909d6915`). Of the lead's 23, the kit items are in round 40's script
+(`round40/tools/edit.py`, `harvest-lead.txt`, `remove-worktrees.sh`, `trunk.sh`, `lane-status.sh`, 26 kit scripts with
+their own `kit-test.sh`, 241 checks), the rehearsal seed store is kept in `~/.cache` (`seeds-v10`, C1607), and C1669's
+check is harvest item 8. C1661's rule for the lead: no `||` or `&&` chain in the operator checkout may end in
+`git fetch`, `pull` or `remote update`, and a failed `ls-remote` stops the read just as a missing sha does (C1470).
+
+| Lane | Landed (lane commits) |
+|---|---|
+| D | `0fd60f8d..ca2fbe06` (5), `9cb48a3a`, `73059cd1` (cross-references to the other lanes' words) |
+| B | `5a795e25..42eac026` (9, C1678's code half and R39-B1 included) |
+| E | `b55df354`, `29684263`, `293c8081` |
+| RB | `aa0f4091` (lane RA's ruling 133 and 134 half), `e8dd5ede..4d3ba971` (15) |
+| RA | `0e5abefa..8d9ae81a` (4) |
+
+Learnings: from the first fire (2026-11-14 10:34Z) to the last land took about 17 hours, against round 38's 23.
+The lane fire was refused twice before any lane ran: first no account was routable (three accounts' usage polls
+throttled, the fourth at its weekly limit), then the retry loop, started detached, had lost the kitty pane in its
+process ancestry, so `handoff-fire.sh` took the iTerm2 path and could not split the lead's pane. Pinning `CC_TERM=kitty`
+in the loop fired all five in four minutes. Lane RB's first joint land went red on the shell report tests the shared
+table changed; it fixed them in three commits and landed both halves together. Trunk CI then failed once on
+`test_html_data_uri_images_never_reach_the_page` (pandoc stopped by SIGABRT on the macOS runner), outside every lane's
+diff; attempt 2 of the same run passed unchanged, and lanes RA and D landed over attempt 1 with `--allow-red-trunk`,
+citing it. Round 40's harvest asks whether that test can tell a runner's pandoc crash from a defect. Lane E's first
+land stopped before its push when the shared GitHub API limit ran out (exit 9, nothing pushed); its second landed.
+
+Round 40: the round 39 workflow (`round39/round39-workflow.js` through `round40/tools/edit.py` and `edit-xvendor.py`,
+codex-only: the allow rule for `~/.claude/scripts/agy-review.sh` is still the operator's, backlog `8ed9dae0fbc0`) with
+the harvest list in `round40/tools/harvest-lead.txt`, on this section's landed tip, BASE `d86a38a2`, ids C1801 and up,
+prompt v37 (v36's block from `702fcff5` as the old copy, unchanged), outputs `round40/`. While its slots run, the lead
+reads trunk with `round40/tools/trunk.sh`, never a fetch in the operator checkout (C1470, C1661). The stop rule names
+Codex and Gemini: a clean round without Gemini goes to the operator before the loop closes.
+
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be
