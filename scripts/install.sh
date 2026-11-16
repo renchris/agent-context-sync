@@ -5004,7 +5004,7 @@ typed_note_cut() {
 	# `debug: cwd `\047s value, to the line\047s first ` | ` or its end, cut as _cut_path cuts it; the value as the
 	# line holds it is the folder the under-cwd heads compare with (C1835)
 	function dbcwd(l, hd,    a, r, e, v) {
-		if ((a = index(l, hd)) == 0) return l
+		if (hd == "" || (a = index(l, hd)) == 0) return l
 		r = substr(l, a + length(hd)); e = index(r, " | "); v = e ? substr(r, 1, e - 1) : r
 		if (v == "") return l
 		dcwd = v
@@ -5013,7 +5013,7 @@ typed_note_cut() {
 	# `debug: source <kind> <path>` and `debug: config <path>`: the path, to the line\047s first ` | ` or its
 	# end, cut only when it is that cwd folder or lies under it (C1835)
 	function dbunder(l, hd,    a, r, e, v, kd, b) {
-		if ((a = index(l, hd)) == 0 || dcwd == "") return l
+		if (hd == "" || (a = index(l, hd)) == 0 || dcwd == "") return l
 		r = substr(l, a + length(hd)); e = index(r, " | "); v = e ? substr(r, 1, e - 1) : r
 		kd = ""
 		if (hd == "debug: source ") { if ((b = index(v, " ")) == 0) return l; kd = substr(v, 1, b); v = substr(v, b + 1) }
@@ -5024,6 +5024,7 @@ typed_note_cut() {
 	# does not keep reads `~/Library/CloudStorage/<path>`, never numbered, its trailing CUT_FREE_TRAIL signs
 	# kept after; the word runs to a CUT_FREE_END byte (B13 round 40 C1862, as setup_report._FREE_PROVIDER_RE)
 	function freecut(l,    out, a, r, i, w, j, p, t) {
+		if (fh == "" || fe == "") return l # as slone: an empty head never ends the loop
 		out = ""
 		while ((a = index(l, fh)) > 0) {
 			out = out substr(l, 1, a - 1); r = substr(l, a + length(fh))
@@ -5050,6 +5051,9 @@ typed_note_cut() {
 		return e ? e : length(r) + 1
 	}
 	function slone(l, hd, rule,    out, a, q, w, i, c, e, j, x, lh, u, t) {
+		# an empty head ends here: awk\047s index(l, "") is 1 and consumes nothing, so the loop never ended (a
+		# reader that lacks the block; B13 round 40, the joint land\047s hung gate)
+		if (hd == "") return l
 		out = ""
 		while ((a = index(l, hd)) > 0) {
 			out = out substr(l, 1, a + length(hd) - 1); l = substr(l, a + length(hd))

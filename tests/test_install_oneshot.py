@@ -4093,6 +4093,58 @@ def test_a_typed_note_after_punctuation_outside_ascii_is_cut(before: str) -> Non
     assert py + "\n" == shown, (py, shown)
 
 
+@pytest.mark.parametrize("block", ["with", "without"])
+def test_typed_note_cut_ends_on_every_head_even_an_empty_one(block: str) -> None:
+    """B13 round 40, the joint land's hung gate: typed_note_cut's head loops ran `while ((a = index(l, hd))
+    > 0)`, and BSD awk's index(l, "") is 1 and consumes nothing, so a reader without the generated block (an
+    empty CUT_FREE_HEAD) spun forever at 100% CPU, and a report would never be written. Every head loop
+    returns on an empty head. Each line form runs under a hard timeout, with the block and without it."""
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    [fn] = re.findall(r"(?ms)^typed_note_cut\(\) \{\n.*?^\}$", text)
+    parts = (
+        [*re.findall(r"(?ms)" + _REPORT_CUTS_BLOCK, text), *_SHELL_GLOBALS_RE.findall(text)]
+        if block == "with"
+        else []
+    )
+    lines = [
+        "saw ~/Library/CloudStorage/OneDrive-Fabrikam/Alder, then ~/Library/CloudStorage/ and"
+        " ~/Library/CloudStorage/",
+        "ran --source-local= and --source-local and --cwd . and --cwd= and add-source ",
+        "debug: cwd ",
+        "debug: cwd ~/Projects/Alder",
+        "debug: source ",
+        "debug: config ~/Projects/Alder/x",
+        "usage error: --source-local ~/Library/CloudStorage/OneDrive-Contoso/A B: its name is step 1's "
+        "escaped form x",
+        "",
+    ]
+    # its own session, killed whole on the timeout: a hung awk outlived the bash a plain timeout kills
+    with subprocess.Popen(
+        [BASH32, "-c", "\n".join([*parts, fn, "typed_note_cut"])],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
+        start_new_session=True,
+    ) as proc:
+        try:
+            stdout, stderr = proc.communicate("".join(f"{ln}\n" for ln in lines).encode(), timeout=20)
+        except subprocess.TimeoutExpired:
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait()
+            raise
+    assert proc.returncode == 0, stderr
+    cp = subprocess.CompletedProcess(proc.args, proc.returncode, stdout, stderr)
+    out = cp.stdout.decode().splitlines()
+    assert len(out) == len(lines), out
+    if block == "with":
+        assert (
+            out[0]
+            == "saw ~/Library/CloudStorage/<path>, then ~/Library/CloudStorage/ and ~/Library/CloudStorage/"
+        )
+        assert out[3] == "debug: cwd ~/Projects/<path>" and out[5] == "debug: config ~/Projects/<path>", out
+
+
 def test_the_typed_cuts_word_lists_are_the_shells_and_the_reports() -> None:
     """B13 round 32 C666: typed_note_cut's awk reads the fixed components, generic folders and home dirs from
     ENVIRON; each list is setup_report's set (generic_folder's and generic_home_dir's, which their own tests
