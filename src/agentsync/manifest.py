@@ -1800,6 +1800,21 @@ class Manifest:
             out.append({str(k): v for k, v in doc.items() if isinstance(v, int) and not isinstance(v, bool)})
         return out
 
+    def last_run_counts(self) -> dict[str, int]:
+        """The ``counts_json`` of the newest finished run, its int values only; {} when none finished.  A run
+        still going holds ``{}`` until :meth:`finish_run`, so it is passed over.  ``loop.next_step`` reads
+        whether that run found the OCR helper not working (``ocr_helper_failed``, B13 round 40 C1841)."""
+        row = self._db.execute(
+            "SELECT counts_json FROM runs WHERE finished_at IS NOT NULL ORDER BY run_id DESC LIMIT 1"
+        ).fetchone()
+        try:
+            doc = json.loads(row[0]) if row is not None else {}
+        except ValueError:
+            return {}
+        if not isinstance(doc, dict):
+            return {}
+        return {str(k): v for k, v in doc.items() if isinstance(v, int) and not isinstance(v, bool)}
+
     def last_runs(self, limit: int = 10) -> list[tuple[int, str, str, str | None]]:
         """Return (run_id, mode, status, commit_sha) newest first."""
         rows = self._db.execute(

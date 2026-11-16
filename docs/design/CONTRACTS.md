@@ -10712,6 +10712,9 @@ deferred unfetched with its mark) and `_reread_targets` leaves the converter's s
   `cycle.RECORDING_PROGRESS_META` + `<source id>:<stable id>` (`recording_progress:…`), valued
   `"<done_ms> <total_ms>"`, `""` once the recording is published or given up. `loop` imports both from `cycle`
   and counts these rows in a bucket of their own, never rule 3.
+  Amended 2026-11-16, §16.257 C1820: a recording on this Mac listed at 0 bytes (not dataless, not a Graph item)
+  never waits: its queue fetches it with a probe budget (`ByteBudget(0, 1)`) and, the staged copy empty, converts
+  it with the whole registry, so it is `empty`; a copy holding any byte is discarded unread and the row waits.
 
 **The notes** (`loop._recording_lines`, printed by `sync` and `status`; none blocks the next step). `(35 of 127
 minutes)` is the media time read, floored to whole minutes; it reads `of at least` while some recording has no
@@ -10723,6 +10726,10 @@ length yet and is left out while none has one.
   background sync is installed to read them (an interactive sync reads no recording): run
   ``~/src/agent-context-sync/scripts/install.sh --confirm-install-agent``, or ``~/.local/bin/agentsync materialise
   <file>`` for one recording; they do not block the next step` (`loop.INSTALL_SH` and `loop.BIN`, in backticks)
+  Amended 2026-11-16, §16.257 C1841: while the newest run found the OCR helper not working (`ocr_helper_failed`
+  in its counts), neither line: no run reads a recording then, so each one is a note, job or none, `note: N
+  recording(s) in <source ids> wait for the OCR helper (it is not working; read once it does) (35 of 127
+  minutes); they do not block the next step` (`loop.RECORDING_OCR_WAIT`).
 - a download that failed: `note: N online-only recording(s) in <source ids> (X.X GB) could not be downloaded by
   agentsync: in Finder choose Always Keep on This Device on their folder, or Download Now on a file; the next
   background sync reads them; they do not block the next step`
@@ -41991,7 +41998,39 @@ Reserved for round 40 lane RB of B13.
 
 ### 16.257 Round 40: help and version runs refuse --fields, login keeps --no-open, and a zero-byte recording is empty (2026-11-16, wave B13 round 40 lane B)
 
-Reserved for round 40 lane B of B13.
+Round 40's lane B items (`docs/plans/bring-back-ocr.md`, "B13 round 40"; specs `round40/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's rulings 139 and 141 settle it). A dated line this round writes reads
+`Amended 2026-11-16, §16.257 C<n>`.
+
+**A zero-byte recording on this Mac is `empty`, never waiting** (C1820 with C1806; ruling 141; amends §16.34). A
+recording was left to the recording pass by its name alone, so one of zero bytes waited in every interactive sync
+and its WAITING ON YOU line asked the person to install the background job for an empty file, while C1647's
+empty-head check, inside `RecordingConverter._reading`, was reached only by the recording pass or `materialise`.
+`_Cycle._process` now fetches a recording listed at 0 bytes, not dataless and not a Graph item, with a probe budget,
+`ByteBudget(0, 1)` as `_reread_source` does, before any defer (`_Cycle._empty_recording`). Only a copy that staged
+0 bytes goes on, converted with the whole registry (`_whole_registry`, never `_converting`'s `without_ocr`, which
+has no recording converter and would call it `no converter` once the cycle's OCR time is used up), so it is
+classed `empty` with no `RECORDING_WAITS` row and no recording line. A fetch that raises, or one that staged any
+byte (a recording a recorder filled after the walk: the fetch checks the file's identity, not its size), is
+discarded and the row waits as before, so no queue reads a recording's bytes (spec S0 rules 4 and 5). The
+finder's fix, deciding on the listed size, was measured to be worse: a file that grew before the fetch was read in
+full inside an interactive sync. `HYDRATION_REFUSED` stays keyed on the name. Tests:
+`test_cycle.py::test_an_interactive_sync_classes_a_zero_byte_recording_empty_c1820`,
+`::test_a_zero_byte_recording_is_empty_with_the_ocr_time_used_up_c1806`,
+`::test_a_recording_listed_empty_that_grows_before_its_fetch_still_waits_unread_c1806` and
+`::test_a_dataless_zero_byte_recording_still_waits_c1820`.
+
+**A recording waiting through an OCR outage waits for the OCR helper** (C1841; amends §16.34). C1641 leaves a
+recording touched while the OCR helper fails waiting (`RECORDING_WAITS`), and status told the person to install the
+background job or run `materialise`, neither of which reads a recording then (`_cycle_media` needs the OCR engine),
+or, with the job installed, that each background sync reads more. The run's counts record the outage, found at the
+cycle's start or met in it, as `ocr_helper_failed` (`ocr_failed` already counts files the engine failed on, which
+the report sums, and `ocr_down` only an outage met mid-cycle, which `loop`'s re-read notes read), read back from
+the newest finished run by `Manifest.last_run_counts` (a run still going holds `{}`); with it, `loop._recording_lines` words every waiting recording as a note, `waits
+for the OCR helper (it is not working; read once it does)` (`loop.RECORDING_OCR_WAIT`, the end of
+`cli.OCR_WAIT_CLAUSE`), naming neither run. The state reason stays `RECORDING_WAITS`, which the recording pass's
+re-read keys read. Test: `test_cycle.py::test_a_recording_waiting_through_an_ocr_outage_waits_for_the_ocr_helper_c1841`
+(the C1442 setup, job installed or not; the usual words back after an interactive sync with the helper working).
 
 ### 16.258 Round 40: the converters: every page within the cap, an 8 KiB minimum, and long CSV fields (2026-11-16, wave B13 round 40 lane E)
 

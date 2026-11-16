@@ -3996,7 +3996,10 @@ class _Cycle:
         for a later cycle's OCR (``_ocr_waits``); ``ocr_without_budget`` and ``ocr_without_down``: files
         converted without the engine for either reason; ``ocr_failed``: files the engine failed on (a
         helper failure, or the file's own time limit); ``ocr_page_cap`` and ``ocr_picture_cap``:
-        conversions that say a count limit left pages or pictures unread.
+        conversions that say a count limit left pages or pictures unread.  ``ocr_helper_failed``: 1 when the
+        OCR helper was not working, found so at the cycle's start or stopping in it (``ocr_down`` is only the
+        latter): no recording is read then, in any mode, so ``loop.next_step`` words every recording that
+        waits as waiting for the OCR helper (B13 round 40 C1841).
 
         ``reread_for`` is the one key that is no count: what this run's re-read looked for
         (``_reread_number`` of ``_capabilities``), there when the run brought a source's re-read record
@@ -4023,6 +4026,8 @@ class _Cycle:
                 tally["ocr_over"] = 1
             if self.ocr.down:
                 tally["ocr_down"] = 1
+        if self.publisher.ocr_down or (self.ocr is not None and self.ocr.down):
+            tally["ocr_helper_failed"] = 1  # no recording is read while it fails (C1841)
         return tally
 
     def _tally_ocr(self, result: ConversionResult, *, lacks: bool, plain: bool) -> None:

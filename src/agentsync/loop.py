@@ -615,6 +615,11 @@ def _unpublished(manifest: Manifest, sources: Sequence[SourceConfig]) -> _Files:
     return out
 
 
+RECORDING_OCR_WAIT = "for the OCR helper (it is not working; read once it does)"
+"""What a recording that waits says while the newest run found the OCR helper not working, after ``waits``
+(B13 round 40 C1841), in ``cli.OCR_WAIT_CLAUSE``'s words."""
+
+
 def _minutes(files: _Files) -> str:
     """`` (35 of 127 minutes)`` for the recordings still being read, floored to whole minutes; ``of at least``
     while some have no length yet, and "" while none has one."""
@@ -624,13 +629,19 @@ def _minutes(files: _Files) -> str:
     return f" ({files.read_ms // _MS_PER_MINUTE} {of} {files.total_ms // _MS_PER_MINUTE} minutes)"
 
 
-def _recording_lines(files: _Files, *, background: bool) -> tuple[list[str], list[str]]:
+def _recording_lines(
+    files: _Files, *, background: bool, ocr_waits: bool = False
+) -> tuple[list[str], list[str]]:
     """The waits and notes of the recordings (spec S0 rules 3 and 6); none of them blocks the next step.
 
     A recording still being read is a note once a background job is installed (each background sync reads
     more), else a wait naming the two runs that read recordings: the job ``install.sh`` installs, and
     ``materialise`` of the file. An online-only recording agentsync could not download is a note sending the
-    person to Finder: it is never a wait, since the next background sync reads it once it is on the Mac."""
+    person to Finder: it is never a wait, since the next background sync reads it once it is on the Mac.
+
+    ``ocr_waits``: the newest run found the OCR helper not working (``ocr_helper_failed``), and no run reads
+    a recording then, background or ``materialise``, so every one waiting is a note that it waits for the
+    OCR helper, naming neither run (B13 round 40 C1841)."""
     waits: list[str] = []
     notes: list[str] = []
     # the noun, verb and pronoun by the count (B13 round 15 S65: "1 recording(s) ... they do not block")
@@ -639,7 +650,11 @@ def _recording_lines(files: _Files, *, background: bool) -> tuple[list[str], lis
         one = n == 1
         counted = f"{plural(n, 'recording')} in {_ids(files.recording)}"
         block = "it does not block the next step" if one else "they do not block the next step"
-        if background:
+        if ocr_waits:
+            notes.append(
+                f"{counted} {'waits' if one else 'wait'} {RECORDING_OCR_WAIT}{_minutes(files)}; {block}"
+            )
+        elif background:
             notes.append(
                 f"{counted} {'is' if one else 'are'} still being read{_minutes(files)}; each background sync "
                 f"reads more; {block}"
@@ -1235,6 +1250,7 @@ def next_step(
     rereading: list[str] = []  # the one-time re-read of files from before a capability is not finished
     unread: list[str] = []  # ... and the source's newest pass was skipped or failed: no sync got to them
     reread_runs: list[dict[str, int]] = []
+    ocr_waits = False  # the newest run found the OCR helper not working (C1841)
     pending: str | None = None
     unread_state: ManifestNotCurrentError | ManifestBusyError | None = None
     opened: Manifest | None = None
@@ -1247,6 +1263,7 @@ def next_step(
     if opened is not None:
         with opened as manifest:
             reread_runs = manifest.last_reread_counts()
+            ocr_waits = bool(manifest.last_run_counts().get("ocr_helper_failed"))
             for src in live:
                 newest = next(iter(_reread_records(manifest.get_meta(_REREAD_META + src.id))), None)
                 if newest is not None and (not newest[1] or newest[3] is not None):
@@ -1663,7 +1680,9 @@ def next_step(
             f"{'it does' if one else 'they do'} not block the next step"
         )
     recording_waits, recording_notes = _recording_lines(
-        files, background=bool(files.recording) and launchd.agents_installed(config)
+        files,
+        background=bool(files.recording) and not ocr_waits and launchd.agents_installed(config),
+        ocr_waits=ocr_waits,
     )
     waits += recording_waits
     notes += recording_notes

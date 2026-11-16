@@ -7314,6 +7314,50 @@ def test_an_unchanged_recording_keeps_its_page_while_the_ocr_helper_fails_c1442(
     assert (back.last_verdict, back.state_reason) == (Verdict.OUTPUT_UNCHANGED, None), back
 
 
+def _recording_words(config: Config) -> str:
+    step = loop_mod.next_step(config)
+    return "\n".join([*step.waits, *step.notes])
+
+
+def test_a_recording_waiting_through_an_ocr_outage_waits_for_the_ocr_helper_c1841(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 40 C1841: C1641 leaves a recording touched in an OCR outage waiting (RECORDING_WAITS), and
+    status told the person to install the background job or run `materialise`, neither of which reads a
+    recording while the helper fails (no media engine without OCR), or said each background sync reads more.
+    The run records the outage found at its start (``ocr_helper_failed``), and every waiting recording is a
+    note that it waits for the OCR helper, with the job installed or not; its state reason stays the one the
+    re-read keys read, and a run still going does not hide it. Once a sync runs with the helper working, the
+    usual words come back."""
+    config = config_with(tmp_path, meetings)
+    recording = stub_recording(meetings / MEETING, 10)
+    assert run(config).exit_code == 0
+    _fail_ocr(monkeypatch)
+    monkeypatch.setattr(cycle_mod.media, "probe", lambda _c, _d: ("ready", ""))
+    _touch(recording)
+    assert run(config, mode=None).exit_code == 0
+    assert _row(config, MEETING).state_reason == cycle_mod.RECORDING_WAITS
+    assert _run_record(config).get("ocr_helper_failed") == 1
+    for installed in (False, True):
+        monkeypatch.setattr(loop_mod.launchd, "agents_installed", lambda _c, on=installed: on)
+        said = _recording_words(config)
+        assert f"1 recording in {SID} waits {loop_mod.RECORDING_OCR_WAIT}" in said, said
+        for gone in ("--confirm-install-agent", "materialise", "reads more"):
+            assert gone not in said, (gone, said)
+        assert not any("recording" in w for w in loop_mod.next_step(config).waits)
+    assert cli.OCR_WAIT_CLAUSE.endswith(loop_mod.RECORDING_OCR_WAIT)
+    with Manifest(config.state_paths.db) as m:  # a run still going holds no counts yet: the last one counts
+        m.begin_run(CycleMode.POLL, host="contoso-mac", pid=os.getpid())
+    assert f"waits {loop_mod.RECORDING_OCR_WAIT}" in _recording_words(config)
+    monkeypatch.setattr(loop_mod.launchd, "agents_installed", lambda _c: False)
+    _use_ocr(monkeypatch, tmp_path)
+    _touch(recording)
+    assert run(config, mode=None).exit_code == 0  # an interactive sync reads no recording: it still waits
+    assert "ocr_helper_failed" not in _run_record(config)
+    said = _recording_words(config)
+    assert "--confirm-install-agent" in said and loop_mod.RECORDING_OCR_WAIT not in said, said
+
+
 def test_a_recording_changed_during_an_ocr_outage_carries_its_new_text_once_the_helper_works_c1641(
     tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
 ) -> None:
