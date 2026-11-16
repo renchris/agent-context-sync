@@ -180,7 +180,7 @@ class PlainTextConverter:
         ``<br>`` or a character), only a fenced head of the raw text cut at a line or character boundary,
         and the sidecar holds every row (B13 round 39 C1676); its note counts no rows, since the head of a
         wide table of short fields can hold whole records (B13 round 40 C1849).  The budget leaves 1,024
-        bytes for the note, the banner and the sidecar digest footer, so a page stays within any
+        bytes for the note, the banner and the sidecar digest footer, so a CSV or TSV page stays within any
         ``max_page_bytes`` the config accepts (8 KiB or more, ``config.MIN_PAGE_BYTES``); a ConvertConfig
         built below that gets a shorter head, never a floor (B13 round 40 C1886, C1851)."""
         header, rows = table[0], table[1:]

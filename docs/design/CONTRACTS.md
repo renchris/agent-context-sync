@@ -41960,7 +41960,8 @@ and `test_convert_formats.py::test_xlsx_first_row_past_the_budget_rides_in_the_s
 Amended 2026-11-16, §16.258 C1848: the xlsx half held for the sheet pages only. The 00-index's headers cell and a
 streamed Schema's first-row values were whole and neither table was budgeted, so this test's own workbook gave a
 20,288-byte index at an 8,000-byte cap; each value is now cut before escaping and each table counts against the
-running total, so every xlsx page stays within the cap.
+running total, so the index and a streamed summary stay within the cap. One known residual: a full-path sheet page's
+cell-comment list is not budgeted (a 30,000-character comment gave a 30,315-byte page at caps 8,192 to 20,000).
 Amended 2026-11-16, §16.258 C1886, C1888, C1851, C1860: so the guarded page stays within any cap the config accepts,
 8 KiB (`config.MIN_PAGE_BYTES`, 8,192) or more; a smaller `[convert] max_page_bytes` is a ConfigError at load. Below
 2,048 bytes the budget's 1,024-byte floor gave a 1,346-byte page at any cap up to 1,345; the floor is 0 now, so a
@@ -42155,7 +42156,10 @@ at the page size cap: N of M columns listed; every cell is in the sidecar `<side
 whose sidecar is always attached, names the sidecar, since a full-path sheet whose rows all fit has none. The rows'
 budget is taken from what the page holds after the schema, counted in bytes. A list under the budget renders byte
 for byte as before; xlsx's `_EMITTER_VERSION` is 1.0.2, so a new conversion misses the cache once, and `outdated`
-still never reads it. Tests:
+still never reads it. One known residual stays, found by this lane's probe and left to round 41: a full-path sheet
+page's cell-comment list is not budgeted (`_sheet_body` reserves 200 bytes a comment), so a 30,000-character comment
+gives a 30,315-byte `sheet:1` at caps 8,192 to 20,000; cutting it would drop comment text no sidecar holds, so it
+needs a design. Tests:
 `test_convert_formats.py::test_every_xlsx_page_stays_within_the_cap_with_an_oversized_first_row_or_many_headers_c1848`
 (C1676's workbook and four sheets of thirty long headers, full and streamed, every guarded page within 8,192 bytes
 through `Registry.default`),
@@ -42176,7 +42180,7 @@ prefix), while the default 1,000,000 and `"8KiB"` load as before. It is checked 
 floors are now `max(0, ...)`: such a config gets a shorter head, never a page the floor pushes past it. At any cap
 of 2,048 or more the floor change alone moves no byte, so neither emitter moves for it. C1851's and C1860's
 documented-floor fixes are superseded by the minimum: `_table`'s docstring, the ConvertConfig comment and the C1676
-paragraph now say the page stays within any cap the config accepts. `tests/test_review_fixes.py`'s three
+paragraph now say a table's page stays within any cap the config accepts (C1848's sheet-comment residual aside). `tests/test_review_fixes.py`'s three
 `max_page_bytes = 2000` configs (the brief named two; the C1888 verifier's line list missed the third, at the H2
 cutoff test) load 8,192 now, each body still past it (the H2 test's runbook grows to 400 lines, its edit to line
 390). Tests:
