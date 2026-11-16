@@ -5685,6 +5685,34 @@ def _is_read(args: argparse.Namespace) -> bool:
     return command in _READ_COMMANDS
 
 
+HELP_PAGE_FIELDS = (
+    "error: --fields: a help page is no result to select fields from; "
+    "`help --all` and `help search` print `commands`"
+)
+"""C1643's refusal of ``--fields`` on a help page, which ``help <cmd> --json`` (``_select_fields``) and
+``<cmd> --help --json`` (``_fields_before_parse``) print alike (B13 round 40 C1856; ruling 139)."""
+FIELDS_NEED_JSON = "error: --fields selects fields of the --json document: add --json"
+"""``--fields`` without ``--json``: every command's refusal, and ``--version``'s (B13 round 40 C1845)."""
+
+
+def _fields_before_parse(tokens: Sequence[str]) -> int | None:
+    """``--fields`` beside a help or version run, which argparse ends before ``_select_fields`` runs (B13
+    round 40 C1856 with C1808, C1844, C1865, and C1845; ruling 139). Under --json a help page (``-h`` or
+    ``--help``, in any order, at the top level, on a command or a graph action, ``help --help``) refuses as
+    ``help <cmd>`` does; ``--version`` without --json refuses as every command does. Help still wins where it
+    did: its text page without --json, and ``--version --json --help``'s (``_json_options.help`` is false
+    there); and ``--version --json --fields`` keeps ``_version_fields``. A token scan suffices: allow_abbrev
+    is off."""
+    if not any(t == "--fields" or t.startswith("--fields=") for t in tokens):
+        return None
+    helps = bool({"-h", "--help"} & set(tokens))
+    if helps and _json_options.help:
+        return _refused(HELP_PAGE_FIELDS, EXIT_USAGE)
+    if not helps and not clio.json_mode() and "--version" in tokens:
+        return _refused(FIELDS_NEED_JSON, EXIT_USAGE)
+    return None
+
+
 def _version_fields(tokens: Sequence[str]) -> int | None:
     """``--version --json``'s ``--fields``, which argparse never sees: its one field is ``version``, and any
     other name is the same usage refusal every command gives (B13 round 39: ``--fields bogus`` exited 0)."""
@@ -5718,15 +5746,11 @@ def _select_fields(args: argparse.Namespace) -> int | None:
     if raw is None:
         return None
     if not clio.json_mode():
-        return _refused("error: --fields selects fields of the --json document: add --json", EXIT_USAGE)
+        return _refused(FIELDS_NEED_JSON, EXIT_USAGE)
     command = args.action if args.command == "graph" else args.command
     valid = _RESULT_FIELDS.get(command, ())
     if command == "help" and not (args.all or args.path[:1] == ["search"]):  # a page is no result (C1643)
-        return _refused(
-            "error: --fields: a help page is no result to select fields from; "
-            "`help --all` and `help search` print `commands`",
-            EXIT_USAGE,
-        )
+        return _refused(HELP_PAGE_FIELDS, EXIT_USAGE)
     if not valid:
         return _refused(f"error: --fields: `{command}` prints no document to select fields from", EXIT_USAGE)
     return _check_fields(raw, valid)
@@ -5740,6 +5764,9 @@ def _main(argv: Sequence[str] | None) -> int:
     clio.set_json("--json" in tokens)
     # --help --json is the page's document, except beside --version, where --help's text wins as before
     _json_options.help = clio.json_mode() and "--version" not in tokens
+    refused = _fields_before_parse(tokens)
+    if refused is not None:
+        return refused
     if clio.json_mode() and "--version" in tokens:
         if not {"-h", "--help"} & set(tokens):
             refused = _version_fields(tokens)

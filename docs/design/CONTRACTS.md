@@ -42041,6 +42041,20 @@ the order the run path reads them, `--device-code` then `--no-open`, before `_co
 `test_cli_json.py::test_login_under_json_is_a_usage_error_before_any_sign_in_c1441`, its flags now `[]`,
 `--device-code`, `--no-open` and both, for `graph login` and `login`.
 
+**A help page and a version run refuse --fields as every command does** (C1856 with C1808, C1844 and C1865, one
+defect from four finders, and C1845; ruling 139). argparse prints a `--help` page inside the parse and ends a
+`--version` run there, both before `_select_fields`, so `status --help --json --fields bogus` printed the whole page
+and exited 0 where `help status --json --fields bogus` refuses (C1643), and `--version --fields bogus` printed the
+version where every command refuses `--fields` without `--json` (b74445af fixed only `--version --json`).
+`cli._fields_before_parse`, one scan of the tokens before `--` beside `_version_fields`, refuses `--fields` or
+`--fields=` with `-h` or `--help` under `--json` (either order, the top level, a command, a graph action, `help
+--help`) with `cli.HELP_PAGE_FIELDS`, the constant `_select_fields` now prints too, so both spellings print the
+same bytes, and `--version` with `--fields` and no `--json` with `cli.FIELDS_NEED_JSON`. Help still wins where it
+did: its text page without `--json`, `--fields` or not (R086), and `--version --json --help`'s; `--version --json
+--fields` keeps `_check_fields`. §16.300.25's `--fields` bullet and `--help` bullet and §16.300.6's argv bullet say
+so. Tests: `test_cli_json.py::test_a_help_flag_page_refuses_fields_as_help_does_c1856` (eight spellings),
+`::test_a_help_text_page_still_wins_over_fields_c1856` and `::test_version_without_json_refuses_fields_c1845`.
+
 ### 16.258 Round 40: the converters: every page within the cap, an 8 KiB minimum, and long CSV fields (2026-11-16, wave B13 round 40 lane E)
 
 Reserved for round 40 lane E of B13.
@@ -42238,6 +42252,8 @@ own (§16.10). Without it, every byte of stdout and stderr and every exit code i
   C1674; ruling 136).
 - `_main` reads argv before parsing: `--json` turns `clio.set_json` on, so a usage error is one `usage` line on stderr
   (exit 2), and `--version --json` prints `{"version": "<version>"}` unless `-h` or `--help` is also given, which wins.
+  The same read refuses `--fields` beside a help page under `--json`, and beside `--version` without it (§16.300.25;
+  C1856, C1845).
   No command with `--json` is a `usage` line too. `main` turns JSON mode off again on return.
 - Each arm of `_main`'s except-ladder keeps its human lines (no-ops in JSON mode) and calls `cli._json_error`, which
   writes one `clio.error_doc` line: the reason from `_JSON_REASONS` (first match), else `failed`, or the arm's own when
@@ -42726,7 +42742,8 @@ deprecation warning becomes a `warnings` entry instead of a stderr line. The ref
   print a result (C1643). `cli._Parser.print_help` builds it from the same actions the text page lists, so a
   suppressed option or an unlisted command stays out of both. It runs inside the parse, so no config is read
   (R083, R411). Beside `--version`, `--help` still prints the text page, as `--version --json --help` did before.
-- `--help` with no `--json` prints the same bytes as before: `--fields` and `help --all` are hidden options.
+- `--help` with no `--json` prints the same bytes as before: `--fields` and `help --all` are hidden options. Its
+  text page wins with `--fields` given too, as `--version --json --help`'s does (C1856; ruling 139).
 - `agentsync help --all` lists every listed command, one per line; with `--json`, `{"commands": [...]}` holds
   each command's page document (R107).
 - `agentsync help search QUERY` (R107, R108): the listed commands whose name, summary or examples hold every word
@@ -42740,7 +42757,12 @@ deprecation warning becomes a `warnings` entry instead of a stderr line. The ref
   accept-deletions', `warnings` in every row but status's, doctor's and policy's (`("status",)`, their records in
   `status.warnings`), and help's `commands` (C1638, C1673, C1643; ruling 136). Exit 2, as a `usage` error, when
   `--json` is absent, the command prints no document, a help page is asked for (`a help page is no result to
-  select fields from`: only `help --all` and `help search` print `commands`), or a field is unknown; the last line lists the valid fields. Without `--fields` every document is
+  select fields from`: only `help --all` and `help search` print `commands`), as `help <cmd> --json` or as
+  `<cmd> --help --json` (`-h` too, in any order, a graph action's and `help --help`'s alike: `cli._main` scans argv
+  before the parse, which ends a help or version run before `_select_fields`, and both print
+  `cli.HELP_PAGE_FIELDS`'s same bytes; C1856, C1808, C1844, C1865), or a field is unknown; the last line lists the
+  valid fields. `--version --fields` without `--json` is the same `add --json` refusal (`cli.FIELDS_NEED_JSON`,
+  C1845); `--version --json --fields` keeps its one field, `version`. Without `--fields` every document is
   unchanged, and error documents are never filtered. The run's log records join the document only when the
   selection keeps the field that holds them; otherwise each is one JSON object on stderr after it (C1639, C1674).
   `help <unknown> --json` is one `usage` line, its inner parse through `cli._parse` (C1643).
@@ -42751,7 +42773,9 @@ deprecation warning becomes a `warnings` entry instead of a stderr line. The ref
   `test_status_log_records_join_status_warnings_c1639`,
   `test_a_log_record_the_selection_leaves_out_goes_to_stderr_c1674`,
   `test_help_doctor_and_policy_documents_take_fields_c1643` and
-  `test_every_top_level_key_of_a_captured_document_is_in_its_row_c1638`.
+  `test_every_top_level_key_of_a_captured_document_is_in_its_row_c1638`, and B13 round 40's
+  `test_a_help_flag_page_refuses_fields_as_help_does_c1856`, `test_a_help_text_page_still_wins_over_fields_c1856`
+  and `test_version_without_json_refuses_fields_c1845`.
 
 #### 16.300.26 U-C9: install.sh conflicts and the consent spelling
 

@@ -842,6 +842,68 @@ def test_help_doctor_and_policy_documents_take_fields_c1643(
     assert (rc, error["reason"]) == (cli.EXIT_USAGE, "usage") and "bogus" in error["message"], error
 
 
+_HELP_FIELDS = {
+    "status --help --fields bogus": ["status", "--help", "--json", "--fields", "bogus"],
+    "status --help --fields path": ["status", "--help", "--json", "--fields", "path"],
+    "--fields= spelling": ["status", "--help", "--json", "--fields=bogus"],
+    "--fields before --help": ["status", "--fields", "path", "--json", "--help"],
+    "-h": ["sync", "-h", "--json", "--fields", "name"],
+    "top level": ["--help", "--json", "--fields", "x"],
+    "graph action": ["graph", "whoami", "--help", "--json", "--fields", "account"],
+    "help --help": ["help", "--help", "--json", "--fields", "commands"],
+}
+
+
+@pytest.mark.parametrize("argv", list(_HELP_FIELDS.values()), ids=list(_HELP_FIELDS))
+def test_a_help_flag_page_refuses_fields_as_help_does_c1856(
+    argv: list[str], capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 40 C1856 with C1808, C1844 and C1865 (ruling 139): argparse prints a --help page inside the
+    parse, before ``_select_fields`` runs, so ``status --help --json --fields bogus`` printed the whole page
+    and exited 0 where ``help status --json --fields bogus`` refuses (C1643). ``_main``'s scan before the
+    parse refuses it with the same line, in any order and either spelling, at every help page --json prints.
+    """
+    assert cli.main(argv) == cli.EXIT_USAGE
+    out, err = capsys.readouterr()
+    assert out == "" and len(err.splitlines()) == 1, (out, err)
+    doc = json.loads(err)
+    assert doc["reason"] == "usage" and doc["message"] == cli.HELP_PAGE_FIELDS.removeprefix("error: "), doc
+    assert cli.main(["help", "status", "--json", "--fields", "commands"]) == cli.EXIT_USAGE
+    assert capsys.readouterr() == ("", err), "help <cmd> and <cmd> --help print the same bytes"
+
+
+def test_a_help_text_page_still_wins_over_fields_c1856(capsys: pytest.CaptureFixture[str]) -> None:
+    """C1856, C1808: without --json, --help still prints its text page and exits 0, --fields or not (R086,
+    §16.300.25's same bytes), and ``--version --json --help`` keeps its text page."""
+    plain = _help_text(capsys, "status", "--help")
+    assert _help_text(capsys, "status", "--help", "--fields", "x") == plain
+    assert _help_text(capsys, "--version", "--json", "--help", "--fields", "x").startswith("usage:")
+    unchanged = _help_text(capsys, "--version", "--help")  # argparse acts on whichever came first, as before
+    assert _help_text(capsys, "--version", "--help", "--fields", "x") == unchanged
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--version", "--fields", "version"],
+        ["--fields=bogus", "--version"],
+        ["status", "--version", "--fields"],
+    ],
+    ids=["--fields version", "--fields= first", "no value"],
+)
+def test_version_without_json_refuses_fields_c1845(
+    argv: list[str], capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 40 C1845 (ruling 139): argparse's version action exits before ``_select_fields``, so
+    ``--version --fields bogus`` printed the version and exited 0, where every command refuses --fields
+    without --json; b74445af fixed only the --json spelling. Plain ``--version`` is unchanged."""
+    assert cli.main(argv) == cli.EXIT_USAGE
+    out, err = capsys.readouterr()
+    assert out == "" and err.strip() == cli.FIELDS_NEED_JSON, (out, err)
+    assert cli.main(["--version"]) == cli.EXIT_OK
+    assert capsys.readouterr().out == f"agentsync {__version__}\n"
+
+
 def test_every_top_level_key_of_a_captured_document_is_in_its_row_c1638(
     initialised: Config,
     monkeypatch: pytest.MonkeyPatch,
