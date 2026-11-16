@@ -24,7 +24,7 @@ from typing import Any
 import pytest
 
 import exec_stub
-from agentsync import publish
+from agentsync import publish, report_cuts
 from agentsync.convert import speech
 from agentsync.model import SourceKind
 
@@ -12801,3 +12801,20 @@ def test_w41s_measurement_counts_the_tables_the_test_damages() -> None:
         f" already reached) and both last-leaf cases failed, {failed + len(leaves)} of the"
         f" {len(tables) + len(leaves)} cases"
     ) in w41
+
+
+def test_the_c1670_line_names_every_byte_bash_32_writes_in_octal_c1859() -> None:
+    """B13 round 40 C1859: §16.245's C1670 dated line said printf %q's UTF-8 body matches a name whose other
+    characters hold no byte 0x80 to 0x9F, while bash 3.2 also writes 0xAD in octal (`í` is C3 AD), so `í`
+    with an ESC was a name the line wrongly called matching; its own parenthesis and §16.251's C1648 passage
+    already said `or 0xAD`. The line names the bytes report_cuts.BASH32_UTF8_OCTAL holds."""
+    octal = report_cuts.BASH32_UTF8_OCTAL
+    assert set(range(0x80, 0xA0)) <= octal and octal - set(range(0x80, 0xA0)) == {0xAD}
+    line = " ".join(_contracts_section("Amended 2026-11-14, §16.250 C1670, C1649, C1635:", "\n\n").split())
+    assert "whose other characters hold no byte 0x80 to 0x9F or 0xAD (`Café` with an ESC or a BEL)" in line
+    assert "(0x80 to 0x9F and 0xAD in octal," in line
+    section = " ".join(_contracts_section("### 16.259 ", "### 16.300 ").split())
+    assert (
+        "**§16.245's C1670 line names 0xAD among the bytes bash 3.2 writes in octal** (C1859; docs only)."
+        in (section)
+    )

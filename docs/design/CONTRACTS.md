@@ -40780,8 +40780,8 @@ and each character `_LIST_ESCAPED_RE` matches, in each line form) and its `build
 `_LIST_ESCAPED_RE` character as a path byte, and both reports still agree on every slot.
 
 Amended 2026-11-14, §16.250 C1670, C1649, C1635: `printf %q`'s UTF-8 body above matches only a name whose escaped
-characters are all ASCII and whose other characters hold no byte 0x80 to 0x9F (`Café` with an ESC or a BEL), so the
-body macOS's bash 3.2 writes byte by byte (0x80 to 0x9F and 0xAD in octal, every other byte raw, read back with
+characters are all ASCII and whose other characters hold no byte 0x80 to 0x9F or 0xAD (`Café` with an ESC or a
+BEL), so the body macOS's bash 3.2 writes byte by byte (0x80 to 0x9F and 0xAD in octal, every other byte raw, read back with
 `errors="replace"`) is aliased beside it, and a generic folder or product-word `safe_text` spelling is exempt before
 the report-word test: it gets no alias and leaves the report public (§16.250).
 
@@ -42134,6 +42134,15 @@ C1610's rule now writes after a skipped probe. Each takes a dated line in §16.2
 for word from install.sh and tests/test_install_oneshot.py, and §16.236 takes one beside C1224's. No code changes.
 Test: `test_contracts.py::test_section_16_251_records_round_39s_temp_files_cut_block_and_launchctl_words_c1854`, which
 reads each named test from tests/test_install_oneshot.py and each rule from install.sh.
+
+**§16.245's C1670 line names 0xAD among the bytes bash 3.2 writes in octal** (C1859; docs only). §16.250's C1670 dated
+line under §16.245 said `printf %q`'s UTF-8 body matches only a name whose other characters hold no byte 0x80 to 0x9F,
+while bash 3.2 tests each byte and writes 0xAD in octal too (`report_cuts.BASH32_UTF8_OCTAL`), so `printf %q` of `í`
+(C3 AD) with an ESC is `$'` + raw 0xC3 + `\255\E'` under /bin/bash 3.2.57, which the UTF-8 body does not match; the
+same line's parenthesis and §16.251's C1648 passage already said `0x80 to 0x9F or 0xAD`. The line now says
+`no byte 0x80 to 0x9F or 0xAD`, corrected in place, since it is a fact about the code, not a decision of its round.
+Test: `test_the_c1670_line_names_every_byte_bash_32_writes_in_octal_c1859`, which holds the line to
+`BASH32_UTF8_OCTAL`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
