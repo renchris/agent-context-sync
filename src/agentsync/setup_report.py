@@ -9752,6 +9752,7 @@ _IMAGE_OUTCOMES = (
     "with a page",
     "no-text stub",
     "not-readable stub",
+    "empty stub",  # B13 round 40 C1850 (ruling 141): a zero-byte image, class `empty` (C1647)
     "not-on-this-Mac stub",
     "no-converter stub on this Mac",
     "waiting-for-the-OCR-helper stub",  # B13 round 37 C1267: its page says so; read once the helper works
@@ -9779,6 +9780,7 @@ def _image_outcome(state: str, away: bool, verdict: str, cls: str, page: int) ->
         "no text in image": "no-text stub",
         "image not readable": "not-readable stub",
         "too large": "not-readable stub",
+        "empty": "empty stub",  # a zero-byte image, on this Mac or away (B13 round 40 C1850)
         # the rule withholds it whether or not it is on this Mac (B13 round 4 Q30)
         "withheld by label rule": "withheld-by-label-rule stub",
         "conversion failed": "failed",
@@ -11638,8 +11640,13 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     )
     running = runs[0].status == "running"
     total = 0
+    # B13 round 40 C1821 (ruling 141; makes worse True for the cycle dropping the row): a zero-byte file
+    # never reads the cache (§16.248 C1466), so a row of the empty file's hash is no serve; record_cache
+    # still writes it, which converted_seen and converted_again read
     for last_used, files in m.rows(
-        "SELECT last_used_run, COUNT(*) FROM cache WHERE last_used_run > created_run GROUP BY 1"
+        "SELECT last_used_run, COUNT(*) FROM cache WHERE last_used_run > created_run "
+        "AND canonical_sha256 != ? GROUP BY 1",
+        (hashlib.sha256(b"").hexdigest(),),
     ):
         total += int(files)
         if last_used in again:

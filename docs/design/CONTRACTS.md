@@ -8692,6 +8692,8 @@ the OCR probe. There is no page count cap.
   Graph item's `dataless` column is 0 and no image is downloaded for OCR (`_Cycle._no_converter`), so a Graph
   source's image is counted as not on this Mac by its source's kind; by the column alone its stub was a
   `no-converter stub on this Mac`.
+  Amended 2026-11-16, §16.255 C1850: `empty stub`, after `not-readable stub`, for a zero-byte image, whose class is
+  `empty` since §16.253 C1647; it was counted as `other stub`.
 - PDF, deck, deck template, Word and OpenDocument files with a page, by whether its converter version has an
   engine's identity (`+ocr-`), has none, or is one of the field build's (§16.27). The version is the cache
   row's of the page's action key, else the output row's, as in `Manifest.reread_candidates`.
@@ -8792,6 +8794,9 @@ from the same bytes and converter options as an earlier run` (a label rule is on
 re-screen for a label-rule change is a new conversion there; one for a secret rule keeps the key and is counted),
 and when a run shown re-screened files, a note under the table gives each such run's count and how many came out the
 same.
+Amended 2026-11-16, §16.255 C1821: the converter-cache line leaves out rows whose canonical hash is the empty file's
+(`governance._EMPTY_SHA256`): a zero-byte file never reads the cache (§16.248 C1466), so such a row is no serve.
+`manifest.record_cache` still writes it, so `converted_seen` and `converted_again` still count a zero-byte file.
 
 **Background runs.** After the two job lines, for each job with a plist in this home folder: whether it is
 what this build would write (`launchd.render_plist` of `poll_spec` or `reconcile_spec`; doctor's line says
@@ -42167,6 +42172,19 @@ the two reports agree on any supported Python; they agree on 3.12 and later, and
 U+13439 to U+1343F, which that Python's `safe_text` keeps. The table stays as it is. §16.251's C1628 list read
 U+13430 to U+1343F where Python 3.11's 26 end at U+13438. `folder_spellings`' docstring names 0xAD beside 0x80 to
 0x9F (C1859's half). Test: `test_the_format_ranges_docstring_tells_the_unicode_history_c1838_c1858`.
+
+**A zero-byte image is an `empty stub` in the OCR section** (C1850; ruling 141; dated line at §16.28). Round 39's
+C1647 classes a zero-byte image `empty`, which `_image_outcome` did not know, so the OCR section's images line
+counted it as `other stub` while Quarantine by reason said `empty`. `_IMAGE_OUTCOMES` gains `empty stub` after
+`not-readable stub`, on this Mac or away. Test: `test_a_zero_byte_image_is_an_empty_stub_in_the_ocr_part_c1850`.
+
+**A zero-byte conversion is no cache serve** (C1821; ruling 141; makes worse True for dropping the row; dated line at
+§16.28). Since round 39's C1466 a zero-byte file skips the cache both ways, yet its conversion still records a cache
+row, so two syncs a run apart that each converted an empty file counted as a conversion `used again by a later run`.
+The report's `converter cache:` query leaves out the empty file's hash; `manifest.record_cache` keeps writing the
+row, since `cache_last_used` feeds `converted_seen` and `converted_again`, which would stop counting a zero-byte file
+converted again from the same bytes. Tests: `test_a_zero_byte_conversion_is_no_converter_cache_serve_c1821` and
+`test_a_zero_byte_conversion_still_records_its_cache_row_c1821`.
 
 ### 16.256 Round 40: the installer: the shell report reads every argument form from the table, no bash 3.2 crash on a long folder list, and one spelling per escaped byte (2026-11-16, wave B13 round 40 lane RB)
 

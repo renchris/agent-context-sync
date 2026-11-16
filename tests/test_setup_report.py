@@ -28212,3 +28212,68 @@ def test_the_format_ranges_docstring_tells_the_unicode_history_c1838_c1858() -> 
         (Path(__file__).parents[1] / "docs/design/CONTRACTS.md").read_text(encoding="utf-8").split()
     )
     assert "U+110CD, U+13430 to U+13438, U+1BCA0" in text and "U+110CD, U+13430 to U+1343F," not in text
+
+
+@pytest.mark.parametrize("away", [False, True])
+def test_a_zero_byte_image_is_an_empty_stub_in_the_ocr_part_c1850(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, away: bool
+) -> None:
+    """B13 round 40 C1850 (ruling 141): round 39's C1647 classes a zero-byte image `empty`, which the OCR
+    section's images line did not know, so it counted the image as `other stub` while Quarantine by reason
+    said `empty`. It is an `empty stub` now, after `not-readable stub`, on this Mac or away."""
+    from agentsync import policy  # noqa: PLC0415
+
+    assert setup_report._image_outcome("quarantined", away, "", "empty", 0) == "empty stub"
+    outcomes = setup_report._IMAGE_OUTCOMES
+    assert outcomes.index("empty stub") == outcomes.index("not-readable stub") + 1
+    if away:
+        return
+    cfg = fake_mac["config"]
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.delenv("AGENTSYNC_OCR")
+    write_fake(ocr._helper_path(load_config(cfg).cache_dir))
+    seed = Seed(cfg)
+    seed.item(seed.ids()[0], "Contoso empty scan.png", reason=policy.EMPTY_OUTPUT_REASON, state="quarantined")
+    seed.close()
+    parts = status_parts(fake_mac)[1]
+    assert "- images: 1 file: 1 empty stub\n" in parts["OCR"], parts["OCR"]
+    assert "other stub" not in parts["OCR"]
+
+
+def test_a_zero_byte_conversion_is_no_converter_cache_serve_c1821(fake_mac: dict[str, Path]) -> None:
+    """B13 round 40 C1821 (ruling 141): a zero-byte file never reads the cache (C1466), but its conversion
+    still records a row, so two syncs a run apart counted it as a conversion used again by a later run. The
+    report's converter-cache line leaves out the empty file's hash."""
+    seed_ocr(fake_mac)
+    seed = Seed(fake_mac["config"])
+    seed.n = next(SEED_NUMBERS)
+    empty = hashlib.sha256(b"").hexdigest()
+    for key, sha in ((f"empty-{seed.n}", empty), (f"full-{seed.n}", "c")):
+        seed.m._db.execute(
+            "INSERT INTO cache (action_key, converter_id, converter_version, options_hash, canonical_sha256, "
+            "status, unit_count, bytes, created_run, last_used_run) "
+            "VALUES (?, 'c', '1', 'o', ?, 'ok', 1, 0, 1, 2)",
+            (key, sha),
+        )
+    seed.close()
+    part = status_parts(fake_mac)[1]["Repeat conversions"]
+    line = next(ln for ln in part.splitlines() if ln.startswith("- converter cache: "))
+    assert line.startswith("- converter cache: 1 conversion was used again"), line
+
+
+def test_a_zero_byte_conversion_still_records_its_cache_row_c1821(tmp_path: Path) -> None:
+    """B13 round 40 C1821 (makes worse True for the cycle dropping the row): record_cache keeps writing a
+    zero-byte conversion's row, since cache_last_used feeds converted_seen and converted_again."""
+    with Manifest(tmp_path / "manifest.sqlite") as m:
+        m.record_cache(
+            "k-empty",
+            converter_id="msg",
+            converter_version="1",
+            options_hash="o",
+            canonical_sha256=hashlib.sha256(b"").hexdigest(),
+            status="ok",
+            unit_count=0,
+            size=0,
+            run_id=3,
+        )
+        assert m.cache_last_used("k-empty") == 3

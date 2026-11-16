@@ -7359,6 +7359,12 @@ _ROUND_38_RB_PARAGRAPH_AMENDS = (
 """Round 38 lane RB's dated lines no claim reads: C1405's in §16.29's re-run table row, and C1456's and
 C1458's in §16.300.19's paragraph and §16.300.24's Success bullet, sections the CLI conventions wave
 numbers below §16.300."""
+_ROUND_40_RA_PARAGRAPH_AMENDS = (
+    ("16.28", "Images (the suffixes of `ImageConverter.extensions`) by outcome", "§16.255 C1850"),
+    ("16.28", "**Repeat conversions.** One row for each of the last five runs", "§16.255 C1821"),
+)
+"""Round 40 lane RA's dated lines no claim holds alone: C1850's at §16.28's OCR images bullet and C1821's at
+its Repeat conversions paragraph, a section each claim names with no item."""
 _ROUND_39_E_PARAGRAPH_AMENDS = (
     ("16.28", "Amended 2026-10-11 by §16.48 (R36): the class `damaged`", "§16.253 C1647"),
     ("16.248", "**An Office file or `.msg` of zero bytes is `empty` after an older", "§16.253 C1645, C1646"),
@@ -7617,6 +7623,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_39_E_PARAGRAPH_AMENDS,
         *_ROUND_40_B_PARAGRAPH_AMENDS,
         *_ROUND_40_E_PARAGRAPH_AMENDS,
+        *_ROUND_40_RA_PARAGRAPH_AMENDS,
         *_REVIEW_BACKTEST_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
