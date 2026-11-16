@@ -28156,8 +28156,9 @@ def test_an_unregistered_tenant_in_free_text_reads_cloudstorage_path_c1862() -> 
 
 def test_folder_spellings_walks_its_own_order_and_keeps_the_old_list_form_c1889_c1802() -> None:
     """B13 round 40 C1889: folder_spellings' order is its own (no table orders it). C1802: step 1's list
-    spells each escaped character but \\n, \\t and \\r as octal per UTF-8 byte, so DEL and U+200B are two
-    rows; the older `?` spelling stays an alias, so an older install.out or friction log is still cut."""
+    spells each escaped character but \\n (0x1E too), \\t and \\r as octal per UTF-8 byte, so DEL and
+    U+200B are two rows; the older `?` spelling stays an alias, so an older install.out or friction log is
+    still cut."""
     # the list spelling, its older form, doctor's body, printf's under C (\\E, \\e), bash 3.2's under UTF-8
     # (\\E, \\e; read back with errors="replace"), a later bash's under UTF-8 (its \\e is doctor's, so once)
     assert setup_report.folder_spellings("\u00c9\x1bQ3\tNotes") == [
@@ -28175,7 +28176,10 @@ def test_folder_spellings_walks_its_own_order_and_keeps_the_old_list_form_c1889_
         "Contoso\\342\\200\\213Del",
         "Contoso?Del",
     ]
-    assert setup_report.folder_spellings("A\x1eB")[:2] == ["A\\036B", "A\\nB"]
+    assert setup_report.folder_spellings("A\x1eB\x1fC")[:2] == [
+        "A\\nB\\037C",
+        "A\\nB?C",
+    ]  # 0x1E is step 1's \\n
     red = setup_report.Redactor()
     for n, name in enumerate(("Contoso\x7fDel", "Contoso\u200bDel"), 1):
         red.add("folder", name, fuzzy=True)

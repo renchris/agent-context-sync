@@ -5597,9 +5597,9 @@ def folder_spellings(value: str) -> list[str]:
     """Every spelling of a folder name ``value`` a line agentsync prints can show it in, beside the TOML ones
     :func:`_alias_escaped` registers (B13 round 38 C1414, C1439; ruling 126), in the order this function
     walks them (B13 round 40 C1889: no table orders them; install.sh's ``add_forms`` lists its own): first
-    step 1's list spelling (``arm_local.list_shown_name`` without its mark: ``\\t``, ``\\n``, ``\\r``, and
-    every other character :data:`_LIST_ESCAPED_RE` matches as a backslash and three octal digits per UTF-8
-    byte, B13 round 40 C1802), which install.sh's ``source-local:`` line and doctor's
+    step 1's list spelling (``arm_local.list_shown_name`` without its mark: ``\\t``, ``\\n`` (0x1E too),
+    ``\\r``, and every other character :data:`_LIST_ESCAPED_RE` matches as a backslash and three octal
+    digits per UTF-8 byte, B13 round 40 C1802), which install.sh's ``source-local:`` line and doctor's
     ``source.<id>.listable`` details print, then the older list spelling, ``?`` for each such character
     (``\\n`` for 0x1E), kept so an older install.out or friction log is still cut (C1802); then the body of
     the ``$'...'`` word doctor's fix commands write (:data:`_DOCTOR_LETTERS`); then the bodies of the one
@@ -5628,8 +5628,9 @@ def folder_spellings(value: str) -> list[str]:
     return list(dict.fromkeys([listed, listed_old, *bodies]))
 
 
-_LIST_LETTERS = {"\n": "\\n", "\t": "\\t", "\r": "\\r"}
-"""The characters step 1's list spells as a letter (B13 round 40 C1802); every other escaped one is octal."""
+_LIST_LETTERS = {"\n": "\\n", "\x1e": "\\n", "\t": "\\t", "\r": "\\r"}
+"""The characters step 1's list spells as a letter (B13 round 40 C1802), every other escaped one in octal:
+0x1E as ``\\n``, since install.sh carries each newline of the list as 0x1E and cannot tell the two apart."""
 _LIST_ESCAPES_OLD = {"\n": "\\n", "\x1e": "\\n", "\t": "\\t", "\r": "\\r"}
 """Step 1's list spelling before B13 round 40 C1802, ``?`` for every character not here."""
 
