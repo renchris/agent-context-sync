@@ -7054,6 +7054,8 @@ class StubRecording(RecordingConverter):
     def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]:
         self.rec.converts.append(name)
         data = src.read_bytes()
+        if not data:  # the real converter's empty-head check, before any helper (C1647)
+            return super().convert(src, name=name)
         spec = json.loads(data.split(STUB_MAGIC, 1)[1])
         sha, total = hashlib.sha256(data).hexdigest(), spec["minutes"] * 60_000
         allowance = self.rec.allowances[-1] if self.rec.allowances else None
@@ -7334,6 +7336,94 @@ def test_a_recording_changed_during_an_ocr_outage_carries_its_new_text_once_the_
     assert run(config).exit_code == 0
     fm, body = _recording_page(config, MEETING)
     assert fm["status"] == "current" and "SCREEN Contoso review, second cut" in body, (fm, body)
+
+
+EMPTY_MEETING = "meetings/Contoso empty.mp4"
+
+
+def _empty_recording_synced(config: Config, rec: Rec) -> None:
+    """One interactive sync of a zero-byte recording on this Mac: its page is the `empty` stub, read with no
+    work allowance, its row waits for nothing, and no recording line asks for a background sync."""
+    report = run(config, mode=None)
+    assert report.exit_code == 0
+    fm, _body = _recording_page(config, EMPTY_MEETING)
+    assert fm["status"] == "unreadable" and fm.get("reason") == content_policy.EMPTY_OUTPUT_REASON, fm
+    row = _row(config, EMPTY_MEETING)
+    assert row.state_reason != cycle_mod.RECORDING_WAITS and row.last_verdict is not Verdict.DEFERRED, row
+    assert rec.opened == [] and rec.worked == [], (rec.opened, rec.worked)
+    with Manifest(config.state_paths.db) as m:
+        files = loop_mod._unpublished(m, config.sources)
+    assert files.recording == {}, files
+    assert loop_mod._recording_lines(files, background=False) == ([], [])
+
+
+def test_an_interactive_sync_classes_a_zero_byte_recording_empty_c1820(
+    tmp_path: Path, meetings: Path, rec: Rec
+) -> None:
+    """B13 round 40 C1820 with C1806 (ruling 141): a recording is left to the recording pass by its name, so
+    a zero-byte one on a Mac with no background sync waited "to be read" in every sync, and asked the person
+    to install the background job for an empty file. One listed at 0 bytes, on this Mac, is fetched with a
+    probe budget and, the staged copy empty, converted: `empty`, as a zero-byte image is (C1647)."""
+    config = config_with(tmp_path, meetings)
+    (meetings / EMPTY_MEETING).parent.mkdir(parents=True, exist_ok=True)
+    (meetings / EMPTY_MEETING).write_bytes(b"")
+    _empty_recording_synced(config, rec)
+
+
+def test_a_zero_byte_recording_is_empty_with_the_ocr_time_used_up_c1806(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C1806: past the cycle's OCR time a queue converts with the registry that has no OCR, and no recording
+    converter, so an empty recording would read `no converter`; it is converted with the whole registry."""
+    monkeypatch.setattr(cycle_mod, "_OCR_BUDGET_S", 0)
+    config = config_with(tmp_path, meetings)
+    (meetings / EMPTY_MEETING).parent.mkdir(parents=True, exist_ok=True)
+    (meetings / EMPTY_MEETING).write_bytes(b"")
+    _empty_recording_synced(config, rec)
+
+
+def test_a_recording_listed_empty_that_grows_before_its_fetch_still_waits_unread_c1806(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C1806, C1820 (makes worse True each): the listed size is the walk's, and the fetch checks the file's
+    identity, not its size, so a recording a recorder fills between the two is decided on the staged bytes:
+    any byte, and the copy is discarded and the row waits for the recording pass, nothing converted (spec S0
+    rules 4 and 5)."""
+    config = config_with(tmp_path, meetings)
+    path = meetings / EMPTY_MEETING
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"")
+    real = LocalArm.fetch
+
+    def fetch(self: Any, item: Any, dest: Path, budget: Any) -> Any:
+        if item.rel_path == EMPTY_MEETING and not path.stat().st_size:
+            stub_recording(path, 60)  # the recorder writes it now, same inode
+        return real(self, item, dest, budget)
+
+    monkeypatch.setattr(LocalArm, "fetch", fetch)
+    assert run(config, mode=None).exit_code == 0
+    row = _row(config, EMPTY_MEETING)
+    assert (row.last_verdict, row.state_reason) == (Verdict.DEFERRED, cycle_mod.RECORDING_WAITS), row
+    assert rec.converts == [] and rec.worked == [] and rec.opened == [], rec.converts
+    assert not (config.docs_repo / slug.mirror_rel_path(SID, EMPTY_MEETING)).exists()
+    assert not list(config.state_paths.staging.rglob("*.mp4")), "the staged copy is discarded"
+
+
+def test_a_dataless_zero_byte_recording_still_waits_c1820(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C1820: only a recording on this Mac is probed; an online-only one listed at 0 bytes is a placeholder,
+    and it waits for the recording pass's download as before, never fetched in a queue."""
+    config = config_with(tmp_path, meetings)
+    path = meetings / EMPTY_MEETING
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"")
+    _mark_online_only(monkeypatch, path)
+    fetched = _fetches(monkeypatch)
+    assert run(config, mode=None).exit_code == 0
+    row = _row(config, EMPTY_MEETING)
+    assert row.dataless and row.state_reason == cycle_mod.RECORDING_WAITS, row
+    assert EMPTY_MEETING not in fetched and rec.converts == [], fetched
 
 
 def test_an_interactive_sync_starts_no_recording_and_prints_the_count(

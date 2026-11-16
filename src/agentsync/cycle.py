@@ -2178,6 +2178,7 @@ class _Cycle:
         self._recording_arms: dict[str, SourceArm] = {}  # per source whose queue ran: its arm
         self._recording_records: dict[str, _Recordings] = {}  # per source: its record, read once
         self._in_recording_pass = False  # ``_after_fetch`` converts with the whole registry, never past OCR
+        self._whole_registry = False  # so does an empty recording's read in a queue (``_empty_recording``)
         self._media_down = False  # the media helper stopped answering --version in this cycle
 
     # ---- time ---------------------------------------------------------------------------------------------
@@ -5098,6 +5099,37 @@ class _Cycle:
             for ext in conv.extensions
         )
 
+    def _empty_recording(self, src: SourceConfig, arm: SourceArm, row: ItemRow, acc: _SourceAcc) -> bool:
+        """True when ``row`` is a recording on this Mac whose copy staged zero bytes, now converted and
+        published: the recording converter classes it ``empty`` before any helper runs (B13 round 39 C1647),
+        so it never waits for the recording pass or asks for a background sync (B13 round 40 C1820, C1806;
+        ruling 141).  Only a row listed at 0 bytes, not dataless and not a Graph item, is fetched, with a
+        probe budget (``ByteBudget(0, 1)``, as ``_reread_source``), and the decision is the staged copy's:
+        a fetch that raises, or one that staged any byte (a recording that grew since the walk), is
+        discarded unread and the row waits as before, so no queue reads a recording's bytes (spec S0 rules
+        4 and 5).  The copy is converted with the whole registry, never past OCR (``_converting``), which
+        has no recording converter and would call it ``no converter``."""
+        if row.dataless or row.size != 0 or src.kind.is_graph:
+            return False
+        try:
+            fetched = arm.fetch(_item_from_row(row), self.staging, ByteBudget(0, 1))
+        except AuthRequiredError:
+            raise
+        except Exception as exc:  # gone, dataless now, refused: it waits, as any recording
+            log.info("%s: %s, listed empty, was not staged: %s", row.source_id, row.rel_path, exc)
+            return False
+        try:
+            if fetched.size != 0:
+                return False
+            self._whole_registry = True
+            try:
+                self._after_fetch(src, row, fetched, acc)
+            finally:
+                self._whole_registry = False
+            return True
+        finally:
+            _discard_staged(fetched, self.staging)
+
     def _recording_defer(self, src: SourceConfig, row: ItemRow, acc: _SourceAcc) -> None:
         """Leave a recording of a source's queue to the recording pass, unfetched (spec S0 rule 4).  It
         waits (``RECORDING_WAITS``), or keeps ``HYDRATION_REFUSED`` until its download is tried again.  An
@@ -6092,7 +6124,7 @@ class _Cycle:
         the page, the version and the action key of a Mac without an engine, which is how a later re-read
         can tell OCR has not read it. (A Graph document is not converted then: ``_ocr_waits``.)"""
         plain = self.registry.without_ocr
-        if self._in_recording_pass:  # recordings have time of their own (``_RECORDING_BUDGET_S``)
+        if self._in_recording_pass or self._whole_registry:  # recordings have time of their own
             return self.registry
         return plain if plain is not None and self._ocr_over() else self.registry
 
@@ -6135,6 +6167,8 @@ class _Cycle:
             )
             log.info("%s: %s refused: %s", sid, row.rel_path, duplicate)
             self._publish(src, row, stub, acc, quarantine_reason=duplicate)
+            return
+        if recording and self._empty_recording(src, arm, row, acc):  # zero bytes: `empty`, never waiting
             return
         if recording:  # read in the recording pass, never in a source's queue (spec S0 rule 4)
             self._recording_defer(src, row, acc)
