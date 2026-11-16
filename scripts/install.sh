@@ -3303,6 +3303,29 @@ redaction_pairs() {
 			[ "$v" = "$1" ] || emit_pair "$v" "$2" "${3:-}" utf8
 			;;
 		esac
+		# and as add-source's TOML echo writes it (config.toml_string: json.dumps's escapes, DEL as \u007F), in each
+		# of the block's CUT_DEL_ESCAPED spellings of DEL, as setup_report._toml_spellings aliases it (B13 round 40
+		# ruling 137, C1840 with C1887's shell half): `path = "...\u0001..."` printed the name in clear
+		case "$1" in
+		*[$'\001'-$'\037'$'\177'\"\\]*)
+			while IFS= read -r v; do
+				[ -z "$v" ] || [ "$v" = "$1" ] || emit_pair "$v" "$2" "${3:-}" utf8
+			done <<<"$(TOML_NAME="$1" DEL_FORMS="$CUT_DEL_ESCAPED" LC_ALL=C awk 'BEGIN {
+				for (k = 1; k < 32; k++) e[sprintf("%c", k)] = sprintf("\\u%04x", k)
+				e["\b"] = "\\b"; e["\f"] = "\\f"; e["\n"] = "\\n"; e["\r"] = "\\r"; e["\t"] = "\\t"
+				e["\\"] = "\\\\"; e["\""] = "\\\""
+				s = ENVIRON["TOML_NAME"]; o = ""
+				for (k = 1; k <= length(s); k++) { c = substr(s, k, 1); o = o ((c in e) ? e[c] : c) }
+				nd = split(ENVIRON["DEL_FORMS"], d, "|")
+				if (!index(o, "\177")) { print o; exit }
+				for (k = 1; k <= nd; k++) { # DEL in each spelling, by concatenation: a gsub would read its backslash
+					t = ""; r = o
+					while ((x = index(r, "\177")) > 0) { t = t substr(r, 1, x - 1) d[k]; r = substr(r, x + 1) }
+					print t r
+				}
+			}')"
+			;;
+		esac
 		case "$1" in *[!"$ascii"]*) ;; *) emit_pair "$@" && return 0 ;; esac
 		emit_pair "$1" "$2" "${3:-}" utf8
 		nfd="$(printf '%s' "$1" | LC_ALL=C /usr/bin/iconv -f UTF-8 -t UTF-8-MAC 2>/dev/null)" || nfd=""

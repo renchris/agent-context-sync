@@ -1648,7 +1648,7 @@ def test_both_reports_number_a_configured_tenant_whose_provider_folder_is_gone_c
     ]
     monkeypatch.setenv("HOME", env["HOME"])
     red = setup_report._build_redactor(setup_report._Run(cfg, setup_report.ReportHooks(), 12.0))
-    python = [ln.split(" | deviation | ", 1)[1] for ln in setup_report._redact_lines(red, rows)]
+    python = [ln.split(" | deviation | ", 1)[1] for ln in setup_report._redact_lines(red, rows).splitlines()]
     assert shell == python, (shell, python)
     assert shell[0].startswith(
         "[FAIL] source.s0.listable — ~/Library/CloudStorage/OneDrive-<org-2>/<folder-1>"

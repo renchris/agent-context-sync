@@ -22926,7 +22926,10 @@ harness built from them reads the cut table its functions read (C1633)."""
 SHELL_REDACTION_FNS = re.compile(
     r"(?ms)^(?:hold_values|hold_scopes|safe_shown|redaction_pairs|redact_stream|typed_note_cut|foreign_home_cut"
     r"|hold_cut)"
-    r"\(\) \{\n.*?^\}$|" + _REPORT_CUTS_BLOCK
+    r"\(\) \{\n.*?^\}$|"
+    + _REPORT_CUTS_BLOCK
+    # B13 round 40: the word run redact_stream builds from CUT_SEP (C1890) and its fail-closed marker (C1836)
+    + r"|^SEP_RUN_AWK='.*?^'$|^redact_failed\(\) \{ [^\n]*\}$"
 )
 _SHELL_GLOBALS_RE = re.compile(
     r"(?m)^(?:GENERIC_SOURCE_IDS|FIXED_CAPS_PHRASES|FIXED_VALUE_PHRASES|CUT_FIXED|CUT_HOME)\+?=.*$"
