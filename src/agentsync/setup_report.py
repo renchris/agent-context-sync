@@ -143,7 +143,7 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar, cast
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlsplit
 
 from agentsync import __version__, gitops, net, report_cuts
-from agentsync.arm_local import _LIST_ESCAPED_RE, _LIST_ESCAPES, CallTimedOutError, call_with_timeout
+from agentsync.arm_local import _LIST_ESCAPED_RE, CallTimedOutError, call_with_timeout
 from agentsync.config import (
     DEFAULT_EXCLUDES,
     INBOX_IGNORES,
@@ -151,6 +151,7 @@ from agentsync.config import (
     SOURCE_ID_RE,
     Config,
     load_config,
+    toml_string,
 )
 from agentsync.materialise import file_provider_marker
 from agentsync.model import SourceKind
@@ -1139,7 +1140,8 @@ _LEGEND = {
         "URL, a path of its own or a number like 3/14; a blank right after this home ends it, so another "
         "home named as this one and a blank keeps what follows), and every word a shell or doctor's fix "
         "wrote in its dollar-quote form, cut whole, so doctor's fix reads open ~/<path> in Finder "
-        "once"
+        "once, but one right after --source-local, --source-local= or add-source, shown decoded in double "
+        "quotes and cut as its section says, where the shell fallback report cuts it whole"
     ),
     "link": "<link-N> a symlink's own name in ~/Library/CloudStorage (not an organization)",
     "label": "<label> a label id or name a policy error quotes",
@@ -1834,6 +1836,10 @@ class Redactor:
         # why one stays in clear where the body shows it (B13 round 12 N3)
         self.kept_listed: set[str] = set()
         self.configured_names: frozenset[str] = frozenset()
+        # the <folder-N> and <library-N> of the configured CloudStorage sources' parts, as install.sh's cfgph:
+        # the provider rule keeps a --source-local argument under a kept provider folder whole only through
+        # these (B13 round 40 C1882 with C1834, ruling 137)
+        self.configured_held: set[str] = set()
 
     @property
     def total(self) -> int:
@@ -5500,14 +5506,16 @@ def _unconfigured_roots(config: Config, ids: Sequence[str]) -> list[Path]:
 
 
 def _alias_escaped(red: Redactor, value: str) -> None:
-    """Register ``value``'s spelling in a JSON or TOML string, as add-source echoes the path it adds
-    (``path = "~/Projects/Zephyrine\\tQuarry"``, ``config``'s ``json.dumps(..., ensure_ascii=False)``), under
-    the placeholder ``value`` already has (B13 round 21 Y2: a TAB, a ``"`` or a ``\\`` in a folder's name left
-    that echo in clear in install.out's excerpt, the other spellings redacted). An alias, never a second
-    number for one folder; nothing for a name with none of those characters."""
-    escaped = json.dumps(value, ensure_ascii=False)[1:-1]
-    if escaped != value:
-        red.alias(escaped, value)
+    """Register ``value``'s spelling in a TOML string, as add-source echoes the path it adds
+    (``path = "~/Projects/Zephyrine\\tQuarry"``, :func:`config.toml_string`), under the placeholder ``value``
+    already has (B13 round 21 Y2: a TAB, a ``"`` or a ``\\`` in a folder's name left that echo in clear in
+    install.out's excerpt, the other spellings redacted). ``toml_string`` is ``json.dumps``'s spelling but
+    for DEL, which it writes ``\\u007F``: that spelling and ``\\u007f`` (:data:`report_cuts.DEL_ESCAPED`) are
+    aliased for the name and for its shown spelling, since an exact alias matches one case only (B13 round 40
+    C1840 with C1887: add-source's echo printed a DEL folder in clear in both reports). An alias, never a
+    second number for one folder; nothing for a name with none of those characters."""
+    for spelling in _toml_spellings(value):
+        red.alias(spelling, value)
     for spelling in folder_spellings(value):  # B13 round 38 C1414, C1439 (ruling 126)
         if spelling != value:
             red.alias(spelling, value)
@@ -5523,9 +5531,17 @@ def _alias_escaped(red: Redactor, value: str) -> None:
                 red.stripped_word_named = True  # never an alias that cuts the report's own words
                 return
         red.alias(shown, value)
-        esc = json.dumps(shown, ensure_ascii=False)[1:-1]
-        if esc != shown:
-            red.alias(esc, value)
+        for spelling in _toml_spellings(shown):
+            red.alias(spelling, value)
+
+
+def _toml_spellings(value: str) -> list[str]:
+    """``value`` inside :func:`config.toml_string`'s quotes, and with DEL in each of
+    :data:`report_cuts.DEL_ESCAPED`'s spellings, each that differs from ``value`` (B13 round 40 C1840 with
+    C1887)."""
+    escaped = toml_string(value)[1:-1]
+    del_forms = [escaped.replace(report_cuts.DEL_ESCAPED[0], d) for d in report_cuts.DEL_ESCAPED]
+    return [s for s in dict.fromkeys([escaped, *(del_forms if "\x7f" in value else [])]) if s != value]
 
 
 _DOCTOR_LETTERS = {"\x1b": "e", "\t": "t"}
@@ -5578,26 +5594,30 @@ def _bash32_body(value: str, letters: Mapping[str, str]) -> str:
 
 
 def folder_spellings(value: str) -> list[str]:
-    """Every spelling of a folder name ``value`` a line agentsync prints can show it in, beside the JSON or
-    TOML one :func:`_alias_escaped` registers (B13 round 38 C1414, C1439; ruling 126), in the order of
-    :data:`report_cuts.ALIAS_FORMS`: step 1's list spelling (``arm_local.list_shown_name`` without its mark:
-    ``\\t``, ``\\n``, ``\\r``, ``?`` for any other character :data:`_LIST_ESCAPED_RE` matches), which
-    install.sh's ``source-local:`` line and doctor's ``source.<id>.listable`` details print; the body of the
-    ``$'...'`` word doctor's fix commands write (:data:`_DOCTOR_LETTERS`); and three bodies of the one
-    install.sh's ``printf %q`` writes (:data:`_PRINTF_LETTERS`, each with ``\\E`` and ``\\e`` for an ESC).
-    Under ``LC_ALL=C`` every non-ASCII byte is octal, which matches any name. Under UTF-8, bash 3.2 writes a
-    non-ASCII character byte by byte (:func:`_bash32_body`, B13 round 39 C1670 with C1636, ruling 134),
-    which matches a name with a multibyte escaped character or an accent such as ``É`` whose bytes hold 0x80
-    to 0x9F. The third, every escaped character in octal and other characters as they are, is the only
-    spelling of a name like ``Café`` with an ESC or a BEL as a later bash writes it under UTF-8, so it stays
-    (C1649). A name whose UTF-8 word no body matches is still safe: install.sh writes a folder through
-    ``%q`` only after ``--source-local ``, which the report cuts by structure, and every ``$'...'`` word left
-    after the aliases is cut whole to ``<path>`` (:data:`_ANSI_C_WORD_RE`, C1656). None for a name
-    :data:`_LIST_ESCAPED_RE` finds nothing in. ``safe_text``'s spelling, which drops a format character, is
-    registered by :func:`_alias_escaped` with its own guard. install.sh's report reads the same list."""
+    """Every spelling of a folder name ``value`` a line agentsync prints can show it in, beside the TOML ones
+    :func:`_alias_escaped` registers (B13 round 38 C1414, C1439; ruling 126), in the order this function
+    walks them (B13 round 40 C1889: no table orders them; install.sh's ``add_forms`` lists its own): first
+    step 1's list spelling (``arm_local.list_shown_name`` without its mark: ``\\t``, ``\\n``, ``\\r``, and
+    every other character :data:`_LIST_ESCAPED_RE` matches as a backslash and three octal digits per UTF-8
+    byte, B13 round 40 C1802), which install.sh's ``source-local:`` line and doctor's
+    ``source.<id>.listable`` details print, then the older list spelling, ``?`` for each such character
+    (``\\n`` for 0x1E), kept so an older install.out or friction log is still cut (C1802); then the body of
+    the ``$'...'`` word doctor's fix commands write (:data:`_DOCTOR_LETTERS`); then the bodies of the one
+    install.sh's ``printf %q`` writes (:data:`_PRINTF_LETTERS`), each with ``\\E`` and then ``\\e`` for an
+    ESC: under ``LC_ALL=C``, where every non-ASCII byte is octal, which matches any name; as bash 3.2 writes
+    it under UTF-8, a non-ASCII character byte by byte (:func:`_bash32_body`, B13 round 39 C1670 with
+    C1636, ruling 134), which matches a name with a multibyte escaped character or an accent such as ``É``
+    whose bytes hold 0x80 to 0x9F; and last every escaped character in octal and other characters as they
+    are, the only spelling of a name like ``Café`` with an ESC or a BEL as a later bash writes it under
+    UTF-8, so it stays (C1649). A name whose UTF-8 word no body matches is still safe: install.sh writes a
+    folder through ``%q`` only after ``--source-local ``, which the report cuts by structure, and every
+    ``$'...'`` word left after the aliases is cut whole to ``<path>`` (:data:`_ANSI_C_WORD_RE`, C1656). None
+    for a name :data:`_LIST_ESCAPED_RE` finds nothing in. ``safe_text``'s spelling, which drops a format
+    character, is registered by :func:`_alias_escaped` with its own guard."""
     if not _LIST_ESCAPED_RE.search(value):
         return []
-    listed = _LIST_ESCAPED_RE.sub(lambda m: _LIST_ESCAPES.get(m.group(), "?"), value)
+    listed = _LIST_ESCAPED_RE.sub(lambda m: _LIST_LETTERS.get(m.group()) or _octal_bytes(m.group()), value)
+    listed_old = _LIST_ESCAPED_RE.sub(lambda m: _LIST_ESCAPES_OLD.get(m.group(), "?"), value)
     escs = ("E", "e")
     bodies = [
         _ansi_c_body(value, _DOCTOR_LETTERS),
@@ -5605,7 +5625,18 @@ def folder_spellings(value: str) -> list[str]:
         *(_bash32_body(value, {**_PRINTF_LETTERS, "\x1b": esc}) for esc in escs),
         *(_ansi_c_body(value, {**_PRINTF_LETTERS, "\x1b": esc}) for esc in escs),
     ]
-    return list(dict.fromkeys([listed, *bodies]))
+    return list(dict.fromkeys([listed, listed_old, *bodies]))
+
+
+_LIST_LETTERS = {"\n": "\\n", "\t": "\\t", "\r": "\\r"}
+"""The characters step 1's list spells as a letter (B13 round 40 C1802); every other escaped one is octal."""
+_LIST_ESCAPES_OLD = {"\n": "\\n", "\x1e": "\\n", "\t": "\\t", "\r": "\\r"}
+"""Step 1's list spelling before B13 round 40 C1802, ``?`` for every character not here."""
+
+
+def _octal_bytes(ch: str) -> str:
+    """``ch`` as a backslash and three octal digits per UTF-8 byte."""
+    return "".join(f"\\{b:03o}" for b in ch.encode("utf-8", errors="surrogateescape"))
 
 
 def _build_redactor(r: _Run) -> Redactor:
@@ -5791,6 +5822,9 @@ def _build_redactor(r: _Run) -> Redactor:
     mine = {c.casefold() for _sid, _provider, comps in cloud_sources for c in comps}
     mine |= {path.name.casefold() for path in project_paths}
     red.configured_names = frozenset(mine)
+    for _sid, _provider, comps in cloud_sources:
+        for c in comps:
+            red.configured_held.update(re.findall(r"<(?:folder|library)-\d+>", red.redact(c)))
     only = [name for _provider, _depth, name in listed if _agent_words(name) and name.casefold() not in mine]
     only_words = frozenset(w for name in only for w in _SEP_RE.split(name.casefold()) if w)
     r.agent_named = (len(only) if listing_ok else None, configured, only_words)
@@ -18446,14 +18480,33 @@ _ADDED_SAME_RE = re.compile(_ADDED_LEAD + r"\((?P<typed>.+?), stored as (?P=type
 """The same note whose two forms redacted alike (:data:`_SAME_STORED_RE`), compared whole: shown as its one
 form cut by :func:`_cut_path`, so ``(~/Tailspin Merger)`` reads ``(~/<path>)`` as its ``--source-local``
 argument does. Collapse first, then cut the one form; never cut and then compare (B13 round 32 C658)."""
+_HEAD_RULE = dict(report_cuts.PATH_HEADS)
 _SOURCE_LOCAL_RE = re.compile(
-    r"""(--source-local[ =]|\badd-source )"""
+    "("
+    + "|".join(
+        ("\\b" if head[0].isalpha() else "") + re.escape(head)
+        for head, _rule in report_cuts.PATH_HEADS
+        if head.startswith(("--", "add-source"))  # an option's or a command's word: one shell word
+    )
+    + ")"
     r"""(\$'(?:[^'\\]|\\.)*'?|"(?:[^"\\]|\\.)*"?|'[^']*'?|(?:\\.|[^\s\\'"])+)"""
 )
 """``--source-local`` and the shell word after it: ``$'...'``, ``"..."``, ``'...'`` or a bare word with
 backslash escapes (install.log's ``args=``, install.out's run header and re-run lines, an agent's own
 text). ``add-source`` too: the vanished-source add-back names its folder after it, so a folder no value
-registered matches is cut to ``<path>`` there as well (B13 round 18 V7's review)."""
+registered matches is cut to ``<path>`` there as well (B13 round 18 V7's review). Its heads are the
+:data:`report_cuts.PATH_HEADS` rows read as one shell word (B13 round 40 ruling 137); ``is not an existing
+folder: `` is :data:`_NOT_A_FOLDER_RE`'s and a ``debug: `` head's :data:`_DEBUG_RE`'s. ``--cwd`` and
+``--cwd=`` (B13 round 40 C1835): the run header install.out keeps names a private project folder there."""
+_DEBUG_RE = re.compile(
+    "("
+    + "|".join(re.escape(head) for head, _rule in report_cuts.PATH_HEADS if head.startswith("debug: "))
+    + r")(?P<path>.+?)(?= \| |$)"
+)
+"""B13 round 40 C1835 (ruling 137; privacy): install.sh's ``debug: cwd``, ``debug: source`` and ``debug:
+config`` lines under --debug, whose value debug_line writes raw, running to the line's first `` | `` or its
+end: the cwd is cut as :func:`_cut_path` cuts, and a source or config path only where it lies under that cwd
+(:func:`_debug_shown`)."""
 _ANSI_C_RE = re.compile(r"\\(?:([0-7]{1,3})|x([0-9A-Fa-f]{1,2})|(.))", re.DOTALL)
 _ANSI_C_LETTERS = {
     "a": "\a",
@@ -18512,15 +18565,11 @@ folder no config names. B13 round 38 C1436 (ruling 126): the name ends at that `
 what follows it cannot be part of a name, the line's end, one of ``;,.:``, `` | `` or `` · ``, so a friction
 row or a Summary item that goes on after it (``(see --help); retried with ...``) keeps its own words; with no
 such ending the name runs to the line's end, as before."""
-_REFUSED_HEADS = (
-    "this is a row step 1 marked ",
-    "step 1 shows this folder's name ",
-    "its name is step 1's escaped form ",
-    "this is how step 1 shows a folder ",
-)
+_REFUSED_HEADS = report_cuts.REFUSED_HEADS
 """The words every ``source_local_refused`` call in install.sh opens with, after ``--source-local <name>: ``
 (B13 round 38 C1432, ruling 126): a test holds each call to one of them, so a new refusal's words cannot bring
-the name back in clear. install.sh's report_recut reads the same list."""
+the name back in clear. A row of :mod:`agentsync.report_cuts` since B13 round 40 C1833 (ruling 137), whose
+``CUT_REFUSED_HEADS`` install.sh's readers take."""
 _SOURCE_LOCAL_REFUSED_RE = re.compile(
     r"(--source-local )(?P<path>.+)(?=: (?:" + "|".join(map(re.escape, _REFUSED_HEADS)) + "))"
 )
@@ -18540,7 +18589,7 @@ def _not_a_folder_shown(red: Redactor, m: re.Match[str]) -> str:
     :func:`_cut_path` as the run header's ``--source-local`` argument is, so one folder never shows two ways
     (ruling 49), and counted as a ``<path>`` replacement in the Redaction section."""
     path = m.group("path")
-    cut = _cut_path(path, red.listed_only)
+    cut = _cut_path(path, red.listed_only, configured=red.configured_held)
     if cut != path:
         red.note("path")
     return m.group(1) + cut
@@ -18557,7 +18606,8 @@ def _source_local_shown(red: Redactor, m: re.Match[str]) -> str:
     them: ``"..."`` and ``'...'`` as written, ``$'...'`` as ``"..."`` (its escapes are decoded, and ``$'``
     never reaches the report), an unterminated quote its opening one only (B13 round 17 U10)."""
     word, tail = m.group(2), ""
-    if not re.search(r"""[/\\'"]""", word):
+    cwd = _HEAD_RULE.get(m.group(1)) == "cwd"  # a relative --cwd word is a folder too (B13 round 40 C1835)
+    if not re.search(r"""[/\\'"]""", word) and not (cwd and word != "<path>"):
         return m.group(0)
     if word[0] not in "$'\"":
         bare = re.fullmatch(r"((?:\\.|[^\\])*?)([)\]}.,;:`]*)", word, re.DOTALL)
@@ -18578,9 +18628,18 @@ def _source_local_shown(red: Redactor, m: re.Match[str]) -> str:
     pieces = _PLACEHOLDER_RE.split(_shell_unquote(word))
     text = "".join(piece if i % 2 else red.redact(piece) for i, piece in enumerate(pieces))
     # B13 round 39 C1656 with C1601: a --source-local argument naming a folder only a listing names is cut at
-    # it; an add-source word (the vanished-source add-back names the folder to add again) keeps its number
-    listed_only = red.listed_only if m.group(1).startswith("--source-local") else ()
-    return m.group(1) + opened + _cut_path(text, listed_only) + closed + tail
+    # it; an add-source word (the vanished-source add-back names the folder to add again) keeps its number.
+    # B13 round 40 C1882 with C1834 (ruling 137): each head's rule is the table's; the provider rule keeps a
+    # word under a kept provider folder only when every later part is fixed, generic or configured
+    if _HEAD_RULE.get(m.group(1)) == "provider":
+        return (
+            m.group(1)
+            + opened
+            + _cut_path(text, red.listed_only, configured=red.configured_held)
+            + closed
+            + tail
+        )
+    return m.group(1) + opened + _cut_path(text) + closed + tail
 
 
 _PROVIDER_APPS = report_cuts.PROVIDER_APPS
@@ -18598,7 +18657,9 @@ Environment line already prints in clear. Never a literal tenant: ``OneDrive-Fab
 and ``OneDrive-Personal-Fabrikam`` are cut."""
 
 
-def _cut_path(text: str, listed_only: Collection[str] = ()) -> str:
+def _cut_path(
+    text: str, listed_only: Collection[str] = (), *, configured: Collection[str] | None = None
+) -> str:
     """A redacted path cut to ``<path>`` at its first component that is not a placeholder, ``~``, ``.`` or
     ``..``, a fixed macOS component, the provider folder (the one after ``CloudStorage``) or a generic
     folder: the rule a ``--source-local`` argument (:func:`_source_local_shown`) and an added source's typed
@@ -18607,8 +18668,22 @@ def _cut_path(text: str, listed_only: Collection[str] = ()) -> str:
     ``<Provider>-<placeholder>`` (B13 round 38 C1481, ruling 126): a tenant no value registered, such as
     ``OneDrive-Fabrikam``, is cut, as install.sh's recut cuts it. A part holding one of ``listed_only``'s
     placeholders, a folder only a listing names, is not known (B13 round 39 C1656 with C1601): a refused
-    look-alike reads ``~/Library/CloudStorage/OneDrive-<org-1>/<path>`` in both reports."""
+    look-alike reads ``~/Library/CloudStorage/OneDrive-<org-1>/<path>`` in both reports.
+
+    With ``configured`` (the ``provider`` rule of :data:`report_cuts.PATH_HEADS`: a ``--source-local``
+    argument, a not-a-folder name and a refused one; B13 round 40 C1882 with C1834, ruling 137), a path under
+    a kept provider folder is kept whole only when every later part is ``""``, ``.``, ``..``, a fixed macOS
+    component, a generic folder, a home folder in any case, or placeholders whose every ``<folder-N>`` and
+    ``<library-N>`` is in ``configured`` (a configured CloudStorage source's part, install.sh's cfgph);
+    otherwise it reads ``<Provider>-<org-N>/<path>``, as the shell report cuts it. Typed notes and
+    add-source's word keep the first-unknown cut."""
     parts = text.split("/")
+    if configured is not None:
+        for k in range(1, len(parts)):
+            if parts[k - 1] == "CloudStorage" and _PROVIDER_KEPT_RE.fullmatch(parts[k]) is not None:
+                if not all(_configured_part(p, configured) for p in parts[k + 1 :]):
+                    return "/".join([*parts[: k + 1], "<path>"])
+                break
     for i, part in enumerate(parts):
         known = (
             part in ("", "~", ".", "..")
@@ -18624,6 +18699,55 @@ def _cut_path(text: str, listed_only: Collection[str] = ()) -> str:
         if not known:
             return "/".join([*parts[:i], "<path>"])
     return text
+
+
+def _configured_part(part: str, configured: Collection[str]) -> bool:
+    """Whether a part after a kept provider folder leaves a ``provider``-rule path whole (:func:`_cut_path`),
+    as install.sh's cfgonly judges it."""
+    if part in ("", ".", "..") or part in _PATH_COMPONENTS or part in _GENERIC_FOLDERS:
+        return True
+    if part.casefold() in _GENERIC_HOME_DIRS:
+        return True
+    return _PLACEHOLDERS_ONLY_RE.fullmatch(part) is not None and all(
+        p in configured for p in _PLACEHOLDER_RE.findall(part) if re.fullmatch(r"<(?:folder|library)-\d+>", p)
+    )
+
+
+_FREE_END = re.escape("".join(map(chr, report_cuts.FREE_WORD_END)))
+_FREE_PROVIDER_RE = re.compile(
+    re.escape(report_cuts.FREE_PROVIDER_HEAD)
+    + "(?P<part>(?:"
+    + "|".join(map(re.escape, report_cuts.PROVIDER_APPS))
+    + f")-[^/{_FREE_END}]*)(?P<rest>[^{_FREE_END}]*)"
+)
+"""B13 round 40 C1862 (ruling 137; privacy): a ``~/Library/CloudStorage/<App>-<word>`` word on any line, after
+every other cut. A tenant no value registered (a configured source's is, from sources.toml, whether or not its
+folder is on disk) printed in free text and doctor's detail in both reports: the provider rule now runs here
+too, so one :data:`_PROVIDER_KEPT_RE` does not keep reads ``~/Library/CloudStorage/<path>``, never numbered,
+its trailing :data:`report_cuts.FREE_WORD_TRAIL` kept after. A tenant written without that head stays the
+documented residual."""
+
+
+def _free_provider_cut(m: re.Match[str]) -> str:
+    """:data:`_FREE_PROVIDER_RE`'s word, kept when its provider folder is kept, else cut to ``<path>``."""
+    if _PROVIDER_KEPT_RE.fullmatch(m.group("part")) is not None:
+        return m.group(0)
+    word = m.group("part") + m.group("rest")
+    trail = len(word) - len(word.rstrip(report_cuts.FREE_WORD_TRAIL))
+    return report_cuts.FREE_PROVIDER_HEAD + "<path>" + (word[-trail:] if trail else "")
+
+
+def _debug_shown(m: re.Match[str], cwd: str | None) -> str:
+    """:data:`_DEBUG_RE`'s line: ``debug: cwd``'s folder cut as :func:`_cut_path` cuts, and a ``debug:
+    source`` (after its kind word) or ``debug: config`` path cut so only where it lies under ``cwd``, that
+    run's ``debug: cwd`` folder as redacted (B13 round 40 C1835)."""
+    head, path = m.group(1), m.group("path")
+    if head == "debug: cwd ":
+        return head + _cut_path(path)
+    kind, blank, rest = path.partition(" ") if head == "debug: source " else ("", "", path)
+    if cwd and (rest == cwd or rest.startswith(cwd.rstrip("/") + "/")):
+        rest = _cut_path(rest)
+    return head + kind + blank + rest
 
 
 _OWN_INBOX_TYPED = "~/agent-context/inbox"
@@ -18669,6 +18793,7 @@ def _redact_lines(red: Redactor, lines: list[str], agents: Iterable[str] = ()) -
     if not red.enabled:
         return "\n".join(lines)
     shown = functools.partial(_source_local_shown, red)
+    debug_cwd: list[str] = []  # the last debug: cwd folder seen, as redacted (B13 round 40 C1835)
     names = sorted({a for a in agents if a.strip()}, key=len, reverse=True)
     alt = "|".join(map(re.escape, names))
     at = (
@@ -18702,9 +18827,15 @@ def _redact_lines(red: Redactor, lines: list[str], agents: Iterable[str] = ()) -
         # --source-local, linear in the line (B13 round 39 C1658)
         if (i := line.find("--source-local ")) >= 0 and (m := _SOURCE_LOCAL_REFUSED_RE.match(line, i)):
             line = line[: m.start()] + _not_a_folder_shown(red, m) + line[m.end() :]
-        return (
-            _SOURCE_LOCAL_RE.sub(shown, line) if "--source-local" in line or "add-source " in line else line
-        )
+        if "--source-local" in line or "add-source " in line or "--cwd" in line:
+            line = _SOURCE_LOCAL_RE.sub(shown, line)
+        if "debug: " in line:
+            if (m := _DEBUG_RE.search(line)) is not None and m.group(1) == "debug: cwd ":
+                debug_cwd[:] = [m.group("path")]
+            line = _DEBUG_RE.sub(lambda m: _debug_shown(m, debug_cwd[0] if debug_cwd else None), line)
+        if report_cuts.FREE_PROVIDER_HEAD in line:
+            line = _FREE_PROVIDER_RE.sub(_free_provider_cut, line)
+        return line
 
     return "\n".join(ln if ln in keep else one(ln) for ln in lines)
 

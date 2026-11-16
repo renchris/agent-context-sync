@@ -62,6 +62,7 @@ from agentsync.config import (
     ConvertConfig,
     load_config,
     set_source_exclude,
+    toml_string,
 )
 from agentsync.convert import diagram, image, media, msg, ocr, pdf, recording, speech, vtt
 from agentsync.convert import registry as registry_mod
@@ -5305,6 +5306,11 @@ def test_a_dollar_quoted_word_no_alias_covers_is_cut_whole_c1656_c1670() -> None
     )
     legend = setup_report._LEGEND["path"]
     assert "dollar-quote form, cut whole, so doctor's fix reads open ~/<path> in Finder once" in legend
+    # B13 round 40 C1801 with C1857 (ruling 138): the one kept divergence, named after "once"
+    assert (
+        "in Finder once, but one right after --source-local, --source-local= or add-source, shown decoded in "
+        "double quotes and cut as its section says, where the shell fallback report cuts it whole"
+    ) in legend
 
 
 def test_a_refused_look_alike_keeps_only_its_provider_folder_c1656() -> None:
@@ -5318,6 +5324,7 @@ def test_a_refused_look_alike_keeps_only_its_provider_folder_c1656() -> None:
     red.add("org", ORG, fuzzy=True)
     red.add("folder", "Alder Birch", fuzzy=True)
     red.configured_names = frozenset({"alder birch"})
+    red.configured_held = {"<folder-1>"}  # as _build_redactor sets it beside configured_names (C1882)
     setup_report._add_listed(
         red, [(f"OneDrive-{ORG}", 1, "Zephyr Quarry"), (f"OneDrive-{ORG}", 1, "Alder Birch")]
     )
@@ -5344,9 +5351,11 @@ def test_a_refused_look_alike_keeps_only_its_provider_folder_c1656() -> None:
 @pytest.mark.parametrize("ch", ["\b", "\f", "\v", "\a", "\x01", "\x1b", "\x1f", "\x7f"])
 def test_a_name_holding_a_control_byte_is_matched_in_every_separator_spelling_c1629(ch: str) -> None:
     """B13 round 39 C1629 (ruling 133; data integrity): the separators were a blank, a tab, ``_``, ``\\`` and
-    ``-``, so ``Q3<BS>Plans`` was one token and its blank, hyphen and underscore spellings printed in clear,
-    where install.sh's pairs split at the control byte. The class is report_cuts.SEPARATORS: every C0 control
-    and DEL, never LF or CR, so no match spans two lines."""
+    ``-``, so ``Q3<BS>Plans`` was one token and its blank, hyphen and underscore spellings printed in clear.
+    The class is report_cuts.SEPARATORS: every C0 control and DEL, never LF or CR, so no match spans two
+    lines. This test runs the Python Redactor only (B13 round 40 C1890: it once said install.sh's pairs split
+    at the control byte, which they did not; the shell reads the same class, CUT_SEP, since that item, and
+    test_report_redaction.py runs both reports over it)."""
     name = f"Q3{ch}Plans"
     red = setup_report.Redactor()
     red.add("folder", name, fuzzy=True)
@@ -5537,7 +5546,15 @@ def test_the_report_cuts_table_is_what_both_reports_read_ruling_133() -> None:
         "CUT_SEP",
         "CUT_CF",
         "CUT_Q32_OCTAL",
-        "CUT_ALIAS_FORMS",
+        "CUT_HEADS_PROVIDER",
+        "CUT_HEADS_FIRST_UNKNOWN",
+        "CUT_HEADS_CWD",
+        "CUT_HEADS_UNDER_CWD",
+        "CUT_DEL_ESCAPED",
+        "CUT_FREE_HEAD",
+        "CUT_FREE_END",
+        "CUT_FREE_TRAIL",
+        "CUT_REFUSED_HEADS",
     ]
     folders = [
         "Box-Box",
@@ -7518,12 +7535,18 @@ def test_a_source_local_argument_never_shows_a_folder_the_redactor_does_not_know
     red = setup_report.Redactor()
     red.add("home", "/Users/jdoe")
     red.add("folder", "Client Alpha", fuzzy=True)
+    # B13 round 40 C1882 with C1834 (ruling 137): a configured folder, so the provider rule keeps it alone,
+    # and cuts at the provider folder a word whose later part (Old Bids) is not fixed, generic or configured
+    red.configured_held = {"<folder-1>"}
+    alone = 'ran install.sh --source-local "/Users/jdoe/Library/CloudStorage/Dropbox/Client Alpha" twice'
     typed = (
         'ran install.sh --source-local "/Users/jdoe/Library/CloudStorage/Dropbox/Client Alpha/Old Bids" twice'
     )
     quoted = "I ran (`install.sh --source-local /Users/jdoe/Development/Client\\ Alpha/Notes\\ \\(old\\)`)."
-    assert setup_report._redact_lines(red, [typed, "the --source-local option is unclear", quoted]) == (
-        'ran install.sh --source-local "~/Library/CloudStorage/Dropbox/<folder-1>/<path>" twice\n'
+    lines = [typed, alone, "the --source-local option is unclear", quoted]
+    assert setup_report._redact_lines(red, lines) == (
+        'ran install.sh --source-local "~/Library/CloudStorage/Dropbox/<path>" twice\n'
+        'ran install.sh --source-local "~/Library/CloudStorage/Dropbox/<folder-1>" twice\n'
         "the --source-local option is unclear\n"
         "I ran (`install.sh --source-local ~/Development/<folder-1>/<path>`)."
     )
@@ -27977,3 +28000,186 @@ def test_a_copy_a_killed_report_left_is_swept_by_the_next_reports_copy_ruling_36
     status_parts(fake_mac)
     assert not killed.exists(), sorted(p.name for p in db.parent.iterdir())
     assert not list(db.parent.glob(manifest_mod.RO_COPY_PREFIX + "*"))
+
+
+# ---- B13 round 40 ruling 137's Python half (lane RA) ------------------------------------------------------
+
+
+def test_the_table_holds_the_argument_forms_both_reports_read_ruling_137() -> None:
+    """B13 round 40 ruling 137 (privacy; data integrity): the table holds the forms the reports parse, not
+    only the values, and setup_report reads them from it: the refusal heads (C1833), the path heads with their
+    rules, DEL's escaped spellings, held to config.toml_string (C1840 with C1887), and the free-text provider
+    head (C1862). ALIAS_FORMS, which neither builder read, is gone (C1889). The generated block writes the
+    refusal heads in double quotes, one holding an apostrophe, and bash reads every row back as written."""
+    assert setup_report._REFUSED_HEADS is report_cuts.REFUSED_HEADS
+    assert not hasattr(report_cuts, "ALIAS_FORMS")
+    assert report_cuts.DEL_ESCAPED[0] == toml_string("\x7f")[1:-1]
+    assert report_cuts.DEL_ESCAPED[1] == report_cuts.DEL_ESCAPED[0].lower()
+    assert {rule for _head, rule in report_cuts.PATH_HEADS} == set(report_cuts.PATH_RULES)
+    assert dict(report_cuts.PATH_HEADS) == setup_report._HEAD_RULE
+    for head, _rule in report_cuts.PATH_HEADS:  # every head is read by one of the report's two readers
+        assert (
+            setup_report._SOURCE_LOCAL_RE.match(head + "x/y") is not None
+            or setup_report._DEBUG_RE.match(head + "x/y") is not None
+            or head == setup_report.NOT_A_FOLDER_SAID
+        ), head
+    block = report_cuts.shell_block()
+    assert any(ln.startswith('CUT_REFUSED_HEADS="') for ln in block.splitlines())
+    script = block + "".join(
+        f'printf "%s\\0" "${name}"\n'
+        for name in ("CUT_REFUSED_HEADS", "CUT_HEADS_PROVIDER", "CUT_HEADS_CWD", "CUT_DEL_ESCAPED")
+    )
+    cp = subprocess.run(["/bin/bash", "-c", script], capture_output=True, check=True)
+    refused, provider, cwd, dels = cp.stdout.decode("utf-8").split("\0")[:4]
+    assert tuple(refused.split("|")) == report_cuts.REFUSED_HEADS
+    assert provider.split("|") == [h for h, r in report_cuts.PATH_HEADS if r == "provider"]
+    assert cwd.split("|") == ["--cwd ", "--cwd=", "debug: cwd "]
+    assert tuple(dels.split("|")) == report_cuts.DEL_ESCAPED
+
+
+@pytest.mark.parametrize("name", ["Zeph\x7fQuarry", "Zeph\x7f\u200bQuarry"])
+def test_add_sources_echo_of_a_del_folder_is_cut_in_either_case_c1840_c1887(name: str) -> None:
+    """B13 round 40 C1840 with C1887 (privacy): config.toml_string writes DEL as ``\\u007F`` and add-source
+    echoes that table into install.out, but the report aliased only json.dumps's spelling, which leaves DEL
+    raw, so the echo printed the folder in clear. Both escaped spellings are aliased, for the name and for its
+    shown spelling, since an alias matches one case only."""
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    red.add("folder", name, fuzzy=True)
+    setup_report._alias_escaped(red, name)
+    from agentsync.text import safe_text  # noqa: PLC0415
+
+    lines = [f"path = {toml_string('/Users/dana/Projects/' + v)}" for v in (name, safe_text(name))]
+    lines += [ln.replace("\\u007F", "\\u007f") for ln in lines]
+    out = setup_report._redact_lines(red, lines)
+    assert "Zeph" not in out and "Quarry" not in out, out
+    assert out.count('path = "~/Projects/<folder-1>"') == 4, out
+
+
+def test_a_source_local_word_keeps_its_provider_folder_unless_every_part_is_known_c1882_c1834() -> None:
+    """B13 round 40 C1882 with C1834 (ruling 137; data integrity): the shell report read a nested
+    --source-local argument at its provider folder, the agentsync report at its first unknown part, so one
+    install.log line showed two ways. The provider rule is the shell's: under a kept provider folder the word
+    is kept whole only when every later part is fixed, generic, a home folder or a configured folder's
+    placeholder, else `<Provider>-<org-N>/<path>`; outside CloudStorage, typed notes and add-source's word
+    keep the first-unknown cut."""
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    red.add("org", "Contoso", fuzzy=True)
+    red.add("folder", "Alder Birch", fuzzy=True)
+    red.add("folder", "Cedar Notes", fuzzy=True)  # a listed folder, no configured source
+    red.configured_held = {"<folder-1>"}
+    cs = "/Users/dana/Library/CloudStorage/OneDrive-Contoso"
+    org = "~/Library/CloudStorage/OneDrive-<org-1>"
+    for said, want in (
+        (f"--source-local {cs}/Documents/Zephyr\\ Quarry", f"--source-local {org}/<path>"),
+        (f"--source-local {cs}/Alder\\ Birch/Zephyr\\ Quarry", f"--source-local {org}/<path>"),
+        (f"--source-local={cs}/Alder\\ Birch/Zephyr", f"--source-local={org}/<path>"),
+        (f"--source-local {cs}/Cedar\\ Notes", f"--source-local {org}/<path>"),
+        (f"--source-local {cs}/Alder\\ Birch", f"--source-local {org}/<folder-1>"),
+        (f"--source-local {cs}/Documents/Alder\\ Birch/.", f"--source-local {org}/Documents/<folder-1>/."),
+        (
+            f"x is not an existing folder: {cs}/Alder Birch/Zephyr Quarry",
+            f"x is not an existing folder: {org}/<path>",
+        ),
+        (
+            f"--source-local {cs}/Alder Birch/Zephyr: {report_cuts.REFUSED_HEADS[0]}x",
+            f"--source-local {org}/<path>: {report_cuts.REFUSED_HEADS[0]}x",
+        ),
+        (f"add-source {cs}/Alder\\ Birch/Zephyr", f"add-source {org}/<folder-1>/<path>"),
+        (
+            "--source-local /Users/dana/Projects/Alder\\ Birch/Zephyr",
+            "--source-local ~/Projects/<folder-1>/<path>",
+        ),
+    ):
+        assert setup_report._redact_lines(red, [said]) == want, said
+    assert setup_report._cut_path(f"{org}/Alder/Zephyr") == f"{org}/<path>"
+    assert setup_report._cut_path(f"{org}/<folder-1>/Zephyr") == f"{org}/<folder-1>/<path>"
+
+
+def test_the_run_header_and_debug_lines_cut_a_cwd_folder_c1835() -> None:
+    """B13 round 40 C1835 (ruling 137; privacy): --cwd and --debug put a private project folder in
+    install.out's run header and its debug lines, which the report printed in clear. `--cwd `, `--cwd=` and
+    `debug: cwd ` cut their value as _cut_path does, the word --cwd kept (a relative one too, and a `$'...'`
+    one whole), and `debug: source` and `debug: config` cut only a path under that run's cwd."""
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    proj = "/Users/dana/Projects/acquisition-fabrikam"
+    lines = [
+        f"# run=r1 2026-11-16T00:00:00Z install.sh --cwd {proj} --debug --source-local ./x",
+        "# run=r2 2026-11-16T00:00:00Z install.sh --cwd=/Users/dana/Projects/Fabrikam\\ Deal --debug",
+        "# run=r3 2026-11-16T00:00:00Z install.sh --cwd $'/Users/dana/Projects/Fabrikam\\nDeal' --debug",
+        "# run=r4 2026-11-16T00:00:00Z install.sh --cwd acquisition-fabrikam --debug",
+        "debug: cwd /Users/dana/Projects/Fabrikam Deal",
+        "debug: source checkout /Users/dana/src/agent-context-sync",
+        "debug: config /Users/dana/Projects/Fabrikam Deal/cfg/sources.toml",
+        "debug: config /Users/dana/agent-context/sources.toml",
+        "2026-11-16T00:00:00Z | step 1 | deviation | debug: cwd /Users/dana/Projects/Fabrikam Deal | -",
+    ]
+    out = setup_report._redact_lines(red, lines).splitlines()
+    assert out == [
+        "# run=r1 2026-11-16T00:00:00Z install.sh --cwd ~/Projects/<path> --debug --source-local ./<path>",
+        "# run=r2 2026-11-16T00:00:00Z install.sh --cwd=~/Projects/<path> --debug",
+        "# run=r3 2026-11-16T00:00:00Z install.sh --cwd <path> --debug",
+        "# run=r4 2026-11-16T00:00:00Z install.sh --cwd <path> --debug",
+        "debug: cwd ~/Projects/<path>",
+        "debug: source checkout ~/src/agent-context-sync",
+        "debug: config ~/Projects/<path>",
+        "debug: config ~/agent-context/sources.toml",
+        "2026-11-16T00:00:00Z | step 1 | deviation | debug: cwd ~/Projects/<path> | -",
+    ]
+
+
+def test_an_unregistered_tenant_in_free_text_reads_cloudstorage_path_c1862() -> None:
+    """B13 round 40 C1862 (ruling 137; privacy): a `~/Library/CloudStorage/<App>-<word>` word on any line goes
+    through the provider rule, so a tenant no value registered reads `~/Library/CloudStorage/<path>`, never
+    numbered, its trailing punctuation kept; a kept or registered one, and a tenant without that head,
+    stay."""
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    red.add("org", "Contoso", fuzzy=True)
+    cs = "/Users/dana/Library/CloudStorage"
+    for said, want in (
+        (f"saw {cs}/OneDrive-Fabrikam/Plans x", "saw ~/Library/CloudStorage/<path> x"),
+        (
+            f"[warn] source.s0.listable — {cs}/Box-Northwind.",
+            "[warn] source.s0.listable — ~/Library/CloudStorage/<path>.",
+        ),
+        (f'"{cs}/OneDrive-SharedLibraries-Fabrikam/A"', '"~/Library/CloudStorage/<path>"'),
+        (f"saw {cs}/OneDrive-Contoso/Plans", "saw ~/Library/CloudStorage/OneDrive-<org-1>/Plans"),
+        (f"saw {cs}/OneDrive-Personal/Plans", "saw ~/Library/CloudStorage/OneDrive-Personal/Plans"),
+        (f"saw {cs}/Dropbox/Plans", "saw ~/Library/CloudStorage/Dropbox/Plans"),
+        ("signed in to OneDrive-Fabrikam", "signed in to OneDrive-Fabrikam"),  # the documented residual
+    ):
+        assert setup_report._redact_lines(red, [said]) == want, said
+
+
+def test_folder_spellings_walks_its_own_order_and_keeps_the_old_list_form_c1889_c1802() -> None:
+    """B13 round 40 C1889: folder_spellings' order is its own (no table orders it). C1802: step 1's list
+    spells each escaped character but \\n, \\t and \\r as octal per UTF-8 byte, so DEL and U+200B are two
+    rows; the older `?` spelling stays an alias, so an older install.out or friction log is still cut."""
+    # the list spelling, its older form, doctor's body, printf's under C (\\E, \\e), bash 3.2's under UTF-8
+    # (\\E, \\e; read back with errors="replace"), a later bash's under UTF-8 (its \\e is doctor's, so once)
+    assert setup_report.folder_spellings("\u00c9\x1bQ3\tNotes") == [
+        "\u00c9\\033Q3\\tNotes",
+        "\u00c9?Q3\\tNotes",
+        "\u00c9\\eQ3\\tNotes",
+        "\\303\\211\\EQ3\\tNotes",
+        "\\303\\211\\eQ3\\tNotes",
+        "\ufffd\\211\\EQ3\\tNotes",
+        "\ufffd\\211\\eQ3\\tNotes",
+        "\u00c9\\EQ3\\tNotes",
+    ]
+    assert setup_report.folder_spellings("Contoso\x7fDel")[:2] == ["Contoso\\177Del", "Contoso?Del"]
+    assert setup_report.folder_spellings("Contoso\u200bDel")[:2] == [
+        "Contoso\\342\\200\\213Del",
+        "Contoso?Del",
+    ]
+    assert setup_report.folder_spellings("A\x1eB")[:2] == ["A\\036B", "A\\nB"]
+    red = setup_report.Redactor()
+    for n, name in enumerate(("Contoso\x7fDel", "Contoso\u200bDel"), 1):
+        red.add("folder", name, fuzzy=True)
+        setup_report._alias_escaped(red, name)
+        new, old = setup_report.folder_spellings(name)[:2]
+        assert red.redact(f"saw {new} x") == f"saw <folder-{n}> x", new
+        assert re.fullmatch(r"saw <folder-\d> x", red.redact(f"saw {old} x")), old  # one ? for both: either

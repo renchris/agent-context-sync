@@ -97,13 +97,66 @@ over every byte 0x80 to 0xFF, B13 round 39 ruling 134): it tests each byte on it
 and every other non-ASCII byte raw, and dollar-quotes the word only when some byte is escaped, so U+FEFF
 (EF BB BF) is not quoted at all. Under ``LC_ALL=C`` every non-ASCII byte is octal."""
 
-ALIAS_FORMS = ("json", "list", "doctor", "printf_c", "printf_bash32", "printf_utf8", "safe_text")
-"""The spellings of a folder name both reports alias to its placeholder, in the order both builders walk
-them: its JSON or TOML string (add-source's echo), step 1's list spelling, the body of doctor's ``$'...'``
-fix word, then ``printf %q``'s ``$'...'`` body under ``LC_ALL=C``, as bash 3.2 writes it under UTF-8
-(:data:`BASH32_UTF8_OCTAL`, read back with ``errors="replace"``) and with only its escaped characters in
-octal, and last ``safe_text``'s spelling, which is never aliased when it is one word that is a generic folder
-or product word (the report stays public) or a report word (the report goes private only)."""
+PATH_RULES = {
+    "provider": (
+        "cut as setup_report._cut_path cuts, but under CloudStorage the word is kept whole only when every "
+        "part after a kept or registered provider folder is fixed, a generic or home folder, or a configured "
+        "source's placeholder; otherwise it reads <Provider>-<org-N>/<path>"
+    ),
+    "first_unknown": "every placeholder kept, cut at its first unknown part (setup_report._cut_path)",
+    "cwd": "the value cut as setup_report._cut_path cuts, the head kept",
+    "under_cwd": "only a path under that run's --cwd (its debug: cwd line) is cut, as _cut_path cuts",
+}
+"""What each :data:`PATH_HEADS` rule does to the path after its head (B13 round 40 ruling 137)."""
+
+PATH_HEADS = (
+    ("--source-local ", "provider"),
+    ("--source-local=", "provider"),
+    ("is not an existing folder: ", "provider"),
+    ("add-source ", "first_unknown"),
+    ("--cwd ", "cwd"),
+    ("--cwd=", "cwd"),
+    ("debug: cwd ", "cwd"),
+    ("debug: source ", "under_cwd"),
+    ("debug: config ", "under_cwd"),
+)
+"""Every argument form both reports read a path after, each with its :data:`PATH_RULES` rule (B13 round 40
+ruling 137, completing ruling 133: the table held the values both reports cut by but not the forms they parse,
+so the shell's hand-kept heads drifted, C1831 with C1881, C1832, C1833, C1834 with C1882, C1835). A bare
+``$'...'`` word after ``--source-local ``, ``--source-local=`` or ``add-source `` is the one divergence
+ruling 138 keeps: the shell report cuts it whole to ``<path>``, the agentsync report decodes it and cuts it
+by its head's rule. ``is not an existing folder: ``'s name runs to its line's last `` (see --help)`` that
+ends a name, or the line's end; a ``debug: `` head's value (install.sh's debug_line writes it raw) runs to
+the line's first `` | `` or its end; every other head's path is one shell word."""
+
+REFUSED_HEADS = (
+    "this is a row step 1 marked ",
+    "step 1 shows this folder's name ",
+    "its name is step 1's escaped form ",
+    "this is how step 1 shows a folder ",
+)
+"""The words every ``source_local_refused`` call in install.sh opens with, after ``--source-local <name>: ``
+(B13 round 38 C1432; in this table since B13 round 40 C1833): the refused name runs from the line's first
+``--source-local `` to the last ``: `` before one of them, never to its first blank, and is cut by the
+``provider`` rule. A test holds each call to one of them."""
+
+DEL_ESCAPED = ("\\u007F", "\\u007f")
+"""DEL's two escaped spellings, aliased for a folder name and its shown spelling in both reports (B13 round
+40 C1840 with C1887): ``\\u007F`` as ``config.toml_string`` writes it in add-source's echoed table (a test
+holds it to that writer) and ``\\u007f``."""
+
+FREE_PROVIDER_HEAD = "~/Library/CloudStorage/"
+"""Where both reports run the provider rule over free text (B13 round 40 C1862): a part right after this head
+that begins with a :data:`PROVIDER_APPS` name and a hyphen and that :func:`provider_kept_pattern` does not
+keep (a tenant no value registered) is cut with the rest of its word, which reads
+``~/Library/CloudStorage/<path>``, never numbered."""
+
+FREE_WORD_END = (0x20, 0x09, 0x22, 0x27, 0x60)
+"""What ends that word: a blank, a tab, a double or single quote or a backtick."""
+
+FREE_WORD_TRAIL = ")]}.,;:"
+"""What a free-text word's end gives back after the cut, so prose keeps its punctuation, as a bare
+``--source-local`` word keeps it."""
 
 
 @functools.cache
@@ -193,7 +246,12 @@ def shell_block() -> str:
     (:data:`GENERIC_FOLDERS`), ``CUT_AGENT`` (:data:`AGENT_WORDS`), ``CUT_APPS``, ``CUT_DOMAINS``,
     ``CUT_PROVIDER_KEPT`` (:func:`provider_kept_pattern`, anchored), ``CUT_SEP`` (:data:`SEPARATORS` as an awk
     bracket class), ``CUT_CF`` (each format character one UTF-8 alternative in octal), ``CUT_Q32_OCTAL``
-    (:data:`BASH32_UTF8_OCTAL` as a bracket class) and ``CUT_ALIAS_FORMS`` (:data:`ALIAS_FORMS`)."""
+    (:data:`BASH32_UTF8_OCTAL` as a bracket class); then, since B13 round 40 ruling 137, ``CUT_HEADS_<RULE>``
+    for each :data:`PATH_RULES` rule (its :data:`PATH_HEADS`, ``|``-joined, in table order),
+    ``CUT_REFUSED_HEADS`` (:data:`REFUSED_HEADS`, written in double quotes, since one holds an apostrophe),
+    ``CUT_DEL_ESCAPED`` (:data:`DEL_ESCAPED`), ``CUT_FREE_HEAD`` (:data:`FREE_PROVIDER_HEAD`) and
+    ``CUT_FREE_END`` (:data:`FREE_WORD_END` as an awk bracket class of octal bytes) and ``CUT_FREE_TRAIL``
+    (:data:`FREE_WORD_TRAIL`)."""
     values = {
         "AGENTSYNC_VERBS": "|".join(agentsync_verbs()),
         "CUT_DRIVE": "|".join(sorted(GENERIC_FOLDERS)),
@@ -208,15 +266,27 @@ def shell_block() -> str:
             f"\\{a:03o}" if a == b else f"\\{a:03o}-\\{b:03o}" for a, b in _runs(list(BASH32_UTF8_OCTAL))
         )
         + "]",
-        "CUT_ALIAS_FORMS": " ".join(ALIAS_FORMS),
+        **{
+            f"CUT_HEADS_{rule.upper()}": "|".join(head for head, r in PATH_HEADS if r == rule)
+            for rule in PATH_RULES
+        },
+        "CUT_DEL_ESCAPED": "|".join(DEL_ESCAPED),
+        "CUT_FREE_HEAD": FREE_PROVIDER_HEAD,
+        "CUT_FREE_END": "[" + "".join(f"\\{c:03o}" for c in FREE_WORD_END) + "]",
+        "CUT_FREE_TRAIL": FREE_WORD_TRAIL,
     }
     assert not any("'" in v or "\n" in v for v in values.values())
+    assert all(h and "|" not in h for h, _r in PATH_HEADS) and all("|" not in h for h in REFUSED_HEADS)
+    # double quotes: a head holds an apostrophe; none holds a character double quotes expand
+    assert not any(c in h for h in REFUSED_HEADS for c in '"$`\\\n')
+    refused = "|".join(REFUSED_HEADS)
     lines = [
         "# BEGIN report_cuts",
-        "# Generated by agentsync.report_cuts.shell_block() (B13 round 39 ruling 133): the values both",
-        "# reports cut by, held byte for byte to the generator by a test. Change",
-        "# src/agentsync/report_cuts.py, never this block.",
+        "# Generated by agentsync.report_cuts.shell_block() (B13 round 39 ruling 133, round 40 ruling",
+        "# 137): the values and argument forms both reports cut by, held byte for byte to the generator",
+        "# by a test. Change src/agentsync/report_cuts.py, never this block.",
         *(f"{name}='{value}'" for name, value in values.items()),
+        f'CUT_REFUSED_HEADS="{refused}"',
         "# END report_cuts",
     ]
     return "\n".join(lines) + "\n"

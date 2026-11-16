@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from agentsync import cli, net, setup_report
+from agentsync import cli, net, report_cuts, setup_report
 from agentsync.config import load_config, local_source_table
 from agentsync.text import safe_text
 from test_install_oneshot import (  # noqa: F401  (fixture)
@@ -1259,15 +1259,23 @@ _R126_CHARS = (
 character _LIST_ESCAPED_RE matches, and a blank, each between two made-up words."""
 
 
+def _listed(name: str, *, old: bool = False) -> str:
+    """``name`` in step 1's list spelling (B13 round 40 C1802: octal for every escaped character but \\n, \\t
+    and \\r), or with ``old`` its spelling before C1802 (``?``), as folder_spellings gives them."""
+    spellings = setup_report.folder_spellings(name)
+    return spellings[1 if old else 0] if spellings else name
+
+
 def _r126_lines(n: int, name: str) -> list[str]:
     """Each line form ruling 126 names, for the folder ``name`` (source s<n>) under OneDrive-Contoso: the
     source-local line, doctor's listable detail and fix, each refusal head, the not-a-folder line and a
     friction row in safe_text's spelling."""
-    shown = setup_report._LIST_ESCAPED_RE.sub(lambda m: setup_report._LIST_ESCAPES.get(m.group(), "?"), name)
+    shown, old = _listed(name), _listed(name, old=True)
     root = "~/Library/CloudStorage/OneDrive-Contoso"
     ansi = setup_report._ansi_c_body(name, setup_report._DOCTOR_LETTERS)
     return [
         f"source-local: {root}/{shown}",
+        f"source-local: {root}/{old}",  # an older install.out's list spelling (B13 round 40 C1802)
         f"[warn] source.alpha.listable — {root}/{shown} is empty",
         f"open ~/$'Library/CloudStorage/OneDrive-Contoso/{ansi}' in Finder once",
         *(f"usage error: --source-local {root}/{shown}: {head}x" for head in setup_report._REFUSED_HEADS),
@@ -1585,25 +1593,63 @@ def _printf_q(word: str, locale: str) -> str:
     return cp.stdout.decode("utf-8", "replace")
 
 
-def _hostile_lines(n: int, name: str, locale: str, provider: str = "OneDrive-Contoso") -> list[str]:
-    """Each line form ruling 133 names, for the configured folder ``name`` (source s<n>), quoted under
-    ``provider``: args=, each refusal head, the not-a-folder line, a typed note collapsed and not, a friction
-    row, doctor's detail and fix, and a dry-run line."""
-    shown = setup_report._LIST_ESCAPED_RE.sub(lambda m: setup_report._LIST_ESCAPES.get(m.group(), "?"), name)
+def _hostile_lines(
+    n: int, name: str, locale: str, provider: str = "OneDrive-Contoso", home: str = "/Users/dana"
+) -> list[str]:
+    """Each line form the table names (B13 round 40 ruling 137: :func:`_table_rows` holds that every row has
+    one), for the configured folder ``name`` (source s<n>), quoted under ``provider``: args= with the
+    ``$'...'`` word mid-path (the word an agent might type; install.log's own form, the whole path through
+    ``printf %q``, is ruling 138's pinned divergence when it is dollar-quoted, :func:`_divergent_lines`),
+    ``--source-local=``, each refusal head, the not-a-folder line, a dry run's add-source word, the run
+    header's ``--cwd `` and ``--cwd=``, the debug lines, add-source's echoed table in both DEL spellings
+    (taken from config.local_source_table, never a hand copy), a typed note collapsed and not, a free-text
+    and doctor's detail, doctor's fix, and step 1's list spelling, new and old (C1802)."""
+    shown, old = _listed(name), _listed(name, old=True)
     root = f"~/Library/CloudStorage/{provider}"
     q = _printf_q(name, locale)
     ansi = setup_report._ansi_c_body(name, setup_report._DOCTOR_LETTERS)
+    table = local_source_table(f"s{n}", Path(f"{home}/Library/CloudStorage/{provider}/{name}"))
+    [echo] = [ln for ln in table.splitlines() if ln.startswith("path = ")]
     return [
         f"start install.sh args=--source-local {root}/{q}",
-        *(f"usage error: --source-local {root}/{shown}: {head}x" for head in setup_report._REFUSED_HEADS),
+        f"I ran install.sh --source-local={root}/{q} first",
+        *(f"usage error: --source-local {root}/{shown}: {head}x" for head in report_cuts.REFUSED_HEADS),
         f"usage error: --source-local is not an existing folder: {root}/{shown} (see --help)",
+        f"[dry-run] ~/.local/bin/agentsync add-source {root}/{q}",
+        f"# run=r{n} 2026-11-16T00:00:00Z install.sh --cwd {root}/{q} --debug",
+        f"# run=r{n} 2026-11-16T00:00:00Z install.sh --cwd={root}/{q}",
+        f"debug: cwd {root}/{shown}",
+        f"debug: source checkout {root}/{shown}/agent-context-sync",
+        f"debug: config {root}/{shown}/sources.toml",
+        echo,
+        *([echo.replace(report_cuts.DEL_ESCAPED[0], report_cuts.DEL_ESCAPED[1])] if "\x7f" in name else []),
         f"added source 'alpha' to ~/agent-context/sources.toml ({root}/{shown}, stored as {root}/{shown}): x",
         f"added source 'alpha' to ~/agent-context/sources.toml ({root}/{shown}, stored as ~/x/{shown}): x",
         f"saw {root}/{safe_text(name)}",
         f"[warn] source.alpha.listable — {root}/{shown} is empty",
+        f"source-local: {root}/{old}",
         f"open ~/$'Library/CloudStorage/{provider}/{ansi}' in Finder once",
-        f"[dry-run] ~/.local/bin/agentsync add-source {root}/{q}",
     ]
+
+
+def _table_rows() -> set[str]:
+    """Every row of report_cuts' table a line form reads: each path head, each refusal head, each DEL
+    spelling and the free-text provider head (B13 round 40 ruling 137)."""
+    return {
+        *(head for head, _rule in report_cuts.PATH_HEADS),
+        *report_cuts.REFUSED_HEADS,
+        *report_cuts.DEL_ESCAPED,
+        report_cuts.FREE_PROVIDER_HEAD,
+    }
+
+
+def test_every_row_of_the_table_is_a_case_of_the_property_test_ruling_137() -> None:
+    """B13 round 40 ruling 137 (privacy; data integrity): ruling 133's table held the values both reports cut
+    by but not the forms they parse, and the hand-kept forms drifted. Every argument form is now a row of the
+    table, and the property test's lines come from those rows, so a row with no case fails here."""
+    lines = _hostile_lines(0, "Alder\x7fBirch", "C", home="/Users/dana")
+    missing = {row for row in _table_rows() if not any(row in ln for ln in lines)}
+    assert not missing, missing
 
 
 def _both_reports(
@@ -1611,26 +1657,31 @@ def _both_reports(
     folders: list[str],
     said: list[str],
     locale: str,
+    *,
+    shell: bool = True,
 ) -> tuple[list[str], list[str], bool, bool]:
     """Each of ``said``, a friction row of its own, as the shell report and this checkout's agentsync report
     print it, with ``folders`` configured under OneDrive-Contoso, install.sh under ``locale``; and each
-    report's private-only verdict."""
+    report's private-only verdict. Without ``shell``, the agentsync report alone (ruling 137's Python half):
+    the shell's lines are empty and its verdict False."""
     lib = _cloud(env) / "OneDrive-Contoso"
     lib.mkdir(parents=True, exist_ok=True)
     tables = []
     for n, name in enumerate(folders):
         (lib / name).mkdir(parents=True)
-        # TOML takes no raw DEL: escaped, as config.toml_string writes it since lane B's R39-B1
-        tables.append(local_source_table(f"s{n}", lib / name).replace("\x7f", "\\u007F"))
+        # as written: config.toml_string escapes DEL itself since lane B's R39-B1 (B13 round 40 C1887)
+        tables.append(local_source_table(f"s{n}", lib / name))
     _write_config(env, *tables)
     rows = "".join(
         f"2026-10-10T00:00:{n % 60:02d}Z | step 1 | deviation | {ln} | -\n" for n, ln in enumerate(said)
     )
     friction_path(env).parent.mkdir(parents=True, exist_ok=True)
     friction_path(env).write_text(f"Attempt: 2026-10-10T00:00:00Z\nPrompt: v15\n{rows}", encoding="utf-8")
-    cp = install_sh({**env, "LC_ALL": locale, "LANG": locale}, "--report-only")
-    assert cp.returncode == 0 and "shell fallback" in cp.stdout, cp.stdout + cp.stderr
-    texts = [report_path(env).read_text(encoding="utf-8")]
+    texts = [""]
+    if shell:
+        cp = install_sh({**env, "LC_ALL": locale, "LANG": locale}, "--report-only")
+        assert cp.returncode == 0 and "shell fallback" in cp.stdout, cp.stdout + cp.stderr
+        texts = [report_path(env).read_text(encoding="utf-8")]
     # this checkout's own render, as `agentsync setup-report` writes it (install.sh would recut a render it
     # cannot stamp as its own build, ruling 126's other-build pass)
     out = Path(env["HOME"]) / "agentsync-report.md"
@@ -1672,14 +1723,18 @@ def test_both_reports_print_one_line_over_a_hostile_name_set_ruling_133(
 ) -> None:
     """B13 round 39 ruling 133 (privacy; data integrity): ruling 126's halves were ported by hand and drifted
     (C1625 to C1629, C1671, C1672, C1681, C1601). Both reports now cut by one table, and over one hostile name
-    set, in every line form, under LC_ALL=C and en_US.UTF-8, the shell report and this checkout's agentsync
-    report print the same line, give the same private-only verdict and print no fragment of a name, for the
-    folders quoted under a registered, an unregistered and a generic-domain provider folder. safe_shown
-    over every Cf the running Python knows is test_install_oneshot.py's
-    test_safe_shown_drops_every_format_character_the_running_python_knows_c1628_c1672."""
+    set, in every line form the table names (B13 round 40 ruling 137) but ruling 138's one divergence, which
+    test_the_one_kept_divergence_is_pinned_in_both_reports_ruling_138 pins, under LC_ALL=C and en_US.UTF-8,
+    the shell report and this checkout's agentsync report print the same line, give the same private-only
+    verdict and print no fragment of a name, for the folders quoted under a registered, an unregistered and a
+    generic-domain provider folder. safe_shown over every Cf the running Python knows is
+    test_safe_shown_drops_every_format_character_the_running_python_knows_c1628_c1672 in
+    test_install_oneshot.py."""
     if provider != "OneDrive-Contoso" and len(names) > 1:
         pytest.skip("each other provider folder runs over the named cases")
-    said = [ln for n, name in enumerate(names) for ln in _hostile_lines(n, name, locale, provider)]
+    said = [
+        ln for n, name in enumerate(names) for ln in _hostile_lines(n, name, locale, provider, env["HOME"])
+    ]
     shell, python, shell_private, python_private = _both_reports(env, names, said, locale)
     assert shell_private == python_private, (names, shell_private, python_private)
     assert len(shell) == len(python) == len(said), (len(shell), len(python), len(said))
@@ -1687,15 +1742,9 @@ def test_both_reports_print_one_line_over_a_hostile_name_set_ruling_133(
     frags -= {"Status", "Documents", "Music", "Copilot", "Curate", "Exclude", "Empty", "Notes", "Plans"}
     frags.add("Fabrikam")
     pairs = list(zip(shell, python, strict=True))
-    # an unregistered tenant is cut by structure only: free text and doctor's detail have none in either
-    # report (a configured folder's provider is on disk, so a pair registers it there)
-    free = ("saw ", "[warn] source.")
-    leaks = [
-        (a, b)
-        for a, b in pairs
-        for f in frags
-        if (f in a or f in b) and not (f == "Fabrikam" and a.startswith(free))
-    ]
+    # an unregistered tenant is cut by structure on every line, free text and doctor's detail included, by
+    # the provider rule both reports run there (B13 round 40 C1862)
+    leaks = [(a, b) for a, b in pairs for f in frags if f in a or f in b]
     assert not leaks, (len(leaks), leaks[:4])
     wrong = [(a, b) for a, b in pairs if a != b]
     assert not wrong, (len(wrong), wrong[:8])
@@ -1753,3 +1802,88 @@ def test_a_recut_of_another_builds_render_says_so_under_its_redaction_section_c1
         "these 3 cut(s) are not counted above."
     ) in note, note
     assert "set exclude = [<path>] in [[source]]" in scoped
+
+
+_DIVERGENT_NAMES = [
+    "Alder\x01Birch",
+    "Alder\x7fBirch",
+    "Alder\tBirch",
+    "Alder\u2028Birch",
+    "Caf\u00e9\x1bAlder",
+]
+"""Names bash 3.2's ``printf %q`` dollar-quotes: a C0 control, DEL, a tab, U+2028, an accent with an ESC."""
+
+
+def _divergent_lines(name: str, locale: str, provider: str, home: str) -> list[str]:
+    """Ruling 138's three forms of a bare ``printf %q`` word of the whole path: install.log's real args=
+    (C1839), the = form and a dry run's add-source word (C1863 with C1864)."""
+    q = _printf_q(f"{home}/Library/CloudStorage/{provider}/{name}", locale)
+    return [
+        f"start install.sh args=--source-local {q}",
+        f"I ran install.sh --source-local={q} first",
+        f"[dry-run] ~/.local/bin/agentsync add-source {q}",
+    ]
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize("provider", ["OneDrive-Contoso", "OneDrive-Fabrikam", "OneDrive-Personal"])
+def test_the_one_kept_divergence_is_pinned_in_both_reports_ruling_138(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+    provider: str,
+) -> None:
+    """B13 round 40 ruling 138 (C1839, C1863 with C1864; makes worse True for C1863: no output changes): a
+    bare ``$'...'`` word right after ``--source-local ``, ``--source-local=`` or ``add-source `` is cut whole
+    to ``<path>`` by the shell report (ruling 134: it never decodes a body no pair covers) and decoded, cut by
+    its head's rule and shown in double quotes by the agentsync report (round 17 U10; ruling 49). The property
+    test once left the pair out; it is pinned here, for install.log's real form, under a registered, an
+    unregistered and a generic-domain provider: neither line holds a name fragment, ``$'``, an octal escape or
+    U+FFFD, and the verdicts match. A word ``%q`` writes with backslash escapes stays equal."""
+    said = [ln for name in _DIVERGENT_NAMES for ln in _divergent_lines(name, locale, provider, env["HOME"])]
+    plain = _divergent_lines("Curate Notes", locale, provider, env["HOME"])
+    assert all("$'" not in ln for ln in plain), plain
+    shell, python, shell_private, python_private = _both_reports(
+        env, [*_DIVERGENT_NAMES, "Curate Notes"], [*said, *plain], locale
+    )
+    assert shell_private == python_private, (shell_private, python_private)
+    assert len(shell) == len(python) == len(said) + len(plain), (len(shell), len(python))
+    kept = r"~/Library/CloudStorage/(?:OneDrive-<org-\d+>|OneDrive-Personal)/<(?:folder-\d+|path)>"
+    decoded = rf'"(?:{kept}|~/Library/CloudStorage/<path>)"'
+    for (a, b), ln in zip(zip(shell, python, strict=True), said, strict=True):
+        head = ln.split("$'", 1)[0]
+        assert a == f"{head}<path>" + (" first" if "=" in head else ""), (ln, a)
+        assert re.fullmatch(re.escape(head) + decoded + (" first" if "=" in head else ""), b), (ln, b)
+        for text in (a, b):
+            assert not re.search(r"Alder|Birch|Caf|\$'|\\[0-7]{3}|\ufffd", text), text
+    for a, b in zip(shell[len(said) :], python[len(said) :], strict=True):
+        assert a == b and "Curate" not in a, (a, b)
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+def test_both_reports_cut_a_nested_source_local_word_at_its_provider_folder_c1882_c1834(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+) -> None:
+    """B13 round 40 C1882 with C1834 (ruling 137; data integrity): the shell report read a nested
+    --source-local argument at its provider folder and the agentsync report at its first unknown part, so one
+    install.log line showed two ways. Python moved to the shell's rule: a missing folder under Documents or
+    under a configured folder, and a refused look-alike, read `OneDrive-<org-1>/<path>` in both reports; a
+    configured folder under Documents keeps its `<folder-N>` in both."""
+    lib = f"{env['HOME']}/Library/CloudStorage/OneDrive-Contoso"
+    said = [
+        f"start install.sh args=--source-local {lib}/Documents/Zephyr\\ Quarry",
+        f"start install.sh args=--source-local {lib}/Alder\\ Birch/Zephyr\\ Quarry",
+        f"usage error: --source-local is not an existing folder: {lib}/Alder Birch/Zephyr Quarry"
+        " (see --help)",
+        f"usage error: --source-local {lib}/Documents/Zephyr Quarry: {report_cuts.REFUSED_HEADS[2]}x",
+        f"start install.sh args=--source-local {lib}/Documents/Cedar\\ Notes",
+    ]
+    shell, python, shell_private, python_private = _both_reports(
+        env, ["Alder Birch", "Documents/Cedar Notes"], said, locale
+    )
+    assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
+    org = "~/Library/CloudStorage/OneDrive-<org-1>"
+    assert [ln.rsplit(" ", 1)[-1] if "args=" in ln else ln for ln in python[:2]] == [f"{org}/<path>"] * 2
+    assert f"{org}/<path> (see --help)" in python[2] and f"{org}/<path>: " in python[3]
+    assert re.search(rf"{re.escape(org)}/Documents/<folder-\d>$", python[4]), python[4]
+    assert not any(w in ln for ln in shell + python for w in ("Zephyr", "Quarry", "Alder", "Cedar")), python
