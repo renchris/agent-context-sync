@@ -7373,9 +7373,10 @@ _ROUND_40_B_PARAGRAPH_AMENDS = (
 """Round 40 lane B's dated lines at §16.34's recording bullets, which its claims name with no item."""
 _ROUND_40_E_PARAGRAPH_AMENDS = (
     ("15", "max_page_bytes: int = 1_000_000 # hard cap before a unit is split", "§16.258 C1886"),
+    ("16.42", "`subprocess` reports a child a signal stopped as the negative signal", "§16.258 C1872"),
 )
 """Round 40 lane E's dated lines no one claim holds alone: C1886's at the ConvertConfig row in §15's code
-block, which its claim names with no item."""
+block, and C1872's at §16.42's signal paragraph, which their claims name with no item."""
 _ROUND_32_B_PARAGRAPH_AMENDS = (
     ("16.200", "**C112, C125, C146, C155, C177, C178, C139, C141, C145, C210: status", "§16.215 C624"),
     ("16.205", "C381 (ruling 34): what governance/ keeps survives the folder's loss", "§16.215 C632"),

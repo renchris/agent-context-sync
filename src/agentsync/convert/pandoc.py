@@ -57,7 +57,7 @@ from agentsync.convert.image import (
     _read_without_ocr,
 )
 from agentsync.convert.image import _FAILED as _OCR_FAILED
-from agentsync.convert.ocr import OcrEngine, OcrError, _ended
+from agentsync.convert.ocr import _REASON_ROOM, OcrEngine, OcrError, _ended
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import RenderedUnit, UnitKind
 from agentsync.policy import EMPTY_OUTPUT_REASON
@@ -424,8 +424,9 @@ class _PandocRunner:
                 raise ConversionError(f"pandoc timed out after {_TIMEOUT_S:.0f}s") from exc
             except OSError as exc:
                 raise ConversionError(f"cannot run pandoc: {exc}") from exc
-        if proc.returncode < 0:
-            raise ConversionError(f"pandoc was {_ended(proc.returncode)}")
+        if proc.returncode < 0:  # a crash's own line, paths taken out, as the helpers' (B13 round 40 C1872)
+            ended = _ended(proc.returncode, proc.stderr, room=_REASON_ROOM - len("pandoc was "))
+            raise ConversionError(f"pandoc was {ended}")
         if proc.returncode != 0:
             err = proc.stderr.decode("utf-8", errors="replace").strip().splitlines()
             raise ConversionError(f"pandoc exited {proc.returncode}: {err[0] if err else 'no message'}")

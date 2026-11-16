@@ -13007,6 +13007,10 @@ build's floor check refuses only on the check's own non-zero answer (a reason th
 run: ...`) keeps its own reason. A non-negative exit keeps its wording byte for byte. Why: the v10 rehearsal read
 `speech: not built (swift build failed (exit -9): Building for production...)`, and a killed floor check was
 stored in `<helper>.failed` as "does not descend from the build floor", which was false.
+Amended 2026-11-16, §16.258 C1872: pandoc passes its stderr too, so a crash signal gives pandoc's own line, paths
+taken out by `ocr._plain`, within the reason's 200 characters: `pandoc was stopped by SIGABRT (signal 6): <its line>`.
+Any other signal still drops it (`pandoc was stopped by SIGKILL (signal 9)`); a non-zero exit already quoted
+stderr's first line.
 Amended 2026-10-19, §16.138 V68: both build sites name the installer by its path (`skill.INSTALL_SH`), `...;
 ~/src/agent-context-sync/scripts/install.sh tries the build again on its next run`, and `ocr._plain` keeps that one
 path when it reads the `<helper>.failed` marker back, where it takes every other path out.
@@ -42222,6 +42226,20 @@ says fourteen with a dated line, the docstring 14, and C930's test takes the thr
 `test_convert_family.py::test_the_typed_names_a_zero_byte_file_is_empty_under_are_fourteen_and_the_docs_say_so_c1852`
 (the registry's own answer equals the list, and both texts say fourteen) and
 `test_convert_family.py::test_a_zero_byte_file_under_a_typed_name_is_one_empty_stub_c930` (now fourteen cases).
+
+**A pandoc crash names its own line** (C1872, C1874's H13; `agentsync.convert.pandoc`; amends §16.42). CI run
+43638588953's first attempt failed `test_html_data_uri_images_never_reach_the_page` on `pandoc was stopped by
+SIGABRT (signal 6)` with no pandoc text in the log, and its second passed, so the cause could not be recovered:
+`_PandocRunner._run` called `ocr._ended(proc.returncode)` without the stderr it had captured, though `_ended` adds
+a crash signal's line (`ocr._CRASHES`) through `_plain`. It now passes `proc.stderr` and a room of the reason's 200
+characters less `pandoc was `, so a crash reads `pandoc was stopped by SIGABRT (signal 6): <pandoc's line>` with
+every path taken out, and SIGKILL, SIGTERM or SIGINT, which come from outside, add nothing. §16.42's reason for
+passing nothing, that pandoc's stderr can quote the document, held no more on this path than on the non-zero exit
+path two lines below, which already quotes stderr's first line unscrubbed. No per-test retry: `scripts/gate.sh`
+re-runs a failed test alone and CI has `gh run rerun --failed`, while a retry inside the test would hide a crash a
+pandoc bump brings in. Test:
+`test_convert_formats.py::test_a_pandoc_crash_names_its_own_line_and_a_kill_does_not_c1872` (a fake pandoc that
+prints a line and signals itself: SIGABRT gives the line, SIGKILL does not).
 
 ### 16.259 Round 40: the guides: the dollar-quote row, the record of round 39's installer work, and CI timings (2026-11-16, wave B13 round 40 lane D)
 

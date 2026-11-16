@@ -239,6 +239,34 @@ def test_a_pandoc_killed_by_a_signal_says_so(tmp_path: Path) -> None:
         PandocConverter(replace(CFG, pandoc_path=pandoc)).convert(bad, name="bad.docx")
 
 
+@pytest.mark.parametrize(
+    ("sig", "said"),
+    [
+        ("ABRT", "stopped by SIGABRT (signal 6): pandoc: internal error: Contoso heap check failed"),
+        ("KILL", "stopped by SIGKILL (signal 9)"),
+    ],
+    ids=["SIGABRT", "SIGKILL"],
+)
+def test_a_pandoc_crash_names_its_own_line_and_a_kill_does_not_c1872(
+    tmp_path: Path, sig: str, said: str
+) -> None:
+    """B13 round 40 C1872 (C1874's H13): a CI run's pandoc ended on SIGABRT and the error read only `pandoc
+    was stopped by SIGABRT (signal 6)`, since `_run` never gave `_ended` the stderr it had captured, so the
+    crash's cause was lost. A crash signal now carries pandoc's own line, paths taken out by `_plain`, within
+    the reason's room; SIGKILL, which no program prints a cause for, adds nothing. No per-test retry: the land
+    gate re-runs a failed test alone, and a crash that comes back now says why."""
+    pandoc = tmp_path / "pandoc"
+    pandoc.write_text(
+        '#!/bin/sh\n[ "$1" = --version ] && { echo "pandoc 3.1.2"; exit 0; }\n'
+        f'echo "pandoc: internal error: Contoso heap check failed" >&2\nkill -{sig} $$\n'
+    )
+    pandoc.chmod(0o700)
+    bad = make_zip(tmp_path / "bad.docx", {"word/document.xml": b"<not-closed"})
+    with pytest.raises(ConversionError) as caught:
+        PandocConverter(replace(CFG, pandoc_path=pandoc)).convert(bad, name="bad.docx")
+    assert str(caught.value) == f"pandoc was {said}"
+
+
 def test_configured_pandoc_path_must_exist(tmp_path: Path) -> None:
     conv = PandocConverter(replace(CFG, pandoc_path=tmp_path / "no-such-pandoc"))
     with pytest.raises(ConversionError, match="pandoc_path"):
