@@ -26,7 +26,7 @@ from agentsync.errors import ConversionError
 from agentsync.model import RenderedUnit, UnitKind
 from agentsync.text import plural
 
-_EMITTER_VERSION = "1.0.2"  # B13 round 40 C1849: a cut table's note points at the raw head and the sidecar
+_EMITTER_VERSION = "1.0.2"  # B13 round 40 C1849: a cut table's note; C1807: a field past 128 KiB parses
 _TABLE_SIDECAR = "full-table.csv"
 _FENCE_LANG: dict[str, str] = {
     ".txt": "text",
@@ -64,7 +64,14 @@ def _shortcut_target(lines: list[str]) -> str:
 
 
 def _parse_delimited(text: str, delimiter: str) -> list[list[str]] | None:
-    """Parse CSV/TSV rows; None when the text is not well-formed delimited data (then it is fenced)."""
+    """Parse CSV/TSV rows; None when the text is not well-formed delimited data (then it is fenced).
+
+    No field is longer than the text, so the csv module's field limit (131,072 by default, process-wide) is
+    raised to at least ``len(text) + 1`` first: a well-formed file with a long field is a table, not text.  It
+    is never lowered, so two parses on two threads cannot undo each other, and never ``sys.maxsize``, which
+    can pass a C long (B13 round 40 C1807, C1822)."""
+    if csv.field_size_limit() <= len(text):
+        csv.field_size_limit(len(text) + 1)
     try:
         reader = csv.reader(io.StringIO(text, newline=""), delimiter=delimiter, strict=True)
         return [row for row in reader if row]

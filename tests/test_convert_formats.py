@@ -21,7 +21,7 @@ import time
 import unicodedata
 import zipfile
 import zlib
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import replace
 from email.message import EmailMessage
 from pathlib import Path
@@ -3864,6 +3864,46 @@ def test_a_cut_wide_tables_note_never_says_no_row_is_shown_while_its_head_holds_
     assert "CSV table: 10 data rows x 1000 columns" in body and _CUT_TABLE_NOTE in body
     assert "first 0" not in body and "row cap" not in body
     assert list(csv.reader(io.StringIO(page.sidecars[0][1].decode()))) == [ln.split(",") for ln in lines]
+
+
+@pytest.fixture
+def default_field_limit() -> Iterator[None]:
+    """Python's own csv field limit for the test, whatever an earlier parse raised it to, then the old one."""
+    old = csv.field_size_limit(131_072)
+    try:
+        yield
+    finally:
+        csv.field_size_limit(old)
+
+
+@pytest.mark.usefixtures("default_field_limit")
+def test_a_csv_field_past_the_csv_modules_limit_is_still_a_table_c1807(tmp_path: Path) -> None:
+    """B13 round 40 C1807 with C1822: `_parse_delimited` ran under the csv module's default field limit of
+    131,072 characters, so a well-formed CSV with one longer field raised csv.Error and was fenced as
+    `Text (csv): 3 lines`, never a table, and past the cap it lost C1676's table sidecar. The limit is raised
+    to at least the text's length first (never lowered, never sys.maxsize): a 131,073-character field and a
+    200,000-character one give a table, a 1,200,000-character one, past the 1,000,000-byte page cap, gives
+    the cut table's note and `full-table.csv` only, and an unclosed quote is still fenced as text."""
+    for n in (131_073, 200_000):
+        text = "Item,Notes\nWidget," + "x" * n + "\nGadget,short\n"
+        u = _one(PlainTextConverter(CFG).convert(_write(tmp_path, f"f{n}.csv", text), name=f"f{n}.csv"))
+        assert u.summary == "CSV table: 2 rows x 2 columns; columns: Item, Notes", n
+        assert u.sidecars == ()
+    text = "Item,Notes\nWidget," + "x" * 1_200_000 + "\nGadget,short\n"
+    u = _one(PlainTextConverter(CFG).convert(_write(tmp_path, "big.csv", text), name="big.csv"))
+    assert u.summary == "CSV table: 2 rows x 2 columns; columns: Item, Notes"
+    assert u.body.startswith("CSV table: 2 data rows x 2 columns\n\n```csv\nItem,Notes\n")
+    assert u.body.endswith(_CUT_TABLE_NOTE + "\n")
+    assert [name for name, _ in u.sidecars] == ["full-table.csv"]
+    rows = list(csv.reader(io.StringIO(u.sidecars[0][1].decode())))
+    assert rows == [["Item", "Notes"], ["Widget", "x" * 1_200_000], ["Gadget", "short"]]
+    assert csv.field_size_limit() > 1_200_000
+    unclosed = 'Item,Notes\nWidget,"' + "x" * 200_000 + "\n"
+    u = _one(PlainTextConverter(CFG).convert(_write(tmp_path, "open.csv", unclosed), name="open.csv"))
+    assert u.summary == "Text (csv): 2 lines" and "CSV table" not in u.body
+    csv.field_size_limit(5_000_000)
+    _one(PlainTextConverter(CFG).convert(_write(tmp_path, "small.csv", "a,b\n1,2\n"), name="small.csv"))
+    assert csv.field_size_limit() == 5_000_000, "never lowered"
 
 
 _AT_THE_MINIMUM: dict[str, tuple[str, str]] = {

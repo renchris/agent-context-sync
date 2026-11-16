@@ -42194,6 +42194,21 @@ C1807), so a new conversion misses the cache once; `outdated` does not read it. 
 the header and two whole records) and C1676's
 `test_a_table_whose_header_or_first_row_passes_the_cap_rides_in_its_sidecar_c1676`, which now pins the new note.
 
+**A CSV field past the csv module's limit is still a table** (C1807 and C1822, one defect from two findings, built
+once; `agentsync.convert.text`). `_parse_delimited` ran `csv.reader(..., strict=True)` under Python's default field
+limit of 131,072 characters, which nothing in `src` raised, so a well-formed CSV with one longer field raised
+`csv.Error`, came back None and was fenced as `Text (csv): 3 lines`; past the page cap it took the plain-text
+`full-text.txt` path and never C1676's `full-table.csv` (the cliff sat at 131,073 characters exactly, the verifiers'
+runs at 7253d365). No field is longer than the text, so the limit is raised to at least `len(text) + 1` before the
+reader is built. It is never lowered, so two parses on two threads (the cycle's recording-download thread, the OCR
+pool) cannot restore it under each other, and never `sys.maxsize`, which can pass a C long; a limit tied to the page
+cap (C1822's finder fix) would miss a field longer than the cap. `strict=True` and the `csv.Error` fallback stay, so
+an unclosed quote is still fenced as text. text's `_EMITTER_VERSION` moved once this round, to 1.0.2, for this and
+C1849. Test: `test_convert_formats.py::test_a_csv_field_past_the_csv_modules_limit_is_still_a_table_c1807` (from
+the default limit: 131,073- and 200,000-character fields give a table with no sidecar, a 1,200,000-character one
+the cut table's note and `full-table.csv` only, round-tripping every row, an unclosed quote over 200,000 characters
+`Text (csv)`, and a higher limit is kept).
+
 ### 16.259 Round 40: the guides: the dollar-quote row, the record of round 39's installer work, and CI timings (2026-11-16, wave B13 round 40 lane D)
 
 Round 40's lane D items (`docs/plans/bring-back-ocr.md`, "B13 round 40"; specs `round40/items/C<n>.md`, the verifier's
