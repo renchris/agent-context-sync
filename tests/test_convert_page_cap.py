@@ -21,13 +21,15 @@ from agentsync.convert import _common, registry
 from agentsync.convert import text as text_mod
 from agentsync.convert._common import GUARD_RESERVE, _cap_body, _fence
 from agentsync.convert.base import make_unit
+from agentsync.convert.pandoc import PandocConverter
 from agentsync.convert.registry import Registry, _bannered, _with_sidecar_digests
-from agentsync.errors import UnreadableSourceError
+from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import RenderedUnit, UnitKind
 from test_convert_builders import (
     build_drawio,
     build_pdf,
     eml_bytes,
+    make_zip,
     msg_bytes,
     teams_doc,
     teams_msg,
@@ -559,3 +561,51 @@ def test_a_file_with_bytes_and_no_text_keeps_the_empty_output_reason_and_blank_t
         src.write_bytes(data)
         (page,) = _pages(src, CFG.max_page_bytes)
         assert "[empty file]" in page.body
+
+
+# ---------------------------------------------------------------------------------------------------------
+# C2048: pandoc's crash and exit lines from its own lines only
+# ---------------------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("script", "said"),
+    [
+        (
+            "echo \"[WARNING] Duplicate identifier 'contoso-q3' at line 1 column 63\" >&2\n"
+            'echo "pandoc: heap overflow" >&2\nkill -ABRT $$\n',
+            "pandoc was stopped by SIGABRT (signal 6): pandoc: heap overflow",
+        ),
+        (
+            'echo "[WARNING] Could not convert TeX math \\\\frac{contoso}, rendering as TeX:" >&2\n'
+            'echo "unexpected error: contoso-secret" >&2\nkill -SEGV $$\n',
+            "pandoc was stopped by SIGSEGV (signal 11)",
+        ),
+        ("echo \"[WARNING] Duplicate identifier 'contoso-q3'\" >&2\nexit 64\n", "pandoc exited 64"),
+        (
+            'echo "[WARNING] Could not convert TeX math, rendering as TeX:" >&2\n'
+            'echo "  pandoc: Contoso secret" >&2\nkill -SEGV $$\n',
+            "pandoc was stopped by SIGSEGV (signal 11)",
+        ),
+        (
+            "echo \"[WARNING] Duplicate identifier 'contoso-q3'\" >&2\n"
+            'echo "pandoc: /Users/ana/Contoso/x.docx: openBinaryFile: does not exist" >&2\nexit 1\n',
+            "pandoc exited 1: pandoc: <path>",
+        ),
+    ],
+    ids=["abrt-after-warning", "segv-warning-only", "exit-warning-only", "segv-indented", "exit-own-line"],
+)
+def test_pandocs_crash_and_exit_lines_come_from_its_own_lines_only_c2048(
+    tmp_path: Path, script: str, said: str
+) -> None:
+    """B13 round 41 C2048: the crash line was pandoc's first stderr line, often a `[WARNING]` that quotes the
+    document, and a non-zero exit quoted it too. Only lines that start `pandoc:` are read now, paths taken
+    out; with none, the line names the signal or the exit code alone."""
+    pandoc = tmp_path / "pandoc"
+    pandoc.write_text('#!/bin/sh\n[ "$1" = --version ] && { echo "pandoc 3.1.2"; exit 0; }\n' + script)
+    pandoc.chmod(0o700)
+    bad = make_zip(tmp_path / "bad.docx", {"word/document.xml": b"<not-closed"})
+    with pytest.raises(ConversionError) as caught:
+        PandocConverter(replace(CFG, pandoc_path=pandoc)).convert(bad, name="bad.docx")
+    assert str(caught.value) == said
+    assert "contoso" not in str(caught.value).lower()

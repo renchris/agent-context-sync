@@ -57,7 +57,7 @@ from agentsync.convert.image import (
     _read_without_ocr,
 )
 from agentsync.convert.image import _FAILED as _OCR_FAILED
-from agentsync.convert.ocr import _REASON_ROOM, OcrEngine, OcrError, _ended
+from agentsync.convert.ocr import _REASON_ROOM, OcrEngine, OcrError, _ended, _plain
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import RenderedUnit, UnitKind
 from agentsync.policy import ZERO_BYTES_REASON
@@ -375,6 +375,14 @@ def _decode_html(data: bytes) -> str:
     return _decode_text(data.replace(b"\x00", b""))
 
 
+def _own_lines(stderr: bytes) -> bytes:
+    """pandoc's own lines in ``stderr``, the ones that start ``pandoc:`` (an uncaught exception, the runtime's
+    own, ``pandoc: heap overflow``) at the start of a line, never an indented one, joined; b"" when it wrote
+    none.  A ``[WARNING]`` and the lines that
+    continue one quote the document, so a crash or exit line is never taken from them (B13 round 41 C2048)."""
+    lines = stderr.decode("utf-8", errors="replace").splitlines()
+    return "\n".join(ln.strip() for ln in lines if ln.startswith("pandoc:")).encode("utf-8")
+
 
 class _PandocRunner:
     """Runs one pandoc binary by absolute path, with a fixed environment, a private data dir and a timeout."""
@@ -425,12 +433,13 @@ class _PandocRunner:
                 raise ConversionError(f"pandoc timed out after {_TIMEOUT_S:.0f}s") from exc
             except OSError as exc:
                 raise ConversionError(f"cannot run pandoc: {exc}") from exc
+        own = _own_lines(proc.stderr)
         if proc.returncode < 0:  # a crash's own line, paths taken out, as the helpers' (B13 round 40 C1872)
-            ended = _ended(proc.returncode, proc.stderr, room=_REASON_ROOM - len("pandoc was "))
+            ended = _ended(proc.returncode, own, room=_REASON_ROOM - len("pandoc was "))
             raise ConversionError(f"pandoc was {ended}")
         if proc.returncode != 0:
-            err = proc.stderr.decode("utf-8", errors="replace").strip().splitlines()
-            raise ConversionError(f"pandoc exited {proc.returncode}: {err[0] if err else 'no message'}")
+            said = f": {_plain(own)}" if own else ""
+            raise ConversionError(f"pandoc exited {proc.returncode}{said}")
         said = proc.stderr.decode("utf-8", errors="replace")
         if said:
             # How much, never what: a pandoc warning quotes the document (an id, a file name in it), and
