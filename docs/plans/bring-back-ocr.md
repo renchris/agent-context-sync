@@ -2883,6 +2883,67 @@ C1816, C1819, C1824, C1869, C1870, C1877), C1861 (this plan's round 39 section c
 forbids lock-file and `rm` probes in the verifier's brief: round 40's verify:71 hung twice at a permission prompt on
 one.
 
+### B13 round 40 landed (2026-11-16)
+
+All five lanes landed, and the prompt stays v37 (`ded96e18`): no round 40 item needed prompt words. Notes
+`lanes/r40-<lane>.md`, lead notes `round29/lead-notes.md`. All 79 confirmed items are built: 56 in the lanes' 45
+commits (`0da59676..ffefbe0f`; every landed tip's CI green, read back by the lead) and the lead's 23. Ruling 137's two
+halves landed in one run: lane RA's table rows, Python reader and property-test cases (`7747b289..cf8d59a6`) under lane
+RB's shell reader (`8d483135..f13302b6`), so no trunk commit carries one half. No lane left an item unbuilt; C1801 and
+C1863 (makes worse True) are built as ruling 138's pins and legend words, with no change to either report's output.
+Measured: C1836's bash 3.2 crash, before the fix, segfaulted or went unwritten at 270 to 450 listed folders and at 450
+once wrote a public report with names in clear; after it, 15 of 15 runs from 270 to 450 wrote a public report with
+every folder cut.
+
+Choices that differ from a spec's words, each with its measured reason in the lane's note: C1890's word run leaves out
+only `\004` and `\005`, not `\016` to `\035` as ruling 137 said, because that range holds ESC and leaving it out printed
+a name in the shell report; C1841's outage count is `ocr_helper_failed`, since `ocr_failed` already counts files and
+the report sums it, and status reads the newest finished run, so a sync in progress does not hide the outage; C1854's
+records carry 2026-11-16 dated lines that cite round 39's items; `tests/test_review_fixes.py` had three 2000-byte page
+caps, not two, and all three moved to 8192. Lane RB's first joint land hung two hours on the shared land lock:
+`typed_note_cut`'s head loops ran `while ((a = index(l, hd)) > 0)`, BSD awk's `index(l, "")` is 1, and a test harness
+without the generated block spun an orphaned awk. RB fixed it (`723259ed`, with a hard-timeout test) and its second
+run went red on 35 of its own harness tests (`f13302b6`); the third landed. Round 41's harvest asks whether any other
+installer loop can spin on an empty generated value and whether the gate bounds a test's time.
+
+Found and not built, each a round 41 harvest item: an xlsx sheet page with a long cell comment passes the cap
+(30,315 bytes at caps 8,192 to 20,000; §16.258 names it as ruling 140's one known residual, lane E); under `--cwd`
+the agentsync report's `- config:` line prints a relative `AGENTSYNC_CONFIG` in clear, older than `--cwd` (lane RA);
+and with six hostile names configured together the two reports number the cut folders differently, with no name
+printed (lane RA).
+
+| Lane | Landed (lane commits) |
+|---|---|
+| B | `0da59676..3527302c` (7) |
+| D | `3068733b`, `cbaa87cb`, `98a1046a`, `4e3af440`, `832c5bbc`, `ffefbe0f` (6) |
+| E | `c36f5127..10845acb` (7, the last naming the comment residual) |
+| RA | `7747b289..cf8d59a6` (8, in the joint run), `a65f2130`, `e00e07d4`, `3972c5e5` |
+| RB | `8d483135..f13302b6` (14, in the joint run) |
+
+Of the lead's 23, the kit items are in round 41's tools (`round41/tools/edit.py`, `edit-xvendor.py`,
+`harvest-lead.txt`, `remove-worktrees.sh`, `trunk.sh`, `lane-status.sh` and the kit, 444 checks in its own
+`kit-test.sh`): keep-report.sh keeps a sub-home's report (C1803 with C1813, C1825 and C1828), every kit `cat -v` runs
+under `LC_ALL=C` (C1804), the seed store's copy rewrites its paths (C1809), run.sh's label cuts the real home and
+login (C1810), the temp-entry count names each entry's run (C1812 with C1818), the report's stop happens inside the
+report process (C1814, C1816), helpercmp.sh reads a home's own helper build (C1815 with C1817 and C1868), and ps by
+path leaves out its caller (C1824). Every slot that runs commands now carries one rule: no probe creates, holds or
+removes a lock file by hand, runs `rm`, or fetches (round 40's verify:71 waited twice at a permission prompt on one).
+C1871: `lane-status.sh` and `trunk.sh` read trunk with `git ls-remote` only, for the whole round. C1861: the round 39
+landed section's queued `909d6915` landed as `b74445af`. C1878: Gemini neither ran nor was refused; its allow rule is
+still the operator's (backlog `8ed9dae0fbc0`).
+
+Learnings: from the first fire (2026-11-16 12:56Z) to the last land took about 15 hours, against round 39's 17.
+The capacity gate (eight sessions mid-turn) held lane D's fire for 15 minutes and refused two lanes' fresh-review
+subagents, so those reviews ran in-session. Lanes E and D started without their `/goal` (the arming paste was refused)
+and finished on their briefs alone.
+
+Round 41: the round 40 workflow (`round40/round40-workflow.js` through `round41/tools/edit.py` and `edit-xvendor.py`,
+codex-only: the allow rule for `~/.claude/scripts/agy-review.sh` is still the operator's) with the harvest list in
+`round41/tools/harvest-lead.txt`, on this section's landed tip, BASE `769dc49b`, ids C2001 and up, prompt v37 (v36's
+block from `702fcff5` as the old copy, unchanged), outputs `round41/`. While its slots run, the lead reads trunk with
+`round41/tools/trunk.sh`, never a fetch in the operator checkout (C1470, C1661, C1871). The stop rule names Codex and
+Gemini: a clean round without Gemini goes to the operator before the loop closes.
+
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be
