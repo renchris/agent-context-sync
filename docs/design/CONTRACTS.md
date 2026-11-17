@@ -42611,6 +42611,12 @@ this report was written`. `_loop_line` opens the bracket `(the loop's own read w
 then; §16.213's C620 paragraph says so, and the guide's sentence is lane D's. Test:
 `test_the_loop_lines_bracket_is_the_loops_own_read_when_status_did_not_give_it_c2013`.
 
+**One list-spelling helper** (C2035). `folder_spellings` spelled step 1's list with its own `_LIST_LETTERS` and
+`_octal_bytes`, a copy of `arm_local.list_escaped_char`, which install.sh's `LIST_ESC_AWK` is held to byte for byte;
+it calls that helper now, and both copies go. `_LIST_ESCAPES_OLD` stays a frozen snapshot of the pre-C1802 table,
+apart from `arm_local._LIST_ESCAPES` on purpose, since an older install.out keeps that spelling. Test:
+`test_report_redaction.py::test_the_old_list_spelling_is_a_frozen_snapshot_and_folder_spellings_reads_the_one_helper_c2035`.
+
 ### 16.261 Round 41: the installer: the shell report cuts any path by its head's rule, every debug head on a line, and another build's render reads the same heads (2026-11-17, wave B13 round 41 lane RB)
 
 Reserved for round 41 lane RB of B13.

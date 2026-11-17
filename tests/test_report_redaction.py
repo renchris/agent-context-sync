@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from agentsync import cli, net, report_cuts, setup_report
+from agentsync import arm_local, cli, net, report_cuts, setup_report
 from agentsync.config import load_config, local_source_table
 from agentsync.text import safe_text
 from test_install_oneshot import (  # noqa: F401  (fixture)
@@ -1261,16 +1261,24 @@ character _LIST_ESCAPED_RE matches, and a blank, each between two made-up words.
 
 def _listed(name: str, *, old: bool = False) -> str:
     """``name`` in step 1's list spelling (B13 round 40 C1802: \\n for LF and 0x1E, \\t, \\r, octal per UTF-8
-    byte for every other escaped character), or with ``old`` its spelling before C1802 (``?``), each built
-    directly, never by index into folder_spellings, which deduplicates its spellings."""
-    table = setup_report._LIST_ESCAPES_OLD if old else setup_report._LIST_LETTERS
+    byte for every other escaped character), through ``arm_local.list_escaped_char``, the one helper
+    install.sh's awk is held to (B13 round 41 C2035), or with ``old`` its spelling before C1802 (``?``), each
+    built directly, never by index into folder_spellings, which deduplicates its spellings."""
+    if not old:
+        return setup_report._LIST_ESCAPED_RE.sub(arm_local.list_escaped_char, name)
+    table = setup_report._LIST_ESCAPES_OLD
+    return setup_report._LIST_ESCAPED_RE.sub(lambda m: table.get(m.group(), "?"), name)
 
-    def one(m: re.Match[str]) -> str:
-        if m.group() in table:
-            return table[m.group()]
-        return "?" if old else setup_report._octal_bytes(m.group())
 
-    return setup_report._LIST_ESCAPED_RE.sub(one, name)
+def test_the_old_list_spelling_is_a_frozen_snapshot_and_folder_spellings_reads_the_one_helper_c2035() -> None:
+    """B13 round 41 C2035: two lanes added the same list-spelling helper. folder_spellings now spells step 1's
+    list through arm_local.list_escaped_char alone, and _LIST_ESCAPES_OLD stays a frozen snapshot of the
+    pre-C1802 table, independent of arm_local's on purpose, so an edit to it is deliberate."""
+    assert setup_report._LIST_ESCAPES_OLD == {"\n": "\\n", "\x1e": "\\n", "\t": "\\t", "\r": "\\r"}
+    assert not hasattr(setup_report, "_LIST_LETTERS") and not hasattr(setup_report, "_octal_bytes")
+    for name in ("Contoso\x7fDel", "A\x1eB\tC\rD\nE", "Caf\u00e9\x1bX", "Q\u200bR"):
+        want = setup_report._LIST_ESCAPED_RE.sub(arm_local.list_escaped_char, name)
+        assert setup_report.folder_spellings(name)[0] == want == _listed(name), name
 
 
 def _r126_lines(n: int, name: str) -> list[str]:
