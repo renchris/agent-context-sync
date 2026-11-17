@@ -42590,6 +42590,26 @@ so it is raised at the next round whose slowest job comes within 15 minutes of i
 `test_claude_md_gives_cis_time_and_its_limit`, which pins both brackets in CLAUDE.md and the note, the waits, and the
 limit at least 15 minutes above the head.
 
+### 16.260 Round 41: the report: one rule per head for any path, the config path cut, and a waiting recording out of the quarantine table (2026-11-17, wave B13 round 41 lane RA)
+
+Reserved for round 41 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 41").
+
+### 16.261 Round 41: the installer: the shell report cuts any path by its head's rule, every debug head on a line, and another build's render reads the same heads (2026-11-17, wave B13 round 41 lane RB)
+
+Reserved for round 41 lane RB of B13.
+
+### 16.262 Round 41: a waiting recording is one state, the zero-byte probe reads no byte, and an outage page is read again (2026-11-17, wave B13 round 41 lane B)
+
+Reserved for round 41 lane B of B13.
+
+### 16.263 Round 41: the converters: every page within the cap on its real bytes, fences and the xlsx lists included (2026-11-17, wave B13 round 41 lane E)
+
+Reserved for round 41 lane E of B13.
+
+### 16.264 Round 41: the prompt goes to v38 (step 2's inbox), a bound on a hung gate test, and the guides (2026-11-17, wave B13 round 41 lane D)
+
+Reserved for round 41 lane D of B13.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units

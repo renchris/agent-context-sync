@@ -2801,7 +2801,7 @@ by structure in the Python report while the shell report cuts it whole (round 17
 known difference between the reports' cut lines, for round 40's harvest to check. Lane RB's ruling 133 property test
 found that `add-source` wrote a raw DEL into `sources.toml`, which TOML forbids, so the next command could not load
 the file; lane B built the fix (`42eac026`, R39-B1). A pre-existing `--version --json --fields bogus` exit 0 went to the
-CLI conventions wave's lead, who queued it (`909d6915`). Of the lead's 23, the kit items are in round 40's script
+CLI conventions wave's lead, who queued it (`909d6915`) and it landed as `b74445af` (`--fields` on a `--version --json` run now refuses any name but `version`). Of the lead's 23, the kit items are in round 40's script
 (`round40/tools/edit.py`, `harvest-lead.txt`, `remove-worktrees.sh`, `trunk.sh`, `lane-status.sh`, 26 kit scripts with
 their own `kit-test.sh`, 241 checks), the rehearsal seed store is kept in `~/.cache` (`seeds-v10`, C1607), and C1669's
 check is harvest item 8. C1661's rule for the lead: no `||` or `&&` chain in the operator checkout may end in
@@ -2886,8 +2886,8 @@ one.
 ### B13 round 40 landed (2026-11-16)
 
 All five lanes landed, and the prompt stays v37 (`ded96e18`): no round 40 item needed prompt words. Notes
-`lanes/r40-<lane>.md`, lead notes `round29/lead-notes.md`. All 79 confirmed items are built: 56 in the lanes' 45
-commits (`0da59676..ffefbe0f`; every landed tip's CI green, read back by the lead) and the lead's 23. Ruling 137's two
+`lanes/r40-<lane>.md`, lead notes `round29/lead-notes.md`. All 79 confirmed items are built: 56 in the lanes' 46
+commits (`0da59676..7686c6eb`; every landed tip's CI green, read back by the lead) and the lead's 23. Ruling 137's two
 halves landed in one run: lane RA's table rows, Python reader and property-test cases (`7747b289..cf8d59a6`) under lane
 RB's shell reader (`8d483135..f13302b6`), so no trunk commit carries one half. No lane left an item unbuilt; C1801 and
 C1863 (makes worse True) are built as ruling 138's pins and legend words, with no change to either report's output.
@@ -2907,15 +2907,17 @@ run went red on 35 of its own harness tests (`f13302b6`); the third landed. Roun
 installer loop can spin on an empty generated value and whether the gate bounds a test's time.
 
 Found and not built, each a round 41 harvest item: an xlsx sheet page with a long cell comment passes the cap
-(30,315 bytes at caps 8,192 to 20,000; §16.258 names it as ruling 140's one known residual, lane E); under `--cwd`
+(30,338 bytes at caps 8,192 to 20,000 by round 41's measure, 30,315 by lane E's; §16.258 names it as ruling 140's one known residual, lane E); under `--cwd`
 the agentsync report's `- config:` line prints a relative `AGENTSYNC_CONFIG` in clear, older than `--cwd` (lane RA);
 and with six hostile names configured together the two reports number the cut folders differently, with no name
-printed (lane RA).
+printed (lane RA; round 41 found this does not reproduce at `5affe89c`, where the only differing rows are
+ruling 138's pinned ones). Corrected 2026-11-17 (round 41, C2067, C2068, C2075): lane D's seventh commit `7686c6eb`
+landed after this section was written, and the `909d6915` clause above names its landed form.
 
 | Lane | Landed (lane commits) |
 |---|---|
 | B | `0da59676..3527302c` (7) |
-| D | `3068733b`, `cbaa87cb`, `98a1046a`, `4e3af440`, `832c5bbc`, `ffefbe0f` (6) |
+| D | `3068733b`, `cbaa87cb`, `98a1046a`, `4e3af440`, `832c5bbc`, `ffefbe0f`, `7686c6eb` (7) |
 | E | `c36f5127..10845acb` (7, the last naming the comment residual) |
 | RA | `7747b289..cf8d59a6` (8, in the joint run), `a65f2130`, `e00e07d4`, `3972c5e5` |
 | RB | `8d483135..f13302b6` (14, in the joint run) |
@@ -2943,6 +2945,48 @@ codex-only: the allow rule for `~/.claude/scripts/agy-review.sh` is still the op
 block from `702fcff5` as the old copy, unchanged), outputs `round41/`. While its slots run, the lead reads trunk with
 `round41/tools/trunk.sh`, never a fetch in the operator checkout (C1470, C1661, C1871). The stop rule names Codex and
 Gemini: a clean round without Gemini goes to the operator before the loop closes.
+
+### B13 round 41: v37 rehearsal, cross-lane review, harvest, Codex beside Claude; Gemini not run (2026-11-17)
+
+Run `wf_1d80f8fe-ba7` on `5affe89c` (BASE `769dc49b`), codex-only, 109 agents with no errors and no resume: 81
+confirmed (0 turns, 17 wrongs, 64 small), 11 refuted (C2004, C2023, C2026, C2061, C2073, C2074, C2076, C2079, C2080,
+C2081, C2082). All six rehearsal scenarios passed on v37 with no turn, and round 40's fixes held on real output (C1802's
+two list rows, C1820's empty recording, C1807's long CSV field, C1856's `--fields` refusal, C1836's long folder list).
+One item needs prompt words: step 2 can point the person at an inbox that sync skips, because any `kind = "inbox"`
+source counts, paused or retired ones included (C2092), so the prompt goes to v38. Twelve items are data integrity, all
+privacy, with one root cause: the shell report applied the provider and first-unknown rules only to words under
+`~/Library/CloudStorage/`, while the agentsync report cut every word, so a name outside CloudStorage or a tail after a
+provider printed in clear in the public shell report (C2062 with C2031 and C2085, C2084, C2060), a relative
+`AGENTSYNC_CONFIG` under `--cwd` printed in both reports (C2063 with C2083), another build's render lacked the `--cwd`
+and debug heads (C2028), only the first debug head on a line was cut (C2029), and a quoted name or a tenant with a
+blank kept its later words (C2027, C2050 with C2032). The other wrongs: the page cap still passed on a long backtick
+run or open fence (C2042 with C2087) and on xlsx comment and object lists (C2043 with C2088, round 40's comment
+residual), and three recording paths: a waiting recording listed as `live | other` in the quarantine table (C2006),
+the zero-byte probe copying a recording that grew after the walk (C2038), and a recording first seen during an OCR
+outage keeping its outage page (C2039). Codex gave 17 opinions, none disputed. Gemini did not run (C2078; the allow
+rule for `~/.claude/scripts/agy-review.sh` is the operator's, backlog `8ed9dae0fbc0`). A triage workflow
+(`wf_e614ce3a-e75`) placed every item once.
+
+Lead rulings for round 41 (in `lanes/COMMON40.md`, mirrored in `docs/lanes/COMMON.md`): (142) each head in ruling 137's
+table carries one rule both reports apply to any path, wherever it lives, with the first-unknown check before any
+provider shortcut, every head on a line cut, and another build's render reading the same heads, lanes RA and RB landing
+both halves in one run; (143) every converter page stays within `max_page_bytes` on its real bytes, fences, the guard's
+lines and the xlsx lists included, with the overflow kept in sidecars, completing ruling 140; (144) a recording that
+waits is one state every reader names alike, and the zero-byte probe reads no byte, completing ruling 141; (145) step 2
+names an inbox only when one syncs, and the prompt goes to v38 in lane D's one commit, as ruling 129 took it to v37.
+The calls under 90% are filed with their courses kept: decision `5cc252cd0e8a` (conviction 70), veto window to
+2026-11-19.
+
+Convergence: confirmed as before, then 79, then 81; turns as before, then 0, then 0; wrongs as before, then 19, then
+17.
+
+Lanes (`--account auto`, CONTRACTS §16.260 to §16.264, plain `scripts/ship-land.sh`, scratch under `round41/`,
+back-channel pane 12 or its successor): RA 15 (ruling 142's rows and Python reader first, sent to lane RB; C2006,
+C2013), RB 8 (ruling 142's shell reader, landed with RA in one run), B 7 (ruling 144's probe and re-read), E 15
+(ruling 143), D 13 (the v38 prompt commit first, then the gate's bound on a hung test (C2065) and the guides). The lead
+holds 23: round 42's kit (C2002, C2003, C2005, C2008 to C2012, C2014 to C2020, C2024, C2025, C2072), the plan records
+corrected in this commit (C2067, C2068, C2075's record part), C2066 (every lead trunk read goes through
+`round41/tools/trunk.sh` or `lane-status.sh`, never a fetch), and C2078 (Gemini).
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
