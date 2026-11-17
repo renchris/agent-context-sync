@@ -13330,6 +13330,93 @@ def test_the_guides_path_and_folder_rows_say_both_reports_cut_every_dollar_quote
     ) in folders
 
 
+def test_the_guides_rows_give_each_heads_rule_for_any_path_as_both_legends_do_c2051() -> None:
+    """B13 round 41 C2051 (ruling 142, from lanes RA's and RB's words): the guide's `<path>` row gave a
+    `--source-local` argument under CloudStorage the first-unknown cut that round 40's C1882 replaced with the
+    provider rule, and named none of ruling 142's forms (C2033), its residual (C2050), the config path (C2063)
+    or the GoogleDrive address and short ids (C2071). The rows now say what both legends say and what the
+    report does."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    guide = (ROOT / "docs" / "deploy" / "setup-feedback.md").read_text(encoding="utf-8")
+    row = next(line for line in guide.splitlines() if line.startswith("| `<path>` |"))
+    assert "a `--source-local` argument under CloudStorage that names no configured folder" not in row
+    assert (
+        "under `~/Library/CloudStorage`, a `--source-local` argument and the folder after install.sh's"
+        " `is not an existing folder: ` (since B13 round 37, CONTRACTS §16.240), a refused one among"
+        " them, kept whole only when every part after its provider folder is fixed, a generic or home"
+        " folder, or a configured source's placeholder (`<folder-N>`, `<library-N>`), and otherwise cut"
+        " to its provider folder (`~/Library/CloudStorage/OneDrive-<org-N>/<path>`), in both reports"
+        " since B13 round 40 (CONTRACTS §16.255 C1882 with C1834;"
+    ) in row
+    clauses = (
+        "a bare word after `--source-local `, `--source-local=` or `add-source ` with no `/`, `\\` or quote"
+        " is prose and kept",
+        "the folder after `--cwd` or `--cwd=` on install.out's run header and `debug: cwd`'s folder, cut as a"
+        " path is (the word `--cwd` kept), a `debug: source` path that lies under that cwd, and the folder"
+        " after install.sh's `--cwd is not a folder this run can enter: `",
+        "a config path other than `~/agent-context/sources.toml`, cut as its `~` form is",
+        "a `~/Library/CloudStorage/<App>-<word>` folder the report numbers no organization for, cut to"
+        " `~/Library/CloudStorage/<path>`, never numbered, its trailing `)]}.,;:` kept",
+        "two forms stay in clear: a tenant written without that `~/Library/CloudStorage/` head, and one with"
+        " a blank and no `/` after it",
+    )
+    for clause in clauses:
+        assert clause in row, clause
+    legend = " ".join(setup_report._LEGEND["path"].split())
+    install = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    said = " ".join(" ".join(re.findall(r'^\s*say "  ?(.*)"$', install, re.M)).split()).replace("\\\\", "\\")
+    for words in (
+        "the folder after --cwd or --cwd= on install.out's run header",
+        "cut as a path is (the word --cwd kept)",
+        "a ~/Library/CloudStorage/<App>-<word> folder the report numbers no organization for",
+        "~/Library/CloudStorage/<path>, never numbered, its trailing )]}.,;: kept",
+    ):
+        assert words in legend and words in said, words
+    assert "install.sh's --cwd is not a folder this run can enter:" in legend
+    assert 'after \\"--cwd is not a folder this run can enter: \\"' in said
+    assert "a config path other than ~/agent-context/sources.toml" in legend
+    assert "every config path but ~/agent-context/sources.toml" in said
+    assert (
+        "--source-local word under a kept provider folder reads"
+        " ~/Library/CloudStorage/<Provider>-<org-N>/<path> unless every later part is fixed, generic, a home"
+        " folder or a configured folder's placeholder"
+    ) in said
+    assert "a bare word after either with no /, \\ or quote is prose and kept" in said
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    red.add("org", "Contoso", fuzzy=True)
+    red.add("folder", "Alder Birch", fuzzy=True)
+    red.configured_held = {"<folder-1>"}
+    cs = "/Users/dana/Library/CloudStorage/OneDrive-Contoso"
+    org = "~/Library/CloudStorage/OneDrive-<org-1>"
+    for line, want in (
+        (f"--source-local {cs}/Alder\\ Birch/Zephyr\\ Quarry", f"--source-local {org}/<path>"),
+        (
+            f"x is not an existing folder: {cs}/Alder Birch/Zephyr Quarry",
+            f"x is not an existing folder: {org}/<path>",
+        ),
+        (f"add-source {cs}/Alder\\ Birch/Zephyr", f"add-source {org}/<folder-1>/<path>"),
+    ):
+        assert setup_report._redact_lines(red, [line]) == want, line
+    email = next(line for line in guide.splitlines() if line.startswith("| `<email-N>`, `<guid-N>`,"))
+    assert (
+        "the address in a `GoogleDrive-<address>` folder is an organization, `GoogleDrive-<org-N>`, and that"
+        " address alone `<org-N>`"
+    ) in email
+    folders = next(line for line in guide.splitlines() if line.startswith("| `<library-N>`, `<folder-N>`,"))
+    assert (
+        "a source id or folder part of two characters, once left in clear, is cut as a whole word (a"
+        " two-letter word in capitals, such as `IT`, only as written, so the pronoun `it` stays)"
+    ) in folders
+    loop = " ".join(guide.split())
+    assert (
+        "whenever status did not give its reading (cut by the report's time budget, not started or failed),"
+        " it opens `(the loop's own read when this report was written; ...` in place of `(status when this"
+        " report was written; ...`"
+    ) in loop
+
+
 def test_the_guides_name_round_40s_empty_stub_and_cache_line_c1850_c1821() -> None:
     """B13 round 40, lane D's guide halves of lane RA's C1850 and C1821 (e00e07d42): the OCR row named every
     image outcome but the `empty stub` a zero-byte image now is, after the `not-readable stub`, and the Repeat

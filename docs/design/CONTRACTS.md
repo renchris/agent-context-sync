@@ -43195,7 +43195,10 @@ dumps a stuck test's traceback into the part's output 5 minutes before the stall
 `tests/test_gate_journal.py` `::test_a_part_that_hangs_is_stopped_with_no_verdict_and_the_gate_is_not_green` (land and
 lane modes: a planted 900 s sleep after a passing test, stopped at the stall bound, exit 124, the hung process gone,
 verdict rc=124) and `::test_a_slow_part_that_keeps_writing_lands_and_the_ceiling_still_stops_it` (three 12 s tests past
-a 30 s stall bound land green; an 8 s ceiling stops the same part with its own line).
+a 30 s stall bound land green; an 8 s ceiling stops the same part with its own line). Its test half is lane RB's
+`_bash_run` in `tests/test_install_oneshot.py`, 2ead03aa6 (with C2037's 5a7283c0b): each `/bin/bash` call that passed no
+timeout now runs in a session of its own under the load-scaled bound and has its process group killed on a timeout, a
+Ctrl-C or the gate's SIGINT, so a shell test that never returns cannot hold a part either.
 
 **Ruling 138's packet is named where it is recorded** (C2069; `docs/lanes/COMMON.md`). Ruling 138 said the lead records
 its exception on packet 8ac14056ab04's call 3 as a dated recheck, but that packet closed expired-actioned at its
@@ -43270,6 +43273,20 @@ under the old options, a few per sync, a page that comes out the same committing
 the new options when its bytes next change, and status counts those files in a note after the `sync again:` one
 (`loop._REREAD_OPTIONS`); the README said nothing of it. A paragraph after the one on files converted before OCR now
 says so. Test: `test_the_readme_says_a_convert_edit_reaches_existing_pages_r41_d1`.
+
+**The guide's rows give each head's rule for any path, as both legends do** (C2051; docs only; ruling 142, from lanes
+RA's and RB's words: the joint run's Python half 04467ed28 and shell half facd59978, with 18aa99033 and 0b4694286).
+docs/deploy/setup-feedback.md's `<path>` row still gave the first-unknown cut for a `--source-local` argument and a
+not-a-folder name, while both reports cut them by their head's rule (§16.260, §16.261). The row now gives round 40's
+provider rule under `~/Library/CloudStorage` (§16.255 C1882 with C1834) and ruling 142's reach: any path, the home folder
+and a relative path under `--cwd` included, the bare-word, quoted and refused forms (C2033), the folders after `--cwd`
+and `debug: cwd`, a config path other than the default (C2063), an unnumbered `~/Library/CloudStorage/<App>-<word>`
+folder and the two forms left in clear (C2050 with C2032), and an older build's report replaced by the shell one
+(C2028). The email row names a `GoogleDrive-<address>` folder's address as an organization and the folder row a
+two-character id or part (C2071), and the Loop bracket sentence names a status that did not give its reading (C2013,
+lane RA's 48e4c6b78). C2060 (a listed name step 1 spelled with a backslash, registered by its bytes) stayed unbuilt
+(§16.261, 399b9cb64's strict xfail), so the rows claim nothing about it. Test:
+`test_the_guides_rows_give_each_heads_rule_for_any_path_as_both_legends_do_c2051`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
