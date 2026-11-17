@@ -7328,8 +7328,8 @@ def test_a_recording_waiting_through_an_ocr_outage_waits_for_the_ocr_helper_c184
     recording while the helper fails (no media engine without OCR), or said each background sync reads more.
     The run records the outage found at its start (``ocr_helper_failed``), and every waiting recording is a
     note that it waits for the OCR helper, with the job installed or not; its state reason stays the one the
-    re-read keys read, and a run still going does not hide it. Once a sync runs with the helper working, the
-    usual words come back."""
+    re-read keys read, and a run still going does not hide it, nor one crash recovery closed `aborted` (B13
+    round 41 C2041). Once a sync runs with the helper working, the usual words come back."""
     config = config_with(tmp_path, meetings)
     recording = stub_recording(meetings / MEETING, 10)
     assert run(config).exit_code == 0
@@ -7349,6 +7349,11 @@ def test_a_recording_waiting_through_an_ocr_outage_waits_for_the_ocr_helper_c184
     assert cli.OCR_WAIT_CLAUSE.endswith(loop_mod.RECORDING_OCR_WAIT)
     with Manifest(config.state_paths.db) as m:  # a run still going holds no counts yet: the last one counts
         m.begin_run(CycleMode.POLL, host="contoso-mac", pid=os.getpid())
+    assert f"waits {loop_mod.RECORDING_OCR_WAIT}" in _recording_words(config)
+    with Manifest(config.state_paths.db) as m:  # C2041: crash recovery closes it `aborted`, counts {}, and a
+        recover(config, m)  # new run starts: the aborted one is passed over too
+        m.begin_run(CycleMode.POLL, host="contoso-mac", pid=os.getpid())
+        assert m.last_runs(1)[0][2] == "running" and m.last_runs(2)[1][2] == "aborted", m.last_runs(3)
     assert f"waits {loop_mod.RECORDING_OCR_WAIT}" in _recording_words(config)
     monkeypatch.setattr(loop_mod.launchd, "agents_installed", lambda _c: False)
     _use_ocr(monkeypatch, tmp_path)

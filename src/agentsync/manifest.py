@@ -1802,10 +1802,13 @@ class Manifest:
 
     def last_run_counts(self) -> dict[str, int]:
         """The ``counts_json`` of the newest finished run, its int values only; {} when none finished.  A run
-        still going holds ``{}`` until :meth:`finish_run`, so it is passed over.  ``loop.next_step`` reads
-        whether that run found the OCR helper not working (``ocr_helper_failed``, B13 round 40 C1841)."""
+        still going holds ``{}`` until :meth:`finish_run`, and so does a run crash recovery closed
+        (``cycle.recover`` finishes it ``aborted`` with ``counts={}``, B13 round 41 C2041): both are passed
+        over.  ``loop.next_step`` reads whether that run found the OCR helper not working
+        (``ocr_helper_failed``, B13 round 40 C1841)."""
         row = self._db.execute(
-            "SELECT counts_json FROM runs WHERE finished_at IS NOT NULL ORDER BY run_id DESC LIMIT 1"
+            "SELECT counts_json FROM runs WHERE finished_at IS NOT NULL AND status != 'aborted' "
+            "ORDER BY run_id DESC LIMIT 1"
         ).fetchone()
         try:
             doc = json.loads(row[0]) if row is not None else {}

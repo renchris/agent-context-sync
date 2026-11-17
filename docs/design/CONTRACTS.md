@@ -42340,7 +42340,7 @@ background job or run `materialise`, neither of which reads a recording then (`_
 or, with the job installed, that each background sync reads more. The run's counts record the outage, found at the
 cycle's start or met in it, as `ocr_helper_failed` (`ocr_failed` already counts files the engine failed on, which
 the report sums, and `ocr_down` only an outage met mid-cycle, which `loop`'s re-read notes read), read back from
-the newest finished run by `Manifest.last_run_counts` (a run still going holds `{}`); with it, `loop._recording_lines` words every waiting recording as a note, `waits
+the newest finished run by `Manifest.last_run_counts` (a run still going, or one crash recovery closed, holds `{}`); with it, `loop._recording_lines` words every waiting recording as a note, `waits
 for the OCR helper (it is not working; read once it does)` (`loop.RECORDING_OCR_WAIT`, the end of
 `cli.OCR_WAIT_CLAUSE`), naming neither run. The state reason stays `RECORDING_WAITS`, which the recording pass's
 re-read keys read. Test: `test_cycle.py::test_a_recording_waiting_through_an_ocr_outage_waits_for_the_ocr_helper_c1841`
@@ -42669,6 +42669,15 @@ recording grows before the probe's lstat, between its lstat and open, or after i
 fetch, copy, hash or staging write for it, the row `RECORDING_WAITS`) and
 `::test_a_zero_byte_recording_is_classed_empty_with_no_byte_read_c2038` (local and inbox: still `empty`, no fetch,
 copy or hash).
+
+**A run crash recovery closed hides no OCR outage** (C2041; ruling 144). `cycle.recover` finishes a crashed run
+`aborted` with `counts={}`, and `Manifest.last_run_counts` read the newest finished run, so while the next run was
+going status lost `ocr_helper_failed` and told the person to install the background job or run `materialise` for a
+recording that waits for the OCR helper. The query now passes over `status = 'aborted'` as it passes over a run
+still going (`finished_at IS NOT NULL AND status != 'aborted'`); `aborted` is written only by `recover`, always with
+`{}`, and `setup_report` already treats it as unfinished. §16.257's C1841 paragraph says so. Test:
+`test_cycle.py::test_a_recording_waiting_through_an_ocr_outage_waits_for_the_ocr_helper_c1841` (after its
+`begin_run`, `recover` and `begin_run` again, the OCR-helper words stay).
 
 ### 16.263 Round 41: the converters: every page within the cap on its real bytes, fences and the xlsx lists included (2026-11-17, wave B13 round 41 lane E)
 
