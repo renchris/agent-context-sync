@@ -42554,6 +42554,24 @@ for the name and its shown spelling (C1840 with C1887, lanes RA and RB). Test:
 `test_the_guides_path_and_folder_rows_say_both_reports_cut_every_dollar_quote_word_c1855`, which holds the rows to
 both legends, `DEL_ESCAPED` and `toml_string`.
 
+**The guides follow round 40's moved lines: a zero-byte image's stub and the cache line** (C1850's and C1821's guide
+halves; docs only; `docs/deploy/setup-feedback.md`). Each CONTRACTS line whose quoted words a round 40 lane changed
+moved in that lane's own commit, as COMMON.md asks: lane RA's §16.250 alias-forms sentence (C1889) and §16.251's
+divergence paragraph at 8cae0e99e, §16.251's C1628 list at a65f2130e (C1838, C1858) and §16.28's OCR images bullet at
+e00e07d42 (C1850, C1821); lane RB's §16.251 add-source, configured-tenant, free-text, separator and fail-closed
+sentences at 3459208b0 and cf0b9e222 (C1832, C1862, C1890, C1836, C1887), its shell legend's ruling 138 clause at
+3537d8197 and step 1's list spelling in README.md and setup-feedback.md at 46c5129ef (C1802); lane B's §16.34 Waiting
+and WAITING ON YOU recording bullets at 129196f5a (C1820, C1841), §16.247's C1441 paragraph at bb18a4a16 (C1842,
+C1883) and §16.300.25 and §16.300.6 at 4531816f2 (ruling 139); lane E's §16.253 C1676 paragraph and the ConvertConfig
+row at 70bee461c, 066e6464c and 64b89fba7 (ruling 140), the fourteen typed names at c1cbf572b (C1852) and §16.42 at
+8d91fc41f (C1872). Lane D writes the rest. setup-feedback.md's OCR row named every image outcome but the `empty stub`
+lane RA added after the `not-readable stub` (`setup_report._IMAGE_OUTCOMES`), and its Repeat conversions row did not
+say the cache line now leaves out rows of the empty file's hash, which a zero-byte file never reads (§16.248 C1466),
+while `manifest.record_cache` still writes them and the column still counts such a file; each row now says so, citing
+e00e07d42. No guide quotes the page cap, login's next step, `--fields` on a help page or the recording WAITING ON YOU
+line, so none changes for them. Test: `test_the_guides_name_round_40s_empty_stub_and_cache_line_c1850_c1821`, which
+holds both rows to `_IMAGE_OUTCOMES` and the cache line's query.
+
 **The CI record carries rounds 38 and 39, re-timed with gh, and the limit stays 100** (C1866 with C1874; docs only;
 `CLAUDE.md`, `.github/workflows/ci.yml`, `docs/lanes/COMMON.md`). CLAUDE.md's ci paragraph and ci.yml's note ended at
 round 37's twenty-three jobs (feedd8ef to 248e6a0a, 50:20 to 75:09), while 108 commits ran after them and three jobs

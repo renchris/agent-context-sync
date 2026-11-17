@@ -12998,3 +12998,33 @@ def test_the_guides_path_and_folder_rows_say_both_reports_cut_every_dollar_quote
         " add-source's echoed TOML table writes it (`\\u007F`, `config.toml_string`) and as `\\u007f`, for"
         " the name and its shown spelling;"
     ) in folders
+
+
+def test_the_guides_name_round_40s_empty_stub_and_cache_line_c1850_c1821() -> None:
+    """B13 round 40, lane D's guide halves of lane RA's C1850 and C1821 (e00e07d42): the OCR row named every
+    image outcome but the `empty stub` a zero-byte image now is, after the `not-readable stub`, and the Repeat
+    conversions row did not say the cache line leaves out rows of the empty file's hash. Both are held to
+    setup_report's own outcome list and the cache line's query."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    outcomes = list(setup_report._IMAGE_OUTCOMES)
+    assert outcomes.index("empty stub") == outcomes.index("not-readable stub") + 1
+    assert "AND canonical_sha256 != ? GROUP BY 1" in inspect.getsource(setup_report)
+    guide = (ROOT / "docs" / "deploy" / "setup-feedback.md").read_text(encoding="utf-8")
+    ocr = next(line for line in guide.splitlines() if line.startswith("| OCR |"))
+    assert (
+        "is a `not-on-this-Mac stub` and is never downloaded for OCR. A zero-byte image is an `empty stub`,"
+        " after the `not-readable stub` (class `empty`; since B13 round 40 C1850, e00e07d42, CONTRACTS"
+        " §16.255)."
+    ) in ocr
+    repeat = next(line for line in guide.splitlines() if line.startswith("| Repeat conversions |"))
+    assert (
+        "a copy counts there. A zero-byte file never reads the cache, so the cache line leaves out rows of"
+        " the empty file's hash, while the column still counts such a file (since B13 round 40 C1821,"
+        " e00e07d42, CONTRACTS §16.255)."
+    ) in repeat
+    section = " ".join(_contracts_section("### 16.259 ", "### 16.300 ").split())
+    for sha in ("8cae0e99e", "a65f2130e", "e00e07d42", "3459208b0", "cf0b9e222", "3537d8197", "46c5129ef"):
+        assert sha in section, sha
+    for sha in ("129196f5a", "bb18a4a16", "4531816f2", "70bee461c", "066e6464c", "64b89fba7", "c1cbf572b"):
+        assert sha in section, sha
