@@ -42623,6 +42623,11 @@ each now names the head's rule from `report_cuts.PATH_HEADS`: the provider rule 
 `--source-local=`, the first-unknown cut for `add-source`, `--cwd` and `--cwd=`. Docs only. Test:
 `test_three_docstrings_name_each_heads_rule_c2052`.
 
+**The debug docs name debug_path's %q form** (C2034). `report_cuts.PATH_HEADS`' and `_DEBUG_RE`'s docstrings said
+debug_line writes a debug value raw; install.sh's `debug_path` writes the cwd, source and config paths in `printf
+%q`'s one-line form, the home as `~`, and both say so, as §16.300's `--debug` bullet now does (the report compares a
+path with the cwd in that same form, never decoded). Docs only. Test: `test_the_debug_docs_name_debug_paths_printf_q_form_c2034`.
+
 ### 16.261 Round 41: the installer: the shell report cuts any path by its head's rule, every debug head on a line, and another build's render reads the same heads (2026-11-17, wave B13 round 41 lane RB)
 
 Reserved for round 41 lane RB of B13.
@@ -43479,7 +43484,9 @@ deprecation warning becomes a `warnings` entry instead of a stderr line. The ref
 - `--cwd DIR` (and `--cwd=DIR`): entered after the option loop, before SOURCE, each `--source-local` folder and a
   relative `AGENTSYNC_CONFIG` are made absolute; a folder it cannot enter exits 2 and writes nothing.
 - `--debug`: after the arguments are checked, an install run prints `debug: cwd`, `debug: source`, `debug: config`
-  and `debug: limits` lines on stderr, the home written as `~`. stdout gets no line; install.out keeps the stderr
+  and `debug: limits` lines on stderr, the home written as `~`; the cwd, source and config paths are written in
+  `printf %q`'s one-line form (`debug_path`, as in the shell-report section above), so a space is escaped and a
+  newline is a `$'…'` word (B13 round 41 C2034). stdout gets no line; install.out keeps the stderr
   copy, and the report's own redaction reads it as it reads every install.out line.
 - `--non-interactive`: accepted and ignored, as no run asks a question.
 

@@ -128,8 +128,9 @@ so the shell's hand-kept heads drifted, C1831 with C1881, C1832, C1833, C1834 wi
 ``$'...'`` word after ``--source-local ``, ``--source-local=`` or ``add-source `` is the one divergence
 ruling 138 keeps: the shell report cuts it whole to ``<path>``, the agentsync report decodes it and cuts it
 by its head's rule. ``is not an existing folder: ``'s name runs to its line's last `` (see --help)`` that
-ends a name, or the line's end; a ``debug: `` head's value (install.sh's debug_line writes it raw) runs to
-the line's first `` | `` or its end; every other head's path is one shell word."""
+ends a name, or the line's end; a ``debug: `` head's value (install.sh's debug_path writes the path in printf
+%q's one-line form, the home as ~, and debug_line prints it as given) runs to the line's first `` | `` or its
+end; every other head's path is one shell word."""
 
 REFUSED_HEADS = (
     "this is a row step 1 marked ",

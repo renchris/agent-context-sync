@@ -28165,6 +28165,26 @@ def test_three_docstrings_name_each_heads_rule_c2052() -> None:
         assert "by structure at its first unknown component" not in text
 
 
+def test_the_debug_docs_name_debug_paths_printf_q_form_c2034() -> None:
+    """B13 round 41 C2034: two docstrings said debug_line writes the debug value raw, while install.sh writes
+    those paths through debug_path's printf %q; both docstrings and the --debug bullet name that form."""
+    src = Path(setup_report.__file__).read_text(encoding="utf-8")
+    debug_re = " ".join(src.split("_DEBUG_RE = re.compile(", 1)[1].split('"""', 2)[1].split())
+    heads = " ".join(
+        Path(report_cuts.__file__).read_text(encoding="utf-8").split("PATH_HEADS = (", 1)[1].split()
+    )
+    for text in (debug_re, heads):
+        assert "debug_path writes" in text and "printf %q's one-line form" in text, text
+        assert "writes raw" not in text and "writes it raw" not in text, text
+    contracts = " ".join(
+        (Path(__file__).parents[1] / "docs/design/CONTRACTS.md").read_text(encoding="utf-8").split()
+    )
+    assert (
+        "the cwd, source and config paths are written in `printf %q`'s one-line form (`debug_path`"
+        in contracts
+    )
+
+
 def test_the_run_header_and_debug_lines_cut_a_cwd_folder_c1835() -> None:
     """B13 round 40 C1835 (ruling 137; privacy): --cwd and --debug put a private project folder in
     install.out's run header and its debug lines, which the report printed in clear. `--cwd `, `--cwd=` and

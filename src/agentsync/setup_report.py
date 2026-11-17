@@ -18521,9 +18521,9 @@ _DEBUG_RE = re.compile(
     + r")(?P<path>.+?)(?= \| |$)"
 )
 """B13 round 40 C1835 (ruling 137; privacy): install.sh's ``debug: cwd``, ``debug: source`` and ``debug:
-config`` lines under --debug, whose value debug_line writes raw, running to the line's first `` | `` or its
-end: the cwd is cut as :func:`_cut_path` cuts, and a source or config path only where it lies under that cwd
-(:func:`_debug_shown`)."""
+config`` lines under --debug, whose path debug_path writes in printf %q's one-line form, the home as ~,
+running to the line's first `` | `` or its end: the cwd is cut as :func:`_cut_path` cuts, and a source or
+config path only where it lies under that cwd (:func:`_debug_shown`)."""
 _ANSI_C_RE = re.compile(r"\\(?:([0-7]{1,3})|x([0-9A-Fa-f]{1,2})|(.))", re.DOTALL)
 _ANSI_C_LETTERS = {
     "a": "\a",
