@@ -999,10 +999,11 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   `config_err=<words>`, the comma-joined fixed words `policy`, `governance`, `state`, `remote`, `state-table`,
   `state-access`, `state-owner`, `state-refused`, `state-side-access`, `state-side-owner`,
   `state-side-refused`, `state-side-notfile`, `state-dir-write`, `state-notfile`, `state-lost`, `state-notdir`,
-  `state-file-access`, `state-file-owner`, `state-file-refused` and `state-file-notfile`, never the error's text.
+  `state-file-access`, `state-file-owner`, `state-file-refused` and `state-file-notfile`, never the error's text,
+  and `timeout`, always last, alone or after the others, when a reader stopped at its own time limit (below).
   When no config-step stop is predicted, a purge queue, suppression list or hold list that lost what agentsync's
-  records keep gives a status-step tail instead, logged with its own word after `config_err=`, never one of the
-  comma-joined words above. A suppression list that lost what a purge suppressed gives `; step 2 stops at its status
+  records keep gives a status-step tail instead, logged with its own word after `config_err=`, not one of the
+  config-step words above, though `timeout` may follow it. A suppression list that lost what a purge suppressed gives `; step 2 stops at its status
   step on agentsync's suppression list, which no longer lists what a purge the audit trail records suppressed (not
   damage, not a mode): fixing that is the person's (they put the suppression list back from a copy they trust, or
   follow the fix its status line gives), and ~/.local/bin/agentsync status prints it on its governance.suppressed
@@ -1133,6 +1134,15 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   list itself, or governance/ that is not a folder (B13 round 32 C607: a damaged purge record named alone led to a
   second stop).
   Step 1 tells the person ([CONTRACTS §16.130](../design/CONTRACTS.md), B13 round 18 V77).
+- Since B13 round 40 (C1867, C1876; no prompt version), when any of step 1's readers of agentsync's config and state
+  stops at its own time limit (the vanished-folder and config-error readers at 5 s, the misplaced-file and lost-hold
+  readers at 10 s), the list cannot say step 2 needs nothing: the `NEXT:` drops `(none is needed)` and ends, after
+  any other tail, with `; step 1's check of agentsync's config and state did not finish within its time limit (this
+  Mac was busy), so step 2 may still stop on it: ~/.local/bin/agentsync status names any such stop`. Its log line
+  adds `timeout` as the last comma-joined word after `config_err=`: `config_err=timeout` alone, or beside another
+  word, such as `config_err=policy,timeout` or `config_err=state-hold-lost,timeout`. A reader that fails with an
+  error rather than its time limit still says nothing. The prompt has no words for this tail: step 2 runs as for any
+  list, and its own status step names any stop the check missed (B13 round 41 C2053).
 - A config the list could not read (logged `synced=unreadable marks=<why>`) gets no mark and no `already synced`
   line; the folder question's `NEXT:` adds `; this Mac has a config (<config>) whose folders could not be read:
   if it was set up before, <install.sh> with no --source-local keeps whatever that config syncs, and each

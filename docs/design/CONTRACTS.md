@@ -42354,9 +42354,10 @@ version where every command refuses `--fields` without `--json` (b74445af fixed 
 `cli._fields_before_parse`, one scan of the tokens before `--` beside `_version_fields`, refuses `--fields` or
 `--fields=` with `-h` or `--help` under `--json` (either order, the top level, a command, a graph action, `help
 --help`) with `cli.HELP_PAGE_FIELDS`, the constant `_select_fields` now prints too, so both spellings print the
-same bytes, and `--version` with `--fields` and no `--json` with `cli.FIELDS_NEED_JSON`. Help still wins where it
-did: its text page without `--json`, `--fields` or not (R086), and `--version --json --help`'s; `--version --json
---fields` keeps `_check_fields`. §16.300.25's `--fields` bullet and `--help` bullet and §16.300.6's argv bullet say
+same bytes, and `--version` with `--fields` and no `--json` and no help flag with `cli.FIELDS_NEED_JSON`. Without
+`--json`, a help flag beside `--fields` is unchanged: the help page prints, or with `--version` also given, whichever
+of the two comes first wins, `--fields` or not (R086; `test_a_help_text_page_still_wins_over_fields_c1856`), and
+`--version --json --help`'s text page stays; `--version --json --fields` keeps `_check_fields`. §16.300.25's `--fields` bullet and `--help` bullet and §16.300.6's argv bullet say
 so. Tests: `test_cli_json.py::test_a_help_flag_page_refuses_fields_as_help_does_c1856` (eight spellings),
 `::test_a_help_text_page_still_wins_over_fields_c1856` and `::test_version_without_json_refuses_fields_c1845`.
 
@@ -42556,21 +42557,23 @@ both legends, `DEL_ESCAPED` and `toml_string`.
 
 **The guides follow round 40's moved lines: a zero-byte image's stub and the cache line** (C1850's and C1821's guide
 halves; docs only; `docs/deploy/setup-feedback.md`). Each CONTRACTS line whose quoted words a round 40 lane changed
-moved in that lane's own commit, as COMMON.md asks: lane RA's §16.250 alias-forms sentence (C1889) and §16.251's
-divergence paragraph at 8cae0e99e, §16.251's C1628 list at a65f2130e (C1838, C1858) and §16.28's OCR images bullet at
-e00e07d42 (C1850, C1821); lane RB's §16.251 add-source, configured-tenant, free-text, separator and fail-closed
-sentences at 3459208b0 and cf0b9e222 (C1832, C1862, C1890, C1836, C1887), its shell legend's ruling 138 clause at
-3537d8197 and step 1's list spelling in README.md and setup-feedback.md at 46c5129ef (C1802); lane B's §16.34 Waiting
-and WAITING ON YOU recording bullets at 129196f5a (C1820, C1841), §16.247's C1441 paragraph at bb18a4a16 (C1842,
-C1883) and §16.300.25 and §16.300.6 at 4531816f2 (ruling 139); lane E's §16.253 C1676 paragraph and the ConvertConfig
-row at 70bee461c, 066e6464c and 64b89fba7 (ruling 140), the fourteen typed names at c1cbf572b (C1852) and §16.42 at
-8d91fc41f (C1872). Lane D writes the rest. setup-feedback.md's OCR row named every image outcome but the `empty stub`
-lane RA added after the `not-readable stub` (`setup_report._IMAGE_OUTCOMES`), and its Repeat conversions row did not
-say the cache line now leaves out rows of the empty file's hash, which a zero-byte file never reads (§16.248 C1466),
-while `manifest.record_cache` still writes them and the column still counts such a file; each row now says so, citing
-e00e07d42. No guide quotes the page cap, login's next step, `--fields` on a help page or the recording WAITING ON YOU
-line, so none changes for them. Test: `test_the_guides_name_round_40s_empty_stub_and_cache_line_c1850_c1821`, which
-holds both rows to `_IMAGE_OUTCOMES` and the cache line's query.
+moved in that lane's own commit, as COMMON.md asks: lane RA's §16.250 alias-forms sentence (C1889), §16.251's divergence
+paragraph and its C1887 amendment at 8cae0e99e, §16.251's C1628 list at a65f2130e (C1838, C1858) and §16.28's OCR images
+bullet at e00e07d42 (C1850, C1821); lane RB's §16.251 add-source and configured-tenant sentences (C1832, C1862),
+§16.250's separator sentence (C1890), §16.130's reader-timeout amendment (C1867) and §16.244's and §16.245's
+escaped-spelling amendments (C1802) at 3459208b0, §16.256's TOML-alias sentence at cf0b9e222, its shell legend's ruling
+138 clause at 3537d8197 and step 1's list spelling in docs/deploy/README.md and setup-feedback.md at 46c5129ef (C1802);
+lane B's §16.34 Waiting and WAITING ON YOU recording bullets at 129196f5a (C1820, C1841), §16.247's C1441 paragraph at
+bb18a4a16 (C1842, C1883) and §16.300.25 and §16.300.6 at 4531816f2 (ruling 139); lane E's §16.253 C1676 paragraph and
+the ConvertConfig row at 70bee461c and 066e6464c and §16.258's CSV field-limit paragraph at 64b89fba7 (ruling 140;
+C1807, C1822), the fourteen typed names at c1cbf572b (C1852) and §16.42 at 8d91fc41f (C1872). Lane D writes the rest.
+setup-feedback.md's OCR row named every image outcome but the `empty stub` lane RA added after the `not-readable stub`
+(`setup_report._IMAGE_OUTCOMES`), and its Repeat conversions row did not say the cache line now leaves out rows of the
+empty file's hash, which a zero-byte file never reads (§16.248 C1466), while `manifest.record_cache` still writes them
+and the column still counts such a file; each row now says so, citing e00e07d42. No guide quotes the page cap, login's
+next step, `--fields` on a help page or the recording WAITING ON YOU line, so none changes for them. Test:
+`test_the_guides_name_round_40s_empty_stub_and_cache_line_c1850_c1821`, which holds both rows to `_IMAGE_OUTCOMES` and
+the cache line's query.
 
 **The CI record carries rounds 38 and 39, re-timed with gh, and the limit stays 100** (C1866 with C1874; docs only;
 `CLAUDE.md`, `.github/workflows/ci.yml`, `docs/lanes/COMMON.md`). CLAUDE.md's ci paragraph and ci.yml's note ended at
@@ -42634,6 +42637,52 @@ tests/test_setup_report.py, setup-feedback.md's version lines and its old-copy l
 as every state but paused and retired, a paused kept inbox that `ensure_inbox` keeps paused and AGENTS.md's line does
 not name, and cli's own `inbox: not added: ` line), `test_the_prompt_text_changes_only_with_its_version`,
 `test_readme_prompt_compat_matches_the_installer`.
+
+**Ruling 138's packet is named where it is recorded** (C2069; `docs/lanes/COMMON.md`). Ruling 138 said the lead records
+its exception on packet 8ac14056ab04's call 3 as a dated recheck, but that packet closed expired-actioned at its
+2026-11-16 12:00Z deadline, before round 40's triage, and the exception is in packet d24c7a8ee6bc's text. The ruling's
+words stay as written; a dated line right after it, before ruling 139, says where the exception is recorded, and neither
+packet is touched. Test: `test_ruling_138_keeps_its_words_and_a_dated_line_names_the_packet_that_records_it_c2069`.
+
+**The CI record carries round 40, and the limit stays 100** (C2070; `CLAUDE.md`, `.github/workflows/ci.yml`). Round 40's
+eight ci jobs on main (769dc49b to 7686c6eb) took 54:36 to 69:58, all green on attempt 1, five past 60 and none past 70
+(10845acb, pytest's step 69:21 at 8562 tests); runners waited 52:31 (ffefbe0f) and 31:25 (10845acb); 5affe89c, round
+41's base, took 59:54 (pytest's step 59:26 at 8618 tests). Both files add the bracket, the waits and the base; the 18 to
+81 head stays, and `timeout-minutes` stays 100, 30:02 above the slowest. Test:
+`test_claude_md_gives_cis_time_and_its_limit`.
+
+**The kit note gives the rehearsal form of the no-lock, no-remove rule** (C2077; `docs/lanes/COMMON.md`). The rule that
+no probe touches a lock file, runs rm or fetches lived only in the round's workflow script, whose rehearsal brief lists
+its own exceptions. The kit note now carries it with those exceptions (the prompt's own commands in a sandbox clone, its
+fetch and pull; the bare mirror's fetch inside the root; the sandbox's agentsync.lock held with /usr/bin/lockf; a FIFO's
+or socket's rm -f), a file to remove moved to `<root>/trash/<probe>/` and scratch cleared by a fresh `mktemp -d`, and
+records that the rule alone did not stop a review slot's rm -f or a verify slot's rm -rf: the classifier and the hook
+refused each in seconds. Test: `test_the_kit_note_gives_the_rehearsal_form_of_the_no_lock_no_remove_rule_c2077`.
+
+**A help flag beside `--version` wins by order, `--fields` unread** (C2058; docs only, §16.300.25 and §16.257). Without
+`--json`, `--version --help --fields x` prints the version and `--help --version --fields x` the help page, each exit 0,
+as `--version --help` does without `--fields` (ruling 139 left argparse's order alone), while §16.300.25 said `--version
+--fields` without `--json` always refuses. §16.300.25's sentence now names the exception and §16.257's says a help flag
+beside `--fields` is unchanged without `--json`, whichever of the two comes first winning; the code is unchanged. Test:
+`test_the_contracts_say_a_help_flag_beside_version_wins_by_order_c2058`, which runs the three argument lists through
+`cli.main`.
+
+**§16.259 names each moved line by its commit and section** (C2059; docs only; a fix that reads git history makes things
+worse: CI's checkout is depth 1). §16.259's list of the lines other lanes moved put C1890's line under §16.251 (it is
+§16.250's), named a C1836 line §16.251 does not have, credited lane RB with C1887's amendment (lane RA's 8cae0e99e),
+paired cf0b9e222 with §16.251 (it touched §16.256 alone) and 64b89fba7 with §16.253 and the ConvertConfig row (it added
+§16.258's CSV lines), left out 3459208b0's §16.130 and §16.244/§16.245 lines, and called docs/deploy/README.md
+README.md. Its lane RA, RB and E clauses are corrected in place. Test:
+`test_section_16_259_names_each_moved_line_by_the_commit_and_section_it_is_in_c2059`, each (sha, section) pair a literal
+phrase, no git run.
+
+**The guide gives step 1's timeout tail and its log word** (C2053; docs/deploy/setup-feedback.md only, no prompt words).
+Since round 40's C1867 a step 1 reader that stops at its own time limit drops `(none is needed)`, ends the NEXT with `;
+step 1's check of agentsync's config and state did not finish within its time limit (this Mac was busy), so step 2 may
+still stop on it: ~/.local/bin/agentsync status names any such stop` and logs `timeout` last after `config_err=`; no
+guide said so, and the word list said a status-step word is never one of the comma-joined words. A bullet gives the tail
+and the word, the list adds `timeout`, always last, and no longer says never. Test:
+`test_the_guide_gives_step_1s_timeout_tail_and_its_log_word_c2053`, held to install.sh's own lines.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
@@ -43333,8 +43382,11 @@ deprecation warning becomes a `warnings` entry instead of a stderr line. The ref
   `<cmd> --help --json` (`-h` too, in any order, a graph action's and `help --help`'s alike: `cli._main` scans argv
   before the parse, which ends a help or version run before `_select_fields`, and both print
   `cli.HELP_PAGE_FIELDS`'s same bytes; C1856, C1808, C1844, C1865), or a field is unknown; the last line lists the
-  valid fields. `--version --fields` without `--json` is the same `add --json` refusal (`cli.FIELDS_NEED_JSON`,
-  C1845); `--version --json --fields` keeps its one field, `version`. Without `--fields` every document is
+  valid fields. `--version --fields` without `--json` and without `-h`/`--help` is the same `add --json` refusal
+  (`cli.FIELDS_NEED_JSON`, C1845). With `-h` or `--help` also present and no `--json`, `--fields` is not read:
+  argparse acts on whichever of `--version` and the help flag comes first (the version line or the help page, exit
+  0), exactly as `--version --help` does without `--fields` (B13 round 41 C2058). `--version --json --fields` keeps
+  its one field, `version`. Without `--fields` every document is
   unchanged, and error documents are never filtered. The run's log records join the document only when the
   selection keeps the field that holds them; otherwise each is one JSON object on stderr after it (C1639, C1674).
   `help <unknown> --json` is one `usage` line, its inner parse through `cli._parse` (C1643).

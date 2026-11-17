@@ -1528,6 +1528,9 @@ dollar-quote sentence stays and adds one clause naming the agentsync report's de
 run); §16.251's divergence paragraph names the = form and add-source (lane RA); setup-feedback.md's `<path>` row
 says both reports cut every `$'...'` word, the agentsync report all but this one (C1855, lane D, from lanes RA's and
 RB's words). The lead records the exception on packet 8ac14056ab04's call 3 as a dated recheck (C1864's option b).
+(2026-11-17) The exception is recorded in the text of round 40 packet d24c7a8ee6bc, not as a recheck on
+8ac14056ab04. That packet closed expired-actioned at its 2026-11-16 12:00Z deadline, before round 40's triage was
+filed, so it takes no recheck. The plan's round 40 entry says the same (round 41 C2069).
 (139) A help page and a version run refuse --fields as every command does, through b74445af's one pre-parse scan
 (lane B; the CLI conventions wave's landed code, built on trunk at that wave's lead's word of 2026-11-16; C1856 with
 C1808, C1844 and C1865, and C1845). argparse ends a --help or --version run before _select_fields runs, so _main
@@ -1826,6 +1829,18 @@ rm operations`, even with no rm (round 36 C1113). Do not use other zsh-only form
 kit scripts read them differently. zsh does not split an unquoted `$var`, so never pass a list to a script as one
 unquoted variable: let the script build the list itself, or pass one argument per file. This is what to do first, not
 a way around a refusal: a refused command is still not reworded but recorded as a finding.
+No probe creates, touches, holds or removes a lock file by hand (touch, a redirect, ln, mv, flock or rm on any
+.git/*.lock, index.lock, refs/*.lock or the land lock; the locks git and agentsync take for themselves inside a
+throwaway home or sandbox clone are fine), no probe runs rm in any form, and no probe runs git fetch, pull or remote
+update. In a rehearsal it binds every probe and check of the rehearsal's own making, and leaves alone only these: the
+prompt's own commands, played as written in a sandbox clone (its fetch and pull); the bare mirror's fetch inside the
+root; the sandbox's own agentsync.lock held with /usr/bin/lockf, as scenario E and kit/sigterm.sh do; and the FIFO
+rules' rm -f of a FIFO or socket. A file a probe would remove is moved to <root>/trash/<probe>/ instead, and scratch
+is cleared by making a fresh `mktemp -d` folder, never by removing one. A race or lock question is answered by
+reading code and existing logs, and a probe that would need one is recorded as unmeasured (round 40's verify:71 hung
+twice at a permission prompt nobody can answer, on a hand-built probe that touched a .git/refs lock file and ran rm
+-f). The rule in a brief is not enough by itself: in round 41 a review slot ran rm -f and a verify slot rm -rf with it
+in their briefs, and the classifier and the hook refused each in seconds (round 41 C2077).
 
 Tools CI lacks (round 18): lane RB's census test passed here only because this Mac has gitleaks; CI does not, and
 its land turned trunk red for 90 minutes. A test that reads a tool's output (gitleaks, pandoc, swift, tesseract)

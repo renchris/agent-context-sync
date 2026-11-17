@@ -265,7 +265,9 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
     attempts, and round 39's nineteen (853fab34 to 63deb83d) 51:20 to 80:33, its slowest, b74445af, 19:27
     under the limit, one pandoc SIGABRT attempt rerun green, and runs waited 50:10, 39:19 and 31:45: the
     range is 18 to 81, the guides and the note add both brackets and 7253d365, which opens round 40's, and
-    the 100 stays while the slowest is 15 minutes or more under it."""
+    the 100 stays while the slowest is 15 minutes or more under it. B13 round 41 C2070: round 40's eight jobs
+    (769dc49b to 7686c6eb) took 54:36 to 69:58, 30:02 under the limit, and runs waited 52:31 and 31:25: both
+    files add the bracket, the waits and 5affe89c, round 41's base, at 59:54; the head and the 100 stay."""
     guide = " ".join((ROOT / "CLAUDE.md").read_text(encoding="utf-8").split())
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     [limit] = re.findall(r"^jobs:\n  test:\n(?:    .*\n)*?    timeout-minutes: (\d+)\n", ci, re.M)
@@ -310,12 +312,16 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
         " 51:20 to 80:33, seventeen past 60 and six past 70, the slowest on b74445af, 8513 tests and"
         " pytest's step 79:55, and one attempt failed at 62:55 when pandoc was stopped by SIGABRT in a"
         " conversion test, and its rerun was green at 66:15; 7253d365, round 40's base, took 77:50, 8513"
-        " tests and pytest's step 77:20; one run took 34 on a runner loaded 5 to 8 per core), plus any wait"
+        " tests and pytest's step 77:20; the eight after it, from 769dc49b to 7686c6eb, took 54:36 to 69:58,"
+        " five past 60 and none past 70, all green on attempt 1, the slowest on 10845acb, 8562 tests and"
+        " pytest's step 69:21; 5affe89c, round 41's base, took 59:54, 8618 tests and pytest's step 59:26;"
+        " one run took 34 on a runner loaded 5 to 8 per core), plus any wait"
         " for a macOS runner, counted from the run appearing to its job starting (one waited 63 minutes, on"
         " ef12f28f, another 50, one 21, on d8385ef6, one 25, on 820c69dd, one 16, on 0c6b1207, one 38, on"
         " 19b1f575, one 36, on 63a12d0c, one 31, on c2ab2d12, one 22, on 877a47ab, one 17, on 5bf1911e, one"
         " 16, on c6d8227c, one 50, on 293c8081, one 39, on 4d3ba971's rerun, counted from the rerun's start,"
-        " one 32, on 526fa1e2, and earlier ones 48 and 46); the job's limit is"
+        " one 32, on 526fa1e2, one 52, on ffefbe0f, one 31, on 10845acb, and earlier ones 48 and 46); the"
+        " job's limit is"
         f" {limit} minutes (`timeout-minutes` in ci.yml), and a wait does not count against it."
     ) in guide
     # about 20 minutes above the range's head (80:33), and at least 15 (B13 round 40 C1866)
@@ -422,6 +428,16 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
         " 31:45 (526fa1e2), not counted against timeout-minutes (B13 round 40 C1866, C1874). 7253d365, round"
         " 40's base, took 77:50 (pytest's step 77:20 at 8513 tests)."
     ) in note
+    # B13 round 41 C2070: round 40's eight, inside the range; the 81 head and the 100 stay
+    assert (
+        "Round 40's eight jobs (769dc49b to 7686c6eb) took 54:36 to 69:58, all green on attempt 1, five past "
+        "60"
+        " and none past 70 (the slowest 10845acb, pytest's step 69:21 at 8562 tests), so 100 stays 30:02 "
+        "above"
+        " them; runner waits reached 52:31 (ffefbe0f) and 31:25 (10845acb), not counted against"
+        " timeout-minutes (B13 round 41 C2070). 5affe89c, round 41's base, took 59:54 (pytest's step 59:26 at"
+        " 8618 tests)."
+    ) in note
     assert "(measured October 2026;" not in guide
     assert "Round 24's ten jobs (c93fcd96 to 3ec66a92) took 30:06 to 36:24, all green on attempt 1" in note
     assert "which left 45 only 8:36 above them" in note
@@ -489,6 +505,120 @@ def test_the_guides_say_when_to_dispatch_ci_and_how_to_find_your_own_land() -> N
     assert "signal.signal(signal.SIGINT, signal.SIG_DFL)" in (tests / "test_gate_slot_plugin.py").read_text()
     for name in ("test_ocr.py", "test_ops_doctor.py"):
         assert "signal.signal(signal.SIGHUP, signal.SIG_DFL)" in (tests / name).read_text(), name
+
+
+def test_the_contracts_say_a_help_flag_beside_version_wins_by_order_c2058(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 41 C2058: §16.300.25 said `--version --fields` without --json always refuses, and §16.257
+    that help's text page wins, while `--version --help --fields x` prints the version and `--help --version
+    --fields x` the help page, each exiting 0: argparse acts on whichever comes first and --fields is never
+    read. Both sections now say so, with the code unchanged (ruling 139); the runs here hold the words to the
+    behaviour."""
+    from agentsync import cli  # noqa: PLC0415
+
+    contracts = " ".join((ROOT / "docs" / "design" / "CONTRACTS.md").read_text(encoding="utf-8").split())
+    assert (
+        "`--version --fields` without `--json` and without `-h`/`--help` is the same `add --json` refusal"
+        " (`cli.FIELDS_NEED_JSON`, C1845). With `-h` or `--help` also present and no `--json`, `--fields` is"
+        " not read: argparse acts on whichever of `--version` and the help flag comes first (the version "
+        "line or"
+        " the help page, exit 0), exactly as `--version --help` does without `--fields` (B13 round 41 C2058)."
+    ) in contracts
+    assert (
+        "`--version` with `--fields` and no `--json` and no help flag with `cli.FIELDS_NEED_JSON`. Without"
+        " `--json`, a help flag beside `--fields` is unchanged: the help page prints, or with `--version` "
+        "also"
+        " given, whichever of the two comes first wins, `--fields` or not"
+    ) in contracts
+    assert "Help still wins where it did: its text page without `--json`, `--fields` or not" not in contracts
+    assert cli.main(["--version", "--help", "--fields", "x"]) == cli.EXIT_OK
+    assert capsys.readouterr().out.startswith("agentsync ")
+    assert cli.main(["--help", "--version", "--fields", "x"]) == cli.EXIT_OK
+    assert capsys.readouterr().out.startswith("usage:")
+    assert cli.main(["--version", "--fields", "x"]) == cli.EXIT_USAGE
+    assert cli.FIELDS_NEED_JSON in capsys.readouterr().err
+
+
+def test_the_guide_gives_step_1s_timeout_tail_and_its_log_word_c2053() -> None:
+    """B13 round 41 C2053: since round 40's C1867 a step 1 reader that stops at its own time limit drops
+    `(none is needed)`, ends the NEXT with its own clause and logs `timeout` after `config_err=`, and no guide
+    said so, while setup-feedback.md's word list said a status-step word is never one of the comma-joined
+    words. The guide gives the tail and the log word, held here to install.sh's own lines, and the list says
+    `timeout` joins any word, last. No prompt words: step 2 runs as for any list (the verifier's corrected
+    fix)."""
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    [tail] = re.findall(r'ctail="\$ctail; (step 1\'s check of agentsync\'s config and state[^"]*)"', script)
+    assert 'clog="${clog:- config_err=}${clog:+,}timeout"' in script
+    guide = " ".join((DEPLOY / "setup-feedback.md").read_text(encoding="utf-8").split())
+    bullet = guide.split("- Since B13 round 40 (C1867, C1876; no prompt version),", 1)[1].split(" - ", 1)[0]
+    assert f"drops `(none is needed)` and ends, after any other tail, with `; {tail}`." in bullet
+    assert (
+        "adds `timeout` as the last comma-joined word after `config_err=`: `config_err=timeout` alone, or "
+        "beside"
+        " another word, such as `config_err=policy,timeout` or `config_err=state-hold-lost,timeout`."
+    ) in bullet
+    assert "(B13 round 41 C2053)" in bullet
+    assert (
+        "and `timeout`, always last, alone or after the others, when a reader stopped at its own time limit"
+        " (below)."
+    ) in guide
+    assert "never one of the comma-joined words above" not in guide
+    assert "did not finish within its time limit" not in _one_prompt_block(), "no prompt words (C2053)"
+
+
+def test_the_kit_note_gives_the_rehearsal_form_of_the_no_lock_no_remove_rule_c2077() -> None:
+    """B13 round 41 C2077: the rule that no probe touches a lock file, runs rm or fetches lived only in the
+    round's workflow script, whose rehearsal brief lists its own exceptions, while COMMON.md's kit note said
+    nothing. The kit note now gives the rehearsal form, with each exception the brief names (the prompt's own
+    fetch and pull in a sandbox clone, the bare mirror's fetch, the sandbox's agentsync.lock under
+    /usr/bin/lockf, a FIFO's rm -f), so the two agree, and records that the rule alone did not stop a review
+    and a verify slot: the backstop held."""
+    lanes = " ".join(_page("docs/lanes/COMMON.md").split())
+    head = "Rehearsal kit and macOS's /tmp cleaner (round 29 C149, C150; the kit itself is the lead's):"
+    note = lanes.split(head, 1)[1].split(" Tools CI lacks (round 18):", 1)[0]
+    for part in (
+        "No probe creates, touches, holds or removes a lock file by hand (touch, a redirect, ln, mv, flock "
+        "or rm on"
+        " any .git/*.lock, index.lock, refs/*.lock or the land lock;",
+        "no probe runs rm in any form, and no probe runs git fetch, pull or remote update.",
+        "the prompt's own commands, played as written in a sandbox clone (its fetch and pull); the bare "
+        "mirror's"
+        " fetch inside the root; the sandbox's own agentsync.lock held with /usr/bin/lockf, as scenario E and"
+        " kit/sigterm.sh do; and the FIFO rules' rm -f of a FIFO or socket.",
+        "A file a probe would remove is moved to <root>/trash/<probe>/ instead, and scratch is cleared by "
+        "making a"
+        " fresh `mktemp -d` folder, never by removing one.",
+        "the classifier and the hook refused each in seconds (round 41 C2077).",
+    ):
+        assert part in note, part
+    assert lanes.count("no probe runs rm in any form") == 1
+
+
+def test_ruling_138_keeps_its_words_and_a_dated_line_names_the_packet_that_records_it_c2069() -> None:
+    """B13 round 41 C2069: ruling 138 said the lead records its exception on packet 8ac14056ab04's call 3 as a
+    dated recheck, but that packet had closed before round 40's triage, and the exception is in packet
+    d24c7a8ee6bc's text. The ruling's own words stay as written; a dated line right after it says where the
+    exception is recorded, before ruling 139."""
+    lanes = _page("docs/lanes/COMMON.md")
+    words = (
+        "The lead records the exception on packet 8ac14056ab04's call 3 as a dated recheck"
+        " (C1864's option b)."
+    )
+    line = (
+        "(2026-11-17) The exception is recorded in the text of round 40 packet d24c7a8ee6bc, not as a "
+        "recheck on"
+        " 8ac14056ab04. That packet closed expired-actioned at its 2026-11-16 12:00Z deadline, before round "
+        "40's"
+        " triage was filed, so it takes no recheck. The plan's round 40 entry says the same (round 41 C2069)."
+    )
+    flat = " ".join(lanes.split())
+    assert (
+        flat.index(words)
+        < flat.index(line)
+        < flat.index("(139) A help page and a version run refuse --fields")
+    )
+    assert flat.index(line) - flat.index(words) == len(words) + 1, "right after ruling 138's last sentence"
 
 
 def test_the_kit_note_says_the_bash_tool_runs_zsh_so_a_pipes_status_is_lost() -> None:
@@ -13109,3 +13239,34 @@ def test_the_guides_name_round_40s_empty_stub_and_cache_line_c1850_c1821() -> No
         assert sha in section, sha
     for sha in ("129196f5a", "bb18a4a16", "4531816f2", "70bee461c", "066e6464c", "64b89fba7", "c1cbf572b"):
         assert sha in section, sha
+
+
+def test_section_16_259_names_each_moved_line_by_the_commit_and_section_it_is_in_c2059() -> None:
+    """B13 round 41 C2059 (makes worse True for a test that reads git history): §16.259's list of the lines
+    other lanes moved named sections their commits never touched (C1890's line under §16.251, a C1836 line
+    there that does not exist, C1887's under lane RB though lane RA's 8cae0e99e wrote it, cf0b9e222 beside
+    §16.251 though it touched §16.256 alone, 64b89fba7 beside the C1676 paragraph though it added §16.258's
+    CSV lines), left out 3459208b0's §16.130 and §16.244/§16.245 lines, and called docs/deploy/README.md
+    README.md. Corrected in place, each (sha, section) pair is pinned here as the paragraph's literal words:
+    no test runs git on these shas, which CI's depth-1 checkout lacks."""
+    section = " ".join(_contracts_section("### 16.259 ", "### 16.260 ").split())
+    for phrase in (
+        "lane RA's §16.250 alias-forms sentence (C1889), §16.251's divergence paragraph and its C1887 "
+        "amendment"
+        " at 8cae0e99e,",
+        "lane RB's §16.251 add-source and configured-tenant sentences (C1832, C1862), §16.250's separator"
+        " sentence (C1890), §16.130's reader-timeout amendment (C1867) and §16.244's and §16.245's"
+        " escaped-spelling amendments (C1802) at 3459208b0, §16.256's TOML-alias sentence at cf0b9e222,",
+        "step 1's list spelling in docs/deploy/README.md and setup-feedback.md at 46c5129ef (C1802);",
+        "lane E's §16.253 C1676 paragraph and the ConvertConfig row at 70bee461c and 066e6464c and §16.258's "
+        "CSV"
+        " field-limit paragraph at 64b89fba7 (ruling 140; C1807, C1822),",
+    ):
+        assert phrase in section, phrase
+    for gone in (
+        "C1836, C1887",
+        "free-text, separator and fail-closed",
+        "spelling in README.md",
+        "066e6464c and 64b89fba7 (ruling 140)",
+    ):
+        assert gone not in section, gone

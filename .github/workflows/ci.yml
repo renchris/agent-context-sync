@@ -74,6 +74,10 @@ name: ci
 # round whose slowest job comes within 15 minutes of it; runner waits reached 50:10 (293c8081), 39:19 (4d3ba971's rerun,
 # counted from the rerun's start) and 31:45 (526fa1e2), not counted against timeout-minutes (B13 round 40 C1866, C1874).
 # 7253d365, round 40's base, took 77:50 (pytest's step 77:20 at 8513 tests).
+# Round 40's eight jobs (769dc49b to 7686c6eb) took 54:36 to 69:58, all green on attempt 1, five past 60 and none past
+# 70 (the slowest 10845acb, pytest's step 69:21 at 8562 tests), so 100 stays 30:02 above them; runner waits reached
+# 52:31 (ffefbe0f) and 31:25 (10845acb), not counted against timeout-minutes (B13 round 41 C2070). 5affe89c, round 41's
+# base, took 59:54 (pytest's step 59:26 at 8618 tests).
 on:
   workflow_dispatch:
   push:
