@@ -4158,19 +4158,40 @@ def test_a_typed_note_after_punctuation_outside_ascii_is_cut(before: str) -> Non
     assert py + "\n" == shown, (py, shown)
 
 
-@pytest.mark.parametrize("block", ["with", "without"])
+_EMPTY_ELEMENT_HEADS = (
+    "CUT_HEADS_PROVIDER='--source-local ||--source-local=|is not an existing folder: '",
+    "CUT_HEADS_FIRST_UNKNOWN='|add-source '",
+    "CUT_HEADS_CWD='--cwd ||--cwd=|debug: cwd '",
+    "CUT_HEADS_CWD_NAME='|--cwd is not a folder this run can enter: '",
+    "CUT_HEADS_UNDER_CWD='|debug: source '",
+    "CUT_HEADS_CONFIG='|debug: config '",
+)
+"""Every head list of the block with an empty element in it, which split() hands a loop as an empty head."""
+
+
+@pytest.mark.parametrize("block", ["with", "without", "empty-element"])
 def test_typed_note_cut_ends_on_every_head_even_an_empty_one(block: str) -> None:
-    """B13 round 40, the joint land's hung gate: typed_note_cut's head loops ran `while ((a = index(l, hd))
-    > 0)`, and BSD awk's index(l, "") is 1 and consumes nothing, so a reader without the generated block (an
+    """B13 round 40, the joint land's hung gate: typed_note_cut's head loops ran `while ((a = index(l, hd)) >
+    0)`, and BSD awk's index(l, "") is 1 and consumes nothing, so a reader without the generated block (an
     empty CUT_FREE_HEAD) spun forever at 100% CPU, and a report would never be written. Every head loop
-    returns on an empty head. Each line form runs under a hard timeout, with the block and without it."""
+    returns on an empty head. Each line form runs under a hard timeout, with the block, without it and with an
+    empty element in every head list.
+
+    B13 round 41 C2036: without the block, split() of an empty list gives no head, so only freecut's guard
+    (its empty CUT_FREE_HEAD) was reached; [without] holds that one. [empty-element] puts an empty element in
+    every head list, which holds the `hd == ""` returns in slone, dbunder and dbconfig (ruling 142's own list
+    for `debug: config `): without any one, that case hangs to the timeout at the ` | ` line. dbcwd's return
+    stays as cheap protection, but no list reaches it: slcut hands dbcwd only a head that opens `debug: `, so
+    an empty element of CUT_HEADS_CWD goes to slone (measured: with it removed, every case still passes)."""
     text = INSTALL_SH.read_text(encoding="utf-8")
     [fn] = re.findall(r"(?ms)^typed_note_cut\(\) \{\n.*?^\}$", text)
     parts = (
         [*re.findall(r"(?ms)" + _REPORT_CUTS_BLOCK, text), *_SHELL_GLOBALS_RE.findall(text)]
-        if block == "with"
+        if block != "without"
         else []
     )
+    if block == "empty-element":
+        parts += _EMPTY_ELEMENT_HEADS
     lines = [
         "saw ~/Library/CloudStorage/OneDrive-Fabrikam/Alder, then ~/Library/CloudStorage/ and"
         " ~/Library/CloudStorage/",
@@ -4179,6 +4200,8 @@ def test_typed_note_cut_ends_on_every_head_even_an_empty_one(block: str) -> None
         "debug: cwd ~/Projects/Alder",
         "debug: source ",
         "debug: config ~/Projects/Alder/x",
+        # a ` | ` ends a debug value: an empty head there consumes nothing (C2036)
+        "debug: cwd ~/Projects/Alder | debug: source checkout ~/Projects/Alder/x | -",
         "usage error: --source-local ~/Library/CloudStorage/OneDrive-Contoso/A B: its name is step 1's "
         "escaped form x",
         "",
@@ -4202,7 +4225,7 @@ def test_typed_note_cut_ends_on_every_head_even_an_empty_one(block: str) -> None
     cp = subprocess.CompletedProcess(proc.args, proc.returncode, stdout, stderr)
     out = cp.stdout.decode().splitlines()
     assert len(out) == len(lines), out
-    if block == "with":
+    if block != "without":
         assert (
             out[0]
             == "saw ~/Library/CloudStorage/<path>, then ~/Library/CloudStorage/ and ~/Library/CloudStorage/"
