@@ -1412,6 +1412,7 @@ class ConvertConfig:
     max_rows_per_sheet: int = 5000
     max_page_bytes: int = 1_000_000  # hard cap before a unit is split / row-capped with a sidecar
     # Amended 2026-11-16, §16.258 C1886: a config sets at least 8 KiB (MIN_PAGE_BYTES); pages stay within any cap it accepts
+    # Amended 2026-11-17, §16.263 C2055, C2091: every page converted under any cap it accepts stays within it, a sheet's lists included (a recording's index and a window with more keyframes than its footer lines fit aside, §16.263); a new cap reaches existing local and inbox pages over the next syncs (lane B's C2021)
     pandoc_path: Path | None = None  # None = the pypandoc_binary bundled pandoc, by absolute path
     # Amended 2026-10-17, §16.114 Q62: None = that pandoc, or on macOS its native arm64 copy when installed
     ocr: bool = True  # False = never build or run the on-device OCR helper (§16.25)
@@ -8670,6 +8671,9 @@ Amended 2026-11-14, §16.253 C1647: and a zero-byte image (`.png`, `.jpg`, `.jpe
 converter reads it: an image with an OCR engine and no label rule, a recording with an OCR and a media engine and
 `[convert] recordings` on. Where none is registered it stays `no converter`, and while the OCR helper fails it takes
 the OCR-down stub (`waiting for the OCR helper`), never `empty`.
+Amended 2026-11-17, §16.263 C2001: a zero-byte file's reason is `empty-output (the file holds 0 bytes)` (`policy.ZERO_BYTES_REASON`),
+still an `empty-output` reason, so still `empty`; a file with bytes whose converter wrote no text keeps
+`empty-output (no text after stripping whitespace and form feeds)`.
 Amended 2026-11-16, §16.259 C1853 (by §16.257 C1820): since 0da596765 a recording on this Mac listed at 0 bytes (not
 dataless, not a Graph item) is `empty` in every sync, interactive included, fetched with a probe budget and, its
 staged copy empty, converted with the whole registry; a dataless or Graph one is `empty` in the recording pass.
@@ -13035,6 +13039,8 @@ Amended 2026-11-16, §16.258 C1872: pandoc passes its stderr too, so a crash sig
 taken out by `ocr._plain`, within the reason's 200 characters: `pandoc was stopped by SIGABRT (signal 6): <its line>`.
 Any other signal still drops it (`pandoc was stopped by SIGKILL (signal 9)`); a non-zero exit already quoted
 stderr's first line.
+Amended 2026-11-17, §16.263 C2048: both read pandoc's own `pandoc:` lines only (`pandoc._own_lines`), never a `[WARNING]` or its
+continuation lines, and a non-zero exit with none reads `pandoc exited N` alone.
 Amended 2026-10-19, §16.138 V68: both build sites name the installer by its path (`skill.INSTALL_SH`), `...;
 ~/src/agent-context-sync/scripts/install.sh tries the build again on its next run`, and `ocr._plain` keeps that one
 path when it reads the `<helper>.failed` marker back, where it takes every other path out.
@@ -39072,6 +39078,9 @@ Amended 2026-11-08, §16.239 C1034, C1118: a blank or byte-order-mark-only `.dra
 departing from C927's verifier note (a blank `.drawio` to take empty-output): bytes that are no diagram are not the
 type their name says, as a blank `.docx` is `not-ooxml`, and only zero bytes are `empty-output` (on lane E's fa63c1d98
 and 0bd4aa961).
+Amended 2026-11-17, §16.263 C2001: the zero-byte branches raise `policy.ZERO_BYTES_REASON`, `empty-output (the file holds 0 bytes)`,
+in place of `EMPTY_OUTPUT_REASON`, which describes text the file never had; the prefix, the class and the stub are as
+before, and a zero-byte or blank `.txt` stays a page.
 
 **The engines' `-v` lines take the colon form** (C909; `agentsync.convert`; amends §16.221 C719). `engine()` in
 `convert/ocr.py`, `convert/media.py` and `convert/speech.py` logged `on-device OCR is failed: the OCR helper was
@@ -42029,6 +42038,12 @@ Amended 2026-11-16, §16.258 C1886, C1888, C1851, C1860: so the guarded page sta
 Amended 2026-11-16, §16.258 C1849: a cut table's note reads `[table past the page cap: the raw head above shows its
 start; every row is in the sidecar `full-table.csv`]`, with no count, in place of `[row cap: first 0 of N rows
 shown; ...]`, which was false when the raw head of a wide table of short fields held whole records.
+Amended 2026-11-17, §16.263 C2022: a row too long for xlsx's table by itself is no longer left off: it is shown with each cell cut
+to one length ending `…` before escaping, the note naming the cut (`row R's cells cut to L characters`), the sidecar
+attached.
+Amended 2026-11-17, §16.263 C2043, C2064, C2046: the C1848 line's known residual is closed: a sheet page's comment and object lists
+fit the room left under the cap, a cut list naming its `.comments.txt` or `.objects.txt` sidecar, which holds each
+one whole.
 
 ### 16.254 Round 39: the compaction promise, recording downloads and the guides (2026-11-14, wave B13 round 39 lane D)
 
@@ -42433,6 +42448,16 @@ needs a design. Tests:
 through `Registry.default`),
 `test_convert_formats.py::test_an_xlsx_index_past_the_cap_lists_the_sheets_that_fit_and_says_so_c1848` (24 sheets)
 and `test_convert_formats.py::test_a_streamed_schema_past_the_cap_names_the_sidecar_and_leaves_the_rows_their_room_c1848`.
+Amended 2026-11-17, §16.263 C2043, C2064, C2046: the residual is closed: the table's budget counts the comment and object
+sections' real bytes, up to a quarter of the cap, and each list fits the room left, a cut one ending in a note that
+names `<NN>-<sheet-slug>.comments.txt` or `.objects.txt`, which holds every comment or object whole; a chart title or
+pivot name is cut to 200 characters on the page.
+Amended 2026-11-17, §16.263 C2045: a list under the budget renders byte for byte as before only when its headers cells are within
+the limit, now 600 characters or a fourth of what each sheet's share of the room past 2,048 bytes leaves after 200
+bytes for its row (a streamed first-row value 200, or a fourth of each column's share of the cap less 5,120 after 128
+bytes for its row); a longer cell ends `…` at any cap, its whole text on the sheet's page or in its sidecar.
+Amended 2026-11-17, §16.263 C2047: the sheet list's note ends `each sheet's own page or its CSV sidecar has its headers]`, since a
+sheet page whose first row passed its budget showed no header.
 
 **A page cap under 8 KiB is refused at load, and no budget keeps a floor** (C1886, C1888, C1851 and C1860, one defect
 from four findings, built once; `agentsync.config`, `agentsync.convert.text`, `agentsync.convert.xlsx`; amends
@@ -42456,6 +42481,13 @@ cutoff test) load 8,192 now, each body still past it (the H2 test's runbook grow
 `test_convert_formats.py::test_a_table_page_stays_within_the_8_kib_minimum_and_below_it_gets_a_shorter_head_c1886`
 (an oversized header, an oversized first row and a TSV through `Registry.default` at 8,192 and at a built 1,200,
 the guarded page within the cap and the sidecar round-tripping every row).
+Amended 2026-11-17, §16.263 C2043: "at any cap of 2,048 or more the floor change alone moves no byte" holds for text.py only: xlsx's
+floor bound whenever 200 * (comments + objects) passed the cap less 5,120 (16 at 8,192), and the sheet table's budget
+now counts the lists' real bytes, with no guess per item.
+Amended 2026-11-17, §16.263 C2042, C2044: a fence a backtick run outgrew, and the guard's banner and footer, still passed the cap on
+text and `_cap_body` pages; both now stay within it.
+Amended 2026-11-17, §16.263 C2055, C2091: with every list bounded, `(C1848's sheet-comment residual aside)` no longer holds: the
+config's comment and the ConvertConfig row say every page stays within any cap the config accepts.
 
 **A cut table's note counts no rows** (C1849; `agentsync.convert.text`; amends §16.253 C1676). `_table` decides the
 cut on the GFM sizes of the header, its delimiter and the first row, about 4 bytes a short cell (`| x `), while the
@@ -42486,6 +42518,8 @@ C1849. Test: `test_convert_formats.py::test_a_csv_field_past_the_csv_modules_lim
 the default limit: 131,073- and 200,000-character fields give a table with no sidecar, a 1,200,000-character one
 the cut table's note and `full-table.csv` only, round-tripping every row, an unclosed quote over 200,000 characters
 `Text (csv)`, and a higher limit is kept).
+Amended 2026-11-17, §16.263 C2049: the read and the raise run under one lock, so two parses on two threads cannot undo each other
+here; the parse runs outside it.
 
 **A zero-byte file is `empty` under fourteen typed names, not eleven** (C1852; docs and tests; amends §16.253 C1647;
 ruling 141). The C1647 paragraph gave C930's rule `eleven` typed names, and
@@ -42512,6 +42546,8 @@ re-runs a failed test alone and CI has `gh run rerun --failed`, while a retry in
 pandoc bump brings in. Test:
 `test_convert_formats.py::test_a_pandoc_crash_names_its_own_line_and_a_kill_does_not_c1872` (a fake pandoc that
 prints a line and signals itself: SIGABRT gives the line, SIGKILL does not).
+Amended 2026-11-17, §16.263 C2048: only the lines that start `pandoc:` reach `_ended` and the non-zero exit's line, so a `[WARNING]`
+that quotes the document is never the crash line, and the exit line is scrubbed by `_plain` too.
 
 ### 16.259 Round 40: the guides: the dollar-quote row, the record of round 39's installer work, and CI timings (2026-11-16, wave B13 round 40 lane D)
 
@@ -42765,7 +42801,170 @@ nothing and counts none).
 
 ### 16.263 Round 41: the converters: every page within the cap on its real bytes, fences and the xlsx lists included (2026-11-17, wave B13 round 41 lane E)
 
-Reserved for round 41 lane E of B13.
+Round 41's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 41"; specs `round41/items/C<n>.md`, the
+verifier's corrected fix built as the lead's ruling 143 settles it). A dated line this round writes reads
+`Amended 2026-11-17, §16.263 C<n>`.
+
+**A fence a backtick or tilde run outgrows stays within the cap** (C2042 with C2087, one defect from two findings,
+built once; `agentsync.convert.text`, `agentsync.convert._common`; amends §16.258 C1886). `_capped` cut a plain-text
+head within the cap less 512 bytes and then fenced it with a fence one backtick longer than its longest run, on both
+sides, outside that budget, and `_cap_body` closed a cut inside a code block with the opener's whole marker, so a
+`.txt` whose first line held 2,000 backticks gave a 12,014-byte guarded page at a cap of 8,192 and 1,003,809 at
+1,000,000, a `.log` with a 3,000-backtick line 14,021 and a `.md` cut inside a fence opened by 3,000 backticks 11,305
+(the verifiers' runs at 5affe89c). `_capped` keeps its 512-byte reserve, which pays for a three-backtick fence, and
+cuts a head whose longest backtick run R is 3 or more again, 2 * (R + 1 - 3) bytes shorter: a prefix of the first
+cut, whose run, and so whose fence, is no longer. `_cap_body` closes a fence as before when the close fits the
+note's budget, and otherwise cuts the head again R + 1 bytes shorter, R the head's longest backtick or tilde run, and
+closes the fence still open on that shorter head. A head with no such run keeps its bytes; a run longer than the room
+leaves an empty fence, the note and the sidecar, never an empty page. text's `_EMITTER_VERSION` is 1.0.3 (with
+C2049). Tests: `test_convert_page_cap.py::test_a_long_backtick_run_never_pushes_a_page_past_the_cap_c2042` (a
+2,000-backtick first line, a 3,000-backtick later line, unclosed backtick and tilde fences of 3,000, a one-line file of
+10,000 backticks, `abc` before 9,000, three lines of 3,000 as `.json` and mixed runs, at 8,192, 20,000 and 1,000,000
+through `Registry.default`) and `test_convert_page_cap.py::test_a_capped_page_with_no_backtick_run_keeps_its_bytes_c2042`.
+
+**The guard's banner and footer come off every fit test** (C2044; `agentsync.convert._common` and each converter that
+calls `_cap_body`; amends §16.258 C1886). The registry's guard adds the 136-byte banner and the blank line under it,
+and a digest footer line for each sidecar, after the converter has sized its body, but only `_table` and xlsx left
+room for them, so a body within about 150 bytes of the cap, cut or not, passed it by 90 to 138 bytes once guarded
+(the verifier's runs at 5affe89). `_common.GUARD_RESERVE`, 229 bytes (the banner and its blank line, the footer's
+blank line, one footer line less its sidecar's name, and the line ends), now comes off `_cap_body`'s fit test and its
+cut, with the sidecar's name, and off text's own fit test; `_capped`'s 512 bytes already hold it. A recording window's
+keyframes add a footer line each, so `_cap_body` takes `others`, the page's other sidecar names, and leaves their
+lines room too (`_footer_bytes`). A body that fitted by less than that is now cut, its whole text in
+`full-text.txt`. Two residuals stay, measured by this lane's review, each a case where holding the cap makes things
+worse: each keyframe adds a footer line of about 99 bytes, so a window with 78 or more keyframes cannot fit 8,192
+bytes whatever its text (150 gave 15,181), and holding it would drop keyframe images; and a recording's 00-index is
+never cut (a 6-hour reading of 72 labelled states and 60 names gave a 12,361-byte index at 8,192, a 2-hour one
+7,129), since a cut index breaks the grammar its readers parse (`test_recording_page.py`'s `index_errors` failed on
+the cut tried here). Both need a recording far past what an 8 KiB cap is set for, and the config's comment names
+them. Each `_cap_body` caller's emitter moved one step: diagram 1.3.1, eml 1.1.1, image 2.0.1, markdown
+1.0.1, msg 1.0.2, pandoc 1.0.1, pdf 2.1.1, pptx 1.0.2, recording 1.1.1, teams 1.0.1 and vtt 1.0.2; no `_REREAD_BELOW`
+moved, so no page is read again for it. Tests:
+`test_convert_page_cap.py::test_a_body_within_150_bytes_of_the_cap_leaves_the_guard_its_room_c2044` (`.txt`, `.md`,
+`.vtt`, `.eml`, `.msg`, `.teams.json`, `.pdf` and `.drawio` bodies 150, 100, 50 and 10 bytes under the cap and 1, 75 and
+150 over, at 8,192 and 20,000, through `Registry.default`),
+`test_convert_page_cap.py::test_a_cap_body_page_with_other_sidecars_stays_within_the_cap_c2044` (the path every other
+caller takes, three keyframes beside it),
+`test_convert_page_cap.py::test_the_guard_reserve_holds_the_banner_and_one_footer_line_c2044` and
+`test_convert_page_cap.py::test_every_cap_body_caller_passes_the_configured_cap`.
+
+**A sheet page's comment and object lists stay within the cap, whole in their sidecars** (C2043 with C2088, C2064 and
+C2046, one defect from four findings, built once; `agentsync.convert.xlsx`; amends §16.258 C1848, C1886 and §16.253
+C1676). `_sheet_body` reserved 4,096 bytes plus 200 a comment or object for the table, with no floor since round 40,
+then appended every comment and object line whole: 20 short comments at 8,192 left 1 row of 41 (26 under the old
+floor) and 5,000 at 1,000,000 none, while one 30,000-character comment gave a 30,397-byte page, 198 comments of 140
+characters 30,745 and a chart whose title held 20,000 characters 30,319, none with a sidecar for the list (the
+verifiers' runs at 5affe89c); a comment on a cell with no value was never read. The comment and object sections are
+now measured first: the table's budget is the cap less 4,096 less their real bytes, up to a quarter of the cap, with
+no guess per item and no floor. After the table and its notes each list is fitted line by line (`_fit` through
+`_listed`) in the room the page has left under the cap, less the guard's banner, the footer lines of the rows' CSV
+and both list sidecars, and the heading and longest note of each list after it, and a list past it ends `[comment list truncated at the page size cap: N of M listed; every
+comment is whole in the sidecar `<NN>-<sheet-slug>.comments.txt`]` (the object list the same: `object`,
+`.objects.txt`). A list sidecar holds one `<ref> (<author>): <text>` or object label a line, uncut and unescaped,
+under a `.txt` name, so no reader takes it for a page and it never collides with the rows' `.csv`, and is written only
+when its list was cut. A chart title or pivot name is cut to 200 characters ending `…` and escaped, which it never
+was; when the list fits but a name was cut, `[a chart title or pivot name cut to 200 characters; every object is whole
+in the sidecar ...]` says so and the objects sidecar is written. The empty-sheet path fits the lists the same way, and
+a comment on an empty cell is listed. The heading's sheet title is cut to 200 characters (openpyxl keeps a title
+past Excel's 31; a 6,000-character one gave an 8,915-byte page at 8,192). A sheet whose lists fit renders them as
+before. xlsx's `_EMITTER_VERSION` is
+1.0.3 (with C2022, C2045 and C2047); `outdated` still never reads it. This corrects §16.258's C1886 sentence too: at a
+cap of 2,048 or more the floor's removal moved no byte for text.py only; for xlsx it bound whenever 200 * (comments +
+objects) passed the cap less 5,120 (16 at 8,192, 4,975 at 1,000,000), and the real-bytes budget replaces it. Tests:
+`test_convert_page_cap.py::test_short_comments_keep_the_rows_c2043` (20 at 8,192 show at least the old 26 rows, 5,000
+at 1,000,000 show rows, every comment listed),
+`test_convert_page_cap.py::test_a_sheets_comment_list_stays_within_the_cap_and_rides_whole_in_its_sidecar_c2064` (one
+30,000-character comment, 200 of 140 characters, and a sheet of empty cells with 60 comments, at 8,192 and 20,000:
+every guarded page within the cap and every comment whole in its sidecar),
+`test_convert_page_cap.py::test_a_long_chart_title_is_cut_on_the_sheet_page_and_whole_in_its_sidecar_c2046`,
+`test_convert_page_cap.py::test_a_second_list_and_a_long_sheet_title_keep_the_page_within_the_cap_c2043` (400 short
+comments and two charts on a row-capped sheet, which the review measured at 8,218 bytes, and the long title, full
+and streamed) and `test_convert_page_cap.py::test_a_sheet_under_the_cap_keeps_its_lists_whole_with_no_list_sidecar`.
+
+**A row too long for the sheet's table is shown with its cells cut** (C2022; `agentsync.convert.xlsx`; amends §16.253
+C1676). C1676 made `_table_lines` leave off a first row past the budget, so at 8,192 four sheets of thirty
+600-character headers showed no row and no header, though the five short rows after each fit (the verifier's run at
+5affe89c). A row too long for the table by itself is now rebuilt from `sheet.plain`, each cell cut to one number of
+characters ending `…` before `_cell` escapes it (never `sheet.shown`, whose escapes and formula spans a cut would
+split): an even share of the room left, halved until the row fits, so a long cell beside short ones may be cut
+further than it had to be. The rows shown stay a run from the top: a row that fits
+the table but not the room left, or a cut row that still does not fit, ends it as before. The note reads `[row cap:
+first N of M non-empty rows shown, row R's cells cut to L characters; every row is in the sidecar `<sidecar>`]`
+(several: `the cells of K rows cut to L characters or fewer, row R first`), and the sidecar is attached whenever a row
+was cut, even with every row shown. A streamed summary adds `[row R's cells cut to L characters; every row is in the
+sidecar ...]` under its rows, and `_stream_sheet` keeps a sampled row's plain values for it. Tests:
+`test_convert_page_cap.py::test_an_oversized_first_row_is_shown_with_its_cells_cut_c2022` (the four-sheet book; on
+the streamed path its thirty first-row values fill the Schema's room, so its rows still get none) and
+`test_convert_page_cap.py::test_xlsx_first_row_past_the_budget_is_cut_and_the_short_row_follows_c2022` (C1676's
+workbook, full and streamed), with `test_convert_formats.py::test_xlsx_first_row_past_the_budget_rides_in_the_sidecar_c1676`
+moved to the new note.
+
+**The per-cell cuts stay, scaled with the cap** (C2045, makes worse True; `agentsync.convert.xlsx`; amends §16.258
+C1848). C1848's 600-character headers cell and 200-character first-row value applied at any cap, so thirty headers of
+27 characters listed 21 on the index at the default cap, while `_index_body`'s docstring and §16.258 said a list under
+the budget renders byte for byte as before. Dropping the cuts makes things worse: `_fit` stops at the first line that
+does not fit, so one huge headers cell would push every later sheet off the index, and one huge first-row value every
+later column off the Schema (the verifier's measure). The cuts stay and scale: a headers cell gets 600 characters or,
+when more, a fourth of each sheet's share of the room past 2,048 bytes after 200 bytes for its row, and a streamed
+first-row value 200 or a fourth of each column's share of the cap less 5,120 after 128 bytes for its row; the row's
+allowance keeps one wide-character cell (4 bytes a character) from leaving its own row no room. The docstring and the dated line say a list whose cells are within
+that limit renders as before and a longer cell ends `…`, its whole text on the sheet's page or in its sidecar. Test:
+`test_convert_page_cap.py::test_thirty_short_headers_are_all_listed_on_the_index_at_the_default_cap_c2045` and
+`test_convert_page_cap.py::test_a_streamed_first_row_of_wide_characters_still_lists_its_column_c2045`, with C1848's
+test moved to the scaled cut lengths.
+
+**The index's cut note names the sheet's page or its CSV sidecar** (C2047; `agentsync.convert.xlsx`; amends §16.258
+C1848). `[sheet list truncated at the page size cap: N of M sheets listed; each sheet's own page has its headers]` was
+false for a sheet whose first row passed its budget, whose page showed no header; it now ends `each sheet's own page
+or its CSV sidecar has its headers]`. Test:
+`test_convert_page_cap.py::test_the_index_note_names_the_sheet_page_or_its_csv_sidecar_c2047`, with C1848's index
+test moved.
+
+**The config's comment and the ConvertConfig row say every page stays within the cap** (C2055 with C2091, one defect
+from two findings, built once; `agentsync.config` and docs; amends §16.258 C1886; dated line at §15). Both said pages
+stay within any cap the config accepts while the sheet lists, a fence and the guard's lines could pass it; with those
+bounded (above), config.py's comment says every page converted under any cap the config accepts stays within it (a
+recording's index and a window with more keyframes than its footer lines fit aside, C2044's residuals), and,
+in lane B's words for its C2021, that a new cap reaches existing local and inbox pages over the next syncs, a few
+each sync, and a Graph file's page when its bytes next change. The ConvertConfig row in §15 takes a dated line saying
+so, and a dated line at §16.258's C1886 paragraph withdraws its `(C1848's sheet-comment residual aside)`. No test
+pins the comment's words; the contract scan reads the dated lines.
+
+**A zero-byte file's reason says it holds 0 bytes** (C2001, makes worse True; `agentsync.policy`, `agentsync.convert`;
+amends §16.233 C930; dated line at §16.28). Every zero-byte branch (`screen_file`'s Office guard, msg, diagram, the
+odt branch in pandoc, pdf, eml, teams, vtt, image and recording) raised `EMPTY_OUTPUT_REASON`, `empty-output (no text
+after stripping whitespace and form feeds)`, which describes text the file never had. The finder's fix, an `empty
+(...)` reason and a stub for a 0-byte `.txt`, makes things worse: `quarantine_class` would read it as `other`, an
+image's `empty stub` would become an `other stub`, and ten text types would turn from pages into stubs (C930's
+measure). The built fix adds `policy.ZERO_BYTES_REASON`, `empty-output (the file holds 0 bytes)`, raised at those
+branches only: it keeps the `empty-output` prefix, so the class stays `empty` and an image's stub an `empty stub`,
+while a file with bytes whose converter wrote no text keeps `EMPTY_OUTPUT_REASON` and a 0-byte or blank `.txt` stays a
+page. No emitter moved: zero bytes skip the cache (§16.248 C1466), a settled row keeps its wording until its bytes
+change, and both wordings map to `empty`. Tests:
+`test_convert_page_cap.py::test_a_zero_byte_file_says_it_holds_zero_bytes_and_stays_empty_c2001` (`.docx`, `.pdf`,
+`.eml`, `.vtt`, `.teams.json`, `.msg`, `.drawio`, `.odt`) and
+`test_convert_page_cap.py::test_a_file_with_bytes_and_no_text_keeps_the_empty_output_reason_and_blank_text_stays_a_page_c2001`,
+with the zero-byte pins of C930, C1050, C1304, C1450, C1466, C1647 and C1852 moved to the new reason.
+
+**pandoc's crash and exit lines come from its own lines only** (C2048; `agentsync.convert.pandoc`; amends §16.258
+C1872; dated line at §16.42). C1872 gave `_ended` pandoc's whole stderr, whose first line `_plain` took when none held
+`error:`, so a crash after a `[WARNING] Duplicate identifier '...'` quoted the document, and a non-zero exit quoted
+stderr's first line unscrubbed (the verifier's run at 5affe89c). `_own_lines` keeps only the lines that start
+`pandoc:` at the line's start (an uncaught exception's or the runtime's own; an indented one continues a warning); a crash passes them to `_ended`, and a non-zero exit reads
+`pandoc exited N: <the first, paths taken out by _plain>`, or `pandoc exited N` when pandoc wrote none, so a warning
+and the lines that continue one are never quoted. Test:
+`test_convert_page_cap.py::test_pandocs_crash_and_exit_lines_come_from_its_own_lines_only_c2048` (a warning, then
+`pandoc: heap overflow` and SIGABRT; a two-line warning and SIGSEGV; a warning continued by an indented
+`  pandoc: ...` line and SIGSEGV; a warning and exit 64; a warning and an own line
+with a path, and exit 1).
+
+**The csv field limit's read and raise are one step** (C2049; `agentsync.convert.text`; amends §16.258 C1807).
+`_parse_delimited` read the limit and raised it in two calls, so on two threads a shorter text's raise could land after
+a longer one's and lower it, and the longer CSV came back fenced (the verifier's forced interleaving at 5affe89), while
+its docstring said two parses cannot undo each other. The read and the raise now run under `_FIELD_LIMIT_LOCK`, the
+parse outside it, so parses never wait on each other; code elsewhere that sets the limit itself still can, and no
+caller runs two parses on two threads today. Test:
+`test_convert_page_cap.py::test_two_parses_on_two_threads_never_lower_the_csv_field_limit_c2049`.
 
 ### 16.264 Round 41: the prompt goes to v38 (step 2's inbox), a bound on a hung gate test, and the guides (2026-11-17, wave B13 round 41 lane D)
 

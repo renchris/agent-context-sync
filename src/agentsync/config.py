@@ -210,7 +210,11 @@ class ConvertConfig:
     xlsx_stream_threshold_bytes: int = 20 * 1000**2
     max_rows_per_sheet: int = 5000
     max_page_bytes: int = 1_000_000  # hard cap before a unit is split / row-capped with a sidecar
-    # a config sets at least MIN_PAGE_BYTES (8 KiB); pages stay within any cap it accepts (B13 round 40 C1886)
+    # a config sets at least MIN_PAGE_BYTES (8 KiB); every page converted under any cap it accepts stays
+    # within it, the guard's banner and footer, a fence and a sheet's lists included (a recording's index
+    # and a window with more keyframes than its footer lines fit aside, CONTRACTS §16.263), and a new cap
+    # reaches existing local and inbox pages over the next syncs, re-read a few per sync; a Graph file's
+    # page takes it when its bytes next change (B13 round 40 C1886, round 41 C2055, C2091, C2021)
     # None = the pypandoc_binary bundled pandoc, or on macOS its native arm64 copy when the operator installed
     # one (convert.pandoc.resolved_pandoc, CONTRACTS §16.114), by absolute path
     pandoc_path: Path | None = None
