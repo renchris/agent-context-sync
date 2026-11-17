@@ -34,6 +34,9 @@ finish() {
   [ "${gate_slot_owned:-0}" != 1 ] || [ -z "${gate_slot_token:-}" ] ||
     "${gate_slot_bin:-false}" release --token "$gate_slot_token" >/dev/null 2>&1 || true
   [ -z "${holder:-}" ] || [ "$(cat "$holder" 2>/dev/null)" != "$$" ] || rm -f "$holder"
+  # A pytest part runs in a process group of its own (watched), which a signal to this gate's group no longer
+  # reaches: a gate that exits while one runs stops it, INT and then KILL, so no part outlives its gate
+  [ -z "${part_pgid:-}" ] || stop_group "$part_pgid"
   rm -rf "$tmp"
 }
 trap finish EXIT
@@ -124,6 +127,74 @@ part_stopped() {
   echo "== $1 stopped by SIG${name#SIG} (rc $2) before it reported a verdict"
 }
 
+# A part watched stopped for making no progress, or for running past its ceiling: no test verdict, and not green. Its
+# own status, which no pytest run and no signal gives, so ship-land names the stop apart from load (B13 round 41 C2065).
+GATE_STALLED_RC=124
+
+# Stops process group $1: INT first, so pytest and each xdist worker unwind (a test helper that runs bash in a session
+# of its own kills that session on KeyboardInterrupt), then KILL about GATE_STOP_GRACE_S (15) seconds later for
+# whatever is left, a gate started with INT ignored included (B13 round 41 C2065).
+stop_group() {
+  local waited=0
+  kill -s INT -- "-$1" 2>/dev/null || return 0
+  while kill -s 0 -- "-$1" 2>/dev/null && [ "$waited" -lt "${GATE_STOP_GRACE_S:-15}" ]; do
+    sleep 1
+    waited=$((waited + 1))
+  done
+  kill -s KILL -- "-$1" 2>/dev/null || true
+}
+
+# One pytest pipeline of a part, run as a process group of its own and watched (B13 round 41 C2065): a test that hangs
+# held the land lock with nothing to stop it (round 40's joint land: 2 hours, then killed by hand, rc=143). The
+# journal grows by one write per test report, so a part whose journal has not grown for GATE_STALL_S seconds (1500,
+# 25 minutes: longer than the slowest single test under the load the machine runs at) has stopped making progress,
+# and GATE_CEILING_S (7200, 120 minutes, about twice the slowest part measured) bounds a part that keeps writing. Either
+# one stops the group (stop_group), prints `== <part> made no progress for N min; stopped (no verdict)` or `== <part>
+# ran past its N min ceiling; stopped (no verdict)` and returns GATE_STALLED_RC, so the gate exits not green and frees
+# the land lock. Never a bound on a slow part that still writes: load is by design (operator ruling 2026-10-20), and a
+# per-test kill (pytest-timeout) would turn slow tests into failures. pyproject's faulthandler_timeout dumps a stuck
+# test's traceback into the output first. `set -m` gives the job its own group (macOS has no setsid), stdin is
+# /dev/null as for any job, and GATE_POLL_S (2) is how often the journal is read.
+#   watched <part> <journal> <out> <stderr too: 0|1> <command...>   output appended to <out> and shown
+watched() {
+  local part=$1 journal=$2 out=$3 errs=$4 rc=0 why='' size='' now start last
+  shift 4
+  set -m
+  if [ "$errs" = 1 ]; then
+    { "$@" 2>&1 | tee -a "$out"; } </dev/null &
+  else
+    { "$@" | tee -a "$out"; } </dev/null &
+  fi
+  part_pgid=$!
+  set +m
+  start=$SECONDS last=$SECONDS
+  while kill -s 0 "$part_pgid" 2>/dev/null; do
+    now=$(wc -c <"$journal" 2>/dev/null | tr -d ' ') || now=''
+    [ "$now" = "$size" ] || { size=$now; last=$SECONDS; }
+    if [ $((SECONDS - last)) -ge "${GATE_STALL_S:-1500}" ]; then
+      why="made no progress for $(gate_span $((SECONDS - last)))"
+    elif [ $((SECONDS - start)) -ge "${GATE_CEILING_S:-7200}" ]; then
+      why="ran past its $(gate_span "${GATE_CEILING_S:-7200}") ceiling"
+    fi
+    [ -z "$why" ] || break
+    sleep "${GATE_POLL_S:-2}"
+  done
+  if [ -n "$why" ]; then
+    # on a line of its own: pytest's progress line is unfinished when it stops writing
+    printf '\n== %s %s; stopped (no verdict)\n' "$part" "$why" | tee -a "$out"
+    stop_group "$part_pgid"
+  fi
+  wait "$part_pgid" || rc=$?
+  part_pgid=''
+  [ -z "$why" ] || return "$GATE_STALLED_RC"
+  return "$rc"
+}
+
+# A span of seconds as the stop line words it: whole minutes, or seconds under one (a test's own bounds).
+gate_span() {
+  if [ "$1" -ge 60 ]; then echo "$(($1 / 60)) min"; else echo "$1 s"; fi
+}
+
 # A part's failed tests, re-run once, alone, on the same tree (B13 round 33 C800). The machine runs at load 600 to
 # 1000 on 10 cores by design (operator ruling 2026-10-20: load never falls, no gate may wait for it, and a timeout
 # we impose is "unknown, retry", never a negative verdict). From 2026-11-01 every land gate went red on 1 to 9 tests
@@ -152,8 +223,9 @@ rerun_alone() {
   IFS=$'\n' read -r -d '' -a ids <"$tmp/$part.failed" || true
   : >"$again"
   echo "== $part: $n failed; re-running them once, alone"
-  step env PYTHONUNBUFFERED=1 "GATE_JOURNAL=$again" uv run --locked pytest -q -p no:cacheprovider -p _gate_journal \
-    -n 0 "${ids[@]}" 2>&1 | tee -a "$out" || rc=$?
+  watched "$part" "$again" "$out" 1 step env PYTHONUNBUFFERED=1 "GATE_JOURNAL=$again" uv run --locked pytest -q \
+    -p no:cacheprovider -p _gate_journal -n 0 "${ids[@]}" || rc=$?
+  [ "$rc" != "$GATE_STALLED_RC" ] || return "$rc"
   if [ "$rc" != 0 ]; then
     [ "$rc" -le 128 ] || { part_stopped "$part" "$rc"; return "$rc"; }
     echo "== $part: the re-run alone is red too (rc $rc)"
@@ -177,8 +249,9 @@ part_once() {
   local part=$1 journal=$2 out=$3 rc=0
   shift 3
   : >"$journal"
-  step env "GATE_JOURNAL=$journal" uv run --locked pytest -q -p no:cacheprovider -p _gate_journal "$@" |
-    tee "$out" || rc=$?
+  : >"$out"
+  watched "$part" "$journal" "$out" 0 step env "GATE_JOURNAL=$journal" uv run --locked pytest -q -p no:cacheprovider \
+    -p _gate_journal "$@" || rc=$?
   [ "$rc" -le 128 ] || part_stopped "$part" "$rc"
   if [ "$rc" = 1 ]; then
     rc=0
@@ -228,9 +301,10 @@ run_part() {
     : >"$journal"
     : >"$out"
   fi
-  # pipefail: rc is pytest's; unbuffered, so a SIGKILL leaves no tail in Python's buffer
-  step env PYTHONUNBUFFERED=1 "GATE_DESELECT=$deselect" "GATE_JOURNAL=$journal" uv run --locked pytest -q \
-    -p no:cacheprovider -p _gate_journal "$@" 2>&1 | tee -a "$out" || rc=$?
+  # pipefail: rc is pytest's, or watched's own when it stopped the part; unbuffered, so a SIGKILL leaves no tail in
+  # Python's buffer
+  watched "$part" "$journal" "$out" 1 step env PYTHONUNBUFFERED=1 "GATE_DESELECT=$deselect" "GATE_JOURNAL=$journal" \
+    uv run --locked pytest -q -p no:cacheprovider -p _gate_journal "$@" || rc=$?
   [ "$rc" -le 128 ] || part_stopped "$part" "$rc"
   skipped_timing=$((skipped_timing + $(journal_cli skipped-timing "$journal")))
   if [ "$rc" = 5 ] && [ -n "$deselect" ]; then rc=0; fi # every test had passed already

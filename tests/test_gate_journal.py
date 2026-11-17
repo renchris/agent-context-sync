@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -104,7 +105,7 @@ def _lane_part(tmp_path: Path, rc: int) -> tuple[int, Path]:
         f"mode=lane common='{tmp_path}' tree=t0 salt=s0 tmp='{tmp_path}/tmp' resumed=0 skipped_timing=0\n"
         'step() { echo "== $*"; "$@"; }\n'
         "journal_cli() { case $1 in finished) return 1 ;; skipped-timing) echo 0 ;; *) : ;; esac; }\n"
-        f"{_functions('part_stopped', 'rerun_alone', 'part_once', 'run_part')}\n"
+        f"{_part_functions('part_stopped', 'rerun_alone', 'part_once', 'run_part')}\n"
         "rc=0; run_part lane -n auto tests || rc=$?; exit $rc\n"
     )
     env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "FAKE_RC": str(rc), "HOME": str(tmp_path)}
@@ -141,6 +142,18 @@ def _functions(*names: str) -> str:
         assert found is not None, f"gate.sh's {name}"
         parts.append(found.group(0))
     return "\n".join(parts)
+
+
+WATCH = ("stop_group", "gate_span", "watched")
+"""The functions that run a part's pytest as a process group of its own and stop it (B13 round 41 C2065)."""
+
+
+def _part_functions(*names: str) -> str:
+    """The named functions of scripts/gate.sh with :data:`WATCH` and its ``GATE_STALLED_RC`` line, which every
+    pytest pipeline a part runs goes through."""
+    script = (Path(__file__).parents[1] / "scripts" / "gate.sh").read_text(encoding="utf-8")
+    [stalled] = [ln for ln in script.splitlines() if ln.startswith("GATE_STALLED_RC=")]
+    return "\n".join([stalled, _functions(*WATCH, *names)])
 
 
 def _gate_functions(*names: str) -> str:
@@ -273,10 +286,10 @@ def test_flaky(i):
 
 
 def _rerun_part(
-    tmp_path: Path, suite: dict[str, str], *args: str, mode: str = "land"
+    tmp_path: Path, suite: dict[str, str], *args: str, mode: str = "land", **extra: str
 ) -> tuple[subprocess.CompletedProcess[str], list[str], str]:
-    """run_part (with finish as its EXIT trap) over ``suite`` in ``mode``: the result, each test's runs, and
-    the gate-verdicts.log line."""
+    """run_part (with finish as its EXIT trap) over ``suite`` in ``mode``, ``extra`` added to its environment:
+    the result, each test's runs, and the gate-verdicts.log line."""
     work = tmp_path / "suite"
     work.mkdir()
     (work / "runs.py").write_text(RUNS, encoding="utf-8")
@@ -293,7 +306,7 @@ def _rerun_part(
         f" tmp='{tmp_path}/tmp'\n"
         'step() { echo "== $*"; "$@"; }\n'
         f'journal_cli() {{ "$PART_PYTHON" \'{journal_py}\' "$@"; }}\n'
-        f"{_functions('finish', 'part_stopped', 'rerun_alone', 'part_once', 'run_part')}\n"
+        f"{_part_functions('finish', 'part_stopped', 'rerun_alone', 'part_once', 'run_part')}\n"
         "trap finish EXIT\n"
         f"run_part rest {' '.join(args)}\n"
     )
@@ -304,6 +317,7 @@ def _rerun_part(
         "PART_PYTHON": sys.executable,
         "PYTHONPATH": f"{journal_py.parent}:{work}",
         "RERUN_RUNS": str(tmp_path / "runs"),
+        **extra,
     }
     done = subprocess.run(
         ["bash", "-c", harness], cwd=work, env=env, capture_output=True, text=True, check=False, timeout=600
@@ -367,6 +381,111 @@ def test_a_re_run_a_signal_stopped_convicts_nothing_and_the_gate_exits_with_its_
     assert f"== rest stopped by {sig} (rc {rc}) before it reported a verdict" in done.stdout
     assert "is red too" not in done.stdout and "passed alone" not in done.stdout
     assert f" rc={rc} " in verdict and verdict.endswith(" rerun_passed=0"), verdict
+
+
+HANGS = """
+import os
+import time
+from pathlib import Path
+
+from runs import ran
+
+
+def test_first():
+    ran("first")
+
+
+def test_hangs():
+    ran("hangs")
+    Path(os.environ["HANG_PID"]).write_text(str(os.getpid()))
+    time.sleep(900)
+"""
+
+
+def _gone(pid: int) -> bool:
+    """Whether process ``pid`` has ended, waiting up to 30 s for it."""
+    for _ in range(300):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return True
+        time.sleep(0.1)
+    return False
+
+
+@pytest.mark.parametrize("mode", ["land", "lane"])
+def test_a_part_that_hangs_is_stopped_with_no_verdict_and_the_gate_is_not_green(
+    tmp_path: Path, mode: str
+) -> None:
+    """B13 round 41 C2065: round 40's joint land hung 2 hours on a test that never returned and held the
+    shared land lock until it was killed by hand, since no gate part had a bound. A part runs as a process
+    group of its own, and one whose journal has not grown for GATE_STALL_S is stopped, INT and then KILL,
+    with `== <part> made no progress for N ...; stopped (no verdict)`: the gate exits 124, not green and no
+    test verdict, so the lock is freed, and the hung test's process is gone."""
+    hang = tmp_path / "hang.pid"
+    started = time.monotonic()
+    done, runs, verdict = _rerun_part(
+        tmp_path,
+        {"test_s.py": HANGS},
+        "-n",
+        "2",
+        ".",
+        mode=mode,
+        HANG_PID=str(hang),
+        GATE_STALL_S="15",
+        GATE_STOP_GRACE_S="5",
+    )
+    assert done.returncode == 124, done.stdout + done.stderr
+    assert sorted(runs) == ["first", "hangs"], "the hang was reached, not cut during the start"
+    assert re.search(r"^== rest made no progress for 1[5-9] s; stopped \(no verdict\)$", done.stdout, re.M), (
+        done.stdout
+    )
+    assert "re-running" not in done.stdout and "passed alone" not in done.stdout, "a stop convicts nothing"
+    assert _gone(int(hang.read_text())), "the hung test's process outlived the gate"
+    assert " rc=124 " in verdict, verdict
+    assert time.monotonic() - started < 300, "stopped, not left to its 900 s sleep"
+
+
+SLOW_WRITER = """
+import time
+
+from runs import ran
+
+
+def test_one():
+    ran("one")
+    time.sleep(12)
+
+
+def test_two():
+    ran("two")
+    time.sleep(12)
+
+
+def test_three():
+    ran("three")
+    time.sleep(12)
+"""
+
+
+def test_a_slow_part_that_keeps_writing_lands_and_the_ceiling_still_stops_it(tmp_path: Path) -> None:
+    """C2065: the bound is on progress, never on a part that is slow under the load the machine runs at by
+    design (operator ruling 2026-10-20): a part that runs past GATE_STALL_S in all but writes a report
+    every 12 s is green. GATE_CEILING_S still bounds a part that keeps writing, with its own line."""
+    slow, capped = tmp_path / "slow", tmp_path / "capped"
+    slow.mkdir()
+    capped.mkdir()
+    suite = {"test_s.py": SLOW_WRITER}
+    done, runs, verdict = _rerun_part(slow, suite, "-n", "0", ".", GATE_STALL_S="30", GATE_STOP_GRACE_S="5")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert runs == ["one", "two", "three"] and "stopped (no verdict)" not in done.stdout
+    assert " rc=0 " in verdict, verdict
+    done, runs, verdict = _rerun_part(
+        capped, suite, "-n", "0", ".", GATE_STALL_S="600", GATE_CEILING_S="8", GATE_STOP_GRACE_S="5"
+    )
+    assert done.returncode == 124, done.stdout + done.stderr
+    assert "== rest ran past its 8 s ceiling; stopped (no verdict)" in done.stdout, done.stdout
+    assert runs != ["one", "two", "three"] and " rc=124 " in verdict, verdict
 
 
 SKIPPED_TEARDOWN = """
@@ -508,7 +627,7 @@ def test_a_re_run_whose_journal_cannot_be_read_clears_nothing(tmp_path: Path) ->
         'step() { echo "== $*"; }\n'
         'journal_cli() { case $1 in failed) cat "$tmp/failed" ;; skipped-timing) echo 0 ;;'
         " *) return 1 ;; esac; }\n"
-        f"{_functions('part_stopped', 'rerun_alone')}\n"
+        f"{_part_functions('part_stopped', 'rerun_alone')}\n"
         'rc=0; rerun_alone rest j "$tmp/again" "$tmp/out" || rc=$?\n'
         'echo "rc=$rc rerun_passed=$rerun_passed"\n'
     )

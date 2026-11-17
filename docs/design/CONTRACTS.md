@@ -42638,6 +42638,27 @@ as every state but paused and retired, a paused kept inbox that `ensure_inbox` k
 not name, and cli's own `inbox: not added: ` line), `test_the_prompt_text_changes_only_with_its_version`,
 `test_readme_prompt_compat_matches_the_installer`.
 
+**A gate part that stops making progress is stopped and named** (C2065; `scripts/gate.sh`, `scripts/ship-land.sh`,
+`pyproject.toml`). Round 40's joint land hung 2 hours on a test that never returned and held the shared land lock until
+it was killed by hand (verdict rc=143): no gate part had a bound, and ship-land waits on the lock with none. Each pytest
+pipeline a part runs (the part, and its failed tests re-run alone) now goes through `watched`, which starts it under
+`set -m` as a process group of its own (macOS has no setsid; stdin is /dev/null, as for any job) and reads the part's
+journal, which grows by one write per test report: a part whose journal has not grown for `GATE_STALL_S` (1500 s, 25
+minutes) or that runs past `GATE_CEILING_S` (7200 s, 120 minutes, about twice the slowest part) is stopped by
+`stop_group`, INT to the group and KILL about `GATE_STOP_GRACE_S` (15) seconds later, with `== <part> made no progress
+for N min; stopped (no verdict)` or `== <part> ran past its N min ceiling; stopped (no verdict)`, and returns
+`GATE_STALLED_RC` (124), which no pytest run and no signal gives: no test verdict, no re-run, and the gate exits not
+green, so the land lock is freed. `finish` stops a part still running when the gate itself exits, since a signal to the
+gate's group no longer reaches it. ship-land names the stop apart from load (exit 5, `a land gate part made no progress,
+or ran past its ceiling, and was stopped (no test verdict; not load: a test hangs, ...)`), since its signal line's
+`rerun once the machine is quieter` would read a hang as load. A part that is slow under load but still writes is never
+stopped (operator ruling 2026-10-20), so no per-test kill is added (no pytest-timeout); `faulthandler_timeout = 1200`
+dumps a stuck test's traceback into the part's output 5 minutes before the stall bound. Tests:
+`tests/test_gate_journal.py` `::test_a_part_that_hangs_is_stopped_with_no_verdict_and_the_gate_is_not_green` (land and
+lane modes: a planted 900 s sleep after a passing test, stopped at the stall bound, exit 124, the hung process gone,
+verdict rc=124) and `::test_a_slow_part_that_keeps_writing_lands_and_the_ceiling_still_stops_it` (three 12 s tests past
+a 30 s stall bound land green; an 8 s ceiling stops the same part with its own line).
+
 **Ruling 138's packet is named where it is recorded** (C2069; `docs/lanes/COMMON.md`). Ruling 138 said the lead records
 its exception on packet 8ac14056ab04's call 3 as a dated recheck, but that packet closed expired-actioned at its
 2026-11-16 12:00Z deadline, before round 40's triage, and the exception is in packet d24c7a8ee6bc's text. The ruling's

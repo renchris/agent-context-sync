@@ -92,6 +92,10 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 pythonpath = ["tests"]
 addopts = "-ra"
+# A test that runs 20 minutes dumps every thread's traceback into the output and goes on (nothing is killed): 5 minutes
+# before scripts/gate.sh stops a part whose journal has not grown for 25 (B13 round 41 C2065). No pytest-timeout: a
+# per-test kill under the machine's load would turn slow tests into failures.
+faulthandler_timeout = 1200
 markers = [
   "macos: needs macOS-specific syscalls (st_flags, setiopolicy_np, getattrlist)",
   "network: talks to a real network service; never run by default",

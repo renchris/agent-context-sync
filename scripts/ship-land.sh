@@ -8,8 +8,9 @@
 # Run it exactly as `scripts/ship-land.sh`, with no env prefix and no `bash` in front: the user-level allow rule
 # Bash(scripts/ship-land.sh:*) is what lets it run without a prompt, and the push it makes is a subprocess the
 # Bash(git push:*) ask rule never sees. It never forces: a rejected push is fetched, rebased and gated again.
-# Exit: 0 landed (or nothing to land) and CI green, 2 usage, 3 dirty tree, 4 rebase conflict (aborted), 5 gate red or
-# stopped by a signal before it reported (its line says which; nothing pushed either way, B13 round 33 C769),
+# Exit: 0 landed (or nothing to land) and CI green, 2 usage, 3 dirty tree, 4 rebase conflict (aborted), 5 gate red,
+# stopped by a signal before it reported, or a gate part stopped for making no progress or running past its ceiling
+# (gate status 124: a hang, not load; its line says which; nothing pushed either way, B13 round 33 C769, round 41 C2065),
 # 6 trunk CI red (before the gate when a run on origin/main has already ended red, else after it), 7 push refused, 8 CI red on the pushed sha, 9 CI not read (gh failed, no run appeared, or a run lost its hosted runner): before
 # the push nothing is pushed, after it the line says LANDED and the runs are read back by hand. A run that lost its
 # runner is rerun (gh run rerun <id> --failed) and waited for, never landed past, with or without --allow-red-trunk
@@ -253,6 +254,10 @@ while :; do
     [ "$grc" -le 128 ] || gsig=$(kill -l "$((grc - 128))" 2>/dev/null) || gsig=''
     if [ -n "$gsig" ]; then
       echo "ship-land: the land gate was stopped by SIG${gsig#SIG} before it reported (no test verdict; rerun once the machine is quieter, and if it recurs, check whether this diff kills or bloats processes); nothing pushed" >&2
+    elif [ "$grc" = 124 ]; then
+      # gate.sh's GATE_STALLED_RC: a part whose journal stopped growing, or that ran past its ceiling, was stopped.
+      # A slow part under load still writes, so this is a hang, not load: rerunning as for a signal hides it
+      echo "ship-land: a land gate part made no progress, or ran past its ceiling, and was stopped (no test verdict; not load: a test hangs, and its traceback and the part's '== <part> ... stopped (no verdict)' line are in the gate's output above; find that test before landing again); nothing pushed" >&2
     else
       echo "ship-land: the land gate is red; nothing pushed" >&2
     fi
