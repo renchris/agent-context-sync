@@ -244,9 +244,12 @@ the clock time of a moment; the index lists these.
 
 Only runs that no tool timeout ends read recordings: a background sync, and `~/.local/bin/agentsync materialise
 <file>` for one recording, which reads it to the end. An interactive `sync` reads none: it counts them in a `note:`
-line. A background sync reads about three minutes of recording work at a time and keeps what it has read, so a
-two-hour meeting is read within about half an hour of arriving; until then `sync` and `status` say how many minutes
-are read. Waiting recordings never hold the `NEXT:` step.
+line. The exception is a recording on this Mac that has no bytes in it: it gets a page saying the file is empty, and
+it is not counted or left waiting (while the OCR helper is not working, it waits for the helper first). An
+online-only recording, or one in a Microsoft Graph source, that has no bytes still waits like the others. A
+background sync reads about three minutes of recording work at a time and keeps what it has read, so a two-hour
+meeting is read within about half an hour of arriving; until then `sync` and `status` say how many minutes are read.
+Waiting recordings never hold the `NEXT:` step.
 
 An online-only recording is downloaded by the background reconcile job (or `materialise`), one per sync, up to 4 GB,
 only when the disk keeps room for it. When the download is refused or takes too long, a `note:` line says so: in

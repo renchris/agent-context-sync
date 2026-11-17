@@ -8673,6 +8673,14 @@ the OCR-down stub (`waiting for the OCR helper`), never `empty`.
 Amended 2026-11-16, §16.259 C1853 (by §16.257 C1820): since 0da596765 a recording on this Mac listed at 0 bytes (not
 dataless, not a Graph item) is `empty` in every sync, interactive included, fetched with a probe budget and, its
 staged copy empty, converted with the whole registry; a dataless or Graph one is `empty` in the recording pass.
+Amended 2026-11-17, §16.264 C2054, C2090 (by §16.262 C2038, C2039): both lines above hold for a recording only where
+the recording converter is registered (an OCR and a media engine, `[convert] recordings` on); without it a zero-byte
+recording stays `no converter`. The C1647 line's OCR-down clause holds for an image, and for a zero-byte recording on
+this Mac only while the OCR helper fails from the cycle's start (the media helper ready): that one takes the OCR-down
+stub, is counted as a recording that waits for the OCR helper, and is `empty` in the first sync after the helper
+works, interactive included. One whose OCR helper stops mid-cycle is `empty`, never the stub, since its empty copy is
+converted with the whole registry before any helper runs. Its queue no longer fetches it with a probe budget: it
+probes it with `LocalArm.stage_if_empty`, which reads no byte, and converts the empty copy.
 Amended 2026-11-10, §16.240 C1267: the class `waiting for the OCR helper`, after `no converter` in
 `QUARANTINE_CLASSES`, for an image whose stub page says the OCR helper is not working, read from the page with or
 without a label rule (`_Mirror.read_image_pages`), never from the report's own OCR probe.
@@ -10729,6 +10737,9 @@ deferred unfetched with its mark) and `_reread_targets` leaves the converter's s
   stages an empty file only while the file is still a regular, not-dataless file of 0 bytes with the listed inode,
   and the empty copy is converted with the whole registry, so it is `empty`; a recording that grew, was replaced or
   went away is never copied or hashed, and the row waits.
+  Amended 2026-11-17, §16.264 C2090 (by §16.262 C2038): that holds only where the recording converter is registered
+  (an OCR and a media engine, `[convert] recordings` on); without it a zero-byte recording on this Mac stays
+  `no converter` (§16.28).
 
 **The notes** (`loop._recording_lines`, printed by `sync` and `status`; none blocks the next step). `(35 of 127
 minutes)` is the media time read, floored to whole minutes; it reads `of at least` while some recording has no
@@ -42851,6 +42862,27 @@ still stop on it: ~/.local/bin/agentsync status names any such stop` and logs `t
 guide said so, and the word list said a status-step word is never one of the comma-joined words. A bullet gives the tail
 and the word, the list adds `timeout`, always last, and no longer says never. Test:
 `test_the_guide_gives_step_1s_timeout_tail_and_its_log_word_c2053`, held to install.sh's own lines.
+
+**A zero-byte recording is `empty` where the recording converter reads it, a helper that stops mid-cycle included**
+(C2054, C2090; docs only; ruling 144, from lane B's words; dated lines at §16.28 and §16.34). §16.28's C1647 line said
+that while the OCR helper fails a zero-byte file takes the OCR-down stub, never `empty`, and the C1853 line under it,
+like §16.34's C1820 line, said a zero-byte recording on this Mac is `empty` in every sync with no condition, while
+`Registry.default` registers the recording converter only with an OCR and a media engine and `[convert] recordings`
+on (`no converter` otherwise), and `_empty_recording` converts the empty copy with the whole registry
+(`_whole_registry`, which `_converting` reads before `_ocr_over`), so a helper that stops mid-cycle leaves it `empty`.
+Lane B's §16.262 C2039 (effb327f7) gives one met at the cycle's start the OCR-down stub, counted, and `empty` once
+the helper works, and its C2038 (e3de8830e) probes with `LocalArm.stage_if_empty`, which reads no byte. Ruling 74 holds: each line keeps
+its words and gets a dated line. Test:
+`test_the_c1647_lines_name_the_recording_converter_and_a_helper_that_stops_mid_cycle_c2054_c2090`, held to
+`Registry.default`, `_empty_recording` and `_converting`.
+
+**The README says a recording on this Mac with no bytes gets a page** (C2057, C2089; docs only; ruling 144, from lane
+B's words). README.md said an interactive `sync` reads no recording and counts them in a `note:` line, while
+`_empty_recording` runs in every sync and gives a recording on this Mac listed at 0 bytes (not dataless, not a Graph
+item) a page saying it is empty, neither counted nor waiting. The paragraph now says so in plain words, that it waits
+for the OCR helper first while the helper is not working (§16.262 C2039), and that an online-only or Microsoft Graph
+recording with no bytes still waits; lane B's e3de8830e corrects `_recording_pass`'s docstring. Test:
+`test_the_readme_says_a_recording_on_this_mac_with_no_bytes_gets_a_page_c2057_c2089`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

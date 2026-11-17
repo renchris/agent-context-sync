@@ -7513,6 +7513,18 @@ pinned in its own block, as :data:`_ROUND_37_D_PARAGRAPH_AMENDS` pins its lines;
 table's dated block in §16.28, a section its claim names with no item, as :data:`_ROUND_39_E_PARAGRAPH_AMENDS`
 pins C1647's there."""
 
+_ROUND_41_D_PARAGRAPH_AMENDS = (
+    (
+        "16.28",
+        "Amended 2026-10-11 by §16.48 (R36): the class `damaged`",
+        "§16.264 C2054, C2090 (by §16.262 C2038, C2039)",
+    ),
+    ("16.34", "**Waiting.** A local recording that waits", "§16.264 C2090 (by §16.262 C2038)"),
+)
+"""Round 41 lane D's dated lines at sections its C2054, C2090 claim names with no item, pinned in their
+blocks as :data:`_ROUND_40_D_PARAGRAPH_AMENDS` pins C1853's: the class table's dated block in §16.28 and
+§16.34's **Waiting.** bullet, after lane B's C1820 line there."""
+
 _ROUND_35_RB_PARAGRAPH_AMENDS = (
     ("16.41", "Residuals: a cycle longer than the wait still meets the rebuild", "§16.231 C926"),
 )
@@ -7831,6 +7843,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_36_D_PARAGRAPH_AMENDS,
         *_ROUND_37_D_PARAGRAPH_AMENDS,
         *_ROUND_40_D_PARAGRAPH_AMENDS,
+        *_ROUND_41_D_PARAGRAPH_AMENDS,
         *_ROUND_34_B_PARAGRAPH_AMENDS,
         *_ROUND_35_B_PARAGRAPH_AMENDS,
         *_ROUND_36_B_PARAGRAPH_AMENDS,
@@ -13160,6 +13173,80 @@ def test_the_class_tables_c1647_line_says_where_a_zero_byte_file_is_empty_c1853(
         in line
     )
     assert "is `empty` in every sync, interactive included" in line
+
+
+def test_the_c1647_lines_name_the_recording_converter_and_a_helper_that_stops_mid_cycle_c2054_c2090() -> None:
+    """B13 round 41 C2054, C2090 (ruling 144): §16.28's C1647 line said a zero-byte file takes the OCR-down
+    stub, never `empty`, while the OCR helper fails, and its C1853 line, like §16.34's C1820 line, said a
+    zero-byte recording on this Mac is `empty` in every sync with no condition. The recording converter is
+    registered only with an OCR and a media engine and recordings on, and `_empty_recording` converts the
+    empty copy with the whole registry, which `_converting` reads before `_ocr_over`, so a helper that stops
+    mid-cycle leaves it `empty`. Each line keeps its words (ruling 74) and gets a dated line."""
+    from agentsync import cycle  # noqa: PLC0415
+
+    assert "if ocr is not None and media is not None and cfg.recordings:" in inspect.getsource(
+        Registry.default
+    )
+    probe = inspect.getsource(cycle._Cycle._empty_recording)
+    assert "arm.stage_if_empty(" in probe and "self._whole_registry = True" in probe
+    assert "row.dataless or row.size != 0 or src.kind.is_graph" in probe
+    converting = inspect.getsource(cycle._Cycle._converting)
+    assert converting.index("self._whole_registry") < converting.index("self._ocr_over()")
+    table = " ".join(
+        _contracts_section(
+            "Amended 2026-11-14, §16.253 C1647: and a zero-byte image", "\nAmended 2026-11-10"
+        ).split()
+    )
+    assert (
+        "while the OCR helper fails it takes the OCR-down stub (`waiting for the OCR helper`), never `empty`."
+        in table
+    )
+    assert (
+        "Amended 2026-11-17, §16.264 C2054, C2090 (by §16.262 C2038, C2039): both lines above hold for a"
+        " recording only where the recording converter is registered (an OCR and a media engine, `[convert]"
+        " recordings` on); without it a zero-byte recording stays `no converter`. The C1647 line's OCR-down"
+        " clause holds for an image, and for a zero-byte recording on this Mac only while the OCR helper"
+        " fails from the cycle's start (the media helper ready)"
+    ) in table
+    assert (
+        "One whose OCR helper stops mid-cycle is `empty`, never the stub, since its empty copy is converted"
+        " with the whole registry before any helper runs." in table
+    )
+    assert (
+        "it probes it with `LocalArm.stage_if_empty`, which reads no byte, and converts the empty copy."
+        in table
+    )
+    waiting = " ".join(
+        _contracts_section("- **Waiting.** A local recording that waits", "\n\n**The notes**").split()
+    )
+    assert (
+        "Amended 2026-11-17, §16.264 C2090 (by §16.262 C2038): that holds only where the recording converter"
+        " is registered (an OCR and a media engine, `[convert] recordings` on); without it a zero-byte"
+        " recording on this Mac stays `no converter` (§16.28)." in waiting
+    )
+
+
+def test_the_readme_says_a_recording_on_this_mac_with_no_bytes_gets_a_page_c2057_c2089() -> None:
+    """B13 round 41 C2057, C2089 (ruling 144): README.md said an interactive `sync` reads no recording and
+    counts them in a `note:` line, while `_empty_recording` runs in every sync's queue and gives a recording
+    on this Mac listed at 0 bytes a page saying it is empty, neither counted nor waiting; an online-only or
+    Graph one still waits. The paragraph says so in plain words, with no internal names."""
+    from agentsync import cycle  # noqa: PLC0415
+
+    probe = inspect.getsource(cycle._Cycle._empty_recording)
+    assert "row.dataless or row.size != 0 or src.kind.is_graph" in probe
+    assert "_empty_recording(" in inspect.getsource(cycle._Cycle._process)
+    readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
+    para = readme[readme.index("Only runs that no tool timeout ends read recordings") :]
+    para = para[: para.index("Waiting recordings never hold the `NEXT:` step.")]
+    assert (
+        "An interactive `sync` reads none: it counts them in a `note:` line. The exception is a recording on"
+        " this Mac that has no bytes in it: it gets a page saying the file is empty, and it is not counted or"
+        " left waiting (while the OCR helper is not working, it waits for the helper first). An online-only"
+        " recording, or one in a Microsoft Graph source, that has no bytes still waits like the others."
+    ) in para
+    for internal in ("probe", "classif", "recording converter", "empty-output", "_empty"):
+        assert internal not in para
 
 
 def test_the_guides_path_and_folder_rows_say_both_reports_cut_every_dollar_quote_word_c1855() -> None:
