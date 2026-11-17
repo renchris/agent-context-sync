@@ -47,6 +47,7 @@ import venv
 from collections.abc import Callable, Iterable, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -360,6 +361,44 @@ def wheel(tmp_path: Path) -> Path:
     return w
 
 
+def _bash_run(
+    argv: Sequence[str],
+    *,
+    input: str | bytes | None = None,
+    capture_output: bool = False,
+    text: bool = False,
+    env: dict[str, str] | None = None,
+    check: bool = False,
+    timeout: float = 120,
+) -> subprocess.CompletedProcess[Any]:
+    """subprocess.run for a bash harness of install.sh's functions, bounded: the child has a session of its
+    own, and a timeout, a Ctrl-C or the gate's SIGINT kills that whole process group, as install_sh's A96 run
+    does, so an awk that never ends (B13 round 40's hung gate) fails its test instead of holding the land lock
+    (B13 round 41 C2065, lane RB's test half; scripts/gate.sh's stall stop is lane D's). ``timeout`` is scaled
+    by the load as install_sh's is; stdin is /dev/null unless ``input`` is given."""
+    pipe = subprocess.PIPE if capture_output else None
+    with subprocess.Popen(
+        argv,
+        stdin=subprocess.PIPE if input is not None else subprocess.DEVNULL,
+        stdout=pipe,
+        stderr=pipe,
+        text=text,
+        env=env,
+        start_new_session=True,
+    ) as proc:
+        try:
+            stdout, stderr = proc.communicate(input, timeout=_install_bound(timeout))
+        except BaseException:  # a timeout, or a Ctrl-C, which no longer reaches a child in its own session
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait()
+            raise
+    cp = subprocess.CompletedProcess(argv, proc.returncode, stdout, stderr)
+    if check:
+        cp.check_returncode()
+    return cp
+
+
 def _install_bound(given: float, per_core: float | None = None) -> float:
     """How long a test waits for an install.sh run (B13 round 33 C769): at least 120 s, what install.sh's
     own report step may take, scaled by the 1-minute load per core above the load the ``timing`` tests give up
@@ -496,7 +535,7 @@ def test_a_timed_out_install_run_leaves_none_of_its_processes_running(tmp_path: 
 def test_version_prints_the_prompt_compat_line_last() -> None:
     """README step 1: "If the --version inside step 1's one command does not end with
     "setup-prompt-compat 38", ... stop"."""
-    cp = subprocess.run([BASH32, str(INSTALL_SH), "--version"], capture_output=True, text=True, check=False)
+    cp = _bash_run([BASH32, str(INSTALL_SH), "--version"], capture_output=True, text=True, check=False)
     assert cp.returncode == 0, cp.stderr
     lines = cp.stdout.splitlines()
     assert lines[-1] == "setup-prompt-compat 38" == f"setup-prompt-compat {COMPAT}"
@@ -815,11 +854,11 @@ def test_a_re_run_names_a_folder_in_double_quotes(env: dict[str, str], name: str
     word = shown.removeprefix("--source-local ")
     plain = name.isascii() and "\t" not in name and "!" not in name
     assert word.startswith('"') == plain, word
-    back = subprocess.run(
+    back = _bash_run(
         [BASH32, "-c", f"printf %s {word}"], capture_output=True, check=True, env={"LC_ALL": "C"}
     ).stdout
     assert back == str(named).encode(), (word, back)
-    logged = subprocess.run(
+    logged = _bash_run(
         [BASH32, "-c", 'printf %q "$1"', "-", str(named)],
         capture_output=True,
         check=True,
@@ -2466,7 +2505,7 @@ def test_the_shell_reports_origin_label_is_the_agentsync_reports() -> None:
     func = re.search(r"^origin_label\(\) \{.*?^\}\n", text, re.M | re.S)
     assert func
     for url in ORIGIN_URLS:
-        shell = subprocess.run(
+        shell = _bash_run(
             [BASH32, "-c", func.group(0) + 'origin_label "$1"', "-", url],
             capture_output=True,
             text=True,
@@ -2795,7 +2834,7 @@ def test_the_shell_report_cuts_a_holds_reason_and_owner_as_the_agentsync_report_
     origin and time; both give the same line (B13 round 24 B57: no guard, so a rename cannot skip it)."""
     fn = re.search(r"^hold_cut\(\) \{.*?^\}\n", INSTALL_SH.read_text(encoding="utf-8"), re.M | re.S)
     assert fn is not None
-    cp = subprocess.run(
+    cp = _bash_run(
         [BASH32, "-c", fn.group(0) + "hold_cut"],
         input="\n".join(_HOLD_LINES) + "\n",
         capture_output=True,
@@ -2874,7 +2913,7 @@ def test_the_shell_report_cuts_a_lost_holds_owner_and_keeps_its_fixed_reason() -
     lines (setup_report._LOST_HOLD_RE; B13 round 30 C343: the parity assert always runs)."""
     fn = re.search(r"^hold_cut\(\) \{.*?^\}\n", INSTALL_SH.read_text(encoding="utf-8"), re.M | re.S)
     assert fn is not None
-    cp = subprocess.run(
+    cp = _bash_run(
         [BASH32, "-c", fn.group(0) + "hold_cut"],
         input="\n".join(_LOST_HOLD_LINES) + "\n",
         capture_output=True,
@@ -3016,7 +3055,7 @@ def test_a_hold_only_the_record_keeps_is_cut_as_a_lost_one_in_the_shell_report()
             "refused: hold beta (record): reason and owner not shown. Release it first (records owner)."
         ),
     }
-    cp = subprocess.run(
+    cp = _bash_run(
         [BASH32, "-c", fn.group(0) + "hold_cut"],
         input="\n".join(said) + "\n",
         capture_output=True,
@@ -3112,7 +3151,7 @@ def _shell_hold_redact(
             f"redact_stream <{said_file}",
         ]
     )
-    cp = subprocess.run(
+    cp = _bash_run(
         [BASH32, "-c", harness],
         capture_output=True,
         text=True,
@@ -3709,7 +3748,7 @@ def test_the_shell_report_reads_past_a_dollar_quoted_install_log_word(
     folder = home / "Library" / "CloudStorage" / "OneDrive-Contoso" / name
     folder.mkdir(parents=True)
     loc = {**env, "LC_ALL": locale}
-    word = subprocess.run(
+    word = _bash_run(
         [BASH32, "-c", 'printf %q "$1"', "_", str(folder)], capture_output=True, env=loc, check=True
     ).stdout
     assert word.startswith(b"$'"), word  # the field's form, as install.sh's log_start writes it
@@ -3862,7 +3901,7 @@ def test_an_unconfigured_rooted_source_local_argument_is_cut_as_the_agentsync_re
         "~/agent-context": "~/<path>",
         str(beside): "~/<path>",
     }
-    words = subprocess.run(  # as install.sh's log_start writes them
+    words = _bash_run(  # as install.sh's log_start writes them
         [BASH32, "-c", 'printf "%q\\n" "$@"', "_", *typed], capture_output=True, text=True, check=True
     ).stdout.splitlines()
     setup = home / "agent-context" / "setup"
@@ -3929,7 +3968,7 @@ def test_an_added_sources_typed_folder_is_cut_as_its_source_local_argument_is(en
     real = Path(os.path.realpath(home))
     typed = [f"{home}/Contoso Plans Link/Project Alpha", f"{real}/Contoso Plans Link/Project Alpha"]
     # typed with tab completion's slash: add-source prints it as pathlib does, without it (the review)
-    words = subprocess.run(  # as install.sh's log_start writes them
+    words = _bash_run(  # as install.sh's log_start writes them
         [BASH32, "-c", 'printf "%q\\n" "$@"', "_", typed[0] + "//"],
         capture_output=True,
         text=True,
@@ -4080,7 +4119,7 @@ def test_a_typed_note_after_punctuation_outside_ascii_is_cut(before: str) -> Non
     folder in clear. Run under LC_ALL=C on UTF-8 bytes, it cuts after each, as setup_report does."""
     [fn] = re.findall(r"(?ms)^typed_note_cut\(\) \{\n.*?^\}$", INSTALL_SH.read_text(encoding="utf-8"))
     line = f"{before}added source 'a' to f (~/Contoso Secret/Alpha, stored as ~/<folder-1>): kept"
-    cp = subprocess.run(
+    cp = _bash_run(
         [BASH32, "-c", fn + "\ntyped_note_cut"],
         input=line.encode() + b"\n",
         capture_output=True,
@@ -4232,7 +4271,7 @@ def test_the_shell_generic_folder_test_is_the_python_reports(name: str) -> None:
     whole name, as written, never a run of two."""
     block = re.search(r"(?ms)" + _REPORT_CUTS_BLOCK, INSTALL_SH.read_text(encoding="utf-8"))
     assert block is not None
-    cp = subprocess.run(
+    cp = _bash_run(
         [
             BASH32,
             "-c",
@@ -4260,7 +4299,7 @@ def test_safe_shown_drops_every_format_character_the_running_python_knows_c1628_
     harness = (
         f'{block}\n{_shell_function("safe_shown")}\nfor a in "$@"; do safe_shown "$a"; printf "\\n"; done'
     )
-    cp = subprocess.run(
+    cp = _bash_run(
         [BASH32, "-c", harness, "-", *names],
         capture_output=True,
         check=False,
@@ -4380,7 +4419,7 @@ def _shell_cut_stdout(tmp_path: Path, home: str, said: Sequence[str], login: str
         ]
     )
     env = {"HOME": home, "PATH": "/usr/bin:/bin", "TMPDIR": str(tmp_path), **xcrun_db()}
-    cp = subprocess.run([BASH32, "-c", harness], capture_output=True, check=False, env=env)
+    cp = _bash_run([BASH32, "-c", harness], capture_output=True, check=False, env=env)
     assert cp.returncode == 0, cp.stderr.decode("utf-8", "replace")
     return cp.stdout.decode("utf-8", "replace")
 
@@ -4601,7 +4640,7 @@ def test_the_shell_report_quotes_the_next_line_of_the_run_whose_step_stopped(
     setup = home / "agent-context" / "setup"
     setup.mkdir(parents=True)
     board = f"{home}/Clients/Contoso Board"
-    word = subprocess.run(
+    word = _bash_run(
         [BASH32, "-c", 'printf "%q" "$1"', "_", board], capture_output=True, text=True, check=True
     ).stdout
     run = "20261010T010000Z-4242"
@@ -6715,7 +6754,7 @@ def _shell_exclude_scrub(lines: list[str]) -> list[str]:
     text = INSTALL_SH.read_text()
     [const] = re.findall(r"(?m)^SHIPPED_EXCLUDES='.*'$", text)
     [fn] = re.findall(r"(?ms)^scrub_exclude_lists\(\) \{\n.*?^\}$", text)
-    cp = subprocess.run(
+    cp = _bash_run(
         [BASH32, "-c", f"{const}\n{fn}\nscrub_exclude_lists"],
         input="".join(f"{ln}\n" for ln in lines).encode(),
         capture_output=True,
@@ -6939,7 +6978,7 @@ def test_the_shell_run_type_is_the_reports(home: str, kind: str) -> None:
     itself or a path below one, never a name that only starts like one."""
     fn = _shell_function("home_run_kind")
     [roots] = re.findall(r'(?m)^TEMPORARY_ROOTS=".*"$', INSTALL_SH.read_text())
-    cp = subprocess.run(
+    cp = _bash_run(
         [BASH32, "-c", f"{roots}\n{fn}\nhome_run_kind"],
         capture_output=True,
         text=True,
@@ -6956,7 +6995,7 @@ def test_the_shell_run_type_reads_the_folder_home_resolves_to(tmp_path: Path) ->
     (tmp_path / "root" / "home").mkdir(parents=True)
     (tmp_path / "alias").symlink_to(tmp_path / "root", target_is_directory=True)
     fn = _shell_function("home_run_kind")
-    cp = subprocess.run(
+    cp = _bash_run(
         [BASH32, "-c", f'TEMPORARY_ROOTS="{tmp_path}/root"\n{fn}\nhome_run_kind'],
         capture_output=True,
         text=True,
@@ -9189,7 +9228,7 @@ def test_a_reader_of_the_pairs_that_fails_marks_the_report_refused_c1836(
             'printf "rc=%s out=[%s] marked=%s\\n" "$rc" "$out" "$([ -f "$REDACT_FAILED_FILE" ] && echo yes)"',
         ]
     )
-    cp = subprocess.run(
+    cp = _bash_run(
         [BASH32, "-c", script],
         capture_output=True,
         text=True,
@@ -9302,7 +9341,7 @@ def test_a_checkout_under_home_is_named_with_a_tilde(env: dict[str, str]) -> Non
     assert cp.returncode == 0, cp.stdout + cp.stderr
     tilde = "~/src/agent-context-sync/scripts/install.sh"
     assert f'then run: {tilde} --source-local "<folder>"' in last_line(cp)
-    run = subprocess.run(
+    run = _bash_run(
         [BASH32, "-c", f"{tilde} --version"], capture_output=True, text=True, check=False, env=env
     )
     assert run.returncode == 0 and f"setup-prompt-compat {COMPAT}" in run.stdout, run.stdout + run.stderr
@@ -9332,7 +9371,7 @@ def test_a_tilde_command_runs_whatever_bytes_the_checkout_path_holds(
     assert cp.returncode == 0, cp.stdout + cp.stderr
     command = last_line(cp).split("then run: ", 1)[1].split(" --source-local ", 1)[0]
     assert command.startswith("~/"), command
-    run = subprocess.run(
+    run = _bash_run(
         [BASH32, "-c", f"{command} --version"], capture_output=True, text=True, check=False, env=env
     )
     assert run.returncode == 0 and f"setup-prompt-compat {COMPAT}" in run.stdout, (command, run.stderr)
@@ -10384,7 +10423,7 @@ def test_both_shell_readers_of_the_folder_list_take_an_escaped_synced_rows_whole
     harness = "\n".join(
         [helpers, _shell_function("listed_folder_names"), "listed_folder_lines", "listed_folder_names"]
     )
-    cp = subprocess.run(
+    cp = _bash_run(
         [BASH32, "-c", harness],
         capture_output=True,
         text=True,
@@ -10424,7 +10463,7 @@ def test_the_shell_reader_of_the_folder_list_takes_both_wordings_of_the_escaped_
         f"{ESCAPED_KEPT_MARK} [inside a synced folder] {cs}/New kept\\nTwo\n",
         encoding="utf-8",
     )
-    cp = subprocess.run(
+    cp = _bash_run(
         [BASH32, "-c", "\n".join([helpers, "listed_folder_lines"])],
         capture_output=True,
         text=True,
@@ -10476,7 +10515,7 @@ def test_signed_out_reads_a_provider_folder_as_doctor_does(tmp_path: Path, layou
     elif layout == "a dangling symlink itself":
         p.symlink_to(tmp_path / "nowhere")
     try:
-        cp = subprocess.run(
+        cp = _bash_run(
             [BASH32, "-c", f'{_shell_function("signed_out")}\nsigned_out "$1" "$2"', "-", str(cs), p.name],
             capture_output=True,
             text=True,
@@ -10517,7 +10556,7 @@ def test_signed_out_reads_a_sharepoint_library_as_doctor_does(
         (cs / beside).mkdir()
     if there:
         (cs / library).mkdir()
-    cp = subprocess.run(
+    cp = _bash_run(
         [BASH32, "-c", f'{_shell_function("signed_out")}\nsigned_out "$1" "$2"', "-", str(cs), library],
         capture_output=True,
         text=True,
@@ -10732,7 +10771,7 @@ def test_step_1_says_whether_step_2_reinstalls_before_a_config_it_cannot_load(
     exec_stub.copy(env["STUB_AGENTSYNC"], bin_ / "agentsync")
     commit = head if stamp != "an older commit's" else "0123456789ab"
     (py.parent.parent / ".agentsync-install-source").write_text(f"commit={commit} source={checkout}")
-    subprocess.run([BASH32, "-c", STUB_PYPANDOC], env=env, check=True)
+    _bash_run([BASH32, "-c", STUB_PYPANDOC], env=env, check=True)
     if stamp == "this checkout's, a changed pandoc":  # B13 round 16 T54: step 2 reinstalls it, and says so
         site = py.parent.parent / "lib" / "python3.11" / "site-packages"
         (site / "pypandoc" / "files" / "pandoc").write_bytes(FAKE_WHEEL_PANDOC.replace(b"9.9", b"0.0"))
@@ -11412,7 +11451,7 @@ def test_list_folders_names_the_config_step_2_stops_on_when_the_build_is_this_ch
     bin_.mkdir(parents=True)
     exec_stub.copy(env["STUB_AGENTSYNC"], bin_ / "agentsync")
     (py.parent.parent / ".agentsync-install-source").write_text(f"commit={head} source={checkout}")
-    subprocess.run([BASH32, "-c", STUB_PYPANDOC], env=env, check=True)
+    _bash_run([BASH32, "-c", STUB_PYPANDOC], env=env, check=True)
     cp = install_sh(env, "--list-folders", script=script)
     assert last_line(cp).endswith(
         "; step 2 stops at its config step on an invalid [policy] in policy.toml: fixing that is the "
@@ -16843,7 +16882,7 @@ def test_governance_folder_words_never_call_it_a_folder_when_the_kind_is_unknown
         "misplaced_words holds ''; printf 'holds|%s\\n' \"$MISPLACED_IS\"\n",
         encoding="utf-8",
     )
-    cp = subprocess.run([BASH32, str(script)], capture_output=True, text=True, check=True)
+    cp = _bash_run([BASH32, str(script)], capture_output=True, text=True, check=True)
     assert cp.stdout.splitlines() == [
         "|is not a folder agentsync can use",
         "dir-symlink-fifo|is a symlink to a fifo, not a folder",
@@ -16918,7 +16957,7 @@ def test_the_misplaced_reader_names_the_hold_record_apart_from_the_hold_list(
     )
     assert cp.stdout.strip() == f"{role} fifo", cp.stdout + cp.stderr
     [fn] = re.findall(r"(?ms)^misplaced_words\(\) \{.*?^\}$", text)
-    words = subprocess.run(
+    words = _bash_run(
         [
             BASH32,
             "-c",
@@ -17231,7 +17270,7 @@ def test_the_shells_stated_words_are_the_reports(what: str, said: tuple[str, str
         ]
     )
     log = f"2026-10-20T10:00:00Z | step 1 | error | {what}\n"
-    cp = subprocess.run([BASH32, "-c", shell], input=log, capture_output=True, text=True, check=True)
+    cp = _bash_run([BASH32, "-c", shell], input=log, capture_output=True, text=True, check=True)
     stated = setup_report.parse_friction(log).attempts[-1].stated
     want = {"Prompt": said[0], "Agent": said[1]} if said else {}
     assert stated == want, stated
@@ -18222,7 +18261,7 @@ def test_a_signal_exit_is_named_by_its_signal() -> None:
         + fn.group(0)
         + 'for c in "$@"; do rc_meaning "$c"; echo; rc_signal_words "$c"; echo; done'
     )
-    cp = subprocess.run([BASH32, "-c", run, "-", *codes], capture_output=True, text=True, check=True)
+    cp = _bash_run([BASH32, "-c", run, "-", *codes], capture_output=True, text=True, check=True)
     lines = cp.stdout.splitlines()
     assert lines[1::2][:3] == [  # R81's phrase standing alone, unchanged
         "stopped by SIGKILL (signal 9)",
@@ -18273,7 +18312,7 @@ def test_no_rc_meaning_caller_nests_a_signals_bracket_or_repeats_its_code() -> N
         shows = "".join(f'; printf "%s\\n" "${{{n}-}}"' for n in assigned)
         each = f'(set -- "$c"; {pre}echo "@{i} $c"; {line}{shows})'
         script.append(f"for c in {' '.join(map(str, codes))}; do {each}; done")
-    cp = subprocess.run([BASH32, "-c", "\n".join(script)], capture_output=True, text=True, check=False)
+    cp = _bash_run([BASH32, "-c", "\n".join(script)], capture_output=True, text=True, check=False)
     assert cp.returncode == 0, cp.stderr
     out: dict[str, list[str]] = {}
     key = ""
@@ -18291,9 +18330,7 @@ def test_no_rc_meaning_caller_nests_a_signals_bracket_or_repeats_its_code() -> N
             assert not re.search(r"\([^()]*\(", s), (line, at, s)  # a bracket inside a bracket
             assert not re.search(r"\b(\d+) \(exit \1\)", s), (line, at, s)
     run = fns + 'for c in $(seq 0 255); do printf "%s|" "$(rc_meaning "$c")"; done'
-    words = subprocess.run([BASH32, "-c", run], capture_output=True, text=True, check=True).stdout.split("|")[
-        :-1
-    ]
+    words = _bash_run([BASH32, "-c", run], capture_output=True, text=True, check=True).stdout.split("|")[:-1]
     assert len(words) == 256 and all(words), words
     assert words[137] == "stopped by SIGKILL" and words[170] == "exit 170" and words[143].endswith("timeout")
     assert len(passing) >= 13, [callers[i] for i in passing]  # a regex drift cannot quietly shrink the set
@@ -19418,7 +19455,7 @@ def _stopped_run_labels(tmp_path: Path, log: list[str], report: str) -> str:
     """install.sh's ``stopped_run_labels`` run alone under /bin/bash on ``report``, with ``log`` as
     install.log (and no install.out)."""
     (tmp_path / "install.log").write_text("\n".join(log) + "\n")
-    cp = subprocess.run(
+    cp = _bash_run(
         [BASH32, "-c", f"set -euo pipefail\n{_shell_function('stopped_run_labels')}\nstopped_run_labels"],
         input=report,
         capture_output=True,
@@ -23061,7 +23098,7 @@ def test_the_shell_report_redacts_the_mdm_host_as_mdmhost(tmp_path: Path, login:
     )
     home = tmp_path / "home"
     home.mkdir()
-    cp = subprocess.run(
+    cp = _bash_run(
         [BASH32, "-c", harness],
         capture_output=True,
         text=True,
@@ -23122,7 +23159,7 @@ def test_the_shell_report_redacts_the_id_of_a_source_whose_block_is_gone(tmp_pat
             f"redact_stream <{lines}",
         ]
     )
-    cp = subprocess.run(
+    cp = _bash_run(
         [BASH32, "-c", harness],
         capture_output=True,
         text=True,
@@ -23222,7 +23259,7 @@ def test_the_shell_report_redacts_a_project_folder_and_a_vanished_sources_folder
             f"redact_stream <{said}",
         ]
     )
-    cp = subprocess.run(
+    cp = _bash_run(
         [BASH32, "-c", harness],
         capture_output=True,
         text=True,
@@ -23254,7 +23291,7 @@ def test_the_shell_report_redacts_a_project_folder_and_a_vanished_sources_folder
     )
     doctor_log.write_text("")
     said.write_text("the inbox stays: ~/Documents/inbox\n")
-    cp = subprocess.run(
+    cp = _bash_run(
         [BASH32, "-c", harness],
         capture_output=True,
         text=True,
@@ -23316,7 +23353,7 @@ def test_the_two_reports_number_a_vanished_sources_re_add_folders_in_one_order(
             f"redact_stream <{said}",
         ]
     )
-    cp = subprocess.run(
+    cp = _bash_run(
         [BASH32, "-c", harness],
         capture_output=True,
         text=True,
@@ -23811,7 +23848,7 @@ def test_agent_words_split_as_the_agentsync_report_splits_them_c1837() -> None:
     ]
     names += ["github-copilot", "Copilot", "Copilot\tCursor", "Copilot\\Cursor", "", "Copilot\r"]
     script = "\n".join([block, func, 'for n in "$@"; do agent_words_name "$n" && echo yes || echo no; done'])
-    cp = subprocess.run(
+    cp = _bash_run(
         [BASH32, "-c", script, "x", *names], capture_output=True, text=True, check=True, env={"LC_ALL": "C"}
     )
     assert cp.stdout.split() == ["yes" if setup_report._agent_words(n) else "no" for n in names], cp.stdout
@@ -24028,7 +24065,7 @@ def _shell_report_words() -> set[str]:
     """The shell's report words: report_word's scan of install.sh."""
     script = INSTALL_SH.read_text(encoding="utf-8")
     fns = "".join(re.findall(r"(?ms)^(?:joined_word|report_word)\(\) \{\n.*?^\}\n", script))
-    cp = subprocess.run(
+    cp = _bash_run(
         [
             BASH32,
             "-c",
@@ -24397,7 +24434,7 @@ def test_the_shell_rewrite_readers_read_a_base_with_an_escaped_quote_as_git_does
     )
     dirs = re.search(r"^checkout_git_dirs\(\) \{.*?^\}\n", script, re.M | re.S)
     assert dirs is not None and fns.count("() {") == 4
-    cp = subprocess.run(
+    cp = _bash_run(
         [BASH32, "-c", f"{fns}{dirs.group(0)}git_rewrite_bases; echo --; git_rewrite_pairs"],
         capture_output=True,
         text=True,
@@ -24468,7 +24505,7 @@ def test_the_shell_git_readers_read_a_key_on_its_sections_header_line(tmp_path: 
     )
     dirs = re.search(r"^checkout_git_dirs\(\) \{.*?^\}\n", script, re.M | re.S)
     assert dirs is not None and fns.count("() {") == 4
-    cp = subprocess.run(
+    cp = _bash_run(
         [BASH32, "-c", f"PUBLIC_HOSTS=''\n{fns}{dirs.group(0)}git_proxy_values; echo --; git_remote_entries"],
         capture_output=True,
         text=True,
@@ -24633,7 +24670,7 @@ def test_the_shell_governance_value_program_stays_under_bsd_seds_limit() -> None
             *re.findall(r"(?ms)^gov_value_sed\(\) \{\n.*?^\}$", script),
         ]
     )
-    prog = subprocess.run(
+    prog = _bash_run(
         [BASH32, "-c", funcs + "\ngov_value_sed"], capture_output=True, check=True
     ).stdout.splitlines()
     assert len(prog) > 10 and max(len(ln) for ln in prog) < 2000, max(len(ln) for ln in prog)
@@ -25081,7 +25118,7 @@ def test_the_shell_agent_words_test_is_the_python_reports(name: str) -> None:
     fn = _shell_function("agent_words_name")
     block = re.search(r"(?ms)" + _REPORT_CUTS_BLOCK, INSTALL_SH.read_text(encoding="utf-8"))
     assert block is not None
-    cp = subprocess.run(
+    cp = _bash_run(
         [BASH32, "-c", f'{block.group(0)}\n{fn}\nagent_words_name "$1"', "-", name],
         capture_output=True,
         text=True,
@@ -25439,7 +25476,7 @@ def test_the_shells_agent_spans_keep_only_a_product_word_standing_alone(tmp_path
             "s/Claude/<folder-3>/g' | agent_restore",
         ]
     )
-    cp = subprocess.run(
+    cp = _bash_run(
         [BASH32, "-c", script],
         input="\n".join(body) + "\n",
         capture_output=True,
