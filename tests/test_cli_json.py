@@ -851,6 +851,9 @@ _HELP_FIELDS = {
     "top level": ["--help", "--json", "--fields", "x"],
     "graph action": ["graph", "whoami", "--help", "--json", "--fields", "account"],
     "help --help": ["help", "--help", "--json", "--fields", "commands"],
+    "-vh cluster": ["status", "-vh", "--json", "--fields", "bogus"],
+    "top-level -hv": ["-hv", "--json", "--fields", "x"],
+    "graph action -vh": ["graph", "whoami", "-vh", "--json", "--fields", "account"],
 }
 
 
@@ -880,6 +883,19 @@ def test_a_help_text_page_still_wins_over_fields_c1856(capsys: pytest.CaptureFix
     assert _help_text(capsys, "--version", "--json", "--help", "--fields", "x").startswith("usage:")
     unchanged = _help_text(capsys, "--version", "--help")  # argparse acts on whichever came first, as before
     assert _help_text(capsys, "--version", "--help", "--fields", "x") == unchanged
+
+
+@pytest.mark.parametrize("cluster", ["-vh", "-hv", "-h"])
+def test_version_json_with_a_help_cluster_prints_the_help_page_c2040(
+    cluster: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 41 C2040: ``_main``'s --version --json shortcut read only ``-h`` and ``--help`` as help, so
+    ``--version --json -vh`` printed the version document where ``-h`` prints the help page (R086: --help
+    wins). argparse splits a short-flag cluster, so ``-vh`` and ``-hv`` are ``-h``; ``-eh`` stays a usage
+    error, never a page."""
+    assert _help_text(capsys, "--version", "--json", cluster).startswith("usage: agentsync")
+    assert cli._asks_help(["-vh"]) and cli._asks_help(["-yvh"]) and cli._asks_help(["-hello"])
+    assert not cli._asks_help(["-eh"]) and not cli._asks_help(["--hv"]) and not cli._asks_help(["-v"])
 
 
 @pytest.mark.parametrize(

@@ -42679,6 +42679,16 @@ still going (`finished_at IS NOT NULL AND status != 'aborted'`); `aborted` is wr
 `test_cycle.py::test_a_recording_waiting_through_an_ocr_outage_waits_for_the_ocr_helper_c1841` (after its
 `begin_run`, `recover` and `begin_run` again, the OCR-helper words stay).
 
+**A clustered `-vh` or `-hv` is a help request** (C2040). argparse splits a short-flag cluster even with
+`allow_abbrev` off (that turns off long-option prefixes only), and `-v` (a count) and `-y` (store_true) take no
+value, so `-vh` and `-hv` are `-h`; C1856's scan before the parse matched whole `-h` and `--help` tokens only, so
+`status -vh --json --fields bogus` printed the whole help document and exited 0, and `_main`'s `--version --json`
+shortcut printed the version document for `--version --json -vh`, against R086's "--help wins". One helper,
+`cli._asks_help`, reads a help token as `--help` or a single-dash token matching `-(?:v|y)*h` (`-h`, `-vh`, `-hv`,
+`-yvh`, `-hello`; `-eh` stays argparse's usage error), in `_fields_before_parse` and in `_main`. Tests:
+`test_cli_json.py::test_a_help_flag_page_refuses_fields_as_help_does_c1856` (its `-vh cluster`, `top-level -hv`
+and `graph action -vh` cases) and `::test_version_json_with_a_help_cluster_prints_the_help_page_c2040`.
+
 ### 16.263 Round 41: the converters: every page within the cap on its real bytes, fences and the xlsx lists included (2026-11-17, wave B13 round 41 lane E)
 
 Reserved for round 41 lane E of B13.

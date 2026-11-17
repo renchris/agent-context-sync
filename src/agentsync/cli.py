@@ -5695,17 +5695,32 @@ FIELDS_NEED_JSON = "error: --fields selects fields of the --json document: add -
 """``--fields`` without ``--json``: every command's refusal, and ``--version``'s (B13 round 40 C1845)."""
 
 
+# -v (count) and -y (store_true) take no value, so argparse walks a cluster of them on to its h
+_HELP_CLUSTER = re.compile(r"-(?:v|y)*h")
+
+
+def _asks_help(tokens: Sequence[str]) -> bool:
+    """True when a token asks for a help page: ``--help``, ``-h``, or a short-flag cluster argparse walks to
+    its ``h`` (``-vh``, ``-hv``, ``-yvh``, ``-hello``): allow_abbrev turns off long-option prefixes only, and
+    argparse still splits ``-vh`` into ``-v -h`` (B13 round 41 C2040). A cluster with another letter before
+    ``h`` (``-eh``) is argparse's usage error, never a page."""
+    return any(
+        t == "--help" or (not t.startswith("--") and _HELP_CLUSTER.match(t) is not None) for t in tokens
+    )
+
+
 def _fields_before_parse(tokens: Sequence[str]) -> int | None:
     """``--fields`` beside a help or version run, which argparse ends before ``_select_fields`` runs (B13
     round 40 C1856 with C1808, C1844, C1865, and C1845; ruling 139). Under --json a help page (``-h`` or
     ``--help``, in any order, at the top level, on a command or a graph action, ``help --help``) refuses as
     ``help <cmd>`` does; ``--version`` without --json refuses as every command does. Help still wins where it
     did: its text page without --json, and ``--version --json --help``'s (``_json_options.help`` is false
-    there); and ``--version --json --fields`` keeps ``_version_fields``. A token scan suffices: allow_abbrev
-    is off."""
+    there); and ``--version --json --fields`` keeps ``_version_fields``. A token scan suffices
+    (``_asks_help``): allow_abbrev turns off long-option prefixes only, and a short-flag cluster such as
+    ``-vh`` or ``-hv`` is read as the ``-h`` argparse splits it into (B13 round 41 C2040)."""
     if not any(t == "--fields" or t.startswith("--fields=") for t in tokens):
         return None
-    helps = bool({"-h", "--help"} & set(tokens))
+    helps = _asks_help(tokens)
     if helps and _json_options.help:
         return _refused(HELP_PAGE_FIELDS, EXIT_USAGE)
     if not helps and not clio.json_mode() and "--version" in tokens:
@@ -5768,7 +5783,7 @@ def _main(argv: Sequence[str] | None) -> int:
     if refused is not None:
         return refused
     if clio.json_mode() and "--version" in tokens:
-        if not {"-h", "--help"} & set(tokens):
+        if not _asks_help(tokens):  # a -vh cluster is help too (C2040)
             refused = _version_fields(tokens)
             if refused is not None:
                 return refused
