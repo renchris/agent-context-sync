@@ -9168,7 +9168,7 @@ def _install_function(name: str) -> str:
     return f"{name}() {{" + code.split(f"\n{name}() {{", 1)[1].split("\n}\n", 1)[0] + "\n}"
 
 
-@pytest.mark.parametrize("reader", ["agent_word_values", "redact_stream"])
+@pytest.mark.parametrize("reader", ["agent_word_values", "redact_stream", "fallback_redaction"])
 def test_a_reader_of_the_pairs_that_fails_marks_the_report_refused_c1836(
     env: dict[str, str], tmp_path: Path, reader: str
 ) -> None:
@@ -9197,10 +9197,55 @@ def test_a_reader_of_the_pairs_that_fails_marks_the_report_refused_c1836(
         check=False,
     )
     assert cp.stdout == "rc=1 out=[] marked=yes\n", cp.stdout + cp.stderr
-    report = _install_function("write_fallback_report")
-    assert report.count('[ ! -f "$REDACT_FAILED_FILE" ] || exit 1') == 2, (
-        "after the body and after the legend"
+
+
+@pytest.mark.parametrize("failed", ["body", "legend"])
+def test_write_fallback_report_refuses_on_either_failed_reader_c2037(tmp_path: Path, failed: str) -> None:
+    """B13 round 41 C2037: C1836's fail-closed refusal was held only by a count of its two checks in
+    write_fallback_report's text, and no test failed the third reader, fallback_redaction. Driven under
+    /bin/bash with every other step stubbed: a redact_stream that fails (the check after the body) and a
+    redaction_pairs that fails only fallback_redaction (the check after the legend) each make it return 1
+    with no report at REPORT_PATH and no temporary file left in its folder. No seam in install.sh: a real
+    run cannot make redaction_pairs fail once C1836 removed its crash. A body that failed builds no issue
+    form or legend, which holds the first check (the marker alone would trip the second)."""
+    folder = tmp_path / "setup"
+    report = folder / "setup-report.md"
+    stream = (
+        "redact_stream() { redact_failed; cat >/dev/null; return 1; }"
+        if failed == "body"
+        else "redact_stream() { sed 's/Kestrel Plan/<folder-1>/g'; }"
     )
+    script = "\n".join(
+        [
+            *(f"{name}() {{ cat; }}" for name in ("strip_run_pids", "agent_protect", "agent_restore")),
+            "scrub_exclude_lists() { cat; }",
+            "friction_text() { :; }",
+            "fallback_body() { printf 'picked Kestrel Plan\\n'; }",
+            f"fallback_issue_link() {{ : >'{tmp_path}/legend-ran'; }}",
+            "legend_kinds() { :; }",
+            "redaction_pairs() { printf 'Kestrel Plan\\t<folder-1>\\tf\\n'; return 139; }",
+            stream,
+            _install_function("redact_failed"),
+            _install_function("fallback_redaction"),
+            _install_function("write_fallback_report"),
+            f"REPORT_PATH='{report}' REPORT_ONLY=0 COMMIT=x COMMIT_TRIED=1 repo=/nonexistent PRIVATE_ONLY=1",
+            'LINK_FIELDS="" LINK=""',
+            'write_fallback_report 0 "test"; echo "rc=$?"',
+        ]
+    )
+    cp = subprocess.run(
+        [BASH32, "-c", script],
+        capture_output=True,
+        text=True,
+        env={"PATH": "/usr/bin:/bin", "LC_ALL": "C", "HOME": str(tmp_path)},
+        check=False,
+        timeout=60,
+    )
+    assert cp.stdout.endswith("rc=1\n"), cp.stdout + cp.stderr
+    assert not report.exists(), report.read_text(encoding="utf-8")
+    assert sorted(p.name for p in folder.iterdir()) == [], "no .setup-report.*.tmp or .tmp.redact is left"
+    # a body that failed stops there: no issue form or legend is built over it
+    assert (tmp_path / "legend-ran").exists() == (failed == "legend")
 
 
 def test_list_folders_prints_depth_2_and_3_folders_sorted(env: dict[str, str]) -> None:
