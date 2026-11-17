@@ -42608,7 +42608,32 @@ Reserved for round 41 lane E of B13.
 
 ### 16.264 Round 41: the prompt goes to v38 (step 2's inbox), a bound on a hung gate test, and the guides (2026-11-17, wave B13 round 41 lane D)
 
-Reserved for round 41 lane D of B13.
+Round 41's lane D items (`docs/plans/bring-back-ocr.md`, "B13 round 41"; specs `round41/items/C<n>.md`, the verifier's
+corrected fix built, as the lead's rulings 142 to 145 settle it). A dated line this round writes reads
+`Amended 2026-11-17, §16.264 C<n>`.
+
+**Setup prompt v38: step 2 tells of the inbox only when it syncs** (C2092; ruling 145). v37's step 2 told the person
+about the inbox whenever `sources.toml` had a `kind = "inbox"` source, whatever its state, while `ensure_inbox` keeps
+an existing source on the kept folder in the state it has (paused included), `_run_source` skips a paused source and
+a retired one is retired, so on a Mac whose kept inbox was paused the agent told the person to drop files where none
+would sync; and when `cli._ensure_inbox` could not add the folder (`inbox: not added`), another inbox the person had
+added met the condition. Step 2 now finds the `kind = "inbox"` source on the folder named inbox beside the docs repo,
+matched as that folder and never by its spelling (`cli._ensure_inbox` stores the resolved path, /private/tmp for a
+typed /tmp), and tells of the inbox only when that source is not paused or retired, which is `SourceConfig.is_live`,
+the rule `Publisher.root_guide` writes the inbox line of `~/agent-context/docs/AGENTS.md` by: that line is the
+anchor the prompt names, never status's `inbox on`, which counts every live inbox folder. If that source is paused or
+retired, step 2 says files dropped there do not sync until the person sets its state back to live, an edit the agent
+never makes; if no source is on that folder and setup printed `inbox: not added`, it says so and shows that line; any
+other live inbox source is a folder the person added. No step moves, so v38 is read with v7's layout. Version 38
+everywhere the bump list names it (the README block and its digest in `PROMPT`, `prompt v38` in step 1's
+`--log-start` and its `setup-prompt-compat 38`, `SETUP_PROMPT_COMPAT`, `setup_report.PROMPT_VERSION` and its
+docstring's list, the form's placeholder, the version pins in tests/test_install_oneshot.py and
+tests/test_setup_report.py, setup-feedback.md's version lines and its old-copy list, which v37 joins, and K62);
+`CUT_OFF_TOLD` names no version and is unchanged. Round 42 rehearses v38 with v37's block as the old copy. Tests:
+`test_step2_tells_of_the_inbox_only_when_its_source_is_live_c2092` (the condition's three cases in order, `is_live`
+as every state but paused and retired, a paused kept inbox that `ensure_inbox` keeps paused and AGENTS.md's line does
+not name, and cli's own `inbox: not added: ` line), `test_the_prompt_text_changes_only_with_its_version`,
+`test_readme_prompt_compat_matches_the_installer`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

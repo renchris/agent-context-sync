@@ -1269,7 +1269,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (37, "fe64a6d3331f605b55acfd0c5c1d1aaeabd4414b0334c367161f1a5adb4c1812")
+PROMPT = (38, "bcbf100622816c98d3381e366c441e08fa5ffcc8f806874318145322fef0fa2c")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -3505,7 +3505,7 @@ def test_readme_prompt_carries_the_field_lines() -> None:
     flat2 = " ".join(step2.split())
     assert INBOX_WHEN in flat2 and "Then tell me about my inbox" not in flat2
     inbox = flat2.split(INBOX_WHEN, 1)[1]
-    assert inbox.startswith(f" {INBOX_SENTENCE} I drop files there by hand:")
+    assert f" {INBOX_LIVE} {INBOX_SENTENCE} I drop files there by hand:" in inbox
     # B13 round 14 Q8: v22 told the agent about the inbox after the non-zero clause's jump to the report, so a
     # failed step 2 never explained it; it now comes first, and only when sources.toml has an inbox source
     later = flat2.index("otherwise log it and go to step 3")
@@ -3566,15 +3566,16 @@ def test_readme_prompt_carries_the_field_lines() -> None:
 
 
 INBOX_SENTENCE = (
-    'it is the folder named inbox beside the docs repo, one of the kind = "inbox" sources in '
-    '~/agent-context/sources.toml; any other kind = "inbox" source there is a folder I added myself, not my '
-    "inbox."
+    'it is that folder, one of the kind = "inbox" sources in ~/agent-context/sources.toml; any other kind ='
+    ' "inbox" source there is a folder I added myself, not my inbox.'
 )
-"""What setup prompt v10's step 2 tells the agent to say the inbox is."""
+"""What setup prompt v10's step 2 tells the agent to say the inbox is (since v38, "that folder": the one
+:data:`INBOX_WHEN` finds, B13 round 41 C2092)."""
 
 INBOX_WHEN = (
-    "When it ends, whether or not it exited non-zero, unless its NEXT: line says the config does not load, if"
-    ' ~/agent-context/sources.toml has a kind = "inbox" source, tell me about my inbox:'
+    "When it ends, whether or not it exited non-zero, unless its NEXT: line says the config does not load,"
+    ' find the kind = "inbox" source in ~/agent-context/sources.toml on the folder named inbox beside the'
+    " docs repo, matched as that folder, never by how its path is spelled"
 )
 """When step 2 tells the agent to explain the inbox, since v23 (B13 round 14 Q8): before the non-zero clause,
 whose "go to step 3's report" v22's "Then tell me about my inbox" came after, and only once the install wrote
@@ -3582,7 +3583,87 @@ sources.toml (an install that failed before it has no inbox to describe), and no
 error, whose file the finish says not to parse (B13 round 14 Q8 review). Since v24 that is install.sh's
 config_failed NEXT, "does not load", not every "configuration error" (B13 round 15 S55): the first sync's
 refusal prints one for a config that loads and whose inbox is real
-(:func:`test_a_first_sync_refusal_is_no_config_that_does_not_load`)."""
+(:func:`test_a_first_sync_refusal_is_no_config_that_does_not_load`). Since v38 it finds the source on the kept
+folder first, and :data:`INBOX_LIVE` tells of it only when that source syncs (B13 round 41 C2092)."""
+
+INBOX_LIVE = "If that source is not paused or retired, tell me about my inbox:"
+"""Step 2's v38 condition for telling of the inbox: the source :data:`INBOX_WHEN` found is live
+(``SourceConfig.is_live``), as ``Publisher.root_guide`` and ``loop.status_line`` read an inbox (C2092)."""
+
+INBOX_HELD = (
+    "If that source is paused or retired, tell me instead that files I drop there do not sync until I set its"
+    " state back to live, an edit of sources.toml that is mine, not yours."
+)
+"""Step 2's v38 words for a kept inbox the sync skips: ``_run_source`` passes a paused source by, and a
+retired one is retired, so a dropped file never syncs (C2092)."""
+
+INBOX_NOT_ADDED = (
+    'If no source is on that folder and step 2 printed "inbox: not added", tell me my inbox could not be'
+    " added and show me that line."
+)
+"""Step 2's v38 words for an inbox ``cli._ensure_inbox`` could not add (C2092)."""
+
+
+def test_step2_tells_of_the_inbox_only_when_its_source_is_live_c2092(
+    sample_config: Any, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 41 C2092 (ruling 145, prompt v38): v37's step 2 told the person to drop files in the inbox
+    whenever sources.toml had any kind = "inbox" source, paused or retired included, though ``_run_source``
+    skips a paused source and retires a retired one, and ``ensure_inbox`` keeps an existing source on the kept
+    folder in whatever state it is. Step 2 now finds the source on the folder named inbox beside the docs
+    repo, matched as that folder (a stored path may be the resolved form), and tells of the inbox only when
+    that source is not paused or retired, which is ``is_live``; it says a paused or retired one's files do not
+    sync until the person sets it back, and shows `inbox: not added` when there is none. The anchor it names,
+    the inbox line of AGENTS.md, is ``Publisher.root_guide``'s, which names the kept folder only while it is
+    live: never status's `inbox on`, which counts every live inbox folder."""
+    import dataclasses  # noqa: PLC0415
+
+    from agentsync import cli  # noqa: PLC0415
+    from agentsync import config as cfg  # noqa: PLC0415
+    from agentsync.model import SourceKind, SourceState  # noqa: PLC0415
+
+    step2 = _prompt_steps()[2]
+    held = step2.split(INBOX_WHEN, 1)[1]
+    assert held.index(INBOX_LIVE) < held.index(INBOX_HELD) < held.index(INBOX_NOT_ADDED), held
+    assert "(a path may be stored resolved, such as /private/tmp for /tmp;" in held
+    assert "while that source syncs, the inbox line of ~/agent-context/docs/AGENTS.md names it)" in held
+    assert "inbox on" not in step2 and 'has a kind = "inbox" source, tell me about my inbox' not in step2
+    # "not paused or retired" is is_live: every state but those two is LIVE
+    assert {s for s in SourceState if s not in (SourceState.PAUSED, SourceState.RETIRED)} == {
+        SourceState.LIVE
+    }
+    kept = cfg.canonical_source_root(sample_config.docs_repo.parent / "inbox")
+    for state in SourceState:
+        source = cfg.SourceConfig(id="inbox", kind=SourceKind.INBOX, path=kept, state=state)
+        assert source.is_live is (state not in (SourceState.PAUSED, SourceState.RETIRED)), state
+    # a paused kept inbox stays paused (ensure_inbox adds nothing), and AGENTS.md's line does not name it
+    text = cfg.inbox_source_table("inbox", kept) + 'state = "paused"\n'
+    cfg.append_to_config(sample_config.config_path, text)
+    config, added = cfg.ensure_inbox(sample_config.config_path)
+    assert added is None
+    [source] = [s for s in config.sources if s.kind is SourceKind.INBOX]
+    assert source.path == kept and source.state is SourceState.PAUSED and not source.is_live
+    manifest: Any = None  # root_guide reads the config alone
+    guide = publish.Publisher(config, manifest).root_guide()
+    assert "Mail or Teams messages" not in guide and publish._display_path(kept) not in guide
+    live = publish.Publisher(
+        dataclasses.replace(
+            config,
+            sources=tuple(
+                dataclasses.replace(s, state=SourceState.LIVE) if s is source else s for s in config.sources
+            ),
+        ),
+        manifest,
+    ).root_guide()
+    assert f"into `{publish._display_path(kept)}`; the next" in live
+
+    # the line step 2 shows is cli's own
+    def refuse(_path: Path) -> Any:
+        raise OSError("Contoso: read-only folder")
+
+    monkeypatch.setattr(cli, "ensure_inbox", refuse)
+    cli._ensure_inbox(config)
+    assert capsys.readouterr().err.startswith("inbox: not added: ")
 
 
 def test_the_inbox_the_prompt_names_is_the_one_agentsync_keeps(sample_config: Any, tmp_path: Path) -> None:
@@ -8170,7 +8251,7 @@ def test_the_guides_give_the_speech_helpers_swift_floor() -> None:
     assert f"Where developer tools with Swift {floor} or later are installed" in it_request
     assert "this Mac's Swift {installed} is older than the Swift {needed}" in speech.TOOLS_TOO_OLD
     prompt = readme[readme.index("Set up agentsync on this Mac (setup prompt") :]
-    assert "Swift" not in prompt[: prompt.index("prompt v37, <agent> and a colon")], "the prompt stays v37"
+    assert "Swift" not in prompt[: prompt.index("prompt v38, <agent> and a colon")], "the prompt stays v38"
 
 
 def test_the_records_page_says_purge_stops_over_a_lost_manifest() -> None:
