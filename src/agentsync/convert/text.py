@@ -6,6 +6,7 @@ from __future__ import annotations
 import csv
 import io
 import re
+import threading
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -42,6 +43,7 @@ _FENCE_LANG: dict[str, str] = {
     ".url": "ini",
 }
 _SHORTCUT_SECTION = "[internetshortcut]"
+_FIELD_LIMIT_LOCK = threading.Lock()  # the csv field limit's read and raise (B13 round 41 C2049)
 
 
 def _suffix(name: str) -> str:
@@ -70,10 +72,13 @@ def _parse_delimited(text: str, delimiter: str) -> list[list[str]] | None:
 
     No field is longer than the text, so the csv module's field limit (131,072 by default, process-wide) is
     raised to at least ``len(text) + 1`` first: a well-formed file with a long field is a table, not text.  It
-    is never lowered, so two parses on two threads cannot undo each other, and never ``sys.maxsize``, which
-    can pass a C long (B13 round 40 C1807, C1822)."""
-    if csv.field_size_limit() <= len(text):
-        csv.field_size_limit(len(text) + 1)
+    is never lowered and never ``sys.maxsize``, which can pass a C long (B13 round 40 C1807, C1822).  The
+    read and the raise are one step under :data:`_FIELD_LIMIT_LOCK`, so two parses on two threads cannot
+    undo each other here (code elsewhere that sets the limit itself still can); the parse runs outside it,
+    so parses never wait on each other (B13 round 41 C2049)."""
+    with _FIELD_LIMIT_LOCK:
+        if csv.field_size_limit() <= len(text):
+            csv.field_size_limit(len(text) + 1)
     try:
         reader = csv.reader(io.StringIO(text, newline=""), delimiter=delimiter, strict=True)
         return [row for row in reader if row]

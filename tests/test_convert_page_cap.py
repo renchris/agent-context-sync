@@ -6,6 +6,7 @@ from __future__ import annotations
 import csv
 import io
 import re
+import threading
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
@@ -609,3 +610,46 @@ def test_pandocs_crash_and_exit_lines_come_from_its_own_lines_only_c2048(
         PandocConverter(replace(CFG, pandoc_path=pandoc)).convert(bad, name="bad.docx")
     assert str(caught.value) == said
     assert "contoso" not in str(caught.value).lower()
+
+
+# ---------------------------------------------------------------------------------------------------------
+# C2049: the csv field limit's read and raise are one step
+# ---------------------------------------------------------------------------------------------------------
+
+
+def test_two_parses_on_two_threads_never_lower_the_csv_field_limit_c2049(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """B13 round 41 C2049: `_parse_delimited` read the limit and then raised it in two calls, so a parse of a
+    shorter text on another thread could set its lower limit after a longer one's, and the longer CSV came
+    back as fenced text. The read and the raise run under one lock now: one thread's pair is never split by
+    the other's, and the limit ends at the longer text's."""
+    real = csv.field_size_limit
+    events: list[str] = []
+    first_read = threading.Event()
+
+    def limit(*new: int) -> int:
+        who = threading.current_thread().name
+        events.append(f"{who}:{'set' if new else 'read'}")
+        if not new and who == "A" and not first_read.is_set():
+            first_read.set()
+            threading.Event().wait(0.3)  # room for B to read in between, were there no lock
+        return real(*new)
+
+    monkeypatch.setattr(text_mod.csv, "field_size_limit", limit)
+    real(131_072)
+    try:
+        short, long_ = "a," + "x" * 200_000 + "\n1,2\n", "a," + "y" * 500_000 + "\n1,2\n"
+        got: dict[str, object] = {}
+        a = threading.Thread(name="A", target=lambda: got.update(A=text_mod._parse_delimited(short, ",")))
+        b = threading.Thread(name="B", target=lambda: got.update(B=text_mod._parse_delimited(long_, ",")))
+        a.start()
+        first_read.wait(5)
+        b.start()
+        a.join(10)
+        b.join(10)
+        pairs = [e.split(":")[0] for e in events]
+        assert pairs in (["A", "A", "B", "B"], ["A", "A", "B"]), events
+        assert got["A"] and got["B"] and real() > 500_000
+    finally:
+        real(131_072)
