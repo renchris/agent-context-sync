@@ -12180,6 +12180,10 @@ Tests: `test_org_of_takes_the_part_after_any_providers_app_name`,
 (`SynologyDrive-Home`-shaped) is replaced wherever the word appears, as the OneDrive organisation already is; the
 shell numbers its organisations in glob order, so its `<org-N>` can differ from the Python report's.
 
+Amended 2026-11-17, §16.260 C2071: the Python report registers an address part as `<org-N>` too, as the shell does:
+`GoogleDrive-<address>` reads `GoogleDrive-<org-N>`, which the provider rule keeps, and the same address alone reads
+`<org-N>`, so the two reports cut it one way; an address no folder names is still `<email-N>`.
+
 **The redaction count is what the report shows** (B13 N31). The count was of replacement events, and the text a
 reader sees differed from it both ways. A source's label (`_Labels.of`) is replaced once and cached per id, so it
 was counted once and shown in every row for that source (a field report: 182 replacements counted, source 119,
@@ -41779,7 +41783,8 @@ Amended 2026-11-16, §16.256 C1832: an `add-source` word keeps every placeholder
 Amended 2026-11-16, §16.256 C1862: a configured source's tenant is registered from sources.toml in both reports,
 its provider folder on disk or not, and a `~/Library/CloudStorage/<App>-<word>` word on any line goes through the
 provider rule, an unkept, unregistered one reading `~/Library/CloudStorage/<path>`; only a tenant written without that
-prefix prints alike in both.
+prefix, and since B13 round 41 (§16.260 C2050 with C2032) one with a blank and no `/` after it before a quote, a
+backtick, `):`, `, stored as ` or the line's end, print alike in both.
 
 **The recut note says which <path> is its own** (C1604; ruling 135; amends §16.246 C1406; `scripts/install.sh`). An
 older build writes `<path>` itself (`set exclude = [<path>] in [[source]]`, an item path in a log line), and the
@@ -42173,7 +42178,9 @@ wave's `--cwd` and `--debug` put a private project folder in install.out's run h
 agentsync report cuts the word after `--cwd ` and `--cwd=` as `_cut_path` does (a relative word too; a `$'...'` word
 whole, by the usual stage), keeping the word `--cwd`; `_DEBUG_RE` reads a `debug: ` head's raw value to the line's
 first ` | ` or its end, cuts `debug: cwd`'s value as `_cut_path` does, and cuts a `debug: source` path (after its kind
-word) or a `debug: config` path only when it lies under that run's last `debug: cwd` folder. This covers an older
+word) or a `debug: config` path only when it lies under that run's last `debug: cwd` folder (since B13 round 41,
+§16.260: a `debug: source` path under any `debug: cwd` on its line too, every head on a line cut, C2029, and a
+`debug: config` path wherever it lies but `~/agent-context/sources.toml`, C2063 with C2083). This covers an older
 install.out too, since the report reads it as it reads every line. Test:
 `test_the_run_header_and_debug_lines_cut_a_cwd_folder_c1835`.
 
@@ -42181,7 +42188,9 @@ install.out too, since the report reads it as it reads every line. Test:
 a `~/Library/CloudStorage/<App>-<word>` word on any line goes through the provider rule: a part after the head that
 begins with a `PROVIDER_APPS` name and a hyphen and that `provider_kept_pattern()` does not keep reads
 `~/Library/CloudStorage/<path>`, never numbered, the word's trailing `)]}.,;:` kept after it. A tenant written
-without that head stays the documented residual. Test:
+without that head stays the documented residual, and since B13 round 41 (§16.260 C2050 with C2032) so does one with a
+blank and no `/` after it before a quote, a backtick, `):`, `, stored as ` or the line's end; a blank before that `/`
+no longer ends the tenant. Test:
 `test_an_unregistered_tenant_in_free_text_reads_cloudstorage_path_c1862`; the property test's free-text and
 doctor's-detail lines lost their Fabrikam exemption.
 
@@ -42308,7 +42317,8 @@ folder from sources.toml after the disk walk, in config order, through the walk'
 the number the agentsync report gives it; and `slcut` ends with a free-text pass over every `CUT_FREE_HEAD` word, to a
 `CUT_FREE_END` byte, in which a provider folder `CUT_APPS` names that `CUT_PROVIDER_KEPT` does not keep reads
 `~/Library/CloudStorage/<path>`, never numbered, its `CUT_FREE_TRAIL` signs kept after. A tenant written without that
-head stays the documented residual. Test:
+head stays the documented residual, and since B13 round 41 (§16.260 C2050 with C2032) so does one with a blank and no
+`/` after it before a quote, a backtick, `):`, `, stored as ` or the line's end. Test:
 `test_report_redaction.py::test_both_reports_number_a_configured_tenant_whose_provider_folder_is_gone_c1862` (a gone
 provider folder on doctor's FAIL line and in free text, and an unconfigured one in free text, both reports alike).
 
@@ -42649,7 +42659,80 @@ limit at least 15 minutes above the head.
 
 ### 16.260 Round 41: the report: one rule per head for any path, the config path cut, and a waiting recording out of the quarantine table (2026-11-17, wave B13 round 41 lane RA)
 
-Reserved for round 41 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 41").
+Ruling 142's Python half (privacy; data integrity), landed with lane RB's shell half (§16.261) in one
+`scripts/ship-land.sh` run. Each head in `report_cuts.PATH_HEADS` carries one rule both reports apply to any path,
+under `~/Library/CloudStorage` or not, the home folder, a relative path under `--cwd` and the config path alike.
+
+**The provider tail is tested inside the first-unknown walk** (C2084; ruling 142). `_cut_path` judged a kept provider
+folder's tail in a loop of its own before the walk, so `~/Projects/SecretDeal/CloudStorage/Dropbox/Unknown` printed
+`SecretDeal`. The tail is tested once every earlier part is known: that path reads `~/Projects/<path>`, while
+`~/Library/CloudStorage/Dropbox/Unknown` still reads `~/Library/CloudStorage/Dropbox/<path>`. Test:
+`test_the_provider_tail_is_tested_inside_the_first_unknown_walk_c2084`.
+
+**Every config path but the default is cut** (C2063 with C2083; ruling 142). `report_cuts.CONFIG_DEFAULT`
+(`~/agent-context/sources.toml`, `CUT_CONFIG_DEFAULT`) stays in clear; any other, from AGENTSYNC_CONFIG relative under
+`--cwd` or absolute, is cut as `_cut_path` cuts its ~-form (`~/Projects/<path>`), never its absolute form, and
+registered as one whole-path cut (`Redactor.add_cut`) before the home is replaced, as written, resolved and in each
+~-form, so the Configuration section's config and loads lines, both `Not run:` lines and the governance and policy
+refusals read the same; `debug: config` takes its own `config` rule (`CUT_HEADS_CONFIG`), cut wherever it lies but
+the default. C2083's other half adds no code (both reports already number a mixed set alike, measured): its five
+hostile names and a plain one, and a plain name beside a hostile one, are cases asserting `<folder-1>` to
+`<folder-N>`. Tests: `test_the_config_path_is_cut_on_every_line_but_the_default_c2063_c2083`,
+`test_report_redaction.py::test_both_reports_cut_a_config_path_but_the_default_c2063_c2083` (relative, absolute,
+missing, invalid, loading, default) and `test_both_reports_number_a_mixed_set_one_to_n_c2083`.
+
+**A tenant with a blank is cut to its `/`** (C2050 with C2032; ruling 142). `report_cuts.FREE_PART_STOP` (a quote,
+a backtick, a newline, `):`, `, stored as `; `CUT_FREE_PART_STOP`) stops the free-text provider part: a part read to
+its first `/` or `FREE_WORD_END` byte that the provider rule keeps stays as before; one it does not keep runs across
+blanks to the next `/` before a stop, its rest to a `FREE_WORD_END` byte and on through each later word that holds a
+`/` and no `=` or `://` and opens with none of `-`, `/`, `~`; with no such `/` it ends where it was read. A tenant with
+a blank and no `/` after it is the named residual beside the prefix-less one (§16.251's C1862 line, §16.255 and
+§16.256 say so). Test: `test_a_tenant_with_a_blank_is_cut_to_its_slash_in_free_text_c2050_c2032`.
+
+**The --cwd usage error is a whole-name head, and install.sh's own words after --cwd stay** (C2030; ruling 142). `--cwd
+is not a folder this run can enter: ` is a `PATH_HEADS` row of rule `cwd_name` (`CUT_HEADS_CWD_NAME`), its name
+running to the line's last ` (see --help)` that ends a name, cut by the cwd rule; `report_cuts.CWD_USAGE`
+(`CUT_CWD_USAGE`) holds `needs a folder` and `needs a folder, got the option`, kept whole by phrase, so `args=--cwd
+needs` still cuts a folder named `needs` (C1835 standing). Test:
+`test_the_cwd_usage_error_is_a_whole_name_head_and_its_own_words_stay_c2030`.
+
+**Every debug head on a line is cut** (C2029's Python half; ruling 142). `debug_cwd` is read from every `debug: cwd`
+match; a `debug: source` path is cut under the carried cwd or any cwd on its line, and the line's last cwd is carried
+on. Test: `test_every_debug_head_on_a_line_is_cut_and_the_config_path_always_c2029_c2063`.
+
+**A quoted refused or not-a-folder name keeps its quotes and its line** (C2027; ruling 142; a regression from C1882).
+`_not_a_folder_shown` peels one leading `"` or `'` and its match, cuts the inside and keeps the rest of the line, as
+the shell prints it; an unterminated quote keeps its opening one. Test:
+`test_a_quoted_refused_or_missing_name_keeps_its_quotes_and_its_line_c2027`.
+
+**A GoogleDrive address is an organisation, and a 2-letter id or folder takes the hold-value rule** (C2071; ruling 142;
+makes worse True for registering every short id as a plain word; amends §16.40 N9). `_org_of` returns an address
+part, so `GoogleDrive-<address>` reads `GoogleDrive-<org-N>` before the email pattern can take it, the shell's
+`cfgonly` unchanged. `Redactor.add`'s E72 branch covers `source` and `folder`: a 2-letter value in
+`_TWO_LETTER_WORDS` makes the report private only where it is cut, an initialism in capitals (`IT`) is matched as
+written so the pronoun `it` stays, as install.sh's flags h and H. Test:
+`test_a_googledrive_address_is_an_organisation_and_a_short_id_is_a_hold_value_c2071`.
+
+**A line break add-source's echo wrote raw is aliased escaped** (R41-B1, the lead's grown item; privacy).
+`config.toml_string` wrote U+0085, U+2028 and U+2029 raw, and both reports split a line there, so a configured name
+holding one printed both pieces in clear. `report_cuts.TOML_BREAKS` with `toml_break_spellings()` (`CUT_TOML_BREAKS`,
+`CUT_TOML_BREAKS_ESCAPED`) gives each one's `\uXXXX` spelling in both hex cases, which `_toml_spellings` aliases
+whether the writer escapes it yet or not; lane B's writer escapes them after this land. Test: the escaped echo rows of
+`_r142_lines`.
+
+**Both legends name the forms** (C2033's Python half; ruling 142). `_LEGEND['path']` adds the folder after `--cwd` or
+`--cwd=` and `debug: cwd`'s, a `debug: source` path under that cwd, the `--cwd` usage error's folder, a config path
+but the default and a free-text tenant, every pinned clause kept word for word; the count line's not-counted
+sentence names them. Tests: `test_both_legends_name_round_40_and_41s_path_forms_c2033` and
+`test_the_path_legend_item_names_every_use_of_path`.
+
+**One property test per head over any path** (ruling 142). `test_report_redaction.py`'s `_r142_lines` gives, per
+head, a path outside CloudStorage (bare with `\ `, single- and double-quoted), the usage error's name, a path under
+`--cwd`, two heads on one line, a quoted name with a blank, a tenant with a blank and prose rows that pin the guard;
+`_fragments` tests each raw split word and `safe_text`'s apart (ruling 133's `safe_text`-only split missed a
+U+2028 name). `_both_reports` gains the config, listed-only and provider arms. Tests:
+`test_both_reports_apply_each_heads_rule_to_any_path_ruling_142` and
+`test_every_row_of_the_table_is_a_case_of_the_property_test_ruling_137`.
 
 **A recording that waits is no quarantine row** (C2006; ruling 144). `_stub_rows` took every row with a reason, so a
 recording waiting to be read (`cycle.RECORDING_WAITS`) printed `live | other` under a legend that says a live or

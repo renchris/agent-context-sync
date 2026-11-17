@@ -107,30 +107,58 @@ PATH_RULES = {
     ),
     "first_unknown": "every placeholder kept, cut at its first unknown part (setup_report._cut_path)",
     "cwd": "the value cut as setup_report._cut_path cuts, the head kept",
-    "under_cwd": "only a path under that run's --cwd (its debug: cwd line) is cut, as _cut_path cuts",
+    "cwd_name": (
+        "the whole name, to its line's last ' (see --help)' or the line's end, cut as setup_report._cut_path "
+        "cuts, the head kept"
+    ),
+    "under_cwd": (
+        "only a path under that run's carried --cwd or any debug: cwd on its line is cut, as _cut_path cuts"
+    ),
+    "config": "every config path but CONFIG_DEFAULT cut as setup_report._cut_path cuts its ~-form",
 }
-"""What each :data:`PATH_HEADS` rule does to the path after its head (B13 round 40 ruling 137)."""
+"""What each :data:`PATH_HEADS` rule does to the path after its head (B13 round 40 ruling 137). B13 round 41
+ruling 142: a head's rule reads any path, under ``~/Library/CloudStorage`` or not, the home folder, a relative
+path and the config path alike (C2062 with C2031 and C2085, C2084); ``cwd_name`` is the ``--cwd`` usage
+error's whole name (C2030) and ``config`` the config path's row (C2063 with C2083)."""
 
 PATH_HEADS = (
     ("--source-local ", "provider"),
     ("--source-local=", "provider"),
     ("is not an existing folder: ", "provider"),
     ("add-source ", "first_unknown"),
+    ("--cwd is not a folder this run can enter: ", "cwd_name"),
     ("--cwd ", "cwd"),
     ("--cwd=", "cwd"),
     ("debug: cwd ", "cwd"),
     ("debug: source ", "under_cwd"),
-    ("debug: config ", "under_cwd"),
+    ("debug: config ", "config"),
 )
 """Every argument form both reports read a path after, each with its :data:`PATH_RULES` rule (B13 round 40
 ruling 137, completing ruling 133: the table held the values both reports cut by but not the forms they parse,
 so the shell's hand-kept heads drifted, C1831 with C1881, C1832, C1833, C1834 with C1882, C1835). A bare
-``$'...'`` word after ``--source-local ``, ``--source-local=`` or ``add-source `` is the one divergence
-ruling 138 keeps: the shell report cuts it whole to ``<path>``, the agentsync report decodes it and cuts it
-by its head's rule. ``is not an existing folder: ``'s name runs to its line's last `` (see --help)`` that
-ends a name, or the line's end; a ``debug: `` head's value (install.sh's debug_path writes the path in printf
-%q's one-line form, the home as ~, and debug_line prints it as given) runs to the line's first `` | `` or its
-end; every other head's path is one shell word."""
+``$'...'`` word after ``--source-local ``, ``--source-local=`` or ``add-source `` is the one divergence ruling
+138 keeps: the shell report cuts it whole to ``<path>``, the agentsync report decodes it and cuts it by its
+head's rule. ``is not an existing folder: ``'s name runs to its line's last `` (see --help)`` that ends a
+name, or the line's end, and so does ``--cwd is not a folder this run can enter: ``'s (B13 round 41 C2030),
+tried before ``--cwd ``; a ``debug: `` head's value (install.sh's debug_path writes the path in printf %q's
+one-line form, the home as ~, and debug_line prints it as given) runs to the line's first `` | `` or its end,
+and every one on a line is cut (C2029); every other head's path is one shell word. B13 round 41 ruling 142: a
+bare word with no slash, backslash or quote after ``--source-local ``, ``--source-local=`` or ``add-source ``
+is prose and stays (C2062 with C2031 and C2085), and so do install.sh's own words after ``--cwd ``
+(:data:`CWD_USAGE`, C2030); a not-a-folder or refused name is always cut."""
+
+CWD_USAGE = ("needs a folder, got the option", "needs a folder")
+"""install.sh's own usage words right after ``--cwd `` (``usage error: --cwd needs a folder (see --help)``),
+which both reports keep whole, by phrase, never by their first word, so ``args=--cwd needs`` still cuts a
+folder literally named ``needs`` (B13 round 41 C2030). The other usage error, ``--cwd is not a folder this run
+can enter: <folder>``, is a :data:`PATH_HEADS` row of its own."""
+
+CONFIG_DEFAULT = "~/agent-context/sources.toml"
+"""The one config path both reports print in clear (B13 round 41 C2063 with C2083; privacy): every other, from
+AGENTSYNC_CONFIG, relative under --cwd or absolute, is cut as ``setup_report._cut_path`` cuts its ~-form,
+never its raw absolute form (which reads ``/<path>``), on every line that echoes it: the Configuration
+section's config and loads lines, the ``Not run:`` lines, the governance and policy refusals and ``debug:
+config``."""
 
 REFUSED_HEADS = (
     "this is a row step 1 marked ",
@@ -148,6 +176,20 @@ DEL_ESCAPED = ("\\u007F", "\\u007f")
 40 C1840 with C1887): ``\\u007F`` as ``config.toml_string`` writes it in add-source's echoed table (a test
 holds it to that writer) and ``\\u007f``."""
 
+TOML_BREAKS = ("\u0085", "\u2028", "\u2029")
+"""The line breaks ``str.splitlines`` honours that ``config.toml_string`` wrote raw in add-source's echoed
+table (B13 round 41 R41-B1; privacy): both reports split a line there, so a configured name holding one
+printed both pieces in clear in both. Lane B's writer escapes them as ``\\uXXXX``; both reports alias a
+name's TOML spelling with each written so, in both hex cases (:func:`toml_break_spellings`), as
+:data:`DEL_ESCAPED` does for DEL, before that writer lands."""
+
+
+def toml_break_spellings(ch: str) -> tuple[str, ...]:
+    """The escaped spellings of a :data:`TOML_BREAKS` character, upper- and lower-case hex, one when its
+    digits hold no letter (all three today)."""
+    return tuple(dict.fromkeys((f"\\u{ord(ch):04X}", f"\\u{ord(ch):04x}")))
+
+
 FREE_PROVIDER_HEAD = "~/Library/CloudStorage/"
 """Where both reports run the provider rule over free text (B13 round 40 C1862): a part right after this head
 that begins with a :data:`PROVIDER_APPS` name and a hyphen and that :func:`provider_kept_pattern` does not
@@ -156,6 +198,18 @@ keep (a tenant no value registered) is cut with the rest of its word, which read
 
 FREE_WORD_END = (0x20, 0x09, 0x22, 0x27, 0x60)
 """What ends that word: a blank, a tab, a double or single quote or a backtick."""
+
+FREE_PART_STOP = ('"', "'", "`", "\n", "):", ", stored as ")
+"""What stops the provider part of that word from running across blanks (B13 round 41 C2050 with C2032;
+privacy): a part read to its first ``/`` or :data:`FREE_WORD_END` byte that the provider rule keeps stays as
+before (``OneDrive-Personal and ~/x``); one it does not keep runs to the next ``/`` when none of these comes
+first, blanks included, so ``OneDrive-Northwind Traders/Q3 Plans`` is one word (an unregistered tenant with a
+blank kept its later words); with no ``/`` before one of these, or before the line's end, the part ends at a
+:data:`FREE_WORD_END` byte as before, and ``OneDrive-Fabrikam Holdings today`` keeps ``Holdings today``: no
+rule built on blanks tells a tenant's word from prose there, the residual named beside a tenant written
+without the head. After a part cut so, the rest runs through each following blank-separated word that
+continues a path (a ``/`` in it, no ``=`` or ``://``, not opening with ``-``, ``/`` or ``~``), as the
+other-home cut's ``more()`` does."""
 
 FREE_WORD_TRAIL = ")]}.,;:"
 """What a free-text word's end gives back after the cut, so prose keeps its punctuation, as a bare
@@ -254,7 +308,12 @@ def shell_block() -> str:
     ``CUT_REFUSED_HEADS`` (:data:`REFUSED_HEADS`, written in double quotes, since one holds an apostrophe),
     ``CUT_DEL_ESCAPED`` (:data:`DEL_ESCAPED`), ``CUT_FREE_HEAD`` (:data:`FREE_PROVIDER_HEAD`) and
     ``CUT_FREE_END`` (:data:`FREE_WORD_END` as an awk bracket class of octal bytes) and ``CUT_FREE_TRAIL``
-    (:data:`FREE_WORD_TRAIL`)."""
+    (:data:`FREE_WORD_TRAIL`); since B13 round 41 ruling 142, ``CUT_FREE_PART_STOP`` (:data:`FREE_PART_STOP`
+    as an awk ERE: a bracket class of octal bytes, then each phrase, ``)`` bracketed), ``CUT_CWD_USAGE``
+    (:data:`CWD_USAGE`, ``|``-joined, longest first), ``CUT_CONFIG_DEFAULT`` (:data:`CONFIG_DEFAULT`),
+    ``CUT_TOML_BREAKS`` (:data:`TOML_BREAKS`, each one UTF-8 alternative in octal) and
+    ``CUT_TOML_BREAKS_ESCAPED`` (each one's :func:`toml_break_spellings`, ``,``-joined, in the same order,
+    ``|`` between characters)."""
     values = {
         "AGENTSYNC_VERBS": "|".join(agentsync_verbs()),
         "CUT_DRIVE": "|".join(sorted(GENERIC_FOLDERS)),
@@ -277,6 +336,16 @@ def shell_block() -> str:
         "CUT_FREE_HEAD": FREE_PROVIDER_HEAD,
         "CUT_FREE_END": "[" + "".join(f"\\{c:03o}" for c in FREE_WORD_END) + "]",
         "CUT_FREE_TRAIL": FREE_WORD_TRAIL,
+        "CUT_FREE_PART_STOP": "|".join(
+            [
+                "[" + "".join(f"\\{ord(c):03o}" for c in FREE_PART_STOP if len(c) == 1) + "]",
+                *(c.replace(")", "[)]") for c in FREE_PART_STOP if len(c) > 1),
+            ]
+        ),
+        "CUT_CWD_USAGE": "|".join(sorted(CWD_USAGE, key=len, reverse=True)),
+        "CUT_CONFIG_DEFAULT": CONFIG_DEFAULT,
+        "CUT_TOML_BREAKS": "|".join(_octal(ch) for ch in TOML_BREAKS),
+        "CUT_TOML_BREAKS_ESCAPED": "|".join(",".join(toml_break_spellings(ch)) for ch in TOML_BREAKS),
     }
     assert not any("'" in v or "\n" in v for v in values.values())
     assert all(h and "|" not in h for h, _r in PATH_HEADS) and all("|" not in h for h in REFUSED_HEADS)

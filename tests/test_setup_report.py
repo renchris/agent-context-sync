@@ -1093,7 +1093,8 @@ def test_the_path_legend_item_names_every_use_of_path() -> None:
     <path>; only a replaced link target counts."""
     uncounted = (
         " A <path> that cuts an item path or document name in a log line, a --source-local argument, an "
-        "added source's typed folder, an exclude entry or a path in another home is not counted: only a link "
+        "added source's typed folder, an exclude entry, a path in another home, a --cwd or debug line's "
+        "folder, a config path or a CloudStorage folder in free text is not counted: only a link "
         "target replaced by <path> is."
     )
     red = setup_report.Redactor()
@@ -1342,7 +1343,9 @@ def test_missing_config_is_a_finding(tmp_path: Path) -> None:
         text, "Summary"
     )
     assert "Not run: no sources.toml yet." in section(text, "Doctor")
-    assert "does not load" not in text and "add-source" not in text, text
+    # the <path> legend names add-source (a config path but the default is cut, B13 round 41 C2063)
+    body = "\n".join(ln for ln in text.splitlines() if not ln.startswith("Placeholders used: "))
+    assert "does not load" not in body and "add-source" not in body, text
     assert "No install log at" in section(text, "Installer")
     # a file that exists and does not load keeps its words, and the error's own
     (tmp_path / "bad.toml").write_text("[[source]]\nid = \n", encoding="utf-8")
@@ -5549,11 +5552,18 @@ def test_the_report_cuts_table_is_what_both_reports_read_ruling_133() -> None:
         "CUT_HEADS_PROVIDER",
         "CUT_HEADS_FIRST_UNKNOWN",
         "CUT_HEADS_CWD",
+        "CUT_HEADS_CWD_NAME",
         "CUT_HEADS_UNDER_CWD",
+        "CUT_HEADS_CONFIG",
         "CUT_DEL_ESCAPED",
         "CUT_FREE_HEAD",
         "CUT_FREE_END",
         "CUT_FREE_TRAIL",
+        "CUT_FREE_PART_STOP",
+        "CUT_CWD_USAGE",
+        "CUT_CONFIG_DEFAULT",
+        "CUT_TOML_BREAKS",
+        "CUT_TOML_BREAKS_ESCAPED",
         "CUT_REFUSED_HEADS",
     ]
     folders = [
@@ -22768,15 +22778,15 @@ def test_a_bracketed_part_of_two_letters_stays_a_name(
         ("Dropbox-business", None),
         ("Box-Box", None),
         ("Dropbox", None),
-        ("GoogleDrive-jane.doe@contoso.com", None),
+        ("GoogleDrive-jane.doe@contoso.com", "jane.doe@contoso.com"),  # B13 round 41 C2071
         ("SharedLibraries-Contoso", "Contoso"),
         ("Nextcloud-mlee@192.168.1.10", "mlee@192.168.1.10"),
     ],
 )
 def test_org_of_takes_the_part_after_any_providers_app_name(provider: str, org: str | None) -> None:
     """macOS names a CloudStorage folder ``<app>-<domain>``: the domain is the organisation for every
-    provider, not only OneDrive, unless it is generic, repeats the app's name or is an email address the email
-    pattern takes whole; an ``@`` value that pattern misses is an organisation (B13 N9)."""
+    provider, not only OneDrive, unless it is generic or repeats the app's name (B13 N9); an email address is
+    one too since B13 round 41 C2071, as install.sh registers it."""
     assert setup_report._org_of(provider) == org
 
 
@@ -28366,3 +28376,243 @@ def test_a_zero_byte_conversion_still_records_its_cache_row_c1821(tmp_path: Path
             run_id=3,
         )
         assert m.cache_last_used("k-empty") == 3
+
+
+def test_the_provider_tail_is_tested_inside_the_first_unknown_walk_c2084() -> None:
+    """B13 round 41 C2084 (ruling 142; privacy): _cut_path tested a kept provider folder's tail in a loop of
+    its own before the first-unknown walk, so a private folder before a folder named CloudStorage reached
+    the report (`~/Projects/SecretDeal/CloudStorage/Dropbox/<path>`). The tail is tested inside the walk."""
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    assert setup_report._cut_path("~/Projects/SecretDeal/CloudStorage/Dropbox/Unknown", configured=set()) == (
+        "~/Projects/<path>"
+    )
+    assert setup_report._cut_path("~/Library/CloudStorage/Dropbox/Unknown", configured=set()) == (
+        "~/Library/CloudStorage/Dropbox/<path>"
+    )
+    for head in ("--source-local ", "--source-local="):
+        said = f"x {head}/Users/dana/Projects/SecretDeal/CloudStorage/Dropbox/Unknown"
+        assert setup_report._redact_lines(red, [said]) == f"x {head}~/Projects/<path>"
+    said = "x is not an existing folder: /Users/dana/Projects/SecretDeal/CloudStorage/Dropbox/Unknown"
+    assert setup_report._redact_lines(red, [said]) == "x is not an existing folder: ~/Projects/<path>"
+    said = "x --source-local /Users/dana/Library/CloudStorage/Dropbox/Unknown"
+    assert setup_report._redact_lines(red, [said]) == "x --source-local ~/Library/CloudStorage/Dropbox/<path>"
+
+
+def test_a_quoted_refused_or_missing_name_keeps_its_quotes_and_its_line_c2027() -> None:
+    """B13 round 41 C2027 (ruling 142; a regression from C1882): a quoted refused or not-a-folder name went
+    through _cut_path whole, quotes and all, so the line after it was lost to `<path>`. One leading `"` or
+    `'` and its match are peeled off and the inside cut, the rest of the line kept, as the shell prints it."""
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    red.add("org", "Contoso", fuzzy=True)
+    red.add("folder", "Alder Birch", fuzzy=True)
+    red.configured_held = {"<folder-1>"}
+    cs = "/Users/dana/Library/CloudStorage/OneDrive-Contoso"
+    org = "~/Library/CloudStorage/OneDrive-<org-1>"
+    head = report_cuts.REFUSED_HEADS[0]
+    for said, want in (
+        (
+            f'usage error: --source-local "{cs}/Zephyr Quarry": {head}x and more words',
+            f'usage error: --source-local "{org}/<path>": {head}x and more words',
+        ),
+        (
+            f"usage error: --source-local '{cs}/Zephyr Quarry': {head}Dana's row, kept",
+            f"usage error: --source-local '{org}/<path>': {head}Dana's row, kept",
+        ),
+        (
+            f'x is not an existing folder: "{cs}/Alder Birch/Zephyr" (see --help); retried',
+            f'x is not an existing folder: "{org}/<path>" (see --help); retried',
+        ),
+        (
+            f"x is not an existing folder: '{cs}/Alder Birch' (see --help)",
+            f"x is not an existing folder: '{org}/<folder-1>' (see --help)",
+        ),
+        (f'x is not an existing folder: "{cs}/Zephyr', f'x is not an existing folder: "{org}/<path>'),
+    ):
+        assert setup_report._redact_lines(red, [said]) == want, said
+
+
+def test_the_cwd_usage_error_is_a_whole_name_head_and_its_own_words_stay_c2030() -> None:
+    """B13 round 41 C2030 (ruling 142; privacy): `--cwd ` read the next word as a folder, so install.sh's
+    usage errors read `--cwd <path> not a folder ...` and the folder it names stayed in clear. `--cwd is not a
+    folder this run can enter: ` is a whole-name head cut by the cwd rule; `--cwd needs a folder` and its `,
+    got the option` form stay whole, by phrase; a bare --cwd word is still cut (C1835)."""
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    for said, want in (
+        (
+            "usage error: --cwd is not a folder this run can enter: Projects/Zephyr Quarry (see --help)",
+            "usage error: --cwd is not a folder this run can enter: Projects/<path> (see --help)",
+        ),
+        (
+            "usage error: --cwd is not a folder this run can enter: /Users/dana/Zephyr Quarry (see --help)",
+            "usage error: --cwd is not a folder this run can enter: ~/<path> (see --help)",
+        ),
+        ("usage error: --cwd needs a folder (see --help)", "usage error: --cwd needs a folder (see --help)"),
+        (
+            "usage error: --cwd needs a folder, got the option --debug (see --help)",
+            "usage error: --cwd needs a folder, got the option --debug (see --help)",
+        ),
+        ("start install.sh args=--cwd needs", "start install.sh args=--cwd <path>"),
+        ("start install.sh args=--cwd is --debug", "start install.sh args=--cwd <path> --debug"),
+    ):
+        assert setup_report._redact_lines(red, [said]) == want, said
+
+
+def test_every_debug_head_on_a_line_is_cut_and_the_config_path_always_c2029_c2063() -> None:
+    """B13 round 41 C2029 (ruling 142): only the first debug head of each kind on a line was judged, the
+    cwd read from the first match only. Every head is cut now, a source path under the carried cwd or any
+    debug: cwd on its line, the line's last cwd carried on. C2063 with C2083: a debug: config path is cut
+    wherever it lies, but the default ~/agent-context/sources.toml."""
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    lines = [
+        "debug: config /Users/dana/Zephyr/a.toml | debug: config /Users/dana/Quarry/b.toml",
+        "debug: source checkout /Users/dana/Zephyr/x | debug: source tree /Users/dana/Zephyr/y",
+        "debug: cwd /Users/dana/Zephyr | debug: cwd /Users/dana/Quarry",
+        "debug: source checkout /Users/dana/Quarry/z",
+        "debug: config /Users/dana/Zephyr/c.toml | debug: cwd /Users/dana/Wombat",
+        "debug: source checkout /Users/dana/Wombat/w | debug: source tree /Users/dana/src/agent-context-sync",
+        "debug: config /Users/dana/agent-context/sources.toml",
+    ]
+    assert setup_report._redact_lines(red, lines).splitlines() == [
+        "debug: config ~/<path> | debug: config ~/<path>",
+        "debug: source checkout ~/Zephyr/x | debug: source tree ~/Zephyr/y",
+        "debug: cwd ~/<path> | debug: cwd ~/<path>",
+        "debug: source checkout ~/<path>",
+        "debug: config ~/<path> | debug: cwd ~/<path>",
+        "debug: source checkout ~/<path> | debug: source tree ~/src/agent-context-sync",
+        "debug: config ~/agent-context/sources.toml",
+    ]
+
+
+def test_a_tenant_with_a_blank_is_cut_to_its_slash_in_free_text_c2050_c2032() -> None:
+    """B13 round 41 C2050 with C2032 (ruling 142; privacy): the free-text provider part stopped at a blank,
+    so an unregistered tenant with one kept its later words. It runs across blanks to the next `/` before a
+    quote, a backtick, `):` or `, stored as ` (FREE_PART_STOP), the rest carried through each later slash
+    word; a kept one, and a tenant with no `/` after it (the named residual), stay as before."""
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    red.add("org", "Contoso", fuzzy=True)
+    cs = "/Users/dana/Library/CloudStorage"
+    for said, want in (
+        (
+            f"saw {cs}/OneDrive-Northwind Traders/Q3 Plans, then",
+            "saw ~/Library/CloudStorage/<path> Plans, then",
+        ),
+        (
+            f"saw {cs}/OneDrive-Fabrikam Holdings/Q3 Plans/Draft x/y today",
+            "saw ~/Library/CloudStorage/<path> today",
+        ),
+        (f"saw {cs}/OneDrive-SharedLibraries-Northwind Traders/A", "saw ~/Library/CloudStorage/<path>"),
+        (
+            f'saw "{cs}/OneDrive-Fabrikam Holdings" and x/y',
+            'saw "~/Library/CloudStorage/<path> Holdings" and x/y',
+        ),
+        (f"saw {cs}/OneDrive-Fabrikam Holdings today", "saw ~/Library/CloudStorage/<path> Holdings today"),
+        (
+            f"saw {cs}/OneDrive-Personal and ~/Documents/x",
+            "saw ~/Library/CloudStorage/OneDrive-Personal and ~/Documents/x",
+        ),
+        (f"saw {cs}/OneDrive-Contoso/Plans x/y", "saw ~/Library/CloudStorage/OneDrive-<org-1>/Plans x/y"),
+        (f"saw {cs}/OneDrive-Fabrikam/Plans x", "saw ~/Library/CloudStorage/<path> x"),
+        (f"saw {cs}/OneDrive-Fab Co): x/y", "saw ~/Library/CloudStorage/<path> Co): x/y"),
+    ):
+        assert setup_report._redact_lines(red, [said]) == want, said
+
+
+def test_the_config_path_is_cut_on_every_line_but_the_default_c2063_c2083(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 41 C2063 with C2083 (ruling 142; privacy): a config path other than the default printed its
+    folders in clear on the Configuration line, the loads line and both Not run lines. It reads its ~-form's
+    cut on every line; the default stays in clear."""
+    home = tmp_path / "home"
+    proj = home / "Projects" / "Zephyr Quarry"
+    (proj / "cfg").mkdir(parents=True)
+    (proj / "cfg" / "sources.toml").write_text("not toml [[[\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.chdir(proj)
+    monkeypatch.setenv("AGENTSYNC_CONFIG", "cfg/sources.toml")
+    r = setup_report._Run(None, setup_report.ReportHooks(), 12.0)
+    red = setup_report._build_redactor(r)
+    lines = [
+        *setup_report._configuration(r),
+        f"Not run: the config does not load ({r.config_error})",
+        "debug: config ~/Projects/Zephyr\\ Quarry/cfg/sources.toml",
+    ]
+    out = setup_report._redact_lines(red, lines)
+    assert "Zephyr" not in out and "Quarry" not in out, out
+    assert out.splitlines()[0] == "- config: ~/Projects/<path> (exists)", out
+    assert out.splitlines()[1].startswith("- loads: no: ConfigError: ~/Projects/<path>: "), out
+    monkeypatch.delenv("AGENTSYNC_CONFIG")
+    r = setup_report._Run(None, setup_report.ReportHooks(), 12.0)
+    red = setup_report._build_redactor(r)
+    first = setup_report._redact_lines(red, setup_report._configuration(r)).splitlines()[0]
+    assert first == f"- config: {report_cuts.CONFIG_DEFAULT} (missing)", first
+
+
+def test_a_googledrive_address_is_an_organisation_and_a_short_id_is_a_hold_value_c2071() -> None:
+    """B13 round 41 C2071 (ruling 142; makes worse True for registering every short id as a plain word): the
+    email pattern took a `GoogleDrive-<address>` folder whole as `<email-N>`, which the provider rule never
+    keeps, so the two reports cut it two ways. The address is an `<org-N>`, as install.sh registers it, and
+    the folder reads `GoogleDrive-<org-N>`. A 2-letter source id or folder takes the hold-value rule: an
+    initialism in capitals is matched as written, so the pronoun `it` stays, and a cut makes the report
+    private only."""
+    assert setup_report._org_of("GoogleDrive-dana@example.com") == "dana@example.com"
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    red.add("org", setup_report._org_of("GoogleDrive-dana@example.com"), fuzzy=True)
+    red.add("folder", "My Drive", fuzzy=True)
+    red.add("folder", "Juniper Notes", fuzzy=True)
+    red.configured_held = {"<folder-1>", "<folder-2>"}
+    cs = "/Users/dana/Library/CloudStorage/GoogleDrive-dana@example.com"
+    for said, want in (
+        (
+            f"args=--source-local {cs}/My\\ Drive/Juniper\\ Notes",
+            "args=--source-local ~/Library/CloudStorage/GoogleDrive-<org-1>/<folder-1>/<folder-2>",
+        ),
+        (
+            f"args=--source-local {cs}/My\\ Drive/Zephyr",
+            "args=--source-local ~/Library/CloudStorage/GoogleDrive-<org-1>/<path>",
+        ),
+        (
+            f"x is not an existing folder: {cs}/My Drive/Zephyr (see --help)",
+            "x is not an existing folder: ~/Library/CloudStorage/GoogleDrive-<org-1>/<path> (see --help)",
+        ),
+        ("mail dana@example.com and bob@example.org", "mail <org-1> and <email-1>"),
+    ):
+        assert setup_report._redact_lines(red, [said]) == want, said
+    short = setup_report.Redactor()
+    short.add("folder", "IT", fuzzy=True)
+    assert short.redact("it is ok to go on in the IT folder") == "it is ok to go on in the <folder-1> folder"
+    assert short.private_only
+    short = setup_report.Redactor()
+    short.add("source", "it")
+    assert short.redact("[warn] source.it.listable — it is empty") == (
+        "[warn] source.<source-1>.listable — <source-1> is empty"
+    )
+    assert short.private_only
+    short = setup_report.Redactor()
+    short.add("source", "qx")
+    assert short.redact("source qx is empty") == "source <source-1> is empty"
+    assert not short.private_only
+
+
+def test_both_legends_name_round_40_and_41s_path_forms_c2033() -> None:
+    """B13 round 41 C2033 (ruling 142): the <path> legend did not name the --cwd and debug lines' folders
+    (C1835) or the free-text tenant (C1862); it names them, the --cwd usage error's folder and the config
+    path too, every pinned clause kept word for word."""
+    legend = setup_report._LEGEND["path"]
+    for clause in (
+        "the folder after --cwd or --cwd= on install.out's run header and debug: cwd's folder, cut as a "
+        "path is (the word --cwd kept), a debug: source path that lies under that cwd",
+        "the folder after install.sh's --cwd is not a folder this run can enter:",
+        "a config path other than ~/agent-context/sources.toml, cut as a path is on every line that "
+        "echoes it",
+        "a ~/Library/CloudStorage/<App>-<word> folder the report numbers no organization for, cut to "
+        "~/Library/CloudStorage/<path>, never numbered, its trailing )]}.,;: kept",
+        "where the shell fallback report cuts it whole",
+    ):
+        assert clause in legend, clause
