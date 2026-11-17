@@ -13249,6 +13249,28 @@ def test_the_readme_says_a_recording_on_this_mac_with_no_bytes_gets_a_page_c2057
         assert internal not in para
 
 
+def test_the_readme_says_a_convert_edit_reaches_existing_pages_r41_d1() -> None:
+    """B13 round 41 R41-D1 (lead's grown item, from lane B's C2021 words, c72c736b8): an edit of a
+    `[convert]` option re-reads the local and inbox pages built under the old options, a few per sync, and
+    status counts them in a note after the `sync again:` one; the README's convert paragraphs said nothing of
+    it. The paragraph is held to loop's note."""
+    from agentsync import loop  # noqa: PLC0415
+
+    assert loop._REREAD_OPTIONS.startswith("have pages made under other converter options")
+    readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
+    before = readme.index("Files in a synced folder or the inbox that were converted before OCR was there")
+    at = readme.index("A `[convert]` edit that changes how pages are made, such as `max_page_bytes`")
+    assert before < at
+    assert (
+        "A `[convert]` edit that changes how pages are made, such as `max_page_bytes`, applies to every file"
+        " converted after it. Files in a synced folder or the inbox that are on this Mac and whose pages were"
+        " made under the old options are read again the same way, a few per sync; a page that comes out the"
+        " same is left untouched and nothing is committed for it. A cloud file's page takes the new options"
+        " when its bytes next change. While such files are left, `sync` prints the `sync again:` note, and a"
+        " `note:` line after it counts the files whose pages were made under other converter options."
+    ) in readme
+
+
 def test_the_guides_path_and_folder_rows_say_both_reports_cut_every_dollar_quote_word_c1855() -> None:
     """B13 round 40 C1855 (ruling 138), with C1887: the guide's `<path>` row said only the shell fallback
     report cuts every `$'...'` word, while since round 39 C1656 the agentsync report cuts each one too, but

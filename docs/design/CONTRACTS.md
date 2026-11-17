@@ -42884,6 +42884,13 @@ for the OCR helper first while the helper is not working (§16.262 C2039), and t
 recording with no bytes still waits; lane B's e3de8830e corrects `_recording_pass`'s docstring. Test:
 `test_the_readme_says_a_recording_on_this_mac_with_no_bytes_gets_a_page_c2057_c2089`.
 
+**The README says a `[convert]` edit reaches existing pages** (R41-D1, the lead's grown item; docs only; from lane B's
+C2021 words, c72c736b8). Since §16.262 C2021 an edit of a `[convert]` option re-reads the local and inbox pages built
+under the old options, a few per sync, a page that comes out the same committing nothing, a Graph file's page taking
+the new options when its bytes next change, and status counts those files in a note after the `sync again:` one
+(`loop._REREAD_OPTIONS`); the README said nothing of it. A paragraph after the one on files converted before OCR now
+says so. Test: `test_the_readme_says_a_convert_edit_reaches_existing_pages_r41_d1`.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units
