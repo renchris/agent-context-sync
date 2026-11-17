@@ -1582,6 +1582,78 @@ class LocalArm:
             stable_id=item.stable_id, path=result.dest, size=result.size, content_sha256=result.content_sha256
         )
 
+    def stage_if_empty(self, item: SourceItem, dest_dir: Path) -> FetchResult | None:
+        """Stage ``root/item.rel_path`` as an empty file only when it holds 0 bytes, reading no byte of it
+        (B13 round 41 C2038 with C2086, ruling 144): the zero-byte recording probe of a source's queue
+        (``cycle._empty_recording``). The path must be the listed inode and a regular file, not dataless, of
+        size 0, both at its lstat and on the descriptor opened with ``O_NOFOLLOW`` (no materialisation is
+        allowed: an empty local file needs none); an empty file is staged, and the descriptor's size and the
+        path's inode, size and mtime are checked again. Any other answer, or a file that grew, was replaced or
+        went away, returns None with nothing staged and no byte read, so the recording waits for the recording
+        pass. The checks before and after, which read no content, replace InboxArm's second hash for a file
+        that is empty; InboxArm inherits this unchanged."""
+        if item.source_id != self.source_id:
+            raise ValueError(f"item of source {item.source_id!r} fetched through arm {self.source_id!r}")
+        path = self._source_path(item)
+        try:
+            st0 = os.lstat(path)
+        except OSError:
+            return None
+        if item.ino is not None and st0.st_ino != item.ino:
+            return None
+        if not stat.S_ISREG(st0.st_mode) or st0.st_size != 0 or is_dataless(st0):
+            return None
+        try:
+            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        except OSError:
+            return None
+        dest = _staging_dest(dest_dir, item)
+        staged = False
+        try:
+            opened = os.fstat(fd)
+            if not _still_empty(opened, st0):
+                return None
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.unlink(missing_ok=True)
+            staged = True
+            made = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
+            os.close(os.open(dest, made, 0o600))
+            after = os.fstat(fd)
+            try:
+                st1 = os.lstat(path)
+            except OSError:
+                st1 = None
+            if (
+                not _still_empty(after, st0)
+                or st1 is None
+                or not _still_empty(st1, st0)
+                or after.st_mtime_ns != st0.st_mtime_ns
+                or st1.st_mtime_ns != st0.st_mtime_ns
+            ):
+                return None
+            staged = False  # the caller owns it now
+            return FetchResult(
+                stable_id=item.stable_id, path=dest, size=0, content_sha256=hashlib.sha256(b"").hexdigest()
+            )
+        finally:
+            os.close(fd)
+            if staged:  # nothing staged is left: the file, then its per-item folder if empty
+                with contextlib.suppress(FileNotFoundError):
+                    dest.unlink()
+                with contextlib.suppress(OSError):
+                    dest.parent.rmdir()
+
+
+def _still_empty(st: os.stat_result, st0: os.stat_result) -> bool:
+    """True when ``st`` is the file ``st0`` was (same inode and device), still a regular file of 0 bytes and
+    not dataless: ``LocalArm.stage_if_empty``'s test, read from a stat that opens no content."""
+    return (
+        (st.st_ino, st.st_dev) == (st0.st_ino, st0.st_dev)
+        and stat.S_ISREG(st.st_mode)
+        and st.st_size == 0
+        and not is_dataless(st)
+    )
+
 
 @dataclasses.dataclass
 class SettleBudget:

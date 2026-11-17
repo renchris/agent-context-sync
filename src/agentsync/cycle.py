@@ -5108,23 +5108,26 @@ class _Cycle:
         """True when ``row`` is a recording on this Mac whose copy staged zero bytes, now converted and
         published: the recording converter classes it ``empty`` before any helper runs (B13 round 39 C1647),
         so it never waits for the recording pass or asks for a background sync (B13 round 40 C1820, C1806;
-        ruling 141).  Only a row listed at 0 bytes, not dataless and not a Graph item, is fetched, with a
-        probe budget (``ByteBudget(0, 1)``, as ``_reread_source``), and the decision is the staged copy's:
-        a fetch that raises, or one that staged any byte (a recording that grew since the walk), is
-        discarded unread and the row waits as before, so no queue reads a recording's bytes (spec S0 rules
-        4 and 5).  The copy is converted with the whole registry, never past OCR (``_converting``), which
-        has no recording converter and would call it ``no converter``."""
-        if row.dataless or row.size != 0 or src.kind.is_graph:
+        ruling 141).  Only a row listed at 0 bytes, not dataless and not a Graph item, is probed, through
+        ``LocalArm.stage_if_empty`` (an InboxArm's too), which reads no byte of the file: it stages an empty
+        file only when the listed inode, opened with no link followed, is a regular file of 0 bytes that is
+        not dataless, before and after the empty file is staged (B13 round 41 C2038 with C2086, ruling 144).
+        A probe that answers None or raises (the recording grew since the walk, was replaced, went away or
+        went online-only) stages nothing and the row waits as before, so no queue reads a recording's bytes
+        (spec S0 rules 4 and 5).  The empty copy is converted with the whole registry, never past OCR
+        (``_converting``), which has no recording converter and would call it ``no converter``."""
+        if row.dataless or row.size != 0 or src.kind.is_graph or not isinstance(arm, LocalArm):
             return False
         try:
-            fetched = arm.fetch(_item_from_row(row), self.staging, ByteBudget(0, 1))
-        except AuthRequiredError:
-            raise
-        except Exception as exc:  # gone, dataless now, refused: it waits, as any recording
+            fetched = arm.stage_if_empty(_item_from_row(row), self.staging)
+        except Exception as exc:  # it waits, as any recording
             log.info("%s: %s, listed empty, was not staged: %s", row.source_id, row.rel_path, exc)
             return False
+        if fetched is None:
+            log.info("%s: %s, listed empty, holds bytes now or moved: it waits", row.source_id, row.rel_path)
+            return False
         try:
-            if fetched.size != 0:
+            if fetched.size != 0:  # a backstop: the probe stages only an empty file
                 return False
             self._whole_registry = True
             try:
@@ -5219,8 +5222,10 @@ class _Cycle:
         id.  Only a run no tool timeout ends reads one (rule 5): a background cycle works pieces of one
         recording at a time until ``_RECORDING_BUDGET_S`` of recording work is used, the piece in flight
         finishing, and ``agentsync materialise PATH`` reads each recording it names to the end, one after the
-        other.  An interactive ``sync`` reads none: its queues left them waiting.  No recording is staged
-        once a helper stopped working (rule 8)."""
+        other.  An interactive ``sync`` reads none: its queues left them waiting, save a recording on this
+        Mac that holds no bytes, which a queue classes ``empty`` where the recording converter is registered
+        (``_empty_recording``, reading none of it), so it never waits here.  No recording is staged once a
+        helper stopped working (rule 8)."""
         if self.recordings == "none" or not self._recording_suffixes():
             return
         candidates = self._recording_candidates()

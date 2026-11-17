@@ -7427,31 +7427,132 @@ def test_a_zero_byte_recording_is_empty_with_the_ocr_time_used_up_c1806(
     _empty_recording_synced(config, rec)
 
 
-def test_a_recording_listed_empty_that_grows_before_its_fetch_still_waits_unread_c1806(
-    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """C1806, C1820 (makes worse True each): the listed size is the walk's, and the fetch checks the file's
-    identity, not its size, so a recording a recorder fills between the two is decided on the staged bytes:
-    any byte, and the copy is discarded and the row waits for the recording pass, nothing converted (spec S0
-    rules 4 and 5)."""
-    config = config_with(tmp_path, meetings)
-    path = meetings / EMPTY_MEETING
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(b"")
-    real = LocalArm.fetch
+def _no_recording_byte_read(monkeypatch: pytest.MonkeyPatch, staging: Path) -> dict[str, list[str]]:
+    """Spies on every way a cycle reads or stages a file's bytes: ``LocalArm.fetch``, ``materialise``'s copy,
+    both ``sha256_file`` names (InboxArm's second read is arm_local's) and every ``os.write`` to a file under
+    ``staging``. Each list holds what it saw from now on."""
+    seen: dict[str, list[str]] = {"fetch": [], "copy": [], "hash": [], "staged": []}
+    real_fetch, real_copy = LocalArm.fetch, materialise._copy_once
 
     def fetch(self: Any, item: Any, dest: Path, budget: Any) -> Any:
-        if item.rel_path == EMPTY_MEETING and not path.stat().st_size:
-            stub_recording(path, 60)  # the recorder writes it now, same inode
-        return real(self, item, dest, budget)
+        seen["fetch"].append(item.rel_path)
+        return real_fetch(self, item, dest, budget)
+
+    def copy(src: Path, tmp_fd: int, st0: Any) -> Any:
+        seen["copy"].append(str(src))
+        return real_copy(src, tmp_fd, st0)
+
+    def hasher(real: Any) -> Any:
+        def spy(path: Any, *a: Any, **kw: Any) -> Any:
+            seen["hash"].append(str(path))
+            return real(path, *a, **kw)
+
+        return spy
+
+    real_write = os.write
+
+    def write(fd: int, data: Any) -> int:
+        with contextlib.suppress(OSError, AttributeError):
+            import fcntl  # noqa: PLC0415 - macOS only: the path an fd writes to
+
+            where = fcntl.fcntl(fd, fcntl.F_GETPATH, bytes(1024)).split(b"\0", 1)[0].decode()  # type: ignore[attr-defined]
+            if len(data) and Path(where).resolve().is_relative_to(staging.resolve()):
+                seen["staged"].append(where)
+        return real_write(fd, data)
 
     monkeypatch.setattr(LocalArm, "fetch", fetch)
+    monkeypatch.setattr(materialise, "_copy_once", copy)
+    monkeypatch.setattr(materialise, "sha256_file", hasher(materialise.sha256_file))
+    monkeypatch.setattr(al, "sha256_file", hasher(al.sha256_file))
+    monkeypatch.setattr(os, "write", write)
+    return seen
+
+
+@pytest.mark.parametrize("when", ["before its lstat", "between its lstat and open", "after it staged"])
+@pytest.mark.parametrize("kind", ["local", "inbox"])
+def test_a_recording_listed_empty_that_grows_before_its_probe_waits_with_no_byte_read_c2038(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch, when: str, kind: str
+) -> None:
+    """B13 round 41 C2038 with C2086 (ruling 144): the zero-byte probe fetched a recording listed at 0 bytes
+    with a probe budget, which bounds downloads only, so one a recorder filled after the walk was copied and
+    hashed in full inside an interactive sync (an inbox's twice) and only then discarded. The probe
+    (``LocalArm.stage_if_empty``, an InboxArm's inherited) reads no byte: wherever the file grows, before its
+    lstat, between the lstat and the open, or after the empty copy is staged, nothing is fetched, copied,
+    hashed or written to staging, and the row waits for the recording pass, nothing converted (spec S0
+    rules 4 and 5)."""
+    if kind == "inbox":
+        root = tmp_path / "inbox"
+        root.mkdir()
+        config = config_with(tmp_path, meetings, INBOX_SOURCE.format(path=root))
+        sid, rel = "inbox", "Contoso empty.mp4"
+    else:
+        root, sid, rel = meetings, SID, EMPTY_MEETING
+        config = config_with(tmp_path, meetings)
+    path = root / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"")
+    ino = path.stat().st_ino
+    real_probe, real_open = LocalArm.stage_if_empty, os.open
+    grown: list[str] = []
+
+    def grow() -> None:
+        if not grown:
+            grown.append(when)
+            stub_recording(path, 60)  # the recorder writes it now, same inode
+            assert path.stat().st_ino == ino and path.stat().st_size
+
+    def probe(self: Any, item: Any, dest: Path) -> Any:
+        if item.rel_path == rel and when == "before its lstat":
+            grow()
+        return real_probe(self, item, dest)
+
+    def opener(name: Any, flags: int, *a: Any, **kw: Any) -> int:
+        target = Path(os.fsdecode(name))
+        if target == path and not flags & os.O_CREAT and when == "between its lstat and open":
+            grow()
+        fd = real_open(name, flags, *a, **kw)
+        if flags & os.O_CREAT and target.name == path.name and when == "after it staged":
+            grow()  # the empty copy is staged: the recording grows before the checks after it
+        return fd
+
+    monkeypatch.setattr(LocalArm, "stage_if_empty", probe)
+    monkeypatch.setattr(os, "open", opener)
+    seen = _no_recording_byte_read(monkeypatch, config.state_paths.staging)
     assert run(config, mode=None).exit_code == 0
-    row = _row(config, EMPTY_MEETING)
+    assert grown == [when], grown
+    row = _row(config, rel, sid)
     assert (row.last_verdict, row.state_reason) == (Verdict.DEFERRED, cycle_mod.RECORDING_WAITS), row
     assert rec.converts == [] and rec.worked == [] and rec.opened == [], rec.converts
-    assert not (config.docs_repo / slug.mirror_rel_path(SID, EMPTY_MEETING)).exists()
-    assert not list(config.state_paths.staging.rglob("*.mp4")), "the staged copy is discarded"
+    assert not (config.docs_repo / slug.mirror_rel_path(sid, rel)).exists()
+    mine = {k: [v for v in vs if path.name in v] for k, vs in seen.items()}
+    assert mine == {"fetch": [], "copy": [], "hash": [], "staged": []}, mine
+    assert not list(config.state_paths.staging.rglob("*.mp4")), "nothing staged is left"
+    assert not [p for p in config.state_paths.staging.rglob("*") if p.is_dir() and not any(p.iterdir())]
+
+
+@pytest.mark.parametrize("kind", ["local", "inbox"])
+def test_a_zero_byte_recording_is_classed_empty_with_no_byte_read_c2038(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """C2038 with C2086: a recording that stays at 0 bytes is still `empty` (C1820), now staged by the
+    probe with no fetch, no copy and no hash, an inbox's second read included."""
+    if kind == "inbox":
+        root = tmp_path / "inbox"
+        root.mkdir()
+        config = config_with(tmp_path, meetings, INBOX_SOURCE.format(path=root))
+        sid, rel = "inbox", "Contoso empty.mp4"
+    else:
+        root, sid, rel = meetings, SID, EMPTY_MEETING
+        config = config_with(tmp_path, meetings)
+    (root / rel).parent.mkdir(parents=True, exist_ok=True)
+    (root / rel).write_bytes(b"")
+    seen = _no_recording_byte_read(monkeypatch, config.state_paths.staging)
+    assert run(config, mode=None).exit_code == 0
+    fm = parse_frontmatter((config.docs_repo / slug.mirror_rel_path(sid, rel)).read_text(encoding="utf-8"))[0]
+    assert fm["status"] == "unreadable" and fm.get("reason") == content_policy.EMPTY_OUTPUT_REASON, fm
+    mine = {k: [v for v in vs if Path(rel).name in v] for k, vs in seen.items()}
+    assert mine == {"fetch": [], "copy": [], "hash": [], "staged": []}, mine
+    assert rec.opened == [] and rec.worked == [], (rec.opened, rec.worked)
 
 
 def test_a_dataless_zero_byte_recording_still_waits_c1820(

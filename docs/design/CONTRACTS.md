@@ -10725,8 +10725,10 @@ deferred unfetched with its mark) and `_reread_targets` leaves the converter's s
   `"<done_ms> <total_ms>"`, `""` once the recording is published or given up. `loop` imports both from `cycle`
   and counts these rows in a bucket of their own, never rule 3.
   Amended 2026-11-16, §16.257 C1820: a recording on this Mac listed at 0 bytes (not dataless, not a Graph item)
-  never waits: its queue fetches it with a probe budget (`ByteBudget(0, 1)`) and, the staged copy empty, converts
-  it with the whole registry, so it is `empty`; a copy holding any byte is discarded unread and the row waits.
+  never waits: its queue probes it with `LocalArm.stage_if_empty` (since §16.262 C2038), which reads no byte and
+  stages an empty file only while the file is still a regular, not-dataless file of 0 bytes with the listed inode,
+  and the empty copy is converted with the whole registry, so it is `empty`; a recording that grew, was replaced or
+  went away is never copied or hashed, and the row waits.
 
 **The notes** (`loop._recording_lines`, printed by `sync` and `status`; none blocks the next step). `(35 of 127
 minutes)` is the media time read, floored to whole minutes; it reads `of at least` while some recording has no
@@ -42315,18 +42317,21 @@ verifier's corrected fix built, as the lead's rulings 139 and 141 settle it). A 
 recording was left to the recording pass by its name alone, so one of zero bytes waited in every interactive sync
 and its WAITING ON YOU line asked the person to install the background job for an empty file, while C1647's
 empty-head check, inside `RecordingConverter._reading`, was reached only by the recording pass or `materialise`.
-`_Cycle._process` now fetches a recording listed at 0 bytes, not dataless and not a Graph item, with a probe budget,
-`ByteBudget(0, 1)` as `_reread_source` does, before any defer (`_Cycle._empty_recording`). Only a copy that staged
-0 bytes goes on, converted with the whole registry (`_whole_registry`, never `_converting`'s `without_ocr`, which
-has no recording converter and would call it `no converter` once the cycle's OCR time is used up), so it is
-classed `empty` with no `RECORDING_WAITS` row and no recording line. A fetch that raises, or one that staged any
-byte (a recording a recorder filled after the walk: the fetch checks the file's identity, not its size), is
-discarded and the row waits as before, so no queue reads a recording's bytes (spec S0 rules 4 and 5). The
-finder's fix, deciding on the listed size, was measured to be worse: a file that grew before the fetch was read in
-full inside an interactive sync. `HYDRATION_REFUSED` stays keyed on the name. Tests:
+`_Cycle._process` now probes a recording listed at 0 bytes, not dataless and not a Graph item, before any defer
+(`_Cycle._empty_recording`), through `LocalArm.stage_if_empty` since §16.262's C2038 (an InboxArm inherits it): it
+reads no byte of the file, and stages an empty file only while the path is the listed inode, a regular file of 0
+bytes that is not dataless, at its lstat, on the descriptor it opens with `O_NOFOLLOW` and again after staging
+(size, inode and mtime). Only that empty copy goes on, converted with the whole registry (`_whole_registry`, never
+`_converting`'s `without_ocr`, which has no recording converter and would call it `no converter` once the cycle's
+OCR time is used up), so it is classed `empty` with no `RECORDING_WAITS` row and no recording line. A probe that
+answers None or raises (a recording a recorder filled after the walk, replaced, gone, or online-only now) stages
+nothing and the row waits as before, so no queue reads a recording's bytes (spec S0 rules 4 and 5). The first
+build fetched it with a probe budget, `ByteBudget(0, 1)`, which bounds downloads only, so a file that grew after
+the walk was copied and hashed in full before it was discarded (C2038 with C2086); the finder's fix, deciding on
+the listed size, was measured to be worse the same way. `HYDRATION_REFUSED` stays keyed on the name. Tests:
 `test_cycle.py::test_an_interactive_sync_classes_a_zero_byte_recording_empty_c1820`,
 `::test_a_zero_byte_recording_is_empty_with_the_ocr_time_used_up_c1806`,
-`::test_a_recording_listed_empty_that_grows_before_its_fetch_still_waits_unread_c1806` and
+`::test_a_recording_listed_empty_that_grows_before_its_probe_waits_with_no_byte_read_c2038` and
 `::test_a_dataless_zero_byte_recording_still_waits_c1820`.
 
 **A recording waiting through an OCR outage waits for the OCR helper** (C1841; amends §16.34). C1641 leaves a
@@ -42639,7 +42644,31 @@ Reserved for round 41 lane RB of B13.
 
 ### 16.262 Round 41: a waiting recording is one state, the zero-byte probe reads no byte, and an outage page is read again (2026-11-17, wave B13 round 41 lane B)
 
-Reserved for round 41 lane B of B13.
+Round 41's lane B items (`docs/plans/bring-back-ocr.md`, "B13 round 41"; specs `round41/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's rulings 143 and 144 settle it). A dated line this round writes reads
+`Amended 2026-11-17, §16.262 C<n>`.
+
+**The zero-byte recording probe reads no byte** (C2038 with C2086; ruling 144). §16.257's C1820 fetched a recording
+listed at 0 bytes with a probe budget, `ByteBudget(0, 1)`, which bounds downloads only: a recording a recorder
+filled after the walk was copied and hashed in full inside an interactive sync (an inbox's twice, its second read
+the two-read agreement) and only then discarded, measured at 64 MiB. `_Cycle._empty_recording` now calls
+`LocalArm.stage_if_empty(item, dest_dir)`, never `arm.fetch`: `_source_path`, an lstat that must find the listed
+inode, a regular file of size 0 that is not dataless, then `os.open` with `O_RDONLY | O_NOFOLLOW | O_CLOEXEC` and no
+`materialize_allowed()` (an empty local file needs no materialisation); the descriptor's fstat must hold the same
+inode and device, a regular file, size 0 and not dataless; an empty file is created (0600) at
+`_staging_dest(dest_dir, item)`; then the descriptor's fstat and the path's lstat again, each the same inode, size 0
+and the first mtime. It returns `FetchResult(size=0, content_sha256=sha256(b""))`, or None with the staged file
+removed and no byte read; `_empty_recording` treats None, or a raise, as the row waiting, and keeps its
+`_discard_staged` finally and its `fetched.size != 0` guard as a backstop. InboxArm inherits the probe unchanged:
+the checks before and after, which read no content, prove for an empty file what two matching hashes do, so no
+`sha256_file` runs. The `materialise` path, its byte budget and `_reread_source`'s `ByteBudget(0, 1)` are unchanged.
+§16.34's C1820 line and §16.257's paragraph say so, and `_recording_pass`'s docstring says an interactive sync reads
+no recording, a zero-byte one on this Mac classed `empty` in its queue with none of it read. Tests:
+`test_cycle.py::test_a_recording_listed_empty_that_grows_before_its_probe_waits_with_no_byte_read_c2038` (the
+recording grows before the probe's lstat, between its lstat and open, or after it staged; local and inbox: no
+fetch, copy, hash or staging write for it, the row `RECORDING_WAITS`) and
+`::test_a_zero_byte_recording_is_classed_empty_with_no_byte_read_c2038` (local and inbox: still `empty`, no fetch,
+copy or hash).
 
 ### 16.263 Round 41: the converters: every page within the cap on its real bytes, fences and the xlsx lists included (2026-11-17, wave B13 round 41 lane E)
 
