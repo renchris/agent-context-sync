@@ -42597,6 +42597,12 @@ limit at least 15 minutes above the head.
 
 Reserved for round 41 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 41").
 
+**A recording that waits is no quarantine row** (C2006; ruling 144). `_stub_rows` took every row with a reason, so a
+recording waiting to be read (`cycle.RECORDING_WAITS`) printed `live | other` under a legend that says a live or
+dataless row is a download the OS refused. Its WHERE clause leaves out a row whose reason is exactly
+`RECORDING_WAITS`, so the legend and §16.28's quarantine words stay true; a hydration-refused row is still listed, and
+the Loop line and status name the wait. Test: `test_a_waiting_recording_is_not_a_quarantine_row_c2006`.
+
 ### 16.261 Round 41: the installer: the shell report cuts any path by its head's rule, every debug head on a line, and another build's render reads the same heads (2026-11-17, wave B13 round 41 lane RB)
 
 Reserved for round 41 lane RB of B13.

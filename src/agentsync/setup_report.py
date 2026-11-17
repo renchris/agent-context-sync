@@ -9608,9 +9608,14 @@ def _run_rows(m: _Mirror) -> list[_RunRow]:
 
 
 def _stub_rows(m: _Mirror) -> list[tuple[str, str, str, int, int, int | None, int | None]]:
-    """(source id, state, reason class, online-only 0/1, files, oldest and newest run that built the stub)
-    for every file whose row carries a reason: the quarantined and refused ones, and a present file whose
-    download the OS refused. Read once per report; grouped by the class, so no reason leaves SQLite."""
+    """(source id, state, reason class, online-only 0/1, files, oldest and newest run that built the stub) for
+    every file whose row carries a reason: the quarantined and refused ones, and a present file whose download
+    the OS refused. Read once per report; grouped by the class, so no reason leaves SQLite. A row whose reason
+    is exactly ``cycle.RECORDING_WAITS`` is left out (B13 round 41 C2006, ruling 144): a recording that waits
+    to be read is no refused download, which the legend says every live or dataless row is, and the Loop line
+    and status name it as a wait; a hydration-refused row stays."""
+    from agentsync.cycle import RECORDING_WAITS  # noqa: PLC0415 - lazy, as the other cycle reads are
+
     kept = m.kept.get("stubs")
     if isinstance(kept, list):
         return cast(list[tuple[str, str, str, int, int, int | None, int | None]], kept)
@@ -9620,8 +9625,9 @@ def _stub_rows(m: _Mirror) -> list[tuple[str, str, str, int, int, int | None, in
         "i.state AS state, i.state_reason AS state_reason, "
         "i.dataless AS dataless, (SELECT MAX(o.built_run) FROM outputs o WHERE o.source_id = i.source_id "
         "AND o.stable_id = i.stable_id) AS built FROM items i WHERE i.is_dir = 0 AND "
-        "(i.state IN ('quarantined', 'refused') OR (i.state_reason IS NOT NULL AND i.state != 'tombstone'))) "
-        "GROUP BY 1, 2, 3, 4"
+        "(i.state IN ('quarantined', 'refused') OR (i.state_reason IS NOT NULL AND i.state != 'tombstone' "
+        "AND i.state_reason != ?))) GROUP BY 1, 2, 3, 4",
+        (RECORDING_WAITS,),
     )
     out = [(str(s), _word(st), str(cls), int(dl), int(n), lo, hi) for s, st, cls, dl, n, lo, hi in rows]
     m.kept["stubs"] = out

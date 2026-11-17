@@ -16693,6 +16693,29 @@ def test_a_failed_image_stub_query_is_said_not_passed_over(
 
 
 @pytest.mark.usefixtures("roomy_calls")
+def test_a_waiting_recording_is_not_a_quarantine_row_c2006(fake_mac: dict[str, Path]) -> None:
+    """B13 round 41 C2006 (ruling 144): _stub_rows took every row with a reason, so a recording that waits to
+    be read (cycle.RECORDING_WAITS) printed `live | other` under a legend that says a live or dataless row is
+    a download the OS refused. It leaves the table, by exact match; a hydration-refused row stays."""
+    from agentsync import cycle  # noqa: PLC0415
+
+    one, two = seed_ocr(fake_mac)
+    seed = Seed(fake_mac["config"])
+    seed.item(one, "Contoso standup.m4a", reason=cycle.RECORDING_WAITS, built=5)
+    seed.close()
+    part = status_parts(fake_mac)[1]["Quarantine by reason"]
+    assert "| live |" not in part and "| other |" not in part, part
+    seed = Seed(fake_mac["config"])
+    seed.n = next(SEED_NUMBERS)
+    seed.item(two, "ledger-2031.zip", reason=cycle.HYDRATION_REFUSED, state="live")
+    seed.close()
+    part = status_parts(fake_mac)[1]["Quarantine by reason"]
+    rows = [ln for ln in part.splitlines() if "| live |" in ln]
+    assert len(rows) == 1 and "| live | download refused by the OS |" in rows[0], rows
+    assert "| other |" not in part, part
+
+
+@pytest.mark.usefixtures("roomy_calls")
 def test_quarantine_part_groups_by_source_state_and_reason_class(fake_mac: dict[str, Path]) -> None:
     one, two = seed_ocr(fake_mac)
     seed = Seed(fake_mac["config"])
