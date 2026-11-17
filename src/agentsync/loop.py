@@ -82,6 +82,7 @@ from agentsync.cycle import (
     HYDRATION_REFUSED,
     LISTING_HELD,
     NETWORK_POLICY_FAILED,
+    RECORDING_OCR_DOWN_META,
     RECORDING_PROGRESS_META,
     RECORDING_WAITS,
     _reread_records,
@@ -570,8 +571,10 @@ def _unpublished(manifest: Manifest, sources: Sequence[SourceConfig]) -> _Files:
 
     Recordings have buckets of their own and never make rule 3 (spec S0 rules 3 and 6): one the recording
     pass is still reading (:data:`RECORDING_WAITS`, or a ``no converter`` stub from before recordings were
-    read that it has read in part, with the minutes read from its ``recording_progress:`` meta), and an
-    online-only one whose download failed, which the person fixes in Finder, not with a sync.
+    read that it has read in part, with the minutes read from its ``recording_progress:`` meta), one whose
+    stub is the OCR-down page (its :data:`RECORDING_OCR_DOWN_META` mark, never its ``no converter`` reason
+    alone, which a Mac with no media helper gives too: B13 round 41 C2039 with C2007), and an online-only
+    one whose download failed, which the person fixes in Finder, not with a sync.
     An online-only recording not tried yet waits for the recording download allowance, never for the
     source's document budget, so it is never over that budget."""
     out = _Files()
@@ -581,9 +584,10 @@ def _unpublished(manifest: Manifest, sources: Sequence[SourceConfig]) -> _Files:
                 continue
             recording = Path(row.rel_path).suffix.lower() in _RECORDING_SUFFIXES
             key = f"{RECORDING_PROGRESS_META}{src.id}:{row.stable_id}"
-            if row.state is RowState.REFUSED:  # counted only while the stub path is part way through it
-                stub = (row.state_reason or "").startswith(NO_CONVERTER_PREFIX)
-                if not (recording and stub and _progress(manifest.get_meta(key))):
+            if row.state is RowState.REFUSED:  # counted only while the stub path is part way through it,
+                stub = (row.state_reason or "").startswith(NO_CONVERTER_PREFIX)  # or its page is OCR-down's
+                marked = manifest.get_meta(f"{RECORDING_OCR_DOWN_META}{src.id}:{row.stable_id}") == "1"
+                if not (recording and stub and (marked or _progress(manifest.get_meta(key)))):
                     continue
             if row.state_reason == RECORDING_WAITS or row.state is RowState.REFUSED:
                 out.recording[src.id] = out.recording.get(src.id, 0) + 1

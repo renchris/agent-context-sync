@@ -512,6 +512,13 @@ _RECORDING_BUDGET_S = 180.0
 """The seconds of recording work one background cycle may spend (spec S0 rule 5): pieces of one recording at a
 time, the piece in flight finishing.  Kept apart from the cycle's OCR time (``_OCR_BUDGET_S``), so the images
 beside a recording keep theirs; recordings are read after every source, so nothing waits behind them."""
+RECORDING_OCR_DOWN_META = "recording_ocr_down:"
+"""Manifest meta ``recording_ocr_down:<source id>:<stable id>``: ``"1"`` while the recording's refused stub
+is the OCR-down page (``publish.OCR_DOWN_RECORDING_REASON``, given while the OCR helper fails and the media
+helper is ready), ``""`` once a stub without those words replaces it.  ``loop._unpublished`` counts a REFUSED
+recording row with it among the waiting recordings, never by its ``no converter`` reason alone, which a Mac
+with no media helper gives too (B13 round 41 C2039 with C2007, ruling 144)."""
+
 _RECORDING_META = "recording:"
 """``recording:<source_id>``: what the recording pass knows of the source's recordings across cycles.  A JSON
 object of ``reading`` (the stable id being read when it was stored, cleared when the read ends: a cycle
@@ -4576,6 +4583,7 @@ class _Cycle:
             # a Graph source (every read there is a download) and never while ``materialise PATH`` names
             # the files to read.
             try:
+                self._replan_recording_stubs(src, arm, acc, queued)  # reads no recording byte (C2039)
                 self._reread_source(src, arm, acc, queued)
             except Exception as exc:
                 # Reading files again is extra work on a source that has synced: what stops it is reported
@@ -5156,7 +5164,59 @@ class _Cycle:
         waits = row.state in (RowState.LIVE, RowState.DATALESS) and row.state_reason is None
         if waits:  # never over a quarantine's or a refused download's own reason
             self.manifest.set_state(row.source_id, row.stable_id, row.state, RECORDING_WAITS)
+        elif self._recording_stub(row):  # a stub from before the recording converter: readable now (C2039)
+            state = RowState.DATALESS if row.dataless else RowState.LIVE
+            self.manifest.set_state(row.source_id, row.stable_id, state, RECORDING_WAITS)
         self._recording_queue.setdefault(src.id, []).append(row.stable_id)
+
+    def _recording_stub(self, row: ItemRow) -> bool:
+        """True when ``row`` is a REFUSED recording whose reason is ``no converter for <its suffix>``, and
+        this cycle's registry gives it to the recording converter: the stub of a cycle that had none (the OCR
+        helper failing, no media helper yet, ``[convert] recordings`` off), readable now (B13 round 41 C2039
+        with C2007, ruling 144)."""
+        suffix = Path(row.name).suffix.lower()
+        return (
+            row.state is RowState.REFUSED
+            and row.state_reason == NO_CONVERTER_PREFIX + suffix
+            and self._recording(row.name)
+        )
+
+    def _replan_recording_stubs(
+        self, src: SourceConfig, arm: LocalArm, acc: _SourceAcc, queued: set[str]
+    ) -> None:
+        """Plan again each recording of ``src`` whose row is a ``no converter`` stub (``_recording_stub``)
+        once this cycle's registry has the recording converter, in a cycle that runs no recording pass (an
+        interactive sync; a background one's pass reads such a stub through its stub path, ``reread``'s
+        targets): a file on this Mac, not dataless, that the pass listed unchanged and in scope (one in
+        ``queued`` is the queue's own work, which defers it).  A
+        file of 0 bytes is probed and classed ``empty`` (``_empty_recording``); any other waits for the
+        recording pass (``_recording_defer``, now ``RECORDING_WAITS``), so status counts it and the pass reads
+        it.  Without this, a recording first seen while the OCR helper failed kept the OCR-down page and
+        dropped out of status after the helper worked, in every interactive sync, since a row listed
+        unchanged is in no queue and ``_reread_targets`` leaves recordings to the recording pass, which an
+        interactive sync never runs (B13 round 41 C2039 with C2007, ruling 144).  Nothing is read: no byte of
+        a recording with bytes, and none of an empty one (``LocalArm.stage_if_empty``)."""
+        suffixes = self._recording_suffixes()
+        if not suffixes or self.dry or self.recordings != "none":
+            return
+        rows = [
+            row
+            for row in self.manifest.iter_items(src.id, states=(RowState.REFUSED,))
+            if not row.is_dir
+            and not row.dataless
+            and row.last_seen_run == self.run_id
+            and row.stable_id not in queued
+            and Path(row.name).suffix.lower() in suffixes
+            and self._recording_stub(row)
+            and arm.in_scope(row.rel_path)
+        ]
+        for start in range(0, len(rows), _WORK_BATCH):
+            self.lock.beat(f"work:{src.id}")
+            with self.manifest.transaction():
+                for row in rows[start : start + _WORK_BATCH]:
+                    if not self._empty_recording(src, arm, row, acc):
+                        self._recording_defer(src, row, acc)
+                self._flush_changes()
 
     def _recording_load(self, source_id: str) -> _Recordings:
         """The source's recording record, read once a cycle and kept current here.  A ``reading`` mark in it
@@ -6095,7 +6155,24 @@ class _Cycle:
         if [(p.output_path, p.page_sha256) for p in pages] != have:
             return False
         self.manifest.set_verdict(row.source_id, row.stable_id, Verdict.REFUSED)
+        self._mark_ocr_down(src, row, refused)  # a page an older build gave the OCR-down words (C2039)
         return True
+
+    def _mark_ocr_down(self, src: SourceConfig, row: ItemRow, result: ConversionResult) -> None:
+        """Keep :data:`RECORDING_OCR_DOWN_META` of a recording whose refused stub this cycle plans or keeps:
+        ``"1"`` when the page says the OCR helper is not working (:meth:`Publisher.ocr_waits`, the page's own
+        test), ``""`` for a stub without those words (no media helper, ``[convert] recordings`` off).  Only a
+        ``no converter`` refusal of a recording's suffix is marked; a row with no mark is never written
+        (B13 round 41 C2039 with C2007, ruling 144)."""
+        suffix = Path(row.name).suffix.lower()
+        if suffix not in RecordingConverter.extensions or result.reason != NO_CONVERTER_PREFIX + suffix:
+            return
+        local = not read_needs_download(graph=src.kind.is_graph, dataless=row.dataless)
+        value = "1" if self.publisher.ocr_waits(result.reason, suffix, local=local) else ""
+        key = f"{RECORDING_OCR_DOWN_META}{row.source_id}:{row.stable_id}"
+        stored = self.manifest.get_meta(key)
+        if stored != value and (stored is not None or value):
+            self.manifest.set_meta(key, value)
 
     def _stub_unchanged(
         self, src: SourceConfig, row: ItemRow, outs: Sequence[OutputRow], result: ConversionResult
@@ -6976,6 +7053,7 @@ class _Cycle:
             self.manifest.set_state(sid, stable, RowState.REFUSED, reason)
             self.manifest.set_verdict(sid, stable, Verdict.REFUSED)
             acc.settle(stable, Verdict.REFUSED)
+            self._mark_ocr_down(src, row, result)
             if unread and self.publisher.withheld(result.reason, Path(row.name).suffix.lower()):
                 acc.withheld_unread += 1
             elif unread and self.publisher.ocr_waits(

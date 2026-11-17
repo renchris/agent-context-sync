@@ -7364,6 +7364,110 @@ def test_a_recording_waiting_through_an_ocr_outage_waits_for_the_ocr_helper_c184
     assert "--confirm-install-agent" in said and loop_mod.RECORDING_OCR_WAIT not in said, said
 
 
+def _ocr_down_marked(config: Config, rel: str, sid: str = SID) -> str | None:
+    with Manifest(config.state_paths.db) as m:
+        (row,) = [r for r in m.iter_items(sid) if r.rel_path == rel]
+        return m.get_meta(f"{cycle_mod.RECORDING_OCR_DOWN_META}{sid}:{row.stable_id}")
+
+
+def test_a_recording_first_seen_in_an_ocr_outage_is_counted_and_read_again_once_the_helper_works_c2039(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 41 C2039 with C2007 (ruling 144): a recording first seen while the OCR helper failed (the
+    media helper ready) got the OCR-down stub, `no converter for .mp4`, and dropped out of status, during the
+    outage and after it: listed unchanged, it was in no queue, the re-read leaves recordings to the recording
+    pass and an interactive sync runs none, so on a Mac with no background job its page promised a read that
+    never came. The planner marks the OCR-down page (``RECORDING_OCR_DOWN_META``) and status counts a REFUSED
+    recording by that mark: C1841's note during the outage. Once the helper works, every sync plans the stub
+    again: the 0-byte one `empty`, the 10-minute one waiting (``RECORDING_WAITS``) with the usual
+    install-the-job-or-materialise wait, in each of two interactive syncs."""
+    config = config_with(tmp_path, meetings)
+    monkeypatch.setattr(loop_mod.launchd, "agents_installed", lambda _c: False)
+    _fail_ocr(monkeypatch)
+    monkeypatch.setattr(cycle_mod.media, "probe", lambda _c, _d: ("ready", ""))
+    (meetings / EMPTY_MEETING).parent.mkdir(parents=True, exist_ok=True)
+    (meetings / EMPTY_MEETING).write_bytes(b"")
+    stub_recording(meetings / MEETING, 10)
+    assert run(config, mode=None).exit_code == 0
+    for rel in (EMPTY_MEETING, MEETING):
+        row = _row(config, rel)
+        assert (row.state, row.state_reason) == (RowState.REFUSED, "no converter for .mp4"), row
+        fm, _body = _recording_page(config, rel)
+        assert fm["reason"] == publish_mod.OCR_DOWN_RECORDING_REASON, fm
+    said = _recording_words(config)
+    assert f"2 recordings in {SID} wait {loop_mod.RECORDING_OCR_WAIT}" in said, said
+    assert "--confirm-install-agent" not in said and "materialise" not in said, said
+    assert [_ocr_down_marked(config, rel) for rel in (EMPTY_MEETING, MEETING)] == ["1", "1"]
+    _use_ocr(monkeypatch, tmp_path)
+    for _ in range(2):  # two interactive syncs, no background job: no recording pass
+        assert run(config, mode=None).exit_code == 0
+        fm, _body = _recording_page(config, EMPTY_MEETING)
+        assert fm["status"] == "unreadable" and fm.get("reason") == content_policy.EMPTY_OUTPUT_REASON, fm
+        row = _row(config, MEETING)
+        assert (row.state, row.state_reason) == (RowState.LIVE, cycle_mod.RECORDING_WAITS), row
+        said = _recording_words(config)
+        assert f"1 recording in {SID} waits to be read" in said and "--confirm-install-agent" in said, said
+        assert loop_mod.RECORDING_OCR_WAIT not in said, said
+        assert rec.worked == [], "an interactive sync reads no recording"
+    assert run(config).exit_code == 0  # a background sync reads it
+    fm, body = _recording_page(config, MEETING)
+    assert fm["status"] == "current" and "Contoso review" in body, (fm, body)
+    assert _recording_words(config) == ""
+
+
+def test_a_recording_deferred_before_an_ocr_outage_keeps_its_count_through_it_c2007(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 41 C2007: a recording an interactive sync left waiting, never read, had no page OCR made,
+    so a sync in the outage gave it the OCR-down stub and status dropped it, where one read before kept
+    C1841's note. Its mark keeps the note through the outage, and the usual wait follows once the helper
+    works, before any background sync reads it."""
+    config = config_with(tmp_path, meetings)
+    monkeypatch.setattr(loop_mod.launchd, "agents_installed", lambda _c: False)
+    stub_recording(meetings / MEETING, 10)
+    assert run(config, mode=None).exit_code == 0
+    assert _row(config, MEETING).state_reason == cycle_mod.RECORDING_WAITS
+    _fail_ocr(monkeypatch)
+    monkeypatch.setattr(cycle_mod.media, "probe", lambda _c, _d: ("ready", ""))
+    assert run(config, mode=None).exit_code == 0
+    assert _row(config, MEETING).state is RowState.REFUSED
+    said = _recording_words(config)
+    assert f"1 recording in {SID} waits {loop_mod.RECORDING_OCR_WAIT}" in said, said
+    assert _ocr_down_marked(config, MEETING) == "1"
+    assert not any("recording" in w for w in loop_mod.next_step(config).waits), said
+    _use_ocr(monkeypatch, tmp_path)
+    assert run(config, mode=None).exit_code == 0
+    said = _recording_words(config)
+    assert "--confirm-install-agent" in said and loop_mod.RECORDING_OCR_WAIT not in said, said
+
+
+def test_a_no_media_recording_stub_stays_uncounted_and_unplanned_c2039(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C2039, C2007 (makes worse for the reason alone): with no media helper a recording's stub says `no
+    converter for .mp4` and is never marked, in an OCR outage or not, so status never says it waits for a
+    read nothing on this Mac can make; with no recording converter it is not planned again either."""
+    config = config_with(tmp_path, meetings)
+    monkeypatch.setattr(loop_mod.launchd, "agents_installed", lambda _c: False)
+    monkeypatch.setattr(cycle_mod.media, "engine", lambda _c, _d: None)
+    monkeypatch.setattr(cycle_mod.media, "probe", lambda _c, _d: ("not-built", ""))
+    stub_recording(meetings / MEETING, 10)
+    _fail_ocr(monkeypatch)
+    assert run(config, mode=None).exit_code == 0
+    _use_ocr(monkeypatch, tmp_path)
+    monkeypatch.setattr(cycle_mod.media, "engine", lambda _c, _d: None)
+    for _ in range(2):
+        row = _row(config, MEETING)
+        assert (row.state, row.state_reason) == (RowState.REFUSED, "no converter for .mp4"), row
+        fm, _body = _recording_page(config, MEETING)
+        assert fm["reason"] == "no converter for .mp4", fm
+        assert _ocr_down_marked(config, MEETING) in (None, "")
+        with Manifest(config.state_paths.db) as m:
+            assert loop_mod._unpublished(m, config.sources).recording == {}
+        assert "recording" not in _recording_words(config)
+        assert run(config, mode=None).exit_code == 0
+
+
 def test_a_recording_changed_during_an_ocr_outage_carries_its_new_text_once_the_helper_works_c1641(
     tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
 ) -> None:

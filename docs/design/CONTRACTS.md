@@ -42689,6 +42689,36 @@ shortcut printed the version document for `--version --json -vh`, against R086's
 `test_cli_json.py::test_a_help_flag_page_refuses_fields_as_help_does_c1856` (its `-vh cluster`, `top-level -hv`
 and `graph action -vh` cases) and `::test_version_json_with_a_help_cluster_prints_the_help_page_c2040`.
 
+**A recording first seen in an OCR outage is counted, and read again once the helper works** (C2039 with C2007;
+ruling 144). While the OCR helper fails the registry has no recording converter, so a recording on this Mac that
+no OCR-made page holds (first seen in the outage, or left waiting by an interactive sync before it) got the
+OCR-down stub (`publish.OCR_DOWN_RECORDING_REASON`, the stored reason `no converter for <suffix>`), and
+`loop._unpublished` counted a REFUSED recording only with recording progress, so status dropped it; once the helper
+worked the row was listed unchanged, in no queue, `_reread_targets` leaves recordings to the recording pass and an
+interactive sync runs none, so on a Mac with no background job its page promised a read that never came, a
+zero-byte one included. Two parts, both keyed on the page, never on the reason alone, which a Mac with no media
+helper or with `[convert] recordings` off gives too (counting by it would ask the person to install the job for a
+recording nothing can read). (1) The planner marks the OCR-down page: `_Cycle._mark_ocr_down`, from `_publish`'s
+refused branch and `_stub_stands`, stores manifest meta `cycle.RECORDING_OCR_DOWN_META` + `<source id>:<stable
+id>` (`recording_ocr_down:…`) `"1"` when `Publisher.ocr_waits` gives a recording's `no converter` stub the OCR-down
+words, `""` for one without them; `loop._unpublished` counts a REFUSED recording row with that mark among the
+waiting recordings (beside the one with recording progress), so `_recording_lines` words it as C1841's note
+during the outage and as the usual wait after it. (2) `_Cycle._replan_recording_stubs`, before `_reread_source` in
+every cycle that runs no recording pass (an interactive sync; a background cycle's pass reads such a stub through its
+stub path), never under a dry run, takes a source's REFUSED rows whose reason is `no converter for <suffix>`
+of a suffix this cycle's registry gives the recording converter (`_recording_stub`), on this Mac, listed unchanged
+this pass and in scope: a 0-byte one goes through `_empty_recording` (`empty`, no byte read), any other through
+`_recording_defer`, which now replaces that reason with `RECORDING_WAITS` on a LIVE row (it set the reason only
+over none), so status counts it and the recording pass reads it; nothing is read. This also plans again a real
+`no converter` stub made before a media helper existed, which is readable now. Tests:
+`test_cycle.py::test_a_recording_first_seen_in_an_ocr_outage_is_counted_and_read_again_once_the_helper_works_c2039`
+(an outage, a 0-byte and a 10-minute recording, then two interactive syncs with no background job: two recordings
+wait for the OCR helper in the outage; after it the 0-byte one is `empty` and the 10-minute one waits with the
+`--confirm-install-agent` wait; a background sync reads it),
+`::test_a_recording_deferred_before_an_ocr_outage_keeps_its_count_through_it_c2007` and
+`::test_a_no_media_recording_stub_stays_uncounted_and_unplanned_c2039` (no media helper: never marked, never
+counted, never planned again).
+
 ### 16.263 Round 41: the converters: every page within the cap on its real bytes, fences and the xlsx lists included (2026-11-17, wave B13 round 41 lane E)
 
 Reserved for round 41 lane E of B13.
