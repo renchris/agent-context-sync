@@ -46,7 +46,8 @@ from agentsync.text import plural
 
 log = logging.getLogger(__name__)
 
-_EMITTER_VERSION = "2.0.0"  # 1.0.0 was a field build that wrote the file name into the page
+# 2.0.0: 1.0.0 was a field build that wrote the file name into the page
+_EMITTER_VERSION = "2.0.1"  # B13 round 41 C2044: a page near the cap leaves the guard its room
 _REREAD_BELOW = "2.0.0"
 """An image page or stub an emitter below this wrote is read again once (``ImageConverter.outdated``).  The
 field build's 1.0.0 put the file's name into the page, which is another file's name where two share their

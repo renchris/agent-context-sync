@@ -71,7 +71,7 @@ from agentsync.policy import EMPTY_OUTPUT_REASON
 Kind = Literal["share", "camera", "other"]
 Tag = Literal["SCREEN", "TILE"]
 
-_EMITTER_VERSION = "1.1.0"
+_EMITTER_VERSION = "1.1.1"  # B13 round 41 C2044: a page near the cap leaves the guard its room
 _REREAD_BELOW = "1.0.0"
 """A page or stub an emitter below this wrote is read again once (``RecordingConverter.outdated``).  Raise it
 only for a change worth reading every local recording again for, never above ``_EMITTER_VERSION``."""

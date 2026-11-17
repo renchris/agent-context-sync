@@ -52,7 +52,7 @@ from agentsync.text import plural
 
 log = logging.getLogger(__name__)
 
-_EMITTER_VERSION = "1.0.1"
+_EMITTER_VERSION = "1.0.2"  # B13 round 41 C2044: a page near the cap leaves the guard its room
 _REREAD_BELOW = "1.0.1"
 """A ``not-msg`` stub an emitter below this wrote is read again once (``MsgConverter.outdated``): 1.0.0 gave
 it to a file that holds MIME text, which 1.0.1 reads as an ``.eml``.  Never above ``_EMITTER_VERSION``."""

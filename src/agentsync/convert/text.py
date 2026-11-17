@@ -12,12 +12,14 @@ from pathlib import Path
 from agentsync.config import ConvertConfig
 from agentsync.convert._common import (
     _FULL_TEXT_SIDECAR,
+    GUARD_RESERVE,
     _cell,
     _csv_bytes,
     _decode_text,
     _fence,
     _gfm_table,
     _join_limited,
+    _longest_run,
     _python_version,
     _unicode_version,
 )
@@ -26,7 +28,7 @@ from agentsync.errors import ConversionError
 from agentsync.model import RenderedUnit, UnitKind
 from agentsync.text import plural
 
-_EMITTER_VERSION = "1.0.2"  # B13 round 40 C1849: a cut table's note; C1807: a field past 128 KiB parses
+_EMITTER_VERSION = "1.0.3"  # B13 round 41 C2042: a fence a backtick run outgrows stays within the cap
 _TABLE_SIDECAR = "full-table.csv"
 _FENCE_LANG: dict[str, str] = {
     ".txt": "text",
@@ -146,7 +148,7 @@ class PlainTextConverter:
         else:
             lang = _FENCE_LANG.get(suffix, "text")
             body = "[empty file]\n" if not text.strip() else _fence(text, lang)
-            if len(body.encode("utf-8")) > self._cfg.max_page_bytes:
+            if len(body.encode("utf-8")) > self._cfg.max_page_bytes - GUARD_RESERVE:  # B13 round 41 C2044
                 body, sidecars = self._capped(text, lang)
             first = next((ln.strip() for ln in lines if ln.strip()), "")
             title = first[:120] if first else "Empty text file"
@@ -228,10 +230,19 @@ class PlainTextConverter:
         return "\n".join(out), sidecars, title, summary
 
     def _capped(self, text: str, lang: str) -> tuple[str, tuple[tuple[str, bytes], ...]]:
-        """Fence only the first lines that fit ``max_page_bytes``; the whole text rides as a sidecar."""
+        """Fence only the first lines that fit ``max_page_bytes``; the whole text rides as a sidecar.
+
+        The 512-byte reserve holds the note, the banner, the sidecar digest footer and a three-backtick fence
+        on both sides.  A head whose longest backtick run R is 3 or more needs a fence of R + 1, so it is cut
+        again 2 * (R + 1 - 3) bytes shorter: a prefix of the first cut, whose run, and so whose fence, is no
+        longer, and the page stays within the cap.  A head with no such run keeps its bytes (B13 round 41
+        C2042, C2087)."""
         raw = text.encode("utf-8")
         budget = max(0, self._cfg.max_page_bytes - 512)
         head = raw[:budget].decode("utf-8", errors="ignore")
+        ticks = _longest_run(head, "`")
+        if ticks >= 3:
+            head = raw[: max(0, budget - 2 * (ticks + 1 - 3))].decode("utf-8", errors="ignore")
         cut = head.rfind("\n")
         if cut > 0:
             head = head[: cut + 1]

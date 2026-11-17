@@ -629,7 +629,9 @@ def render(reading: Reading, *, max_page_bytes: int) -> tuple[RenderedUnit, ...]
     units: list[RenderedUnit] = []
     for w in windows:
         span = f"{_clock(w.start)}-{_clock(w.end)}"
-        body, full = _cap_body(w.body, max_page_bytes, sidecar_name=_FULL_TEXT_SIDECAR)
+        body, full = _cap_body(
+            w.body, max_page_bytes, sidecar_name=_FULL_TEXT_SIDECAR, others=[name for name, _ in w.keyframes]
+        )
         units.append(
             make_unit(
                 unit_id=f"window:{w.n}",

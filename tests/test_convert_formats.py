@@ -140,7 +140,7 @@ def test_pandoc_uses_bundled_binary_by_absolute_path(monkeypatch: pytest.MonkeyP
     path = runner.path()
     assert path.is_absolute() and path == resolved_pandoc(None)[0]
     assert "pypandoc" in path.parts and path.parent.name == "files"
-    assert re.fullmatch(r"1\.0\.0\+pandoc-\d+(\.\d+)+", PandocConverter(CFG).version())
+    assert re.fullmatch(r"1\.0\.1\+pandoc-\d+(\.\d+)+", PandocConverter(CFG).version())
 
 
 def test_docx_fixture_headings_table_text(fixture_files: dict[str, Path]) -> None:
@@ -406,8 +406,8 @@ def test_xlsx_byte_cap_also_caps_rows(tmp_path: Path) -> None:
 
 def test_xlsx_first_row_past_the_budget_rides_in_the_sidecar_c1676(tmp_path: Path) -> None:
     """B13 round 39 C1676: `_table_lines` kept the first row whatever its size (``shown > 0``), so a sheet
-    whose first row passed the budget made a page past the cap; that row now goes to the sidecar only, and
-    the page keeps the header and the row-cap note."""
+    whose first row passed the budget made a page past the cap; that row rides whole in the sidecar, and since
+    round 41's C2022 the page shows it with its cells cut, the short row after it and the row-cap note."""
     book = openpyxl.Workbook()
     sheet = book.active
     assert sheet is not None
@@ -418,7 +418,8 @@ def test_xlsx_first_row_past_the_budget_rides_in_the_sidecar_c1676(tmp_path: Pat
     book.save(src)
     data = XlsxConverter(replace(CFG, max_page_bytes=8000)).convert(src, name="long.xlsx")[1]
     assert len(data.body.encode()) <= 8000
-    assert "[row cap: first 0 of 2 non-empty rows shown; every row is in the sidecar" in data.body
+    assert "[row cap: first 2 of 2 non-empty rows shown, row 1's cells cut to " in data.body
+    assert "| 2 | short | b |" in data.body and "x…" in data.body
     rows = list(csv.reader(io.StringIO(data.sidecars[0][1].decode())))
     assert rows[1][1] == "Contoso " + "x" * 20_000 and len(rows) == 3
 
@@ -469,13 +470,16 @@ def test_every_xlsx_page_stays_within_the_cap_with_an_oversized_first_row_or_man
         assert len(pages) == (2 if src is one else 5)
         assert [p.unit_id for p in pages if len(p.body.encode("utf-8")) > 8192] == []
     index = _xlsx_pages(one, 8192, streamed=streamed)[0].body
-    assert "| Contoso " + "x" * 590 in index and "x" * 600 not in index and "…" in index
+    # one sheet's headers cell scales with the room since round 41's C2045: (7,168 - 2,048 - 200) // 4
+    assert "| Contoso " + "x" * 1221 + "… |" in index and "x" * 1222 not in index
     four_index = _xlsx_pages(four, 8192, streamed=streamed)[0].body
     assert four_index.count("\\| header ") > 4 and "…" in four_index and "\\…" not in four_index
     assert "truncated at the page size cap" not in four_index
     if streamed:
         summary = _xlsx_pages(one, 8192, streamed=True)[1].body
-        assert "| A | Contoso " + "x" * 191 + "… | text 2 | 2 |" in summary and "x" * 192 not in summary
+        # two columns: (8,192 - 4,096 - 1,024 - 256) // 8 characters a first-row value since round 41's C2045
+        assert "| A | Contoso " + "x" * 343 + "… | text 2 | 2 |" in summary
+        assert "| A | Contoso " + "x" * 344 not in summary  # the first row below it is cut on its own (C2022)
 
 
 def test_an_xlsx_index_past_the_cap_lists_the_sheets_that_fit_and_says_so_c1848(tmp_path: Path) -> None:
@@ -489,12 +493,12 @@ def test_an_xlsx_index_past_the_cap_lists_the_sheets_that_fit_and_says_so_c1848(
         index = pages[0].body
         found = re.search(
             r"\[sheet list truncated at the page size cap: (\d+) of 24 sheets listed; each "
-            r"sheet's own page has its headers\]",
+            r"sheet's own page or its CSV sidecar has its headers\]",
             index,
         )
         assert found and 0 < int(found.group(1)) < 24
         assert index.count("\n| ") == int(found.group(1)) + 1, "the header line and each listed sheet"
-        assert "sidecar" not in index
+        assert "sidecar" not in index.replace("or its CSV sidecar has its headers]", "")  # C2047's note
 
 
 def test_a_streamed_schema_past_the_cap_names_the_sidecar_and_leaves_the_rows_their_room_c1848(
@@ -857,7 +861,7 @@ def test_a_template_round_4_cached_gets_the_whole_table_rendering_under_a_new_na
     copied.write_bytes(first.read_bytes())
     result = _through_the_cache(copied, Registry.default(CFG), cache)
     assert not result.from_cache and result.units[0].body.count("|---|---|") == 2
-    assert result.converter_version.startswith("1.0.1+")
+    assert result.converter_version.startswith("1.0.2+")
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -953,7 +957,7 @@ def test_pdf_is_pypdfium2_and_says_so() -> None:
     assert conv.converter_id == "pdf-pypdfium2"
     assert Registry.default(CFG).for_name("Statement.PDF") is not None
     assert Registry.default(CFG).for_name("Statement.PDF").converter_id == "pdf-pypdfium2"  # type: ignore[union-attr]
-    assert re.fullmatch(r"2\.1\.0\+pypdfium2-[\d.]+\+pdfium-[\d.]+\+pdfminer\.six-\S+", conv.version())
+    assert re.fullmatch(r"2\.1\.1\+pypdfium2-[\d.]+\+pdfium-[\d.]+\+pdfminer\.six-\S+", conv.version())
     opts = conv.options()
     assert opts["engine"] == "pypdfium2:text-range" and opts["fallback"] == "pdfminer.six"
     assert not any("comment" in key for key in opts)  # the emitter version alone moves the action key
@@ -2641,7 +2645,7 @@ def _deck_one(src: Path, engine: ocr.OcrEngine | None, cfg: ConvertConfig = CFG)
 
 def test_pptx_version_and_options_change_only_with_an_engine(tmp_path: Path) -> None:
     plain, reading = PptxConverter(CFG), PptxConverter(CFG, ocr=fake_engine(tmp_path / "bin"))
-    assert re.fullmatch(r"1\.0\.1\+python-pptx-\d+(\.\d+)+", plain.version())
+    assert re.fullmatch(r"1\.0\.2\+python-pptx-\d+(\.\d+)+", plain.version())
     assert plain.options() == {"max_page_bytes": CFG.max_page_bytes, "row_tolerance_emu": 45_720}
     assert reading.version() == f"{plain.version()}+{_OCR_IDENTITY}"
     assert reading.options() == {**plain.options(), **image._OCR_OPTIONS, "ocr_pptx_rules": 2}

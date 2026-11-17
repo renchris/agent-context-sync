@@ -15,6 +15,7 @@ from importlib import metadata
 from pathlib import Path
 
 from agentsync.errors import ConversionError, UnreadableSourceError
+from agentsync.policy import UNTRUSTED_BANNER
 
 _OLE_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 _ENCRYPTED_PACKAGE = "EncryptedPackage".encode("utf-16-le")
@@ -278,10 +279,14 @@ def _decode_text(data: bytes) -> str:
     return unicodedata.normalize("NFC", text.replace("\r\n", "\n").replace("\r", "\n"))
 
 
+def _longest_run(text: str, char: str) -> int:
+    """The length of the longest run of ``char`` (a backtick or a tilde) in ``text``; 0 when it has none."""
+    return max((len(m.group(0)) for m in re.finditer(re.escape(char) + "+", text)), default=0)
+
+
 def _fence(text: str, lang: str = "") -> str:
     """Wrap ``text`` in a backtick fence longer than any backtick run inside it."""
-    longest = max((len(m.group(0)) for m in re.finditer(r"`+", text)), default=0)
-    ticks = "`" * max(3, longest + 1)
+    ticks = "`" * max(3, _longest_run(text, "`") + 1)
     inner = text if text.endswith("\n") or not text else text + "\n"
     return f"{ticks}{lang}\n{inner}{ticks}\n"
 
@@ -401,23 +406,52 @@ def _ascii_slug(text: str, *, fallback: str = "unit") -> str:
 # ---------------------------------------------------------------------------------------------------------
 
 
-def _cap_body(body: str, max_bytes: int, *, sidecar_name: str) -> tuple[str, tuple[tuple[str, bytes], ...]]:
+_DIGEST_LINE_HEAD = "Sidecar file "
+"""``registry.SIDECAR_DIGEST_PREFIX``, which starts each line of a page's sidecar digest footer (a test holds
+the two equal; every converter the registry builds imports this module, so it cannot import the registry)."""
+
+GUARD_RESERVE = (
+    len(UNTRUSTED_BANNER.encode("utf-8")) + 2 + 2 + 1 + len(f"{_DIGEST_LINE_HEAD}`` sha256 ") + 64 + 1
+)
+"""The bytes the registry's guard adds to a converter's page after the converter has sized it: the banner and
+the blank line under it, the blank line over the digest footer, one footer line (less the sidecar's name, see
+:func:`_footer_bytes`) and its line end, and the line end a body without one gets.  Every fit test against
+``max_page_bytes`` takes it off first, so a guarded page stays within the cap (B13 round 41 C2044)."""
+
+
+def _footer_bytes(name: str) -> int:
+    """The bytes one more sidecar's digest footer line adds to a page: the line and its line end."""
+    return len(f"{_DIGEST_LINE_HEAD}`{name}` sha256 ".encode()) + 64 + 1
+
+
+def _cap_body(
+    body: str, max_bytes: int, *, sidecar_name: str, others: Sequence[str] = ()
+) -> tuple[str, tuple[tuple[str, bytes], ...]]:
     """Cut ``body`` at a line boundary so it fits ``max_bytes``; the full text rides as a sidecar.
 
-    Returns ``(body, ())`` when it already fits.  The cut is deterministic (byte budget, last newline).
+    Returns ``(body, ())`` when it already fits.  The cut is deterministic (byte budget, last newline).  A
+    cut inside a code block closes it; the note's budget holds a three-character close, and a longer one
+    (a fence opened by a long backtick or tilde run) cuts the head again R + 1 bytes shorter, R the head's
+    longest such run, and closes the fence still open on that shorter head, so the page stays within
+    ``max_bytes``; a head whose close fits keeps its bytes (B13 round 41 C2042).  Both the fit test and the
+    cut's budget leave :data:`GUARD_RESERVE` for the guard's banner and footer, and the footer lines of the
+    page's ``others`` sidecars (a recording window's keyframes), so the guarded page stays within
+    ``max_bytes`` too (B13 round 41 C2044).
     """
     raw = body.encode("utf-8")
-    if len(raw) <= max_bytes:
+    room = max_bytes - GUARD_RESERVE - sum(_footer_bytes(name) for name in others)
+    if len(raw) <= room:
         return body, ()
     note_budget = 200 + len(sidecar_name.encode("utf-8"))
-    budget = max(0, max_bytes - note_budget)
-    head = raw[:budget].decode("utf-8", errors="ignore")
-    cut = head.rfind("\n")
-    if cut > 0:
-        head = head[:cut]
+    budget = max(0, room - note_budget - len(sidecar_name.encode("utf-8")))
+    head = _line_head(raw, budget)
+    fence = _open_fence(head)
+    if fence is not None and len(head.rstrip("\n").encode("utf-8")) + 1 + len(fence) > budget + 4:
+        runs = max(_longest_run(head, "`"), _longest_run(head, "~"))
+        head = _line_head(raw, max(0, budget - (runs + 1)))
+        fence = _open_fence(head)
     shown = len(head.encode("utf-8"))
     head = head.rstrip("\n")
-    fence = _open_fence(head)
     if fence is not None:  # the cut landed inside a code block: close it so the note renders as text
         head += "\n" + fence
     note = (
@@ -425,6 +459,14 @@ def _cap_body(body: str, max_bytes: int, *, sidecar_name: str) -> tuple[str, tup
         f"`{sidecar_name}`]\n"
     )
     return head + note, ((sidecar_name, raw),)
+
+
+def _line_head(raw: bytes, budget: int) -> str:
+    """The first ``budget`` bytes of ``raw`` cut back to the last line end, when one falls after the first
+    character (that line end left out)."""
+    head = raw[:budget].decode("utf-8", errors="ignore")
+    cut = head.rfind("\n")
+    return head[:cut] if cut > 0 else head
 
 
 def _open_fence(markdown: str) -> str | None:
