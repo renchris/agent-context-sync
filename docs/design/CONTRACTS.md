@@ -42617,6 +42617,12 @@ it calls that helper now, and both copies go. `_LIST_ESCAPES_OLD` stays a frozen
 apart from `arm_local._LIST_ESCAPES` on purpose, since an older install.out keeps that spelling. Test:
 `test_report_redaction.py::test_the_old_list_spelling_is_a_frozen_snapshot_and_folder_spellings_reads_the_one_helper_c2035`.
 
+**Three docstrings name each head's rule** (C2052). The module docstring, `_ANSI_C_WORD_RE`'s note and
+`_source_local_shown`'s still said a `--source-local` word is cut at its first unknown component, which C1882 replaced;
+each now names the head's rule from `report_cuts.PATH_HEADS`: the provider rule for `--source-local` and
+`--source-local=`, the first-unknown cut for `add-source`, `--cwd` and `--cwd=`. Docs only. Test:
+`test_three_docstrings_name_each_heads_rule_c2052`.
+
 ### 16.261 Round 41: the installer: the shell report cuts any path by its head's rule, every debug head on a line, and another build's render reads the same heads (2026-11-17, wave B13 round 41 lane RB)
 
 Reserved for round 41 lane RB of B13.

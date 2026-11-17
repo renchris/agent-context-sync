@@ -92,7 +92,10 @@ placeholder already in the text (any numbered kind, the unnumbered kinds, ``<pat
 fields: :data:`_HELD_RE`) is left whole on a second pass, and this repository's own ``github.com`` locator is
 kept whole, so a full name that matches its owner does not cut the issue link. A
 ``--source-local`` argument is also unquoted (``printf %q`` writes some names as ``$'...'`` with octal bytes)
-and cut to ``<path>`` at the first path component the Redactor does not know. Names
+and cut by its head's rule (``report_cuts.PATH_HEADS``; B13 round 40 ruling 137, C1882 with C1834): at its
+first path component the Redactor does not know, or, under a kept CloudStorage provider folder, right after
+that folder unless every later part is fixed, generic or a configured source's placeholder
+(``OneDrive-<org-1>/<path>``). Names
 nested below a source are registered nowhere, so agentsync's own WARNING and ERROR log lines (Recent errors,
 and those in the install.out tail, with a sync's ``alarm:`` and ``error:`` lines there) show item paths,
 document names and every quoted name as ``<path>``. install.sh run ids
@@ -1182,9 +1185,10 @@ porting this report's form): install.sh's redact_stream cuts the same word first
 so doctor's fix reads ``open ~/<path> in Finder once`` in both reports, and a body no alias covers (a
 ``printf %q`` word written under a locale no spelling knows, a look-alike name) never prints in clear. Not
 counted, as the shell's cut is not: only a link target replaced by ``<path>`` is. A word right after
-``--source-local`` or ``add-source`` is left to :func:`_source_local_shown`, which decodes it and cuts it by
-structure at its first unknown component (B13 round 17 U10), the cut that makes a body no alias matches safe
-there."""
+``--source-local``, ``--source-local=`` or ``add-source`` is left to :func:`_source_local_shown`, which
+decodes it and cuts it by its head's rule: the provider rule for ``--source-local``, the first unknown
+component for ``add-source`` (B13 round 17 U10; round 40 ruling 137). Either cut makes a body no alias matches
+safe there."""
 
 
 _CAMEL = r"(?-i:(?<=[a-z\u00df-\u00f6\u00f8-\u00ff\u0300-\u036f]))"  # a small letter before (case-sensitive)
@@ -18609,11 +18613,16 @@ def _not_a_folder_shown(red: Redactor, m: re.Match[str]) -> str:
 
 
 def _source_local_shown(red: Redactor, m: re.Match[str]) -> str:
-    """One ``--source-local`` argument as the report shows it. The line is already redacted; the argument is
-    unquoted and redacted once more (a name ``printf %q`` wrote as ``$'Z\\303\\274rich'`` only matches once
-    decoded), then cut to ``<path>`` at the first path component that is not a placeholder, a fixed macOS
-    component, the provider folder or a generic folder. So the argument never shows a folder name the
-    Redactor does not know, whatever quoting the shell chose. A word with no quote, slash or backslash is
+    """One path argument after a :data:`_SOURCE_LOCAL_RE` head as the report shows it. The line is already
+    redacted; the argument is unquoted and redacted once more (a name ``printf %q`` wrote as
+    ``$'Z\\303\\274rich'`` only matches once decoded), then cut by :func:`_cut_path` under its head's rule
+    (``report_cuts.PATH_HEADS``). For ``--source-local`` and ``--source-local=`` (provider), a placeholder
+    only a listing names counts as unknown, and a path under a kept provider folder is kept only when every
+    later part is fixed, generic or configured (``red.configured_held``); otherwise it reads
+    ``<Provider>-<org-N>/<path>``. ``add-source``, ``--cwd`` and ``--cwd=`` keep the first-unknown cut, and a
+    relative ``--cwd`` word counts as a folder (B13 round 40 C1835; round 41 C2052). So the argument never
+    shows a folder name the Redactor does not know, whatever quoting the shell chose. A word with no quote,
+    slash or backslash is
     not a path (an agent's prose): it is left as it is, and so is the punctuation that closes a bare word
     in prose (a backtick, a bracket, a full stop). The shown text keeps the word's quotes, as the agent saw
     them: ``"..."`` and ``'...'`` as written, ``$'...'`` as ``"..."`` (its escapes are decoded, and ``$'``

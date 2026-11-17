@@ -28148,6 +28148,23 @@ def test_a_source_local_word_keeps_its_provider_folder_unless_every_part_is_know
     assert setup_report._cut_path(f"{org}/<folder-1>/Zephyr") == f"{org}/<folder-1>/<path>"
 
 
+def test_three_docstrings_name_each_heads_rule_c2052() -> None:
+    """B13 round 41 C2052: the module docstring, _ANSI_C_WORD_RE's note and _source_local_shown's still said a
+    --source-local word is cut at its first unknown component, which C1882 replaced with each head's rule."""
+    module = " ".join((setup_report.__doc__ or "").split())
+    shown = " ".join((setup_report._source_local_shown.__doc__ or "").split())
+    src = Path(setup_report.__file__).read_text(encoding="utf-8")
+    note = " ".join(src.split("_ANSI_C_WORD_RE = re.compile(", 1)[1].split('"""', 2)[1].split())
+    assert "cut by its head's rule (report_cuts.PATH_HEADS" in module.replace("``", ""), module
+    assert "the provider rule for --source-local, the first unknown component for add-source" in note.replace(
+        "``", ""
+    ), note
+    assert "cut by :func:`_cut_path` under its head's rule" in shown and "<Provider>-<org-N>/<path>" in shown
+    for text in (module, note, shown):
+        assert "at the first path component the Redactor does not know." not in text
+        assert "by structure at its first unknown component" not in text
+
+
 def test_the_run_header_and_debug_lines_cut_a_cwd_folder_c1835() -> None:
     """B13 round 40 C1835 (ruling 137; privacy): --cwd and --debug put a private project folder in
     install.out's run header and its debug lines, which the report printed in clear. `--cwd `, `--cwd=` and
