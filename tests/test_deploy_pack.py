@@ -10404,14 +10404,14 @@ def test_a_blank_drawio_is_not_the_type_by_choice_c1034(tmp_path: Path) -> None:
     garbage empty. C927's paragraph says so, and `_drawio_pages` is run on each kind of bytes."""
     from agentsync.convert import diagram  # noqa: PLC0415
     from agentsync.errors import UnreadableSourceError  # noqa: PLC0415
-    from agentsync.policy import EMPTY_OUTPUT_REASON  # noqa: PLC0415
+    from agentsync.policy import ZERO_BYTES_REASON  # noqa: PLC0415
 
     text = " ".join(CONTRACTS.read_text(encoding="utf-8").split())
     line = text.split("Amended 2026-11-08, §16.239 C1034, C1118: ", 1)[1].split(" **", 1)[0]
     assert line.startswith("a blank or byte-order-mark-only `.drawio` takes `not-drawio` by choice")
     assert "only zero bytes are `empty-output`" in line
     for name, data, reason in (
-        ("zero", b"", EMPTY_OUTPUT_REASON),
+        ("zero", b"", ZERO_BYTES_REASON),
         ("blanks", b"  \r\n\t ", diagram._NOT_DRAWIO),
         ("bom", b"\xef\xbb\xbf", diagram._NOT_DRAWIO),
         ("nuls", b"\x00\x00\x00", diagram._NOT_DRAWIO),

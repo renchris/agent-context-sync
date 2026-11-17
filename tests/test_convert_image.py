@@ -377,7 +377,7 @@ def test_a_zero_byte_image_is_empty_and_never_reaches_the_helper_c1647(
     src.write_bytes(b"")
     with pytest.raises(UnreadableSourceError) as refused:
         one(engine, src)
-    assert str(refused.value) == policy.EMPTY_OUTPUT_REASON
+    assert str(refused.value) == policy.ZERO_BYTES_REASON
     assert calls(engine.helper) == []
 
 

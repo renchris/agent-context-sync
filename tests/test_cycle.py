@@ -7445,7 +7445,7 @@ def test_a_recording_first_seen_in_an_ocr_outage_is_counted_and_read_again_once_
     for _ in range(2):  # two interactive syncs, no background job: no recording pass
         assert run(config, mode=None).exit_code == 0
         fm, _body = _recording_page(config, EMPTY_MEETING)
-        assert fm["status"] == "unreadable" and fm.get("reason") == content_policy.EMPTY_OUTPUT_REASON, fm
+        assert fm["status"] == "unreadable" and fm.get("reason") == content_policy.ZERO_BYTES_REASON, fm
         row = _row(config, MEETING)
         assert (row.state, row.state_reason) == (RowState.LIVE, cycle_mod.RECORDING_WAITS), row
         said = _recording_words(config)
@@ -7544,7 +7544,7 @@ def _empty_recording_synced(config: Config, rec: Rec) -> None:
     report = run(config, mode=None)
     assert report.exit_code == 0
     fm, _body = _recording_page(config, EMPTY_MEETING)
-    assert fm["status"] == "unreadable" and fm.get("reason") == content_policy.EMPTY_OUTPUT_REASON, fm
+    assert fm["status"] == "unreadable" and fm.get("reason") == content_policy.ZERO_BYTES_REASON, fm
     row = _row(config, EMPTY_MEETING)
     assert row.state_reason != cycle_mod.RECORDING_WAITS and row.last_verdict is not Verdict.DEFERRED, row
     assert rec.opened == [] and rec.worked == [], (rec.opened, rec.worked)
@@ -7701,7 +7701,7 @@ def test_a_zero_byte_recording_is_classed_empty_with_no_byte_read_c2038(
     seen = _no_recording_byte_read(monkeypatch, config.state_paths.staging)
     assert run(config, mode=None).exit_code == 0
     fm = parse_frontmatter((config.docs_repo / slug.mirror_rel_path(sid, rel)).read_text(encoding="utf-8"))[0]
-    assert fm["status"] == "unreadable" and fm.get("reason") == content_policy.EMPTY_OUTPUT_REASON, fm
+    assert fm["status"] == "unreadable" and fm.get("reason") == content_policy.ZERO_BYTES_REASON, fm
     mine = {k: [v for v in vs if Path(rel).name in v] for k, vs in seen.items()}
     assert mine == {"fetch": [], "copy": [], "hash": [], "staged": []}, mine
     assert rec.opened == [] and rec.worked == [], (rec.opened, rec.worked)

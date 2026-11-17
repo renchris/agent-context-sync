@@ -288,7 +288,7 @@ def test_the_typed_names_a_zero_byte_file_is_empty_under_are_fourteen_and_the_do
         try:
             registry.for_name(src.name).convert(src, name=src.name)  # type: ignore[union-attr]
         except UnreadableSourceError as exc:
-            if str(exc) == policy_mod.EMPTY_OUTPUT_REASON:
+            if str(exc) == policy_mod.ZERO_BYTES_REASON:
                 empty.append(suffix)
     assert sorted(empty) == sorted(_ZERO_BYTE_TYPED) and len(_ZERO_BYTE_TYPED) == 14
     root = Path(__file__).resolve().parents[1]
@@ -316,7 +316,7 @@ def test_a_zero_byte_file_under_a_typed_name_is_one_empty_stub_c930(
         assert run(config).exit_code == 0
     assert tries == [name]
     row = _row(config, name)
-    assert row.state is RowState.QUARANTINED and row.state_reason == policy_mod.EMPTY_OUTPUT_REASON
+    assert row.state is RowState.QUARANTINED and row.state_reason == policy_mod.ZERO_BYTES_REASON
     assert quarantine_class(row.state_reason) == "empty"
 
 
@@ -347,7 +347,7 @@ def test_a_zero_byte_vtt_after_an_older_builds_cached_result_is_empty_c1304(
     (src / "Contoso standup.vtt").write_bytes(b"WEBVTT\n\n00:00.000 --> 00:01.000\n<v Ana>Hello\n")
     assert run(config).exit_code == 0
     row = _row(config, "Contoso zero.vtt")
-    assert row.state is RowState.QUARANTINED and row.state_reason == policy_mod.EMPTY_OUTPUT_REASON
+    assert row.state is RowState.QUARANTINED and row.state_reason == policy_mod.ZERO_BYTES_REASON
     assert quarantine_class(row.state_reason) == "empty"
     assert _row(config, "Contoso standup.vtt").state is RowState.LIVE, "a transcript still converts"
     assert _row(config, "Contoso earlier.vtt").state_reason == vtt_mod._NOT_VTT, "settled: kept, no re-read"
@@ -425,7 +425,7 @@ def test_a_zero_byte_office_file_or_msg_after_an_older_builds_cached_result_is_e
         no_skip.setattr(convert_pkg, "_zero_bytes", lambda src: False)
         assert run(config).exit_code == 0
     row = _row(config, f"Contoso zero{suffix}")
-    assert row.state is RowState.QUARANTINED and row.state_reason == policy_mod.EMPTY_OUTPUT_REASON
+    assert row.state is RowState.QUARANTINED and row.state_reason == policy_mod.ZERO_BYTES_REASON
     assert quarantine_class(row.state_reason) == "empty"
     assert _options_hash(config, f"Contoso zero{suffix}") != _options_hash(config, f"Contoso earlier{suffix}")
     if real is not None:
@@ -455,7 +455,7 @@ def test_a_zero_byte_file_is_never_served_a_cached_answer_under_its_own_key_c146
         word_package(src / "Contoso real.docx")
     assert run(config).exit_code == 0
     row = _row(config, f"Contoso zero{suffix}")
-    assert row.state is RowState.QUARANTINED and row.state_reason == policy_mod.EMPTY_OUTPUT_REASON
+    assert row.state is RowState.QUARANTINED and row.state_reason == policy_mod.ZERO_BYTES_REASON
     assert quarantine_class(row.state_reason) == "empty"
     with Manifest(config.state_paths.db) as m:
         (out,) = m.outputs_for("src", item_id(config, f"Contoso zero{suffix}"))

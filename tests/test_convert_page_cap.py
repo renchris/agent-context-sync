@@ -15,12 +15,14 @@ import pytest
 from openpyxl.chart import BarChart, Reference
 from openpyxl.comments import Comment
 
+from agentsync import policy, setup_report
 from agentsync.config import ConvertConfig
 from agentsync.convert import _common, registry
 from agentsync.convert import text as text_mod
 from agentsync.convert._common import GUARD_RESERVE, _cap_body, _fence
 from agentsync.convert.base import make_unit
 from agentsync.convert.registry import Registry, _bannered, _with_sidecar_digests
+from agentsync.errors import UnreadableSourceError
 from agentsync.model import RenderedUnit, UnitKind
 from test_convert_builders import (
     build_drawio,
@@ -494,3 +496,66 @@ def test_the_index_note_names_the_sheet_page_or_its_csv_sidecar_c2047(tmp_path: 
             r"its CSV sidecar has its headers\]",
             index,
         )
+
+
+# ---------------------------------------------------------------------------------------------------------
+# C2001: a zero-byte file's own reason
+# ---------------------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "Contoso plan.docx",
+        "Contoso.pdf",
+        "Contoso.eml",
+        "Contoso.vtt",
+        "c.teams.json",
+        "c.msg",
+        "c.drawio",
+        "c.odt",
+    ],
+)
+def test_a_zero_byte_file_says_it_holds_zero_bytes_and_stays_empty_c2001(tmp_path: Path, name: str) -> None:
+    """B13 round 41 C2001: a zero-byte file's stub said `no text after stripping whitespace and form feeds`,
+    which describes text it never had. Its reason now says it holds 0 bytes, keeping the `empty-output`
+    prefix, so the report still classes it `empty`."""
+    src = tmp_path / name
+    src.write_bytes(b"")
+    with pytest.raises(UnreadableSourceError) as caught:
+        _pages(src, CFG.max_page_bytes)
+    assert str(caught.value) == policy.ZERO_BYTES_REASON == "empty-output (the file holds 0 bytes)"
+    assert setup_report.quarantine_class(policy.ZERO_BYTES_REASON) == "empty"
+
+
+def test_a_file_with_bytes_and_no_text_keeps_the_empty_output_reason_and_blank_text_stays_a_page_c2001(
+    tmp_path: Path,
+) -> None:
+    """B13 round 41 C2001: only the zero-byte branches take the new reason. A PDF with a page and no text
+    keeps `EMPTY_OUTPUT_REASON`, and a 0-byte or blank `.txt` stays a page (C930), never a stub."""
+
+    class _Blank:
+        converter_id = "blank"
+        extensions = (".blank",)
+
+        def version(self) -> str:
+            return "1"
+
+        def options(self) -> dict[str, str]:
+            return {}
+
+        def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]:
+            body = "\x0c\n"  # a page that holds only a form feed, as pdfminer's empty page does
+            return (make_unit(unit_id="whole", kind=UnitKind.WHOLE, index=0, of=1, name="", file_stem="",
+                              title="t", summary="s", body=body),)  # fmt: skip
+
+    blank = tmp_path / "a.blank"
+    blank.write_bytes(b"x\n")
+    with pytest.raises(UnreadableSourceError) as caught:
+        Registry([_Blank()], banner=True).for_name("a.blank").convert(blank, name="a.blank")  # type: ignore[union-attr]
+    assert str(caught.value) == policy.EMPTY_OUTPUT_REASON
+    for data in (b"", b"  \n\f\n"):
+        src = tmp_path / "blank.txt"
+        src.write_bytes(data)
+        (page,) = _pages(src, CFG.max_page_bytes)
+        assert "[empty file]" in page.body

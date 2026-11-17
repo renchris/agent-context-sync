@@ -4100,7 +4100,7 @@ def test_vtt_lines_behind_the_banner_are_what_the_lint_reads_as_heard(fixture_fi
 @pytest.mark.parametrize(
     ("data", "reason"),
     [
-        (b"", policy.EMPTY_OUTPUT_REASON),  # B13 round 36 C1050: zero bytes are `empty`, not `other`
+        (b"", policy.ZERO_BYTES_REASON),  # B13 round 36 C1050: zero bytes are `empty`, not `other`
         (b"1\n00:00:01.000 --> 00:00:02.000\nhello\n", "not a WebVTT transcript (no WEBVTT first line)"),
         (
             b"WEBVTTX\n\n00:00:01.000 --> 00:00:02.000\nhello\n",
@@ -5432,7 +5432,7 @@ def test_a_drawio_that_is_no_diagram_is_settled_at_first_read_c927_c930(tmp_path
     src = _write(tmp_path, "Contoso flow.drawio", data)
     with pytest.raises(UnreadableSourceError) as err:
         DiagramConverter(CFG).convert(src, name=src.name)
-    want = policy.EMPTY_OUTPUT_REASON if not data else "not-drawio (not a draw.io diagram)"
+    want = policy.ZERO_BYTES_REASON if not data else "not-drawio (not a draw.io diagram)"
     assert str(err.value) == want
 
 
@@ -5450,7 +5450,7 @@ def test_zero_bytes_are_empty_in_each_converter_and_only_zero_bytes_c1050(tmp_pa
     ):
         with pytest.raises(UnreadableSourceError) as err:
             converter.convert(_write(tmp_path, name, b""), name=name)
-        assert str(err.value) == policy.EMPTY_OUTPUT_REASON, name
+        assert str(err.value) == policy.ZERO_BYTES_REASON, name
     with pytest.raises(ConversionError, match=r"^empty message file$"):
         EmlConverter(CFG).convert(_write(tmp_path, "blanks.eml", b" \r\n\t"), name="blanks.eml")
     with pytest.raises(ConversionError, match="no %PDF- header"):

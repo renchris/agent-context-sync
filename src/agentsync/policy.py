@@ -619,6 +619,13 @@ NOT_OOXML_REASON = "not-ooxml (an Office file name whose bytes do not start with
 """UNREADABLE stub reason for an OOXML-named file that is not a ZIP at offset 0 (never converted)."""
 
 EMPTY_OUTPUT_REASON = "empty-output (no text after stripping whitespace and form feeds)"
+"""UNREADABLE stub reason for a file with bytes whose converter wrote no text."""
+
+ZERO_BYTES_REASON = "empty-output (the file holds 0 bytes)"
+"""UNREADABLE stub reason for a zero-byte file a converter or the screen meets (B13 round 41 C2001): it keeps
+the ``empty-output`` prefix, so the report still classes it ``empty`` and an image's stub is still an
+``empty stub``, and says what the file is rather than describing text it never had.  A zero-byte or
+blank text file stays a page (``[empty file]``, B13 round 35 C930)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -744,7 +751,7 @@ def screen_file(path: Path, *, name: str, policy: PolicyConfig) -> Screening | N
             if decision is not None:
                 return decision
         if kind is ContainerKind.EMPTY:  # no bytes have no type to disagree with the name (B13 round 35 C930)
-            return Screening(ScreenStatus.UNREADABLE, "empty-output", EMPTY_OUTPUT_REASON)
+            return Screening(ScreenStatus.UNREADABLE, "empty-output", ZERO_BYTES_REASON)
         return Screening(ScreenStatus.UNREADABLE, "not-ooxml", NOT_OOXML_REASON)
     if not policy.labels_active:
         return None

@@ -41,7 +41,7 @@ from agentsync.convert.base import OptionValue, make_unit
 from agentsync.convert.ocr import LANGUAGES, MAX_PAGES, OcrEngine, OcrError, OcrImage, _kept, text_lines
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import RenderedUnit, UnitKind
-from agentsync.policy import EMPTY_OUTPUT_REASON
+from agentsync.policy import ZERO_BYTES_REASON
 from agentsync.text import plural
 
 log = logging.getLogger(__name__)
@@ -468,7 +468,7 @@ class ImageConverter:
         with src.open("rb") as fh:
             first = fh.read(_HEAD_BYTES)
         if not first:  # no bytes have no type to disagree with the name (C930's rule; B13 round 39 C1647)
-            raise UnreadableSourceError(EMPTY_OUTPUT_REASON)
+            raise UnreadableSourceError(ZERO_BYTES_REASON)
         kind = _raster_suffix(first)
         if kind is None:
             raise UnreadableSourceError(_NOT_RASTER)

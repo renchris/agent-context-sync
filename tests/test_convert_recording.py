@@ -34,7 +34,7 @@ from agentsync.convert.speech import SpeechEngine, SpeechError
 from agentsync.errors import UnreadableSourceError
 from agentsync.materialise import sha256_file
 from agentsync.model import ConversionStatus, RenderedUnit
-from agentsync.policy import EMPTY_OUTPUT_REASON, PolicyConfig
+from agentsync.policy import ZERO_BYTES_REASON, PolicyConfig
 from agentsync.setup_report import quarantine_class
 from media_kit import calls as media_calls
 from media_kit import fake_media, fake_recording, recording, row, screen
@@ -564,7 +564,7 @@ def test_a_zero_byte_recording_is_empty_before_any_helper_runs_c1647(tmp_path: P
     (folder / name).write_bytes(b"")
     with pytest.raises(UnreadableSourceError) as refused:
         conv._reading(folder / name, name=name)
-    assert str(refused.value) == EMPTY_OUTPUT_REASON
+    assert str(refused.value) == ZERO_BYTES_REASON
     assert media_calls(conv._media.helper) == []
 
 
@@ -587,7 +587,7 @@ def test_a_zero_byte_image_or_recording_is_classed_empty_and_never_cached_c1647(
         registry=_registry(tmp_path),
         cache=ConverterCache(tmp_path / "cache"),
     )
-    assert got.status is ConversionStatus.UNREADABLE and got.reason == EMPTY_OUTPUT_REASON
+    assert got.status is ConversionStatus.UNREADABLE and got.reason == ZERO_BYTES_REASON
     assert quarantine_class(got.reason) == "empty"
     assert not got.from_cache and not any((tmp_path / "cache").rglob("*.json"))
 

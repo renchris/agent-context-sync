@@ -44,11 +44,10 @@ from agentsync.convert._common import (
 from agentsync.convert.base import OptionValue, make_unit
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import RenderedUnit, UnitKind
-from agentsync.policy import EMPTY_OUTPUT_REASON
+from agentsync.policy import EMPTY_OUTPUT_REASON, ZERO_BYTES_REASON
 from agentsync.text import plural
 
 # 1.1.0: a Visio shape without text of its own shows its master's; 1.2.0: draw.io %name% placeholders;
-# 1.3.0: a diagram with no text is a page that says so (B13 round 19 W27)
 # 1.3.0: a diagram with no text is a page that says so (B13 round 19 W27)
 _EMITTER_VERSION = "1.3.1"  # B13 round 41 C2044: a page near the cap leaves the guard its room
 _PAGE_FOR_NO_TEXT = "1.3.0"  # the first emitter that writes a page, not the empty-output stub, for no text
@@ -297,7 +296,7 @@ def _drawio_pages(src: Path) -> list[_Page]:
     if len(data) > _MAX_TOTAL_BYTES:  # parsed whole, so bounded like an inflated part (about 10x in memory)
         raise ConversionError(f"diagram too large: over {_MAX_TOTAL_BYTES} bytes of XML")
     if not data:  # no bytes have no type to disagree with the name (B13 round 35 C930)
-        raise UnreadableSourceError(EMPTY_OUTPUT_REASON)
+        raise UnreadableSourceError(ZERO_BYTES_REASON)
     try:
         top = _parse(data, "the draw.io file")
     except ConversionError:

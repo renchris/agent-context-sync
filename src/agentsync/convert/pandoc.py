@@ -60,7 +60,7 @@ from agentsync.convert.image import _FAILED as _OCR_FAILED
 from agentsync.convert.ocr import _REASON_ROOM, OcrEngine, OcrError, _ended
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import RenderedUnit, UnitKind
-from agentsync.policy import EMPTY_OUTPUT_REASON
+from agentsync.policy import ZERO_BYTES_REASON
 from agentsync.skill import INSTALL_SH
 
 log = logging.getLogger(__name__)
@@ -373,6 +373,7 @@ def _decode_html(data: bytes) -> str:
                 except LookupError:
                     pass
     return _decode_text(data.replace(b"\x00", b""))
+
 
 
 class _PandocRunner:
@@ -797,7 +798,7 @@ class PandocConverter:
             except OSError:  # gone or unreadable: the container check below says so, as it always did
                 empty = False
             if empty:
-                raise UnreadableSourceError(EMPTY_OUTPUT_REASON)
+                raise UnreadableSourceError(ZERO_BYTES_REASON)
             _check_odf_container(src)
         placed, cut = 0, False
         if fmt == "html":

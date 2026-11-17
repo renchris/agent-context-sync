@@ -76,7 +76,7 @@ from agentsync.convert.image import _FAILED as _OCR_FAILED
 from agentsync.convert.ocr import _MIN_PX, MAX_MEGAPIXELS, MAX_PAGES, OcrEngine, OcrError
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import RenderedUnit, UnitKind
-from agentsync.policy import EMPTY_OUTPUT_REASON
+from agentsync.policy import ZERO_BYTES_REASON
 from agentsync.text import plural
 
 log = logging.getLogger(__name__)
@@ -1108,7 +1108,7 @@ class PdfConverter:
         with src.open("rb") as fh:
             head = fh.read(1024)
         if not head:  # zero bytes: one `empty` stub, never a failed conversion (B13 round 36 C1050)
-            raise UnreadableSourceError(EMPTY_OUTPUT_REASON)
+            raise UnreadableSourceError(ZERO_BYTES_REASON)
         if b"%PDF-" not in head:
             raise ConversionError("not a PDF (no %PDF- header)")
         engine = "pdfium"

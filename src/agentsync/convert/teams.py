@@ -18,7 +18,7 @@ from agentsync.convert.base import OptionValue, make_unit
 from agentsync.convert.pandoc import _pandoc_options, _PandocRunner
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import TEAMS_MONTH_SCHEMA, RenderedUnit, UnitKind
-from agentsync.policy import EMPTY_OUTPUT_REASON
+from agentsync.policy import ZERO_BYTES_REASON
 from agentsync.text import plural
 
 _EMITTER_VERSION = "1.0.1"  # B13 round 41 C2044: a page near the cap leaves the guard its room
@@ -199,7 +199,7 @@ class TeamsMonthConverter:
         except OSError as exc:
             raise ConversionError(f"cannot read: {exc}") from exc
         if not raw:  # zero bytes: one `empty` stub, never a failed conversion (B13 round 36 C1050)
-            raise UnreadableSourceError(EMPTY_OUTPUT_REASON)
+            raise UnreadableSourceError(ZERO_BYTES_REASON)
         try:
             doc_raw = json.loads(_decode_text(raw))
         except json.JSONDecodeError as exc:
