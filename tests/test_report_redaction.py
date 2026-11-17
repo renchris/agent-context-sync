@@ -302,9 +302,11 @@ def test_the_shell_report_redacts_a_configured_source_id(env: dict[str, str]) ->
     )
     text = _shell_report(env, said)
     friction = text.split("\n## Agent friction log\n", 1)[1].split("\n## ", 1)[0]
-    assert "project-alpha" not in text and "<source-1>" not in text, friction
+    assert "project-alpha" not in text and "<source-3>" not in text, friction
     assert 'id = "<folder-1>"' in friction and "exclude-empty <folder-1> |" in friction, friction
-    assert "OneDrive-<org-1>/<folder-1>; <source-3> kept" in friction, "not a cloud folder: its own number"
+    # B13 round 41 C2071 (ruling 142): numbered as the Python report numbers ids, in config order among those
+    # that take a number of their own, so the shared and the kept id take none (it printed <source-3>)
+    assert "OneDrive-<org-1>/<folder-1>; <source-1> kept" in friction, "not a cloud folder: its own number"
     assert "the inbox source and the docs repo are fine" in friction
     assert "\n- <source-N>: a configured source id, or its folder's <folder-N>" in text
 
@@ -329,7 +331,8 @@ def test_the_shell_report_keeps_a_deduplicated_ids_own_number(env: dict[str, str
         env, "Prompt: v13\n2026-10-12T10:00:00Z | step 2 | clean | reports and reports-2 | -\n"
     )
     friction = text.split("\n## Agent friction log\n", 1)[1].split("\n## ", 1)[0]
-    assert "| <folder-1> and <source-2> |" in friction, friction
+    # its own number as the Python report counts them, the shared id taking none (B13 round 41 C2071)
+    assert "| <folder-1> and <source-1> |" in friction, friction
 
 
 def _shell_report_with(
@@ -1773,7 +1776,7 @@ def _hostile_lines(
     ]
 
 
-_R142_SHELL = False
+_R142_SHELL = True
 """Whether ruling 142's tests hold the shell report too. Lane RB's shell half sets it True in the one joint
 land, so trunk never carries one half; on lane RA's branch alone they hold the agentsync report (B13 round 41
 ruling 142, its Python half)."""
@@ -2353,3 +2356,114 @@ def test_both_reports_read_a_googledrive_address_tenant_and_a_short_id_alike_c20
     assert python_private, "a 2-letter id or folder that is a word makes the report private only where cut"
     if _R142_SHELL:
         assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
+
+
+_PROJECTS_OUTSIDE = "~/Projects/Zephyr Quarry"
+"""A private folder outside ~/Library/CloudStorage/ that no config names (B13 round 41 ruling 142)."""
+
+
+def _outside_lines(home: str) -> list[str]:
+    """Each head's word outside CloudStorage (C2062 with C2031 and C2085): bare with ``\\ ``, single- and
+    double-quoted after ``--source-local ``, ``--source-local=`` and ``add-source ``, the not-a-folder line
+    and a refusal head; then the prose rows the guard keeps whole, as _source_local_shown leaves them."""
+    bare, word = _PROJECTS_OUTSIDE.replace(" ", "\\ "), _PROJECTS_OUTSIDE
+    return [
+        *(
+            f"{lead}{head}{form} x"
+            for lead, head in (
+                ("start install.sh args=", "--source-local "),
+                ("I ran install.sh ", "--source-local="),
+                ("[dry-run] ~/.local/bin/agentsync ", "add-source "),
+            )
+            for form in (bare, f"'{word}'", f'"{word}"')
+        ),
+        f"start install.sh args=--source-local {home}/Projects/Zephyr\\ Quarry",
+        f"usage error: --source-local is not an existing folder: {word} (see --help)",
+        f"usage error: --source-local {word}: {report_cuts.REFUSED_HEADS[0]}x",
+        "--source-local is not an existing folder: ... was the line",
+        "I ran --source-local Wombat and add-source again",
+        "add-source --help prints the usage",
+        "~/.local/bin/agentsync add-source failed after adding it (see the error above)",
+        "the add-source opened past it",
+    ]
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+def test_both_reports_cut_a_word_outside_cloudstorage_after_every_head_c2062(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+) -> None:
+    """B13 round 41 ruling 142, C2062 with C2031 and C2085 (privacy; data integrity; makes worse True each for
+    the unguarded cut): the shell report cut a word after ``--source-local``, ``--source-local=``,
+    ``add-source`` or the not-a-folder head only under ~/Library/CloudStorage/, so a private folder anywhere
+    else printed in clear while the agentsync report read ``~/Projects/<path>``. Each head's rule now reads
+    any path in both reports, and a bare word with no slash, backslash or quote stays prose in both, so
+    `--source-local is not an existing folder: ` keeps its head and install.sh's own add-source words stay
+    whole."""
+    said = _outside_lines(env["HOME"])
+    shell, python, shell_private, python_private = _both_reports(env, ["Spruce Ledger"], said, locale)
+    assert shell_private == python_private, (shell_private, python_private)
+    assert len(shell) == len(python) == len(said), (len(shell), len(python))
+    assert shell == python, [(a, b) for a, b in zip(shell, python, strict=True) if a != b]
+    assert not any(w in ln for ln in shell for w in ("Zephyr", "Quarry")), shell
+    assert shell[-4:] == said[-4:], "prose keeps every word"
+    # the guard keeps the not-a-folder head after `--source-local `, and its name is cut as always
+    assert shell[-5] == "--source-local is not an existing folder: <path>", shell[-5]
+    assert all("~/Projects/<path>" in ln for ln in shell[:-5]), shell
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+def test_both_reports_read_a_listed_only_folder_outside_cloudstorage_alike_c2062(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+) -> None:
+    """B13 round 41 ruling 142, C2062's residual: a folder only step 1's list names is not known to the
+    provider rule (setup_report.Redactor.listed_only), so `--source-local ~/Projects/Cedar Lodge/x` is cut at
+    its <folder-N> in both reports, while add-source's first-unknown rule keeps that placeholder; the shell's
+    cut() kept every placeholder."""
+    lib = _cloud(env) / "OneDrive-Contoso"
+    (lib / "Cedar Lodge").mkdir(parents=True)
+    assert install_sh(env, "--list-folders").returncode in (0, 3)
+    said = [
+        "start install.sh args=--source-local ~/Projects/Cedar\\ Lodge/x",
+        "start install.sh args=--source-local ~/Projects/Cedar\\ Lodge",
+        "[dry-run] ~/.local/bin/agentsync add-source ~/Projects/Cedar\\ Lodge/x",
+        "usage error: --source-local is not an existing folder: ~/Projects/Cedar Lodge (see --help)",
+    ]
+    shell, python, shell_private, python_private = _both_reports(env, ["Spruce Ledger"], said, locale)
+    assert shell_private == python_private, (shell_private, python_private)
+    assert shell == python, [(a, b) for a, b in zip(shell, python, strict=True) if a != b]
+    assert shell[0].endswith("--source-local ~/Projects/<path>") and shell[1].endswith("~/Projects/<path>")
+    assert re.search(r"add-source ~/Projects/<folder-\d+>/<path>$", shell[2]), shell[2]
+    assert not any("Cedar" in ln or "Lodge" in ln for ln in shell), shell
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+def test_both_reports_cut_every_debug_head_on_a_line_c2029(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+) -> None:
+    """B13 round 41 ruling 142, C2029 (privacy; data integrity): the shell cut only the first `debug: cwd`,
+    `debug: source` or `debug: config` head of each kind on a line, so a second one printed its project
+    folder, and the agentsync report took a line's cwd only from its first debug head. Every head on a line is
+    cut in both; a source or config path is cut under the cwd an earlier line left or under any `debug: cwd`
+    on its own line, and the next line compares with the line's last."""
+    kl, nd, fp = "~/Projects/Kestrel\\ Ledger", "~/Projects/Northwind\\ Deal", "~/Projects/Fabrikam\\ Plan"
+    said = [
+        f"debug: cwd {kl}",
+        f"debug: config {kl}/a.toml | debug: config {kl}/b.toml",
+        f"debug: source checkout {kl}/s1 | debug: source checkout {kl}/s2",
+        f"debug: cwd {kl} | debug: cwd {nd}",
+        f"debug: config {nd}/c.toml | debug: config ~/y.toml",
+        f"debug: config ~/x.toml | debug: cwd {fp}",
+        f"debug: config {fp}/c.toml",
+    ]
+    shell, python, shell_private, python_private = _both_reports(env, ["Spruce Ledger"], said, locale)
+    assert shell_private == python_private, (shell_private, python_private)
+    assert not any(w in ln for ln in shell + python for w in ("Kestrel", "Northwind", "Fabrikam")), (
+        shell,
+        python,
+    )
+    assert shell == python, [(a, b) for a, b in zip(shell, python, strict=True) if a != b]
+    assert shell[1] == "debug: config ~/Projects/<path> | debug: config ~/Projects/<path>", shell[1]
+    assert shell[5] == "debug: config ~/<path> | debug: cwd ~/Projects/<path>", shell[5]  # C2063: always

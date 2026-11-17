@@ -3857,6 +3857,32 @@ def test_the_path_legend_says_only_a_relative_argument_is_one(env: dict[str, str
     assert "tab or another control character" in item and "names no CloudStorage folder" not in item, item
 
 
+def test_the_shell_legend_names_each_heads_rule_for_any_path_c2033() -> None:
+    """B13 round 41 ruling 142, C2033's shell clauses: the shell legend's <path> item named none of round 40's
+    new <path> forms. It now names the nested --source-local word cut at its kept provider folder, the
+    add-source word cut at its first unknown part wherever it lives with a bare word kept as prose, the --cwd
+    folder, the --cwd usage error's name, debug: cwd's folder and a debug: source path under it, every config
+    path but the default, and an unregistered tenant in free text; ruling 138's dollar-quote sentence and
+    every pinned clause before it stay word for word."""
+    said = " ".join(
+        " ".join(re.findall(r'^\s*say "  ?(.*)"$', INSTALL_SH.read_text(encoding="utf-8"), re.M)).split()
+    )
+    assert (
+        "one right after --source-local, --source-local= or add-source is cut whole here, where the agentsync"
+        " report shows it decoded in double quotes and cut by its argument's rule. In both reports, a"
+        " --source-local word under a kept provider folder reads"
+        " ~/Library/CloudStorage/<Provider>-<org-N>/<path> unless every later part is fixed, generic, a home"
+        " folder or a configured folder's placeholder; an add-source word, every placeholder kept, is cut at"
+        " its first unknown part, wherever it lives; a bare"
+        r" word after either with no /, \\ or quote is prose and kept; the folder after --cwd or --cwd= on"
+        r" install.out's run header, after \"--cwd is not a folder this run can enter: \" and after debug:"
+        " cwd is cut as a path is (the word --cwd kept), and so are a debug: source path under that cwd and"
+        " every config path but ~/agent-context/sources.toml, wherever it shows; on any line, a"
+        " ~/Library/CloudStorage/<App>-<word> folder the report numbers no organization for reads"
+        " ~/Library/CloudStorage/<path>, never numbered, its trailing )]}.,;: kept"
+    ) in said, said[said.find("one right after --source-local") :][:400]
+
+
 def test_an_unconfigured_rooted_source_local_argument_is_cut_as_the_agentsync_report_cuts_it(
     env: dict[str, str],
 ) -> None:
@@ -4241,7 +4267,10 @@ def test_install_sh_carries_the_report_cuts_block_byte_for_byte_ruling_133() -> 
     [block] = re.findall(r"(?ms)" + _REPORT_CUTS_BLOCK, text)
     assert block + "\n" == report_cuts.shell_block()
     names = re.findall(r"""(?m)^([A-Z_0-9]+)=['"]""", block)  # CUT_REFUSED_HEADS holds an apostrophe
-    assert len(names) == 18, names  # B13 round 40 ruling 137: the argument forms' rows, CUT_ALIAS_FORMS gone
+    # B13 round 40 ruling 137: the argument forms' rows, CUT_ALIAS_FORMS gone; round 41 ruling 142: each
+    # head's own list (the cwd's whole-name head, config), the usage and default-config words, the TOML
+    # breaks and the part stop
+    assert len(names) == 25, names
     for name in names:
         assert len(re.findall(rf"(?m)^\s*{name}\+?=", text)) == 1, name
     assert "import report_cuts" not in text and "report_cuts import" not in text, (
@@ -9171,6 +9200,38 @@ def test_the_shell_report_cuts_a_cwd_folder_on_the_run_header_and_debug_lines_c1
     text = report_path(env).read_text(encoding="utf-8")
     assert " install.sh --cwd ~/Projects/<path> --debug " in text, text
     assert "| debug: cwd ~/Projects/<path> |" in text and "| debug: config ~/Projects/<path> |" in text, text
+
+
+@pytest.mark.parametrize("state", ["missing", "exists", "relative"])
+def test_the_shell_report_cuts_a_config_path_that_is_not_the_default_c2063(
+    env: dict[str, str], state: str
+) -> None:
+    """B13 round 41 ruling 142, C2063's shell half (privacy): the `- config:` line printed AGENTSYNC_CONFIG in
+    clear, a relative one resolved under --cwd or an absolute one anywhere. Every config path but the default
+    reads as _cut_path cuts its ~-form, on every line that echoes it, registered as a pair, so a blank or a
+    hostile byte in it never fails the pairs closed; the default stays in clear."""
+    folder = Path(env["HOME"]) / "Projects" / "Tailspin Merger\x1e2"
+    folder.mkdir(parents=True)
+    run = {**env, "AGENTSYNC_CONFIG": str(folder / "sources.toml")}
+    args = ["--report-only"]
+    if state == "relative":
+        run["AGENTSYNC_CONFIG"] = "sources.toml"
+        args = ["--cwd", str(folder), "--report-only"]
+    if state != "missing":
+        (folder / "sources.toml").write_text("", encoding="utf-8")
+    cp = install_sh(run, *args)
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    for path in (report_path(env), report_path(env).parent / "bring-back.md"):
+        text = path.read_text(encoding="utf-8")
+        assert "Tailspin" not in text and "Merger" not in text, [
+            ln for ln in text.splitlines() if "Tailspin" in ln or "Merger" in ln
+        ]
+    text = report_path(env).read_text(encoding="utf-8")
+    said = "missing" if state == "missing" else "exists"
+    assert f"- config: ~/Projects/<path> ({said})" in text, [ln for ln in text.splitlines() if "config" in ln]
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert "- config: ~/agent-context/sources.toml (" in report_path(env).read_text(encoding="utf-8")
 
 
 def test_a_report_over_300_listed_folders_still_cuts_the_last_one_c1836(env: dict[str, str]) -> None:
@@ -17938,6 +17999,52 @@ def test_a_new_wording_row_in_install_out_takes_the_fallback_over_another_builds
         assert "warning: agentsync setup-report was not kept: a folder row marked" in cp.stderr, cp.stderr
         assert "older stub render" not in text, "the stub's render is replaced"
         assert "Tailspin" not in text, text
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "# run=r1 2026-11-16T00:00:00Z install.sh --cwd ~/Projects/acquisition-fabrikam --debug",
+        "# run=r1 2026-11-16T00:00:00Z install.sh --cwd=~/Projects/acquisition-fabrikam",
+        "debug: cwd ~/Projects/acquisition-fabrikam",
+        "2026-11-16T00:00:01Z | step 2 | note | debug: cwd ~/Projects/acquisition-fabrikam | -",
+        "",
+    ],
+    ids=["header", "header-eq", "debug", "cell", "none"],
+)
+def test_another_builds_render_of_a_cwd_run_falls_back_to_the_shell_report_c2028(
+    env: dict[str, str], line: str
+) -> None:
+    """B13 round 41 ruling 142, C2028 (privacy): a build before C1835's reader (7747b2890^) printed a --cwd
+    run header and the `debug: cwd`, `debug: config` and `debug: source` lines whole, and this checkout's
+    recut of another build's render does not port the cwd rule, so the project folder printed. A render by
+    another build over an install.out holding a run header with a CUT_HEADS_CWD word or a `debug: cwd` line, a
+    ` | ` cell included, is replaced by the shell report, which cuts them; with neither, the render is
+    kept."""
+    env = _renderer_home(env, "older", stamp="0123456789ab" * 3)
+    out = Path(env["HOME"]) / "agent-context" / "setup" / "install.out"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    # what 7747b2890^'s render left in clear beside that line
+    out.write_text(
+        f"{line}\ndebug: config ~/Projects/acquisition-fabrikam/cfg/sources.toml\n"
+        "debug: source checkout ~/Projects/acquisition-fabrikam/agent-context-sync\n",
+        encoding="utf-8",
+    )
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    text = report_path(env).read_text(encoding="utf-8")
+    if not line:
+        assert "(agentsync setup-report)" in cp.stdout and "older stub render" in text, cp.stdout
+        return
+    why = "a run header with --cwd" if line.startswith("# run=") else "a `debug: cwd` line"
+    assert (
+        "(shell fallback: the installed agentsync, another build, may not cut the folder in"
+        f" {why} in install.out)"
+    ) in cp.stdout, cp.stdout
+    assert f"warning: agentsync setup-report was not kept: {why} in install.out" in cp.stderr, cp.stderr
+    for path in (report_path(env), report_path(env).parent / "bring-back.md"):
+        if path.exists():
+            assert "acquisition" not in path.read_text(encoding="utf-8"), path
 
 
 def test_a_mark_outside_a_list_row_keeps_another_builds_render_c1630(env: dict[str, str]) -> None:

@@ -41785,6 +41785,9 @@ its provider folder on disk or not, and a `~/Library/CloudStorage/<App>-<word>` 
 provider rule, an unkept, unregistered one reading `~/Library/CloudStorage/<path>`; only a tenant written without that
 prefix, and since B13 round 41 (§16.260 C2050 with C2032) one with a blank and no `/` after it before a quote, a
 backtick, `):`, `, stored as ` or the line's end, print alike in both.
+Amended 2026-11-17, §16.261 C2062: each head's word is cut wherever it lives, outside ~/Library/CloudStorage/ too, an
+`add-source` word at its first unknown part, and a bare word with no `/`, `\` or quote after `--source-local `,
+`--source-local=` or `add-source ` stays prose in both reports, as `_source_local_shown` leaves it.
 
 **The recut note says which <path> is its own** (C1604; ruling 135; amends §16.246 C1406; `scripts/install.sh`). An
 older build writes `<path>` itself (`set exclude = [<path>] in [[source]]`, an item path in a log line), and the
@@ -42307,6 +42310,12 @@ shell half), and an escaped spelling holding a backslash (that echo, step 1's oc
 `test_install_oneshot.py::test_the_shell_report_cuts_a_cwd_folder_on_the_run_header_and_debug_lines_c1835` (both
 forms, a name with blanks, a relative AGENTSYNC_CONFIG), `test_every_source_local_refusal_opens_with_a_head_both_reports_cut_after_c1432`,
 and ruling 133's property test, whose lines lane RA draws from the table's rows.
+Amended 2026-11-17, §16.261 C2062: the provider and first-unknown rules read a word outside ~/Library/CloudStorage/
+too, `cut()` of the unquoted word (a not-a-folder or refused name as written), a bare word with no `/`, `\` or quote
+kept as prose. Amended 2026-11-17, §16.261 C2029: every occurrence of `debug: cwd ` and `debug: source ` on a line is
+cut, a source path under the carried cwd or any `debug: cwd` on its line, the line's last carried. Amended
+2026-11-17, §16.261 C2063: `CUT_HEADS_UNDER_CWD` is `debug: source ` alone; `CUT_HEADS_CONFIG` (`debug: config `) cuts
+every config path but `CUT_CONFIG_DEFAULT`, under the cwd or not.
 
 **A configured tenant is registered with its provider folder gone, and a free-text tenant is cut** (C1862's shell
 half; ruling 137; privacy; `scripts/install.sh`; dated line at §16.251 C1601). The shell registered a tenant only
@@ -42770,7 +42779,84 @@ citation stands. Test: `test_report_redaction.py::test_the_shell_cuts_a_refused_
 
 ### 16.261 Round 41: the installer: the shell report cuts any path by its head's rule, every debug head on a line, and another build's render reads the same heads (2026-11-17, wave B13 round 41 lane RB)
 
-Reserved for round 41 lane RB of B13.
+**Each head's rule reads any path** (C2062 with C2031 and C2085; ruling 142; privacy; data integrity;
+`scripts/install.sh`; dated lines at §16.256 C1832 and §16.251 C1832). `slone` skipped every provider-rule and
+first-unknown word that did not start with `~/Library/CloudStorage/`, so a private folder anywhere else after
+`--source-local `, `--source-local=`, `add-source ` or `is not an existing folder: ` printed in clear in the shell
+report while the agentsync report read `~/Projects/<path>`. A word outside CloudStorage now takes `cut()` of the
+unquoted word, as `_cut_path` cuts it, and a not-a-folder or refused name `cut()` as written, a CloudStorage word
+keeping its provider arm. The fix as the finders wrote it made things worse (makes worse True each): `--source-local `
+runs before `is not an existing folder: `, so the prose word `is` became `<path>` and the name after it stayed, and
+install.sh's own `agentsync add-source failed after adding it` read `add-source <path>`. So a bare word with no slash,
+backslash or quote after `--source-local `, `--source-local=` or `add-source ` stays prose, as `_source_local_shown`
+leaves it, while a not-a-folder or refused name is always a name. `cut()` with the provider rule reads a placeholder
+only step 1's list gave (`setup_report.Redactor.listed_only`: a listed name part no configured path has) as unknown,
+and below a kept provider folder it requires the configured parts `cfgonly` requires, as
+`_cut_path(text, listed_only, configured=...)` does; `redact_stream` passes the listed names and every configured path
+as `typed_note_cut`'s third and fourth arguments. A dated line in another section reads
+`Amended <date>, §16.261 C<n>: ...`. Tests:
+`test_report_redaction.py::test_both_reports_cut_a_word_outside_cloudstorage_after_every_head_c2062` (each head bare
+with `\ `, single- and double-quoted, the not-a-folder line, a refusal head, and the prose rows, both locales),
+`test_both_reports_read_a_listed_only_folder_outside_cloudstorage_alike_c2062`, and ruling 142's property test.
+
+**A listed name step 1 spelled with a backslash is registered by its bytes** (C2060; ruling 142; privacy;
+`scripts/install.sh`). `folder_parts` registered a listed part only as install.out's escaped row
+(`Alder00\001Birch00`), so every spelling `add_forms` derives (TOML, `safe_shown`, NFC and NFD) came from the escaped
+text and the name printed in clear in the shell report where the agentsync report, which lists CloudStorage itself,
+printed `<folder-N>`. A listed part holding a backslash is now decoded by `list_decoded` under `LC_ALL=C` awk (each
+`\ooo` its byte, `\n`, `\t` and `\r` theirs, any other backslash as written) and registered under the same
+`<folder-N>` with its own fuzzy flag, plus a copy with each newline as 0x1E, since `\n` stands for both. A real name
+holding a literal `\001` only adds one more pair under its number. Test: ruling 142's property test's listed-only arm.
+
+**Every debug head on a line is cut** (C2029; ruling 142; privacy; data integrity; `scripts/install.sh`; dated line
+at §16.256 C1832). `dbcwd` and `dbunder` cut the first occurrence of their head and returned, so a second
+`debug: cwd`, `debug: source` or `debug: config` on one line (a friction row an agent pasted) printed its project
+folder. Both loop as `slone` does, each value to its next ` | `, a path not under a cwd copied through and the loop
+going on, the `hd == ""` guard kept and every pass advancing. A `debug: source` path is cut under the cwd an earlier
+line left or under any `debug: cwd` on its own line, and the next line compares with the line's last. Test:
+`test_report_redaction.py::test_both_reports_cut_every_debug_head_on_a_line_c2029`.
+
+**The config path is cut but the default** (C2063's shell half, with C2083; ruling 142; privacy; `scripts/install.sh`;
+dated line at §16.256 C1832). `- config:` printed AGENTSYNC_CONFIG in clear, a relative one resolved under `--cwd` or an
+absolute one anywhere. Every config path but `~/agent-context/sources.toml` is a pair whose placeholder is its ~-form
+cut as `_cut_path` cuts it (`config_shown`, through `typed_note_cut`'s `--cwd` rule with every byte escaped), as
+written, as `~` and as `debug_path`'s escaped form, so `- config:`, `Not run:` and `debug: config` all read it, and
+`emit_pair`'s blank for a TAB or newline keeps a hostile byte from failing the pairs closed. `CUT_HEADS_CONFIG`
+(`debug: config `) is cut always but `CUT_CONFIG_DEFAULT`, and `CUT_HEADS_UNDER_CWD` is `debug: source ` alone. Test:
+`test_install_oneshot.py::test_the_shell_report_cuts_a_config_path_that_is_not_the_default_c2063` (missing, existing
+and relative under `--cwd`, a 0x1E in the folder) and ruling 142's config arms.
+
+**Another build's render of a --cwd run falls back** (C2028; ruling 142; privacy; `scripts/install.sh`). A build
+before C1835's reader printed a `--cwd` run header and the `debug:` lines whole, and the recut of another build's
+render does not port the cwd rule. `report_cwd_lines`, beside `report_new_marks`, reads a regular install.out under
+`LC_ALL=C` awk for a `# run=` line holding a `CUT_HEADS_CWD` word or any line holding `debug: cwd `, a ` | ` cell
+included; `write_report` then replaces another build's render by the shell report, which cuts them, warning
+`agentsync setup-report was not kept: a run header with --cwd in install.out` (or ``a `debug: cwd` line``). Porting the
+rule to the recut was left out as C1435 and C1481 were. Test:
+`test_install_oneshot.py::test_another_builds_render_of_a_cwd_run_falls_back_to_the_shell_report_c2028` (an older
+render's lines, the header in both forms, the debug line bare and in a cell, and none).
+
+**The --cwd usage words, a free-text tenant with a blank, a short id and the legend** (C2030, C2050 with C2032, C2071,
+C2033's shell clauses, R41-B1; ruling 142; privacy; `scripts/install.sh`). `CUT_HEADS_CWD_NAME` (`--cwd is not a
+folder this run can enter: `) takes its name whole, as `is not an existing folder: ` does, and the words install.sh
+writes after `--cwd ` (`CUT_CWD_USAGE` and that head's rest) stay by phrase, so `--cwd needs` alone still cuts a folder
+named `needs`. `freecut`'s provider part runs across blanks to the next `/` with no `CUT_FREE_PART_STOP` before it,
+then to a `CUT_FREE_END` byte and on through each blank-led word that holds a `/`, no `=` or `://` and opens with none
+of `-`, `/` or `~`; with no such `/` it is the blank-ended word, the residual §16.260 names. A source id or folder part
+of exactly 2 characters, which `add_pair`'s floor dropped, goes through `short_pair`: a two-letter word in capitals
+(`IT`) as written (flag `w`), so the pronoun `it` stays, any other a whole word in any case (flag `i`), and
+`fallback_redaction` makes the report private only where a two-letter word's placeholder is shown, with the folder
+sentence, as `word_named_shown` judges it (makes worse True for registering every short id as a plain pair). A
+configured name holding a line break toml_string writes raw (`CUT_TOML_BREAKS`) is also registered with each break
+in `CUT_TOML_BREAKS_ESCAPED`'s spelling. The shell legend's `<path>` item names each of these forms after ruling 138's
+sentence, every pinned clause kept. Tests: ruling 142's property test, and
+`test_install_oneshot.py::test_the_shell_legend_names_each_heads_rule_for_any_path_c2033`.
+
+**The shell report's tests** (C2036, C2037, C2065's test half). `test_typed_note_cut_ends_on_every_head_even_an_empty_one`
+gains an `empty-element` case, an empty element in every head list, which holds `slone`'s and `dbunder`'s guards
+(`dbcwd` gets only `debug: ` heads, so its guard is unreachable and kept); C1836's refusal is driven through
+`write_fallback_report` under /bin/bash with `fallback_redaction` among the failed readers; and `_bash_run` runs every
+bash harness that passed no timeout in its own session, killing the group on a timeout or SIGINT.
 
 ### 16.262 Round 41: a waiting recording is one state, the zero-byte probe reads no byte, and an outage page is read again (2026-11-17, wave B13 round 41 lane B)
 
