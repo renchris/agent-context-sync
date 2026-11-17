@@ -42971,6 +42971,15 @@ CSV at the default cap, then `max_page_bytes = 8192`: with the re-read budget us
 none moves; then the CSV's page is row-capped with its sidecar and only its pages change; a second sync commits
 nothing and counts none).
 
+**A configured name holding a line separator is written escaped** (R41-B1, the lead's grown item from lane RA's
+measurement). `config.toml_string` wrote U+2028, U+2029 and U+0085 raw, which TOML 1.0 takes in a basic string, but
+both reports split a line at each, so a source path holding one printed its pieces in clear. They are written
+`\u2028`, `\u2029` and `\u0085`, as DEL is `\u007F` (R39-B1); `tomllib` reads each back as the character, and
+lane RA's report_cuts aliases the escaped spellings, landed before this on trunk. Every TOML string agentsync writes
+goes through it (`add-source`, the inbox table, exclude-empty's list, discover's TOML). Test:
+`test_cli.py::test_a_folder_named_with_a_line_separator_is_written_escaped_r41_b1` (each of the three: the
+sources.toml `add-source` writes holds none raw, loads, and gives the path back).
+
 ### 16.263 Round 41: the converters: every page within the cap on its real bytes, fences and the xlsx lists included (2026-11-17, wave B13 round 41 lane E)
 
 Round 41's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 41"; specs `round41/items/C<n>.md`, the

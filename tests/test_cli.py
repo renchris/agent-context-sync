@@ -15323,3 +15323,35 @@ def test_a_folder_named_with_del_leaves_a_sources_toml_that_loads_r39_b1(
     assert tomllib.loads(f"g = {discover._toml_str(glob)}")["g"] == glob
     for text_ in ("a\x7fb", 'q"\\b\n\t', "Caf\u00e9\x85\u2028"):
         assert tomllib.loads(f"v = {toml_string(text_)}")["v"] == text_, text_
+
+
+@pytest.mark.parametrize(
+    ("char", "spelled"),
+    [("\u2028", "\\u2028"), ("\u2029", "\\u2029"), ("\x85", "\\u0085")],
+    ids=["U+2028", "U+2029", "U+0085"],
+)
+def test_a_folder_named_with_a_line_separator_is_written_escaped_r41_b1(
+    initialised: Config,
+    tmp_path: Path,
+    local_source_dir: Path,
+    capsys: pytest.CaptureFixture[str],
+    char: str,
+    spelled: str,
+) -> None:
+    """B13 round 41 R41-B1 (lane RA's measurement): ``config.toml_string`` wrote U+2028, U+2029 and U+0085
+    raw, which TOML takes, but both reports split a line at each, so a configured name holding one printed its
+    pieces in clear. It writes them escaped, ``\\u2028``, ``\\u2029`` and ``\\u0085`` (the spellings
+    report_cuts aliases): the sources.toml ``add-source`` writes holds none raw, loads, and gives the path
+    back."""
+    folder = tmp_path / f"Contoso{char}Board"
+    shutil.copytree(local_source_dir, folder)
+    cfg = str(initialised.config_path)
+    assert cli.main(["add-source", str(folder), "--config", cfg]) == cli.EXIT_OK
+    capsys.readouterr()
+    text = initialised.config_path.read_text(encoding="utf-8")
+    assert char not in text and spelled in text, text
+    loaded = tomllib.loads(text)
+    assert canonical_source_root(folder).as_posix() in [t.get("path") for t in loaded["source"]], loaded
+    assert any(s.path == canonical_source_root(folder) for s in load_config(initialised.config_path).sources)
+    assert toml_string(f"a{char}b") == f'"a{spelled}b"'
+    assert tomllib.loads(f"v = {toml_string(f'a{char}b')}")["v"] == f"a{char}b"

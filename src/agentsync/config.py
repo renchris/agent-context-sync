@@ -697,8 +697,12 @@ def toml_string(text: str) -> str:
     """``text`` as one TOML basic string that ``tomllib`` reads back as ``text``: ``json.dumps``'s escaping is
     TOML's, but it leaves DEL (U+007F) raw, which TOML 1.0 forbids in a basic string, so a folder named with
     one gave a sources.toml no command could load; DEL is written ``\u007f`` (B13 round 39 R39-B1, lane RB's
-    note). Every writer of a TOML string in agentsync goes through it."""
-    return json.dumps(text, ensure_ascii=False).replace("\x7f", "\\u007F")
+    note). The line and paragraph separators (U+2028, U+2029) and NEL (U+0085) are written ``\u2028``,
+    ``\u2029`` and ``\u0085``: TOML takes them raw, but both reports split a line there, so a configured name
+    holding one printed its pieces in clear (B13 round 41 R41-B1, lane RA's measurement; report_cuts aliases
+    the escaped spellings). Every writer of a TOML string in agentsync goes through it."""
+    escaped = json.dumps(text, ensure_ascii=False).replace("\x7f", "\\u007F")
+    return escaped.replace("\u2028", "\\u2028").replace("\u2029", "\\u2029").replace("\x85", "\\u0085")
 
 
 def local_source_table(source_id: str, path: Path) -> str:
