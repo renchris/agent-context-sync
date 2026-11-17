@@ -123,11 +123,17 @@ def _identity(conv: Converter, name: str) -> tuple[str, str]:
     suffixes: with an OCR engine pandoc is two converters, and ``.rtf`` keeps the one key it has on a Mac
     without an engine.
     """
+    return conv.version(), effective_options_hash(conv, name)
+
+
+def effective_options_hash(conv: Converter, name: str) -> str:
+    """The options hash ``convert_file`` gives a conversion of ``name`` by ``conv`` (``_identity``'s), with no
+    version asked: the cycle's options-drift re-read compares a page's against it (B13 round 41 C2021)."""
     suffix = _suffix(name)
     opts = {**conv.options(), "input_suffix": suffix}
     if suffix in OOXML_SUFFIXES or suffix == ".msg":
         opts["empty_screen"] = 1
-    return conv.version(), options_hash(opts)
+    return options_hash(opts)
 
 
 def convert_file(

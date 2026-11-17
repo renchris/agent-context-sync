@@ -42719,6 +42719,39 @@ wait for the OCR helper in the outage; after it the 0-byte one is `empty` and th
 `::test_a_no_media_recording_stub_stays_uncounted_and_unplanned_c2039` (no media helper: never marked, never
 counted, never planned again).
 
+**An edit of `[convert] max_page_bytes` reaches existing pages through the re-read** (C2021; ruling 143). An
+options edit changed every converter's `options_hash` and marked no file to read again (`_reread_targets` built its
+targets from the converter id, version and stub reason only, and the H0 cutoff settles an unchanged file), so an
+existing page kept the old cap until its bytes changed, measured at 505,253 bytes under a cap of 8,192. The re-read
+gains an options-drift target, `_Cycle._drift_targets`: per (converter id, suffix) of this cycle's full registry
+(`self.registry`, never the `without_ocr` fallback), the live OK pages that converter made at any version (version
+`manifest.OPTIONS_DRIFT_VERSION`) whose options hash, the cache row's or else the `outputs` row's, is none of the
+hashes a page may carry now (`_drift_hashes`: `convert.effective_options_hash`, the hash `convert_file` gives,
+`input_suffix` and `empty_screen` included, of the full registry's converter and of its converter without the OCR
+engine, so a page built past the OCR time is no target for that alone). A target names only a page built before the
+run in which `[convert]` last changed (`outputs.built_run`; manifest meta `convert_options`, `"<fingerprint> <run
+id>"`, `_Cycle._drift_since`, the fingerprint every `[convert]` value but the `ocr` and `recordings` switches), since
+options also move with no edit: the label rule's fingerprint after a `[policy]` edit (the re-screen's), pandoc's
+binary while it cannot start, the OCR engine's state; measured, an ungated target re-read every page after a policy
+tweak (`read again 7` on the sync line) and said `sync again` while pandoc could not start. A manifest with no record
+stores the fingerprint and opens nothing. None is made for the recording converter, for a converter that cannot
+start this cycle (`_runs`), under a dry run, or while the OCR helper fails (a registry without the engine would call
+every page OCR made drifted). It runs under the re-read's own limits: local and inbox sources only, nothing
+downloaded, `_REREAD_BUDGET_S`, `_REREAD_ATTEMPTS` and `tried`; and the `[convert]` fingerprint joins
+`_capabilities` once one has changed, so the edit reopens a source's re-read record.
+A page whose body changes (a new row cap) is published and committed; one that comes out the same takes the H2
+cutoff, which moves its action key and now records the new options hash on its `outputs` rows too (`_move_key`'s
+`options`), so nothing is committed and a later cache eviction does not make it a target again; a Graph file's page
+takes the new options when its bytes next change. The run counts such files apart as `reread_options` (they are in
+`reread_left` as well), and `loop._reread_notes` adds a note after the `sync again:` one: `<N> files in <ids> have
+pages made under other converter options (a [convert] or [policy] edit); they are among the files read again`
+(`loop._REREAD_OPTIONS`). Lane E writes
+config.py's comment, the ConvertConfig row and §16.258 from these words, and lane D the README's `[convert]` part.
+Test: `test_cycle.py::test_a_lower_max_page_bytes_reaches_existing_pages_through_the_re_read_c2021` (a 1,200-row
+CSV at the default cap, then `max_page_bytes = 8192`: with the re-read budget used up the three pages are counted and
+none moves; then the CSV's page is row-capped with its sidecar and only its pages change; a second sync commits
+nothing and counts none).
+
 ### 16.263 Round 41: the converters: every page within the cap on its real bytes, fences and the xlsx lists included (2026-11-17, wave B13 round 41 lane E)
 
 Reserved for round 41 lane E of B13.

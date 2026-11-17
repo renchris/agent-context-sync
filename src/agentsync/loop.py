@@ -708,7 +708,18 @@ _REREAD_CROWDED_ONE = _REREAD_CROWDED.replace(
     "waits to be read again, and the last sync did not read it",
     1,
 ).replace("They are read once", "It is read once", 1)
+_REREAD_OPTIONS = (
+    "have pages made under other converter options (a [convert] or [policy] edit); they are among the files "
+    "read again"
+)
+"""What the note of the files whose pages a re-read reads again for their options says (``reread_options``,
+B13 round 41 C2021); they are in ``reread_left`` too, so the note beside it says whether another sync reads
+them."""
+_REREAD_OPTIONS_ONE = _REREAD_OPTIONS.replace("have pages", "has pages", 1).replace(
+    "they are among the files", "it is among the files", 1
+)
 _REREAD_ONE = {
+    _REREAD_OPTIONS: _REREAD_OPTIONS_ONE,
     _REREAD_AGAIN: _REREAD_AGAIN_ONE,
     _REREAD_STUCK: _REREAD_STUCK_ONE,
     _REREAD_CROWDED: _REREAD_CROWDED_ONE,
@@ -723,7 +734,8 @@ def _reread_notes(
     none.  ``unread``: those of them whose newest pass was skipped or failed, so the last sync did not get
     to their files.  ``runs``: the counts of the two newest runs that looked, the newest first
     (``Manifest.last_reread_counts``).  ``downloads``: online-only files wait for a later sync's download
-    budget, so the next sync brings new files.
+    budget, so the next sync brings new files.  A note of the files of those whose pages were made under other
+    converter options (``reread_options``, an options-drift target) follows the first (B13 round 41 C2021).
 
     A note starts :data:`SYNC_AGAIN` only while another sync reads more.  That is: the newest run that
     looked read a file again; or it read none because other work used up its OCR time, which the next sync
@@ -765,6 +777,9 @@ def _reread_notes(
             notes.append(said(looked, left, _REREAD_CROWDED))
         else:
             notes.append(SYNC_AGAIN + said(looked, left, _REREAD_AGAIN))
+        options = (new or {}).get("reread_options", 0)
+        if options and left:  # pages built under other options, counted apart (C2021)
+            notes.append(said(looked, options, _REREAD_OPTIONS))
     held = sorted(set(sources) & set(unread))
     if held:
         notes.append(said(held, 0, _REREAD_STUCK))

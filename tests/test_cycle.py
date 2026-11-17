@@ -5618,6 +5618,49 @@ def _mirror_bytes(config: Config, *rels: str) -> dict[str, bytes]:
     return {rel: (config.docs_repo / slug.mirror_rel_path(SID, rel)).read_bytes() for rel in rels}
 
 
+LONG_CSV = "Contoso long table.csv"
+
+
+def test_a_lower_max_page_bytes_reaches_existing_pages_through_the_re_read_c2021(
+    tmp_path: Path, meetings: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 41 C2021 (ruling 143): an edit of [convert] max_page_bytes changed every converter's options
+    hash and re-read no file, so an existing page kept the old cap (505,253 bytes measured under a cap of
+    8,192) until its bytes changed. An options-drift target of the re-read reads a local file whose page was
+    built under other options again: under a re-read budget used up at once status counts them (and moves no
+    page); then the CSV's page is row-capped within the new cap with its sidecar, the pages that come out the
+    same only move their key (nothing else committed), and a second sync commits nothing and counts none."""
+    rows = "\n".join(f"Contoso-{n:04d},Northwind order {n},{n * 7 % 1000}" for n in range(1200))
+    (meetings / LONG_CSV).write_text("id,name,amount\n" + rows + "\n", encoding="utf-8")
+    config = config_with(tmp_path, meetings)
+    assert run(config).exit_code == 0
+    big = (config.docs_repo / slug.mirror_rel_path(SID, LONG_CSV)).read_bytes()
+    assert len(big) > 8192 and b"[row cap:" not in big
+    others = _mirror_bytes(config, "notes.md", "README.txt")
+    capped = config_with(tmp_path, meetings, "\n[convert]\nmax_page_bytes = 8192\n")
+    monkeypatch.setattr(cycle_mod, "_REREAD_BUDGET_S", 0.0)
+    report = run(capped)
+    assert report.exit_code == 0 and report.commit_sha is None
+    record = _run_record(capped)
+    assert record["reread_options"] == 3 and record["reread_left"] == 3, record
+    said = _reread_notes(capped)
+    assert f"3 files in {SID} have pages made under other converter options" in "\n".join(said), said
+    monkeypatch.setattr(cycle_mod, "_REREAD_BUDGET_S", 120.0)
+    head = git(capped.docs_repo, "rev-parse", "HEAD").strip()
+    report = run(capped)
+    assert report.exit_code == 0 and report.commit_sha is not None
+    page_bytes = (capped.docs_repo / slug.mirror_rel_path(SID, LONG_CSV)).read_bytes()
+    # row-capped at the new cap (lane E's C2044 holds the guarded page's own bytes to it exactly)
+    assert b"[row cap:" in page_bytes and len(page_bytes) < 8192 + 1024 < len(big), len(page_bytes)
+    changed = git(capped.docs_repo, "diff", "--name-only", head, "HEAD").split()
+    pages = [p for p in changed if p.startswith("mirror/")]
+    assert pages and all("contoso-long-table.csv" in p for p in pages), changed
+    assert _mirror_bytes(capped, "notes.md", "README.txt") == others, "a page that comes out the same stays"
+    assert "reread_options" not in _run_record(capped) and _reread_notes(capped) == []
+    assert run(capped).commit_sha is None, "a second sync commits nothing"
+    assert "reread_options" not in _run_record(capped) and _reread_notes(capped) == []
+
+
 def test_a_pdf_converted_before_comments_were_kept_gains_them_and_is_read_again_once(
     sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

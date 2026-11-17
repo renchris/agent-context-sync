@@ -467,23 +467,38 @@ _UPDATE_ITEM_SQL = (
     "WHERE source_id = ? AND stable_id = ?"
 )
 _REREAD_TARGETS = 200  # targets per statement: four bound values each, under SQLite's oldest limit of 999
+OPTIONS_DRIFT_VERSION = "*options*"
+"""The version of a re-read target that names pages built under other converter options (``cycle``'s
+options-drift target, B13 round 41 C2021): its reason is ``<run>:,<hash>,<hash>,``, the run ``[convert]`` last
+changed in and the options hashes a page may have; a page built before that run with any other hash (the cache
+row's, else the ``outputs`` row's) makes the file one to read again."""
 _REREAD_SQL = (
     "WITH t(cid, ver, why, ext) AS (VALUES {values}) SELECT {columns} FROM items i "
     "WHERE i.source_id = ? AND i.is_dir = 0 AND i.dataless = 0 "
     "AND i.stable_id NOT IN (SELECT value FROM json_each(?)) AND EXISTS ("
     "SELECT 1 FROM outputs o LEFT JOIN cache c ON c.action_key = o.action_key "
     "JOIN t ON t.cid = COALESCE(c.converter_id, o.converter_id) "
-    "AND t.ver = COALESCE(c.converter_version, o.converter_version) "
+    "AND (t.ver = COALESCE(c.converter_version, o.converter_version) OR t.ver = '"
+    + OPTIONS_DRIFT_VERSION
+    + "') "
     "WHERE o.source_id = i.source_id AND o.stable_id = i.stable_id "
     "AND length(i.name) > length(t.ext) AND substr(lower(i.name), -length(t.ext)) = t.ext "
-    "AND ((t.why IS NULL AND o.status = 'ok' AND i.state = 'live') "
+    "AND ((t.ver = '" + OPTIONS_DRIFT_VERSION + "' AND o.status = 'ok' AND i.state = 'live' "
+    "AND o.built_run < CAST(substr(t.why, 1, instr(t.why, ':') - 1) AS INTEGER) "
+    "AND instr(t.why, ',' || COALESCE(c.options_hash, o.options_hash, '') || ',') = 0) "
+    "OR (t.ver != '"
+    + OPTIONS_DRIFT_VERSION
+    + "' AND t.why IS NULL AND o.status = 'ok' AND i.state = 'live') "
     "OR (t.why = i.state_reason AND o.status = i.state AND i.state IN ('quarantined', 'refused')) "
     "OR (t.why = i.state_reason AND t.ver = 'unavailable' AND o.status = 'failed' "
     "AND i.state = 'quarantined')))"
 )
 """The files ``Manifest.reread_candidates`` and ``reread_left`` look for; the caller adds the rest of the
 WHERE clause.  The cache row is joined LEFT: a page whose row is gone is judged by its ``outputs`` columns,
-which costs at most one more read of the file (that read writes the row)."""
+which costs at most one more read of the file (that read writes the row).  An options-drift target (its
+version :data:`OPTIONS_DRIFT_VERSION`) names the live OK pages of its converter, at any version, built before
+the run its reason starts with (``<run>:``) and whose options hash is none of the ``,``-delimited hashes after
+it (B13 round 41 C2021)."""
 _INSERT_ITEM_SQL = (
     "INSERT INTO items (source_id, stable_id, parent_id, name, rel_path, prev_path, is_dir, "
     "size, mtime_ns, ctime_ns, created_ns, ino, mode, gen_count, dataless, quickxor, "

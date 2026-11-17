@@ -85,6 +85,7 @@ from agentsync.convert import (
     NO_CONVERTER_PREFIX,
     NO_CONVERTER_VERSION,
     convert_file,
+    effective_options_hash,
     media,
     ocr,
     speech,
@@ -128,6 +129,7 @@ from agentsync.graph.mail import MailArm
 from agentsync.graph.teams import TeamsArm
 from agentsync.manifest import (
     ACCESS_ERRNOS,
+    OPTIONS_DRIFT_VERSION,
     ItemRow,
     Manifest,
     OutputRow,
@@ -512,6 +514,21 @@ _RECORDING_BUDGET_S = 180.0
 """The seconds of recording work one background cycle may spend (spec S0 rule 5): pieces of one recording at a
 time, the piece in flight finishing.  Kept apart from the cycle's OCR time (``_OCR_BUDGET_S``), so the images
 beside a recording keep theirs; recordings are read after every source, so nothing waits behind them."""
+
+_CONVERT_OPTIONS_META = "convert_options"
+"""Manifest meta ``convert_options``: ``"<fingerprint of [convert]> <run id>"``, the run in which the section
+last changed (``_Cycle._drift_since``, B13 round 41 C2021)."""
+
+
+def _convert_fingerprint(config: Config) -> str:
+    """A digest of the ``[convert]`` values a converter hashes into its options (every field but the ``ocr``
+    and ``recordings`` switches): an edit of ``max_page_bytes`` moves it (B13 round 41 C2021)."""
+    values = {
+        k: str(v) for k, v in dataclasses.asdict(config.convert).items() if k not in ("ocr", "recordings")
+    }
+    return hashlib.sha256(json.dumps(values, sort_keys=True).encode("utf-8")).hexdigest()[:16]
+
+
 RECORDING_OCR_DOWN_META = "recording_ocr_down:"
 """Manifest meta ``recording_ocr_down:<source id>:<stable id>``: ``"1"`` while the recording's refused stub
 is the OCR-down page (``publish.OCR_DOWN_RECORDING_REASON``, given while the OCR helper fails and the media
@@ -2167,6 +2184,9 @@ class _Cycle:
         self._reread_first = 0  # of those, bytes read for the first time: counted as converted too (Q28)
         self._reread_kept = 0  # of those, the ones whose conversion failed: their page is as it was
         self._reread_left = 0  # files still to read again, over the sources this cycle looked at
+        self._reread_options = 0  # of those, files whose pages were built under other options (C2021)
+        self._drift: dict[tuple[str, str], frozenset[str]] | None = None  # _drift_hashes, once a cycle
+        self._drift_run: int | None = None  # _drift_since, once a cycle
         self._reread_looked = False  # a source's record was brought up to date (``_reread_source``)
         # what this run did, as counts for its run record (``_run_tally``, CONTRACTS.md 16.28): never a name
         self._tally: Counter[str] = Counter()
@@ -4022,6 +4042,8 @@ class _Cycle:
             tally["reread_kept"] = self._reread_kept
         if self._reread_left:
             tally["reread_left"] = self._reread_left
+        if self._reread_options:
+            tally["reread_options"] = self._reread_options
         if self._reread_waiting:
             tally["reread_waits"] = self._reread_waiting
         if self._reread_looked:
@@ -4759,6 +4781,8 @@ class _Cycle:
                 "ocr": self.ocr.identity if self.ocr is not None else "",
                 "rules": sorted(list(k) for k in keys if k[1]),
             }
+            if self._drift_since():  # a [convert] edit looks again (B13 round 41 C2021)
+                doc["convert"] = _convert_fingerprint(self.config)
             self._capability = hashlib.sha256(json.dumps(doc, sort_keys=True).encode("utf-8")).hexdigest()
         return self._capability
 
@@ -4823,8 +4847,81 @@ class _Cycle:
                         )
                 if outdated or converter_id in _replaced(conv):
                     targets.update((converter_id, version, reason, ext) for ext in conv.extensions)
+        if not recordings:
+            targets.update(self._drift_targets())
         mine = [t for t in targets if (t[3] in self._recording_suffixes()) == recordings]
         return sorted(mine, key=lambda t: (t[0], t[1], t[2] or "", t[3]))
+
+    def _drift_hashes(self) -> dict[tuple[str, str], frozenset[str]]:
+        """Each (converter id, suffix) of this cycle's registry with the options hashes a page that converter
+        made of a file with that suffix may carry now (``convert.effective_options_hash``): the full
+        registry's (``self.registry``, never the ``without_ocr`` fallback), and, where there is one, its
+        converter's without the OCR engine, so a page built past the OCR time is no target for that alone (the
+        version rule reads it again for OCR).  Empty, so no options-drift target, while the OCR helper fails
+        (a registry without the engine would call every page OCR made drifted), under a dry run and for the
+        recording converter, whose pages the recording pass alone reads (B13 round 41 C2021)."""
+        if self._drift is None:
+            found: dict[tuple[str, str], set[str]] = {}
+            if not self.dry and not self.publisher.ocr_down:
+                plain = self.registry.without_ocr
+                for reg in (self.registry, plain) if plain is not None else (self.registry,):
+                    for conv in reg.converters():
+                        if conv.converter_id == RecordingConverter.converter_id:
+                            continue
+                        try:  # a converter whose options cannot be read now gets no drift target
+                            hashed = {e: effective_options_hash(conv, f"file{e}") for e in conv.extensions}
+                        except Exception:
+                            log.debug("%s: options not read; no options-drift target", conv.converter_id)
+                            continue
+                        for ext, opts in hashed.items():
+                            found.setdefault((conv.converter_id, ext), set()).add(opts)
+            self._drift = {key: frozenset(h) for key, h in found.items()}
+        return self._drift
+
+    def _drift_targets(self) -> set[tuple[str, str, str | None, str]]:
+        """The options-drift targets (``manifest.OPTIONS_DRIFT_VERSION``): for each converter of this cycle's
+        registry and each suffix it reads, the live OK pages it made, at any version, built before the run
+        ``[convert]`` last changed in (``_drift_since``), whose options hash is none of
+        :meth:`_drift_hashes`', for a converter that starts this cycle (``_runs``: no sync reads the files of
+        one that cannot, B13 round 17 U3).  An edit of ``[convert] max_page_bytes`` (any option a converter
+        hashes) so reads again the local and inbox pages built under the old options, under the re-read's
+        budget and attempts, nothing downloaded; a page that comes out the same moves its action key and
+        nothing is committed (B13 round 41 C2021, ruling 143)."""
+        since = self._drift_since()
+        if not since:
+            return set()
+        hashes = self._drift_hashes()
+        down = {
+            c.converter_id for c in self.registry.converters() if c.converter_id in {k[0] for k in hashes}
+        }
+        down = {
+            cid
+            for cid in down
+            if not all(self._runs(c) for c in self.registry.converters() if c.converter_id == cid)
+        }
+        return {
+            (cid, OPTIONS_DRIFT_VERSION, f"{since}:," + ",".join(sorted(found)) + ",", ext)
+            for (cid, ext), found in hashes.items()
+            if cid not in down
+        }
+
+    def _drift_since(self) -> int:
+        """The run in which ``[convert]`` last changed (manifest meta :data:`_CONVERT_OPTIONS_META`, ``"<its
+        fingerprint> <run id>"``), 0 for none seen: only a page built before it is an options-drift target.
+        Options also move without an edit (the label rule's fingerprint after a ``[policy]`` edit, which the
+        re-screen covers; pandoc's binary while it cannot start; the OCR engine), and a page is never read
+        again for those.  The first cycle of a manifest with no record stores the fingerprint and opens
+        nothing; a dry run writes nothing (B13 round 41 C2021)."""
+        if self._drift_run is None:
+            mine = _convert_fingerprint(self.config)
+            stored = (self.manifest.get_meta(_CONVERT_OPTIONS_META) or "").split()
+            if len(stored) == 2 and stored[0] == mine and stored[1].isdigit():
+                self._drift_run = int(stored[1])
+            else:
+                self._drift_run = self.run_id if len(stored) == 2 else 0
+                if not self.dry:
+                    self.manifest.set_meta(_CONVERT_OPTIONS_META, f"{mine} {self._drift_run}")
+        return self._drift_run
 
     def _claims(self, suffix: str) -> str:
         """The id of the converter this cycle's registry gives a file ending in ``suffix``, "" for none."""
@@ -4976,6 +5073,9 @@ class _Cycle:
             targets = self._reread_targets(src.id)
         left = self.manifest.reread_count(src.id, targets, skip=state.tried()) if targets else 0
         self._reread_left += left
+        drift = [t for t in targets if t[1] == OPTIONS_DRIFT_VERSION]
+        if left and drift:  # status counts pages built under other options apart (C2021)
+            self._reread_options += self.manifest.reread_count(src.id, drift, skip=state.tried())
         # The stubs whose converter cannot start are no targets yet, and no sync clears them while it cannot:
         # counted apart, so loop.next_step does not say "sync again" for them (B13 round 18 V57)
         waits = sorted(
@@ -6554,7 +6654,7 @@ class _Cycle:
         if c3 is Verdict.OUTPUT_UNCHANGED:  # H2 early cutoff: bodies identical, the pages stay as they are
             if rescreen:  # a re-screen is never a re-read, so never `again` (G58)
                 self._tally["rescreened_unchanged"] += 1
-            self._move_key(sid, stable, outs, result.action_key, OutputStatus.OK)
+            self._move_key(sid, stable, outs, result.action_key, OutputStatus.OK, options=result.options_hash)
             if self._rewrite_if_moved(src, fresh, outs, acc):
                 acc.settle(stable, Verdict.OUTPUT_UNCHANGED)
                 self.manifest.set_verdict(sid, stable, Verdict.OUTPUT_UNCHANGED)
@@ -6892,15 +6992,19 @@ class _Cycle:
         status: OutputStatus,
         *,
         made_by: ConversionResult | None = None,
+        options: str | None = None,
     ) -> None:
         """Give ``key`` to the item's output rows of ``status``, which stay as they are otherwise: the
         conversion under that key gave the pages they already describe.  ``made_by``: a stub's conversion,
         which leaves no cache row to say which converter gave it, so its rows take that converter as well
-        (B13 round 4 Q78: a ``no converter`` stub msg-mime gives a binary .msg is then not read again)."""
+        (B13 round 4 Q78: a ``no converter`` stub msg-mime gives a binary .msg is then not read again).
+        ``options``: the conversion's options hash, which the rows take too (the H2 cutoff), so a page that
+        came out the same under new options is not read again for them once its cache row is gone (B13 round
+        41 C2021); the page keeps the ``options_hash:`` it shows."""
 
         def keyed(o: OutputRow) -> OutputRow:
             if made_by is None:
-                return dataclasses.replace(o, action_key=key)
+                return dataclasses.replace(o, action_key=key, options_hash=options or o.options_hash)
             made = (made_by.converter_id, made_by.converter_version)
             return dataclasses.replace(o, action_key=key, converter_id=made[0], converter_version=made[1])
 
