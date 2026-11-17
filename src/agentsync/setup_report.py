@@ -16644,6 +16644,8 @@ def _loop_line(r: _Run) -> str:
         if ran:
             own += f" when this report was written; {ran}"
         text = _one_bracket(text, f"{own}; {_DAMAGE_SEEN}")
+    elif ran and r.facts.status_failed:  # B13 round 41 C2013: status cut, not started or failed
+        text = _one_bracket(text, f"the loop's own read when this report was written; {ran}")
     elif ran:
         text = _one_bracket(text, f"status when this report was written; {ran}")
     in_doctor = _doctor_fail_shown(r, "governance.hold")  # B13 round 32 C636

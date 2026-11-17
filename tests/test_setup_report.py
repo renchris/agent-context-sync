@@ -12632,6 +12632,32 @@ def test_the_loop_lines_next_says_whose_reading_it_is_with_no_install_run_c620(
     assert ") (" not in line, "one bracket after the NEXT"
 
 
+def test_the_loop_lines_bracket_is_the_loops_own_read_when_status_did_not_give_it_c2013(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 41 C2013: when status was cut, never started or failed and the attempt made no install run,
+    the Loop line said status did not finish yet called its NEXT `status when this report was written`. The
+    NEXT is the loop hook's own read then, and the bracket says so."""
+    step = "NEXT: stop: the operator confirms the baseline questions (see the WAITING ON YOU lines); "
+    step += "session done"
+    hooks = setup_report.ReportHooks(loop_next=lambda _config: [step])
+    write_friction(fake_mac, STOPPED_V8)
+    for why, stage in (
+        (setup_report._STATUS_NOT_IN_TIME, "not read (status did not finish in time)"),
+        (setup_report._NOT_STARTED, "not read (status not started: the report's time budget was used up)"),
+        ("OSError: Contoso disk", "not read (status failed: OSError: Contoso disk)"),
+    ):
+        r = setup_report._Run(fake_mac["config"], hooks, 5.0)
+        r.friction = setup_report.read_friction(r.friction_path)
+        r.facts.status_failed = why
+        line = setup_report._loop_line(r)
+        assert line.startswith(f"- Loop: {stage}; "), line
+        assert (
+            "(the loop's own read when this report was written; this attempt made no install run)" in line
+        ), line
+        assert "status when this report was written" not in line, line
+
+
 def test_the_loop_lines_fail_step_names_doctors_fail_line_c603(fake_mac: dict[str, Path]) -> None:
     """B13 round 32 C603, C656 (ruling 67): rule 1's NEXT on the Loop line said "the [FAIL] line below",
     true of status, which prints its [FAIL] lines under its NEXT, but the Summary below the Loop line holds

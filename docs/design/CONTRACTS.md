@@ -35914,7 +35914,9 @@ none`), so `session done` read as this attempt's end. When `_ran_no_install` hol
 line and `_latest_runs` is empty: the test behind `install.sh: no run during this attempt`) and the loop gave a NEXT,
 the NEXT carries one bracket, `(status when this report was written; this attempt ran no install.sh)`. With the damage
 clause it is merged into that clause's bracket, `(the loop's own read when this report was written; this attempt ran
-no install.sh; <damage>)`, so the line never has two brackets in a row (V11, V54). A NEXT that already ends in its
+no install.sh; <damage>)`, so the line never has two brackets in a row (V11, V54); when status did not give its
+reading (cut, not started or failed), the bracket opens `(the loop's own read when this report was written; ...)`
+(since B13 round 41 C2013, §16.260). A NEXT that already ends in its
 own bracket (rule 9's under `count_queue=False`, which ends `; session done)`) takes these words
 inside it after `; ` (`_one_bracket`: `...; session done; status when this report was written; this attempt ran no
 install.sh)`), the damage clause too. The `not read (...)` returns show
@@ -42602,6 +42604,12 @@ recording waiting to be read (`cycle.RECORDING_WAITS`) printed `live | other` un
 dataless row is a download the OS refused. Its WHERE clause leaves out a row whose reason is exactly
 `RECORDING_WAITS`, so the legend and §16.28's quarantine words stay true; a hydration-refused row is still listed, and
 the Loop line and status name the wait. Test: `test_a_waiting_recording_is_not_a_quarantine_row_c2006`.
+
+**The Loop line's bracket is the loop's own read when status did not give it** (C2013). With status cut, not started
+or failed and no install run in the attempt, the Loop line said status did not finish yet called its NEXT `status when
+this report was written`. `_loop_line` opens the bracket `(the loop's own read when this report was written; ...)`
+then; §16.213's C620 paragraph says so, and the guide's sentence is lane D's. Test:
+`test_the_loop_lines_bracket_is_the_loops_own_read_when_status_did_not_give_it_c2013`.
 
 ### 16.261 Round 41: the installer: the shell report cuts any path by its head's rule, every debug head on a line, and another build's render reads the same heads (2026-11-17, wave B13 round 41 lane RB)
 
