@@ -42628,6 +42628,11 @@ debug_line writes a debug value raw; install.sh's `debug_path` writes the cwd, s
 %q`'s one-line form, the home as `~`, and both say so, as §16.300's `--debug` bullet now does (the report compares a
 path with the cwd in that same form, never decoded). Docs only. Test: `test_the_debug_docs_name_debug_paths_printf_q_form_c2034`.
 
+**The C1833 test holds both reports** (C2056). Its docstring said the agentsync report numbers a refused name's
+configured folder where the shell cuts at the provider folder, so only the shell line was held; since C1882 both print
+`OneDrive-<org-1>/<path>: its name is ...`, and the test now holds the two lines equal. Its name is kept, so §16.256's
+citation stands. Test: `test_report_redaction.py::test_the_shell_cuts_a_refused_name_under_a_configured_folder_whole_c1833`.
+
 ### 16.261 Round 41: the installer: the shell report cuts any path by its head's rule, every debug head on a line, and another build's render reads the same heads (2026-11-17, wave B13 round 41 lane RB)
 
 Reserved for round 41 lane RB of B13.

@@ -1601,11 +1601,12 @@ def test_both_reports_cut_an_unregistered_tenant_after_cloudstorage_c1626(
 
 def test_the_shell_cuts_a_refused_name_under_a_configured_folder_whole_c1833(
     env: dict[str, str],  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """B13 round 40 C1833: under a configured folder, a refused name with a blank printed its tail in the
-    shell report (`<path> Plans:`); it runs to the last refusal head now. The agentsync report numbers the
-    configured folder there (`<folder-1>/<path>`) where the shell cuts at the provider folder, the safer
-    side, so only the shell line is held."""
+    shell report (`<path> Plans:`); it runs to the last refusal head now. Since C1882 (with C1834, ruling 137,
+    the same land) the agentsync report cuts this word at the provider folder too, so both reports print
+    `OneDrive-<org-1>/<path>: its name is ...`, held equal here (B13 round 41 C2056)."""
     lib = Path(env["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso"
     (lib / "Northwind Plans").mkdir(parents=True)
     cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
@@ -1623,6 +1624,11 @@ def test_the_shell_cuts_a_refused_name_under_a_configured_folder_whole_c1833(
     [shell] = [ln for ln in text.splitlines() if " | step 2 | deviation | " in ln]
     assert "OneDrive-<org-1>/<path>: its name is step 1's escaped form" in shell, shell
     assert "Wombat" not in text and " Plans:" not in shell, shell
+    monkeypatch.setenv("HOME", env["HOME"])
+    red = setup_report._build_redactor(setup_report._Run(cfg, setup_report.ReportHooks(), 12.0))
+    line = f"2026-10-12T10:00:01Z | step 2 | deviation | {said} | -"
+    python = setup_report._redact_lines(red, [line])
+    assert shell.split(" | deviation | ", 1)[1] == python.split(" | deviation | ", 1)[1], (shell, python)
 
 
 def test_both_reports_number_a_configured_tenant_whose_provider_folder_is_gone_c1862(
