@@ -388,13 +388,15 @@ def test_xlsx_row_cap_emits_csv_sidecar(tmp_path: Path) -> None:
     units = XlsxConverter(replace(CFG, max_rows_per_sheet=5)).convert(src, name="big.xlsx")
     data = units[1]
     assert (
-        "[row cap: first 5 of 31 non-empty rows shown; every row is in the sidecar `01-data.csv`]"
-        in data.body
+        "[row cap: first 5 of 31 non-empty rows shown; every row is in the sidecar `01-data.csv`; every "
+        "formula not shown whole is in the sidecar `01-data.formulas.txt`]" in data.body
     )
-    assert len(data.sidecars) == 1 and data.sidecars[0][0] == "01-data.csv"
+    assert [n for n, _ in data.sidecars] == ["01-data.csv", "01-data.formulas.txt"]
     rows = list(csv.reader(io.StringIO(data.sidecars[0][1].decode())))
     assert rows[0] == ["Row", "A", "B", "C", "D", "E"] and len(rows) == 32
     assert rows[31][:4] == ["31", "item-029", "30", "2.5"] and rows[31][4] == "=B31*C31"
+    formulas = data.sidecars[1][1].decode().splitlines()  # rows 6 to 31's, which the page leaves out (C2300)
+    assert formulas[0] == "D6: =B6*C6" and formulas[-1] == "D31: =B31*C31" and len(formulas) == 26
 
 
 def test_xlsx_byte_cap_also_caps_rows(tmp_path: Path) -> None:

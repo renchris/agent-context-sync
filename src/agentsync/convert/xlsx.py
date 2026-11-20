@@ -162,6 +162,8 @@ class _Sheet:
     shown: dict[tuple[int, int], str] = field(default_factory=dict)  # table cell markdown
     plain: dict[tuple[int, int], str] = field(default_factory=dict)  # CSV value (value, else formula)
     values: dict[tuple[int, int], str] = field(default_factory=dict)  # cached value text only
+    formula: dict[tuple[int, int], str] = field(default_factory=dict)  # each formula cell's formula (C2300)
+    formulas_past: list[str] = field(default_factory=list)  # streamed: formula lines past the sample (C2300)
     bounds: tuple[int, int, int, int] | None = None  # min_row, min_col, max_row, max_col
     missing_cache: int = 0  # formula cells with no cached value (non-Excel writer)
     formulas: int = 0
@@ -245,6 +247,7 @@ def _build_sheet(number: int, ws: Any, wsf: Any) -> _Sheet:
             continue
         if formula is not None:
             sheet.formulas += 1
+            sheet.formula[key] = formula
             if vtext == "":
                 sheet.missing_cache += 1
                 shown = _code(formula)
@@ -276,6 +279,8 @@ def _build_sheet(number: int, ws: Any, wsf: Any) -> _Sheet:
                     sheet.plain[(r, c)] = sheet.plain[anchor]
                     if anchor in sheet.values:
                         sheet.values[(r, c)] = sheet.values[anchor]
+                    if anchor in sheet.formula:
+                        sheet.formula[(r, c)] = sheet.formula[anchor]
     for i, chart in enumerate(getattr(wsf, "_charts", []), start=1):
         title = _chart_title(chart)
         where = f" at {w}" if (w := _anchor_ref(chart)) else ""
@@ -332,10 +337,11 @@ def _table_lines(
 
     Every row counts against the budget, the first included, and a header that does not fit leaves no
     table, so the caller's sidecar holds every row (B13 round 39 C1676).  A row too long for the table by
-    itself is shown with its cells cut, never dropped: rebuilt from ``sheet.plain``, each cell cut to the
-    same number of characters ending ``…`` before :func:`_cell` escapes it, so no cut splits an escape or a
-    formula's code span: an even share of the room left, halved until the row fits, kept as (row, characters)
-    in the cut rows (B13 round 41 C2022).  The rows shown stay a
+    itself is shown with its cells cut, never dropped: each cell's value and formula cut apart to the same
+    number of characters ending ``…`` before :func:`_cell` and :func:`_code` render them (:func:`_cut_cell`),
+    so no cut splits an escape or a formula's code span: an even share of the room left, halved until the
+    row fits, kept as (row, characters) in the cut rows (B13 round 41 C2022, round 42 C2300).  The rows shown
+    stay a
     run from the top: a row that fits the table but not the room left, or a cut row that still does not
     fit, ends it."""
     assert sheet.bounds is not None
@@ -367,22 +373,58 @@ def _table_lines(
     return lines, shown, cut
 
 
+def _cut_cell(sheet: _Sheet, key: tuple[int, int], limit: int) -> str:
+    """Cell ``key`` for a cut row: its value and its formula each cut to ``limit`` characters ending ``…``,
+    then rendered as the table renders them, ``value `=FORMULA```, so a cut never splits the code span and a
+    formula beside a cached value is never dropped for it (B13 round 42 C2300)."""
+    formula = sheet.formula.get(key)
+    if formula is None:
+        return _cell(_cut_value(sheet.plain.get(key, ""), limit))
+    code = _code(_cut_value(formula, limit))
+    value = sheet.values.get(key, "")
+    return f"{_cell(_cut_value(value, limit))} {code}" if value else code
+
+
 def _cut_row(sheet: _Sheet, header: list[str], r: int, room: int) -> tuple[str, int] | None:
-    """Row ``r`` rebuilt from ``sheet.plain`` with each cell cut to one number of characters, an even share
-    of ``room`` bytes (its line end included) halved until the row fits, with that number; None when one
+    """Row ``r`` with each cell cut to one number of characters (:func:`_cut_cell`), an even share of
+    ``room`` bytes (its line end included) halved until the row fits, with that number; None when one
     character a cell does not fit (B13 round 41 C2022)."""
     assert sheet.bounds is not None
     _r0, c0, _r1, c1 = sheet.bounds
     ncols = c1 - c0 + 1
     limit = max(1, (room - 5 - len(str(r)) - 3 * ncols) // ncols)
     while True:
-        plain = [_cell(_cut_value(sheet.plain.get((r, c), ""), limit)) for c in range(c0, c1 + 1)]
+        plain = [_cut_cell(sheet, (r, c), limit) for c in range(c0, c1 + 1)]
         line = _gfm_table(header, [[str(r), *plain]])[2]
         if len(line.encode("utf-8")) + 1 <= room:
             return line, limit
         if limit == 1:
             return None
         limit //= 2
+
+
+def _formulas_left(sheet: _Sheet, rows: list[int], shown: int, cut: list[tuple[int, int]]) -> list[str]:
+    """One ``<ref>: <formula>`` line, escaped as a list sidecar's (:func:`_record_escape`), for every formula
+    the page does not show whole: each formula of a row past the rows shown, and each one a cut row cut, in
+    row order; the rows' CSV holds values only, so these are the only whole copy (B13 round 42 C2300)."""
+    if sheet.bounds is None or not sheet.formula:
+        return []
+    _r0, c0, _r1, c1 = sheet.bounds
+    limits = dict(cut)
+    out: list[str] = []
+    for i, r in enumerate(rows):
+        if i < shown and r not in limits:
+            continue
+        for c in range(c0, c1 + 1):
+            formula = sheet.formula.get((r, c))
+            if formula is not None and (i >= shown or len(formula) > limits[r]):
+                out.append(f"{_ref(r, c)}: {_record_escape(formula)}")
+    return out
+
+
+def _formulas_sidecar(lines: list[str]) -> bytes:
+    """The ``.formulas.txt`` sidecar's bytes: one formula a line (B13 round 42 C2300)."""
+    return ("\n".join(lines) + "\n").encode("utf-8")
 
 
 def _cut_value(text: str, limit: int) -> str:
@@ -424,6 +466,11 @@ def _listed(out: list[str], heading: str, lines: list[str], *, room: int, what: 
         out.append(f"[{what} truncated at the page size cap: {kept} of {len(lines)} listed{where}]")
     out.append("")
     return kept
+
+
+def _formulas_note(name: str) -> str:
+    """The clause naming the formulas sidecar (B13 round 42 C2300)."""
+    return f"every formula not shown whole is in the sidecar `{name}`"
 
 
 def _cut_rows_note(cut: list[tuple[int, int]]) -> str:
@@ -494,6 +541,7 @@ def _sheet_body(
     out.append("")
     cap = cfg.max_page_bytes
     sc = _sidecar_name(sheet.number, width, sheet.title)
+    fsc = _sidecar_name(sheet.number, width, sheet.title, "formulas.txt")
     sidecars: list[tuple[str, bytes]] = []
     if not rows:
         out += ["[empty sheet]", ""]
@@ -511,10 +559,15 @@ def _sheet_body(
             header = ["Row", *(_col_letter(c) for c in range(c0, c1 + 1))]
             data = [[str(r), *(sheet.plain.get((r, c), "") for c in range(c0, c1 + 1))] for r in rows]
             sidecars.append((sc, _csv_bytes([header, *data])))
+            left = _formulas_left(sheet, rows, shown, cut)
+            if left:  # the CSV holds values only (B13 round 42 C2300)
+                sidecars.append((fsc, _formulas_sidecar(left)))
             out += [
                 f"[row cap: first {shown} of {plural(len(rows), 'non-empty row')} shown"
                 + (f", {_cut_rows_note(cut)}; " if cut else "; ")
-                + f"every row is in the sidecar `{sc}`]",
+                + f"every row is in the sidecar `{sc}`"
+                + (f"; {_formulas_note(fsc)}" if left else "")
+                + "]",
                 "",
             ]
     if sheet.missing_cache:
@@ -526,6 +579,7 @@ def _sheet_body(
         ]
     names = [
         sc,
+        fsc,
         *(_sidecar_name(sheet.number, width, sheet.title, k) for k in ("comments.txt", "objects.txt")),
     ]
     sidecars += _sheet_lists(out, sheet, width=width, cap=cap, names=names)
@@ -705,6 +759,10 @@ def _stream_sheet(number: int, ws: Any, wsf: Any, cfg: ConvertConfig) -> tuple[_
                 sheet.formulas += 1
                 if vtext == "":
                     sheet.missing_cache += 1
+                if sampled < cfg.max_rows_per_sheet:
+                    sheet.formula[(r, c)] = f
+                else:  # past the sample: the CSV holds values only (B13 round 42 C2300)
+                    sheet.formulas_past.append(f"{_ref(r, c)}: {_record_escape(f)}")
             row_plain[c] = vtext if vtext != "" else (f or "")
             types.setdefault(c, Counter())[
                 "formula" if (f is not None and vtext == "") else _type_name(v)
@@ -911,6 +969,8 @@ class XlsxConverter:
                     )
                 out.append("")
             rows = sheet.rows()
+            fsc = _sidecar_name(sheet.number, width, sheet.title, "formulas.txt")
+            sidecars: list[tuple[str, bytes]] = [(sc, csv_data)]
             if rows:
                 used = sum(len(x.encode("utf-8")) + 1 for x in out)
                 budget = max(0, self._cfg.max_page_bytes - 4096 - used)
@@ -926,6 +986,10 @@ class XlsxConverter:
                         ]
                 else:  # the header is past the page cap (B13 round 39 C1676)
                     out += [f"[no row fits the page; every row is in the sidecar `{sc}`]", ""]
+                left = _formulas_left(sheet, rows, shown, cut) + sheet.formulas_past
+                if left:  # the CSV holds values only (B13 round 42 C2300)
+                    sidecars.append((fsc, _formulas_sidecar(left)))
+                    out += [f"[{_formulas_note(fsc)}]", ""]
             else:
                 out += ["[empty sheet]", ""]
             if sheet.missing_cache:
@@ -945,7 +1009,7 @@ class XlsxConverter:
                     title=f"Sheet: {sheet.title}",
                     summary=_sheet_summary(sheet) + " (streamed summary)",
                     body="\n".join(out),
-                    sidecars=((sc, csv_data),),
+                    sidecars=tuple(sidecars),
                 )
             )
         return tuple(units)

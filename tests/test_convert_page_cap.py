@@ -35,6 +35,7 @@ from test_convert_builders import (
     msg_bytes,
     teams_doc,
     teams_msg,
+    with_cached_values,
 )
 
 CFG = ConvertConfig()
@@ -465,6 +466,54 @@ def test_xlsx_first_row_past_the_budget_is_cut_and_the_short_row_follows_c2022(t
         "[row 1's cells cut to " in summary.body
         and "every row is in the sidecar `01-contoso-notes.csv`]" in summary.body
     )
+
+
+_LONG_FORMULA = "=" + "+".join(["1"] * 3000)  # 6,000 characters, cached 3000
+
+
+def _formula_book(tmp_path: Path) -> Path:
+    """Row 1: a 20,008-character cell beside a short and a long formula, each with a cached value; row 2: a
+    short formula past a one-row cap."""
+    book = openpyxl.Workbook()
+    ws = book.active
+    assert ws is not None
+    ws.title = "Contoso"
+    ws.append(["Contoso " + "x" * 20_000, "=SUM(C1:C2)", 1, _LONG_FORMULA])
+    ws.append(["short", "=C2*3", 1, "d"])
+    plain = tmp_path / "plain.xlsx"
+    book.save(plain)
+    cached = {"B1": "2", "D1": "3000", "B2": "3"}
+    return with_cached_values(plain, tmp_path / "contoso.xlsx", "xl/worksheets/sheet1.xml", cached)
+
+
+@pytest.mark.parametrize("streamed", [False, True], ids=["full", "streamed"])
+@pytest.mark.parametrize("cap_rows", [False, True], ids=["all-rows", "one-row"])
+def test_a_cut_row_keeps_its_formulas_on_the_page_or_whole_in_a_sidecar_c2300(
+    tmp_path: Path, streamed: bool, cap_rows: bool
+) -> None:
+    """B13 round 42 C2300: a cut row was rebuilt from the CSV's values, so `=SUM(C1:C2)` beside a cached 2
+    vanished from the page whenever another cell made the row too wide, and the CSV holds values only. A
+    cut row now cuts each cell's value and formula apart, never splitting the code span, and every formula
+    the page does not show whole (cut, or in a row past the rows shown) rides whole in
+    `NN-<slug>.formulas.txt`, which the page's note names."""
+    src = _formula_book(tmp_path)
+    kw: dict[str, object] = {"xlsx_stream_threshold_bytes": 0} if streamed else {}
+    if cap_rows:
+        kw["max_rows_per_sheet"] = 1
+    _index, page = _pages(src, 8192, **kw)
+    assert _size(page) <= 8192
+    assert "| 1 | Contoso xxx" in page.body and "| 2 `=SUM(C1:C2)` |" in page.body, page.body[-900:]
+    formulas = _sidecar_text(page, ".formulas.txt").split("\n\n", 1)[-1].split("\n")
+    assert f"D1: {_LONG_FORMULA}" in formulas and "B1: =SUM(C1:C2)" not in formulas
+    assert ("B2: =C2*3" in formulas) == cap_rows
+    assert "every formula not shown whole is in the sidecar `01-contoso.formulas.txt`" in page.body
+    assert re.search(r"\| 3000 `=1\+1\+[1+]*…` \|", page.body), page.body[-900:]
+
+
+def test_a_row_cap_with_no_formula_writes_no_formulas_sidecar_c2300(tmp_path: Path) -> None:
+    """B13 round 42 C2300: a sheet with no formula past its shown rows writes no `.formulas.txt`."""
+    _index, page = _pages(_book(tmp_path / "contoso.xlsx", rows=40), 8192, max_rows_per_sheet=5)
+    assert not [n for n, _ in page.sidecars if n.endswith(".formulas.txt")] and "formula" not in page.body
 
 
 def test_thirty_short_headers_are_all_listed_on_the_index_at_the_default_cap_c2045(tmp_path: Path) -> None:

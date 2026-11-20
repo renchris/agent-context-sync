@@ -43134,6 +43134,8 @@ the streamed path its thirty first-row values fill the Schema's room, so its row
 `test_convert_page_cap.py::test_xlsx_first_row_past_the_budget_is_cut_and_the_short_row_follows_c2022` (C1676's
 workbook, full and streamed), with `test_convert_formats.py::test_xlsx_first_row_past_the_budget_rides_in_the_sidecar_c1676`
 moved to the new note.
+Amended 2026-11-20, §16.268 C2300: a cut row cuts each cell's value and formula apart (`value `=FORMULA``), and every
+formula a page does not show whole rides whole in `NN-<slug>.formulas.txt`, which the row-cap note names.
 
 **The per-cell cuts stay, scaled with the cap** (C2045, makes worse True; `agentsync.convert.xlsx`; amends §16.258
 C1848). C1848's 600-character headers cell and 200-character first-row value applied at any cap, so thirty headers of
@@ -43764,6 +43766,24 @@ and keeps an empty `http.proxy` as `""`. Test:
 `test_speech.py::test_a_git_ca_path_holding_a_line_separator_reaches_curl_whole_c2304` (a real git under a throwaway
 HOME: a CA path holding U+2028, VT, U+0085 or a non-UTF-8 byte reaches `CURL_CA_BUNDLE` byte for byte, `" openssl"`
 keeps its space and `proxy = ""` turns the proxy off).
+
+**A cut row keeps its formulas, and every formula a page leaves out rides whole in a sidecar** (C2300; ruling 153,
+data integrity; `agentsync.convert.xlsx`; amends §16.263 C2022). C2022's cut row was rebuilt from `sheet.plain`, the
+CSV's value (the cached value, else the formula), so `=SUM(C1:C2)` beside a cached `2` vanished from the page whenever
+another cell made the row too wide, and the CSV holds values only, so the formula was nowhere (the verifier's run at
+1faa3f3a, full and streamed). `_Sheet.formula` keeps each formula cell's formula, merged ranges included, and
+`_cut_cell` cuts the value and the formula apart to the row's length, each ending `…`, rendered `value `=FORMULA``, so
+a cut never splits the code span. `_formulas_left` lists every formula the page does not show whole, each formula of a
+row past the rows shown and each one a cut row cut, one `<ref>: <formula>` line each in row order, escaped as a list
+sidecar's (C2301), in `NN-<slug>.formulas.txt`; a streamed sheet adds the formulas past its sample. The sheet page's
+row-cap note ends `; every formula not shown whole is in the sidecar `NN-<slug>.formulas.txt``, a streamed summary
+says `[every formula not shown whole is in the sidecar ...]` under its rows, the name is in the footer reserve
+(`_sheet_lists`'s `names`), and a sheet with none writes no such sidecar. The CSV gets no formula column, so its
+value-only contract and its bytes stay. Tests:
+`test_convert_page_cap.py::test_a_cut_row_keeps_its_formulas_on_the_page_or_whole_in_a_sidecar_c2300` (a 20,008-character
+cell beside a short and a 6,000-character formula, full and streamed, every row shown and a one-row cap),
+`test_convert_page_cap.py::test_a_row_cap_with_no_formula_writes_no_formulas_sidecar_c2300` and
+`test_convert_formats.py::test_xlsx_row_cap_emits_csv_sidecar` (rows 6 to 31's formulas).
 
 ### 16.269 Round 42: the prompt goes to v39 (the paths and folder states setup printed), the gate's stop lines, and the guides (2026-11-20, wave B13 round 42 lane D)
 
