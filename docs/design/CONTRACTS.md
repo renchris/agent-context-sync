@@ -43225,6 +43225,12 @@ a 30 s stall bound land green; an 8 s ceiling stops the same part with its own l
 timeout now runs in a session of its own under the load-scaled bound and has its process group killed on a timeout, a
 Ctrl-C or the gate's SIGINT, so a shell test that never returns cannot hold a part either.
 
+Amended 2026-11-20, §16.269 C2273, C2315: `GATE_CEILING_S` is 10800 s (3 hours), about twice the slowest part measured
+since (the rest part's 5,341 s, round 41 lane D's land4), and the sentence above that a part slow under load but still
+writing is never stopped holds for the stall bound only, which each test report resets; the ceiling, counted from the
+part's start, stops a part that keeps writing. ship-land's status-124 line says the part's own line tells a hang (`made
+no progress`) from a part still writing past its ceiling (`ran past its N min ceiling`).
+
 **Ruling 138's packet is named where it is recorded** (C2069; `docs/lanes/COMMON.md`). Ruling 138 said the lead records
 its exception on packet 8ac14056ab04's call 3 as a dated recheck, but that packet closed expired-actioned at its
 2026-11-16 12:00Z deadline, before round 40's triage, and the exception is in packet d24c7a8ee6bc's text. The ruling's
@@ -43657,7 +43663,24 @@ Reserved for round 42 lane E of B13.
 
 ### 16.269 Round 42: the prompt goes to v39 (the paths and folder states setup printed), the gate's stop lines, and the guides (2026-11-20, wave B13 round 42 lane D)
 
-Reserved for round 42 lane D of B13.
+Round 42's lane D items (`docs/plans/bring-back-ocr.md`, "B13 round 42"; specs `round42/items/C<n>.md`, the verifier's
+corrected fix built, as the lead's rulings 146 to 156 settle it). A dated line this round writes reads
+`Amended 2026-11-20, §16.269 C<n>`.
+
+**A gate part past its ceiling is told apart from a hang, and the ceiling is twice the slowest part** (C2273, C2315;
+`scripts/gate.sh`, `scripts/ship-land.sh`, `tests/_gate_journal.py`; amends §16.264 C2065). C2065's `GATE_CEILING_S`
+of 7200 s was called about twice the slowest part, but round 41's slowest, the rest part of lane D's land4, ran 5,341 s
+(1:29:01, 8,112 tests), 1.35x under it, and the stall stop has never fired on a land since it was built. The ceiling is
+10800 s (3 hours), about twice that part, rounded up, and gate.sh's comment names it. Its words and §16.264's said a
+part slow under load but still writing is never stopped, while the ceiling, counted from the part's start, stops one
+that keeps writing: both now say only the stall bound spares it, since each test report resets that bound (operator
+ruling 2026-10-20: load is by design; no pytest-timeout). ship-land's status-124 line said `not load: a test hangs` of
+both stops; it now says the part's own line tells which, `'made no progress' is a hang, not load` and `'ran past its N
+min ceiling' is a part still writing past GATE_CEILING_S`, exit 5 and nothing pushed as before. Each journal record of
+a test phase keeps its `duration` in seconds, so the slowest single test under load can be read against the 1,500 s
+stall bound; no reader needs it. Tests: `tests/test_gate_journal.py`
+`::test_the_ceiling_is_about_twice_the_slowest_part_and_each_record_keeps_its_duration_c2273` and
+`tests/test_ship_land.py::test_a_land_gate_part_stopped_at_status_124_says_which_line_names_a_hang_c2273`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

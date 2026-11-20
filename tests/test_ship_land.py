@@ -583,6 +583,25 @@ def test_a_land_gate_no_signal_stopped_keeps_the_plain_red_line(
     assert "stopped by" not in cp.stderr
 
 
+def test_a_land_gate_part_stopped_at_status_124_says_which_line_names_a_hang_c2273(
+    remote: Path, tmp_path: Path, env: dict[str, str]
+) -> None:
+    """B13 round 42 C2273 with C2315: gate.sh's status 124 is a part stopped for making no progress or for
+    running past GATE_CEILING_S, and ship-land called both a hang (`not load: a test hangs`), though a part
+    past its ceiling still writes, a slow part under load. It now says the part's own line tells which:
+    `made no progress` a hang, `ran past its N min ceiling` a part still writing. Exit 5, nothing pushed."""
+    clone = _clone(remote, tmp_path / "a", env, "one")
+    before = _git(remote, "rev-parse", "main")
+    cp = _land(clone, {**env, "STUB_GATE_RC": "124"}, "--no-ci")
+    assert cp.returncode == 5, cp.stdout + cp.stderr
+    line = next(ln for ln in cp.stderr.splitlines() if ln.startswith("ship-land: a land gate part"))
+    assert "'made no progress' is a hang, not load" in line, line
+    assert "'ran past its N min ceiling' is a part still writing past GATE_CEILING_S" in line, line
+    assert "not load: a test hangs" not in line and line.endswith("; nothing pushed"), line
+    assert "is red" not in cp.stderr and "stopped by SIG" not in cp.stderr
+    assert _git(remote, "rev-parse", "main") == before
+
+
 def test_a_real_sigkill_of_the_land_gate_is_named(remote: Path, tmp_path: Path, env: dict[str, str]) -> None:
     """C769: the gate process itself killed, as jetsam kills it, not a stand-in's exit status."""
     clone = _clone(remote, tmp_path / "a", env)

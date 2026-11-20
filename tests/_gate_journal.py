@@ -5,16 +5,17 @@ JSON line per test phase that decides a verdict (the call, a setup that fails or
 fails: a teardown skip decides none, and journaled it would hide a failed call from the retry set, B13 round
 34 C876), each line one ``os.write`` on an O_APPEND descriptor, no fsync. A SIGKILLed run so leaves every line
 but at most a torn last one, where pytest's ``--lf`` cache, written at session end, keeps nothing. The session
-end appends ``{"summary": <exitstatus>}``. GATE_DESELECT=<file> deselects the exact nodeids it lists:
-``--deselect`` matches by prefix, so ``test_a`` would also drop ``test_ab``, and ``test_a[1]`` would drop
-``test_a[10]``. A failed phase's line also keeps the last ``_TAIL_LINES`` lines of its report and the last
-``_TAIL_CHARS`` characters of its captured stderr, and an xdist worker that goes down with an error appends
-``{"node_down": <gwN>, "error": <its text>}``: the only text a worker crash leaves, since the crashed test's
-own report says no more than "worker crashed while running" (B13 round 16 T90). A module that cannot be
-collected appends ``{"collect_error": <its nodeid>}`` (B13 round 34 C866). Neither line has a nodeid, so a
-resume never reads them. The whole output of a lane part that fails or is killed, stderr too, is kept beside
-its journal as ``<tree>-<salt>.<part>.out`` (appended on a resume, removed when the part is green; B13 round
-17 U106), where these tails are cut.
+end appends ``{"summary": <exitstatus>}``. Each test record carries its phase's ``duration`` in seconds, so
+the slowest single test under load can be read against gate.sh's stall bound (B13 round 42 C2273); no reader
+needs it. GATE_DESELECT=<file> deselects the exact nodeids it lists: ``--deselect`` matches by prefix, so
+``test_a`` would also drop ``test_ab``, and ``test_a[1]`` would drop ``test_a[10]``. A failed phase's line
+also keeps the last ``_TAIL_LINES`` lines of its report and the last ``_TAIL_CHARS`` characters of its
+captured stderr, and an xdist worker that goes down with an error appends ``{"node_down": <gwN>, "error": <its
+text>}``: the only text a worker crash leaves, since the crashed test's own report says no more than "worker
+crashed while running" (B13 round 16 T90). A module that cannot be collected appends ``{"collect_error": <its
+nodeid>}`` (B13 round 34 C866). Neither line has a nodeid, so a resume never reads them. The whole output of a
+lane part that fails or is killed, stderr too, is kept beside its journal as ``<tree>-<salt>.<part>.out``
+(appended on a resume, removed when the part is green; B13 round 17 U106), where these tails are cut.
 
 CLI: ``passed <journal>`` prints the nodeids that passed, ``failed <journal>`` the nodeids whose last
 record failed (a call, setup or teardown failure, an error, and the test a lost worker was running, which
@@ -63,6 +64,7 @@ class _Journal:
                 "when": report.when,
                 "outcome": report.outcome,
                 "skip_reason": reason,
+                "duration": round(report.duration, 3),  # B13 round 42 C2273: the stall bound's premise
             }
             if report.failed:
                 record["tail"] = "\n".join(str(longrepr).splitlines()[-_TAIL_LINES:])[-_TAIL_CHARS:]

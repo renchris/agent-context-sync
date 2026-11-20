@@ -488,6 +488,32 @@ def test_a_slow_part_that_keeps_writing_lands_and_the_ceiling_still_stops_it(tmp
     assert runs != ["one", "two", "three"] and " rc=124 " in verdict, verdict
 
 
+def test_the_ceiling_is_about_twice_the_slowest_part_and_each_record_keeps_its_duration_c2273(
+    tmp_path: Path,
+) -> None:
+    """B13 round 42 C2273 with C2315: GATE_CEILING_S's 7200 s was called about twice the slowest part, but
+    round 41's rest part ran 5,341 s (lane D's land4), 1.35x under it, and no record held a duration to
+    check the stall bound by. The ceiling is 10800 s, the comment names the measured part, both bounds'
+    wording says only the ceiling stops a part that still writes, and each test record keeps its phase's
+    duration, which no reader needs (a resume reads the same records)."""
+    script = (Path(__file__).parents[1] / "scripts" / "gate.sh").read_text(encoding="utf-8")
+    defaults = set(re.findall(r"\$\{GATE_CEILING_S:-(\d+)\}", script))
+    assert defaults == {"10800"} and 10800 >= 2 * 5341, defaults
+    comment = " ".join(ln.lstrip("# ") for ln in script.splitlines() if ln.startswith("#"))
+    measured = "about twice the slowest part measured, the rest part's 5,341 s in B13 round 41 lane D's land4"
+    assert measured in comment
+    assert "Never a bound on a slow part that still writes" not in comment
+    assert (
+        "The stall bound never stops a slow part that still writes, since each report resets it; only the"
+        " ceiling, counted from the part's start, does: load is by design"
+    ) in comment
+    records = _journal(tmp_path, "-p", "no:xdist", "-k", "not worker_down")
+    tests = [r for r in records if "nodeid" in r]
+    assert tests and all(isinstance(r["duration"], float) and r["duration"] >= 0 for r in tests), tests
+    last, summary = _gate_journal._last(tmp_path / "journal.jsonl")
+    assert summary and set(last) == {r["nodeid"] for r in tests}
+
+
 SKIPPED_TEARDOWN = """
 import pytest
 from runs import ran

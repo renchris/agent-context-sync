@@ -148,11 +148,14 @@ stop_group() {
 # held the land lock with nothing to stop it (round 40's joint land: 2 hours, then killed by hand, rc=143). The
 # journal grows by one write per test report, so a part whose journal has not grown for GATE_STALL_S seconds (1500,
 # 25 minutes: longer than the slowest single test under the load the machine runs at) has stopped making progress,
-# and GATE_CEILING_S (7200, 120 minutes, about twice the slowest part measured) bounds a part that keeps writing. Either
-# one stops the group (stop_group), prints `== <part> made no progress for N min; stopped (no verdict)` or `== <part>
-# ran past its N min ceiling; stopped (no verdict)` and returns GATE_STALLED_RC, so the gate exits not green and frees
-# the land lock. Never a bound on a slow part that still writes: load is by design (operator ruling 2026-10-20), and a
-# per-test kill (pytest-timeout) would turn slow tests into failures. pyproject's faulthandler_timeout dumps a stuck
+# and GATE_CEILING_S (10800, 3 hours: about twice the slowest part measured, the rest part's 5,341 s in B13 round 41
+# lane D's land4, rounded up; B13 round 42 C2273) bounds a part that keeps writing. Either one stops the group
+# (stop_group), prints `== <part> made no progress for N min; stopped (no verdict)` or `== <part> ran past its N min
+# ceiling; stopped (no verdict)` and returns GATE_STALLED_RC, so the gate exits not green and frees the land lock. The
+# stall bound never stops a slow part that still writes, since each report resets it; only the ceiling, counted from
+# the part's start, does: load is by design (operator ruling 2026-10-20), and a per-test kill (pytest-timeout) would
+# turn slow tests into failures (B13 round 42 C2315). Each journal record keeps its phase's duration, so the slowest
+# single test under load can be read against the stall bound (C2273). pyproject's faulthandler_timeout dumps a stuck
 # test's traceback into the output first. `set -m` gives the job its own group (macOS has no setsid), stdin is
 # /dev/null as for any job, and GATE_POLL_S (2) is how often the journal is read.
 #   watched <part> <journal> <out> <stderr too: 0|1> <command...>   output appended to <out> and shown
@@ -173,8 +176,8 @@ watched() {
     [ "$now" = "$size" ] || { size=$now; last=$SECONDS; }
     if [ $((SECONDS - last)) -ge "${GATE_STALL_S:-1500}" ]; then
       why="made no progress for $(gate_span $((SECONDS - last)))"
-    elif [ $((SECONDS - start)) -ge "${GATE_CEILING_S:-7200}" ]; then
-      why="ran past its $(gate_span "${GATE_CEILING_S:-7200}") ceiling"
+    elif [ $((SECONDS - start)) -ge "${GATE_CEILING_S:-10800}" ]; then
+      why="ran past its $(gate_span "${GATE_CEILING_S:-10800}") ceiling"
     fi
     [ -z "$why" ] || break
     sleep "${GATE_POLL_S:-2}"
