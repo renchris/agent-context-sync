@@ -43751,7 +43751,7 @@ the commit that lands C2263 and drops the mark drops the caveat too. Test:
 **Setup keeps an inbox, and both guides say what sits on its folder** (C2258; docs only; ruling 151, from lanes B's
 and RB's words). Both guides said the inbox always exists and install.sh said `(inbox ensured)`, while `ensure_inbox`
 leaves a paused or retired source on the kept folder as it is, keeps no inbox where a source of another kind sits
-there (lane B's C2309: `inbox: <path> is source '<id>' (<kind>, <state>), not an inbox source`), and `_ensure_inbox`
+there (lane B's C2309, e1dfc6503: `inbox: <path> is source '<id>' (<kind>, <state>), not an inbox source`), and `_ensure_inbox`
 prints `inbox: not added: …` and still exits 0 when the folder cannot be made. README.md's paragraph and
 docs/deploy/README.md's Manual inbox bullet now open "Setup keeps an inbox" and give each case; lane RB's C2207
 drops `(inbox ensured)` from install.sh and moves its string pins, and §16.13's KISS K14 paragraph and §16.29's
@@ -43759,7 +43759,7 @@ no-folder table row, which quote it, get dated lines. Test:
 `test_both_guides_say_setup_keeps_an_inbox_with_each_case_it_meets_c2258`, held to `cli._ensure_inbox`'s own lines.
 
 **The README's `[convert]` paragraph says what an options edit re-reads, and what it does not** (C2256, C2253, C2297,
-C2308, C2257; docs only; ruling 154, from lane B's words; amends §16.262 C2021 and §16.264 R41-D1). The paragraph
+C2308, C2257; docs only; ruling 154, from lane B's words, ada982a3c; amends §16.262 C2021 and §16.264 R41-D1). The paragraph
 promised that every local and inbox page made under the old options is read again and that `sync` prints the `sync
 again:` note, while no record of `[convert]` exists before the first sync that writes one, so an edit made before it
 opens nothing, the recording converter makes no drift target, so a recording's pages keep their cap until it is read
@@ -43791,7 +43791,7 @@ joins, after any other tail and before the list's cap clause, and says the exit-
 carry no config tail, since their re-run reads again. Test: `test_the_guide_gives_step_1s_timeout_tail_and_its_log_word_c2053`,
 held to install.sh's tail and cap clause.
 
-**§16.300.25 names the help flag as `_asks_help` finds it** (C2260; docs only; from lane B's C2295 words). The sentence
+**§16.300.25 names the help flag as `_asks_help` finds it** (C2260; docs only; from lane B's C2295 words, fa8bdd723). The sentence
 said `--version --fields` without `--json` and without `-h`/`--help` is the `add --json` refusal, while since C2040 a
 cluster such as `-vh` or `-hv` is a help flag too and prints the version or the help page. "A cluster ending in h",
 the finder's words, makes things worse: it leaves out `-hv` and takes in `-eh`. After lane B's C2295, `_asks_help`
