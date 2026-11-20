@@ -43369,6 +43369,26 @@ Tests: `test_a_page_renamed_in_the_edits_own_sync_is_still_read_again_for_its_op
 `test_an_options_edit_made_before_the_first_recorded_sync_opens_nothing_c2297`,
 `test_an_options_edit_reads_no_recording_again_c2297`.
 
+**Only a settled recording is re-planned, one row at a time, and the OCR-down mark goes with the recording
+converter** (C2293, C2249, C2244; ruling 155). `_replan_recording_stubs` and `_reread_source` skipped only the
+queue's rows, and an inbox file the walk withheld as still settling keeps an earlier pass's unchanged verdict, so
+a recording rewritten inside its quiescence window was classed `empty` or set waiting from bytes still being
+written; `_sync_source` now passes the walk's withheld ids with the queued ones to both (C2293). The replan ran a
+batch in one transaction, so a row that raised rolled back every row before it; each row runs under
+`Manifest.savepoint()` (the existing `_atomic` savepoint, now public) inside its batch, the rows before it commit,
+its own writes roll back and its changes are dropped, and the failure is raised after the batch commits, a plain
+catch committing a raising row's half (makes worse True; C2249). The OCR-down mark (`recording_ocr_down:`) was
+judged only for a queued row, so with the OCR helper back and the media helper gone, or `[convert] recordings =
+false`, status kept asking for a read nothing could make; in a non-dry cycle whose registry has no recording
+converter, `_rejudge_ocr_down` sends each marked `no converter` recording stub through `_mark_ocr_down`'s rule
+(`_mark_ocr_down_for`, its one home), which clears it, and leaves it alone otherwise, since while the registry
+has the recording converter the replan or the recording pass reads the stub (clearing it whenever recordings
+did not wait on OCR dropped a stub the background pass had not reached, makes worse True; C2244). Tests:
+`test_the_ocr_down_mark_goes_with_the_recording_converter_c2244` (the media helper gone, recordings off),
+`test_the_ocr_down_mark_stays_while_the_recording_converter_has_not_read_the_stub_c2244`,
+`test_a_replanned_recording_that_raises_rolls_back_alone_c2249`,
+`test_a_settling_inbox_recording_is_not_replanned_until_it_settles_c2293`.
+
 ### 16.268 Round 42: the converters: a record ends where its writer ends it, a capped page shows all the cap leaves room for, and picture pieces keyed on their own revision (2026-11-20, wave B13 round 42 lane E)
 
 Reserved for round 42 lane E of B13.

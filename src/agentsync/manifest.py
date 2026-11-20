@@ -1662,6 +1662,11 @@ class Manifest:
         self._in_tx = False
         conn.execute("COMMIT")
 
+    def savepoint(self) -> AbstractContextManager[None]:
+        """A savepoint inside the caller's transaction (its own transaction outside one): the writes made in
+        it roll back alone when it raises, the rest of the transaction kept (B13 round 42 C2249)."""
+        return self._atomic()
+
     @contextlib.contextmanager
     def _atomic(self) -> Iterator[None]:
         """Group a multi-statement write: a savepoint inside a caller transaction, else its own one."""

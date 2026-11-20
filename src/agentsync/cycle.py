@@ -4610,9 +4610,13 @@ class _Cycle:
             # After the source's own work: new and changed files had the cycle's OCR time first.  Never for
             # a Graph source (every read there is a download) and never while ``materialise PATH`` names
             # the files to read.
+            # a file the walk withheld as still settling (an inbox's quiescence) is neither replanned nor
+            # read again: its row keeps an earlier pass's unchanged verdict, so only the walk's own set says
+            # so (B13 round 42 C2293, ruling 155)
+            skip = queued | set(scan.withheld)
             try:
-                self._replan_recording_stubs(src, arm, acc, queued)  # reads no recording byte (C2039)
-                self._reread_source(src, arm, acc, queued)
+                self._replan_recording_stubs(src, arm, acc, skip)  # reads no recording byte (C2039)
+                self._reread_source(src, arm, acc, skip)
             except Exception as exc:
                 # Reading files again is extra work on a source that has synced: what stops it is reported
                 # and never fails the source, whose renames and removals are still to come.  A damaged
@@ -5342,8 +5346,16 @@ class _Cycle:
         dropped out of status after the helper worked, in every interactive sync, since a row listed
         unchanged is in no queue and ``_reread_targets`` leaves recordings to the recording pass, which an
         interactive sync never runs (B13 round 41 C2039 with C2007, ruling 144).  Nothing is read: no byte of
-        a recording with bytes, and none of an empty one (``LocalArm.stage_if_empty``)."""
+        a recording with bytes, and none of an empty one (``LocalArm.stage_if_empty``).
+
+        ``queued`` also holds the files the walk withheld as still settling, which wait for their window
+        (C2293). Each row is planned under a savepoint of its batch's transaction, so a row that raises rolls
+        back its own writes alone and the rows before it commit (C2249). In a non-dry cycle whose registry has
+        no recording converter, the OCR-down mark of each refused recording is judged again instead
+        (``_rejudge_ocr_down``, C2244)."""
         suffixes = self._recording_suffixes()
+        if not suffixes and not self.dry:
+            self._rejudge_ocr_down(src)
         if not suffixes or self.dry or self.recordings != "none":
             return
         rows = [
@@ -5359,11 +5371,41 @@ class _Cycle:
         ]
         for start in range(0, len(rows), _WORK_BATCH):
             self.lock.beat(f"work:{src.id}")
+            failure: BaseException | None = None
             with self.manifest.transaction():
                 for row in rows[start : start + _WORK_BATCH]:
-                    if not self._empty_recording(src, arm, row, acc):
-                        self._recording_defer(src, row, acc)
+                    mark = len(self.changes)
+                    try:
+                        with self.manifest.savepoint():
+                            if not self._empty_recording(src, arm, row, acc):
+                                self._recording_defer(src, row, acc)
+                    except BaseException as exc:
+                        # the rows before it commit; this row's own writes roll back, so no row is left with
+                        # its content set and no page (a plain catch committed that half, B13 round 42 C2249)
+                        del self.changes[mark:]
+                        failure = exc
+                        break
                 self._flush_changes()
+            if failure is not None:
+                raise failure
+
+    def _rejudge_ocr_down(self, src: SourceConfig) -> None:
+        """Judge again the OCR-down mark (:data:`RECORDING_OCR_DOWN_META`) of each refused ``no converter``
+        recording of ``src`` that carries it, in a cycle whose registry has no recording converter (the media
+        helper gone, ``[convert] recordings`` off): such a row is in no queue and no replan, so the mark set
+        during an OCR outage outlived the media helper, and status asked for a read nothing could make. Each
+        goes through :meth:`_mark_ocr_down` with its own refusal, so the rule has one home: the mark stays
+        only while the page's words still say the OCR helper is not working. Only here: while the registry
+        has the recording converter, the replan or the recording pass's stub path reads the row, and the mark
+        holds until then (B13 round 42 C2244, ruling 155; clearing it whenever recordings did not wait on OCR
+        dropped a stub the background pass had not reached from status, makes worse True)."""
+        for row in self.manifest.iter_items(src.id, states=(RowState.REFUSED,)):
+            suffix = Path(row.name).suffix.lower()
+            if row.is_dir or suffix not in RecordingConverter.extensions:
+                continue
+            key = f"{RECORDING_OCR_DOWN_META}{row.source_id}:{row.stable_id}"
+            if row.state_reason == NO_CONVERTER_PREFIX + suffix and self.manifest.get_meta(key) == "1":
+                self._mark_ocr_down_for(src, row, row.state_reason)
 
     def _recording_load(self, source_id: str) -> _Recordings:
         """The source's recording record, read once a cycle and kept current here.  A ``reading`` mark in it
@@ -6311,11 +6353,15 @@ class _Cycle:
         test), ``""`` for a stub without those words (no media helper, ``[convert] recordings`` off).  Only a
         ``no converter`` refusal of a recording's suffix is marked; a row with no mark is never written
         (B13 round 41 C2039 with C2007, ruling 144)."""
+        self._mark_ocr_down_for(src, row, result.reason)
+
+    def _mark_ocr_down_for(self, src: SourceConfig, row: ItemRow, reason: str | None) -> None:
+        """:meth:`_mark_ocr_down` for a refusal ``reason`` (``_rejudge_ocr_down`` has a row's, no result)."""
         suffix = Path(row.name).suffix.lower()
-        if suffix not in RecordingConverter.extensions or result.reason != NO_CONVERTER_PREFIX + suffix:
+        if suffix not in RecordingConverter.extensions or reason != NO_CONVERTER_PREFIX + suffix:
             return
         local = not read_needs_download(graph=src.kind.is_graph, dataless=row.dataless)
-        value = "1" if self.publisher.ocr_waits(result.reason, suffix, local=local) else ""
+        value = "1" if self.publisher.ocr_waits(reason, suffix, local=local) else ""
         key = f"{RECORDING_OCR_DOWN_META}{row.source_id}:{row.stable_id}"
         stored = self.manifest.get_meta(key)
         if stored != value and (stored is not None or value):

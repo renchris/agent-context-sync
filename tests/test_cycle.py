@@ -7693,6 +7693,151 @@ def test_a_recording_deferred_before_an_ocr_outage_keeps_its_count_through_it_c2
     assert "--confirm-install-agent" in said and loop_mod.RECORDING_OCR_WAIT not in said, said
 
 
+def _ocr_down_stub(
+    tmp_path: Path, meetings: Path, monkeypatch: pytest.MonkeyPatch, extra: str = ""
+) -> Config:
+    """C2039's start: a 10-minute recording first seen in an OCR outage with the media helper ready, its
+    OCR-down stub marked and counted."""
+    config = config_with(tmp_path, meetings, extra)
+    monkeypatch.setattr(loop_mod.launchd, "agents_installed", lambda _c: False)
+    _fail_ocr(monkeypatch)
+    monkeypatch.setattr(cycle_mod.media, "probe", lambda _c, _d: ("ready", ""))
+    stub_recording(meetings / MEETING, 10)
+    assert run(config, mode=None).exit_code == 0
+    assert _ocr_down_marked(config, MEETING) == "1"
+    with Manifest(config.state_paths.db) as m:
+        assert loop_mod._unpublished(m, config.sources).recording == {SID: 1}
+    return config
+
+
+@pytest.mark.parametrize("gone", ["media-helper", "recordings-off"])
+def test_the_ocr_down_mark_goes_with_the_recording_converter_c2244(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch, gone: str
+) -> None:
+    """B13 round 42 C2244 (ruling 155): the OCR-down mark was judged only for a queued row, and an unchanged
+    refused stub is in no queue and no replan once the registry has no recording converter, so with the OCR
+    helper back and the media helper gone (or ``[convert] recordings = false``) status kept asking for a read
+    nothing on this Mac could make, through interactive and background syncs. A cycle whose registry has no
+    recording converter judges the mark again through _mark_ocr_down: the page's words no longer say the OCR
+    helper is not working, so the mark clears and status counts nothing."""
+    config = _ocr_down_stub(tmp_path, meetings, monkeypatch)
+    _use_ocr(monkeypatch, tmp_path)
+    if gone == "media-helper":
+        monkeypatch.setattr(cycle_mod.media, "engine", lambda _c, _d: None)
+        monkeypatch.setattr(cycle_mod.media, "probe", lambda _c, _d: ("not-built", ""))
+    else:
+        config = config_with(tmp_path, meetings, "\n[convert]\nrecordings = false\n")
+    for mode in (None, None, CycleMode.POLL):
+        assert run(config, mode=mode).exit_code == 0
+        assert _ocr_down_marked(config, MEETING) in (None, ""), mode
+        with Manifest(config.state_paths.db) as m:
+            assert loop_mod._unpublished(m, config.sources).recording == {}, mode
+        assert "recording" not in _recording_words(config), mode
+
+
+def test_the_ocr_down_mark_stays_while_the_recording_converter_has_not_read_the_stub_c2244(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C2244's guard (makes worse True for clearing the mark whenever recordings do not wait on OCR): with the
+    OCR helper back and the media helper ready, a background sync whose recording pass does not reach the stub
+    leaves the mark, so status still counts the recording until the pass or a replan reads it."""
+    config = _ocr_down_stub(tmp_path, meetings, monkeypatch)
+    _use_ocr(monkeypatch, tmp_path)
+    monkeypatch.setattr(cycle_mod._Cycle, "_recording_pass", lambda *_a, **_k: None)
+    assert run(config).exit_code == 0
+    assert _ocr_down_marked(config, MEETING) == "1"
+    with Manifest(config.state_paths.db) as m:
+        assert loop_mod._unpublished(m, config.sources).recording == {SID: 1}
+
+
+def test_a_replanned_recording_that_raises_rolls_back_alone_c2249(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 42 C2249 (ruling 155): _replan_recording_stubs planned a batch in one transaction, so a row
+    that raised rolled back every row before it. Each row has a savepoint inside the batch: the rows before it
+    commit (their state matches their pages), the raising row's own writes roll back, and the next sync plans
+    it. A plain per-row catch would commit a raising row's half (makes worse True)."""
+    config = config_with(tmp_path, meetings)
+    monkeypatch.setattr(loop_mod.launchd, "agents_installed", lambda _c: False)
+    _fail_ocr(monkeypatch)
+    monkeypatch.setattr(cycle_mod.media, "probe", lambda _c, _d: ("ready", ""))
+    other = "meetings/Contoso planning.mp4"
+    stub_recording(meetings / MEETING, 10)
+    stub_recording(meetings / other, 5)
+    assert run(config, mode=None).exit_code == 0
+    _use_ocr(monkeypatch, tmp_path)
+    planned: list[str] = []
+    real = cycle_mod._Cycle._recording_defer
+
+    def defer(self: Any, src: Any, row: Any, acc: Any) -> None:
+        planned.append(row.rel_path)
+        real(self, src, row, acc)
+        if len(planned) == 2:
+            raise OSError(errno.EIO, "injected after the row's writes")
+
+    monkeypatch.setattr(cycle_mod._Cycle, "_recording_defer", defer)
+    run(config, mode=None)
+    first, second = planned
+    assert _row(config, first).state_reason == cycle_mod.RECORDING_WAITS, "the row before it commits"
+    row = _row(config, second)
+    assert (row.state, row.state_reason) == (RowState.REFUSED, "no converter for .mp4"), row
+    monkeypatch.setattr(cycle_mod._Cycle, "_recording_defer", real)
+    assert run(config, mode=None).exit_code == 0
+    assert _row(config, second).state_reason == cycle_mod.RECORDING_WAITS
+
+
+def test_a_settling_inbox_recording_is_not_replanned_until_it_settles_c2293(
+    tmp_path: Path, local_source_dir: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 42 C2293 (ruling 155): the recording replan read the inbox's withheld files too (a row keeps
+    an earlier pass's unchanged verdict), so a recording rewritten inside its quiescence window was classed
+    ``empty`` or set waiting from bytes still being written. Withheld ids join the replan's and the re-read's
+    skip set: the rows, pages and verdicts stay as they are while the file settles, and the next sync after it
+    settles plans them (the empty one ``empty``, the other waiting)."""
+    ahead = [3600 * 1_000_000_000]
+
+    class FakeClockInbox(al.InboxArm):
+        def __init__(self, cfg: Any) -> None:
+            super().__init__(cfg)
+            self._clock = lambda: time.time_ns() + ahead[0]
+            self._sleep = lambda _s: None
+
+    monkeypatch.setattr(cycle_mod, "InboxArm", FakeClockInbox)
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    empty, clip = "Contoso empty.mp4", "Contoso clip.mp4"
+    (inbox / empty).write_bytes(b"")
+    stub_recording(inbox / clip, 10)
+    sources = INBOX_SOURCE.format(path=inbox).replace("quiescence_s = 0", "quiescence_s = 600")
+    config = config_with(tmp_path, local_source_dir, sources)
+    monkeypatch.setattr(loop_mod.launchd, "agents_installed", lambda _c: False)
+    _fail_ocr(monkeypatch)
+    monkeypatch.setattr(cycle_mod.media, "probe", lambda _c, _d: ("ready", ""))
+    assert run(config, mode=None, only=["inbox"]).exit_code == 0
+    pages = {
+        rel: (config.docs_repo / slug.mirror_rel_path("inbox", rel)).read_bytes() for rel in (empty, clip)
+    }
+    for rel in (empty, clip):
+        row = _row(config, rel, "inbox")
+        assert (row.state, row.state_reason) == (RowState.REFUSED, "no converter for .mp4"), row
+    _use_ocr(monkeypatch, tmp_path)
+    ahead[0] = 0
+    for rel in (empty, clip):
+        os.utime(inbox / rel)  # rewritten in place: its ctime is now, inside the window
+    report = run(config, mode=None, only=["inbox"])
+    assert report.exit_code == 0, report
+    for rel in (empty, clip):
+        row = _row(config, rel, "inbox")
+        assert (row.state, row.state_reason) == (RowState.REFUSED, "no converter for .mp4"), (rel, row)
+        assert row.last_verdict is not Verdict.DEFERRED, row
+        assert (config.docs_repo / slug.mirror_rel_path("inbox", rel)).read_bytes() == pages[rel]
+    ahead[0] = 3600 * 1_000_000_000
+    assert run(config, mode=None, only=["inbox"]).exit_code == 0
+    fm, _body = _recording_page(config, empty, "inbox")
+    assert fm["status"] == "unreadable" and fm.get("reason") == content_policy.ZERO_BYTES_REASON, fm
+    assert _row(config, clip, "inbox").state_reason == cycle_mod.RECORDING_WAITS
+
+
 def test_a_no_media_recording_stub_stays_uncounted_and_unplanned_c2039(
     tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
 ) -> None:
