@@ -2433,6 +2433,58 @@ def test_the_second_kept_divergence_is_pinned_in_both_reports_c2265(
     assert "shown with its ./ or ../ head and cut from its first unknown part" in legend
 
 
+def _debug_path(home: str, path: str, locale: str) -> str:
+    """install.sh's own debug_path over ``path``, run under /bin/bash (3.2 on macOS) with ``home`` and
+    ``locale``: the ``printf %q`` form a ``debug:`` line carries (B13 round 42 C2311)."""
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    [fn] = re.findall(r"(?ms)^debug_path\(\) \{.*?^\}\n", script)
+    cp = subprocess.run(
+        [BASH32, "-c", fn + 'debug_path "$1"', "_", path],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=30,
+        env={"HOME": home, "LC_ALL": locale, "LANG": locale, "PATH": "/usr/bin:/bin"},
+    )
+    return cp.stdout
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+def test_both_reports_cut_each_dollar_quoted_debug_value_whole_c2311(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+) -> None:
+    """B13 round 42 C2311: the debug heads compare each path in the `%q` form debug_path writes, never
+    decoded, so under the Mac's locale a cwd bash 3.2 writes as `$'...'` never matches its source's
+    prefix. The masking is no accident: each `$'...'` value is cut whole by the dollar-quote cut, under
+    the cwd or not. Over real /bin/bash `debug_path` output, both locales: a non-ASCII cwd with its source
+    and config paths, an ASCII cwd with a non-ASCII child and a name holding a newline; each `$'...'`
+    value prints `<path>`, both reports print the same line, and no name piece shows."""
+    home = env["HOME"]
+    rows = []
+    for cwd, child in (
+        (f"{home}/Z\u00fcrich Wombat", "Ledger"),
+        (f"{home}/Projects/Wombat", "Caf\u00e9 Ledger"),
+        (f"{home}/Alder\nWombat", "Ledger"),
+    ):
+        rows += [
+            f"debug: cwd {_debug_path(home, cwd, locale)}",
+            f"debug: source checkout {_debug_path(home, f'{cwd}/{child}', locale)}",
+            f"debug: config {_debug_path(home, f'{cwd}/{child}/sources.toml', locale)}",
+        ]
+    quoted = [ln for ln in rows if "$'" in ln]
+    assert quoted, rows  # bash 3.2 writes each of these names as $'...' in at least one value
+    shell, python, shell_private, python_private = _both_reports(env, ["Juniper Notes"], rows, locale)
+    for said, shown in zip(rows, python, strict=True):
+        if "$'" in said:
+            assert "$'" not in shown and shown.endswith("<path>"), (said, shown)
+    leaks = [ln for ln in [*python, *shell] for w in ("Wombat", "Ledger", "Alder", "rich", "Caf") if w in ln]
+    assert not leaks, leaks
+    assert shell == python and shell_private == python_private, [
+        (a, b) for a, b in zip(shell, python, strict=True) if a != b
+    ]
+
+
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
 def test_both_reports_cut_a_config_path_to_its_tokens_end_c2290(
     env: dict[str, str],  # noqa: F811
