@@ -26150,7 +26150,9 @@ def test_a_first_sync_behind_a_lock_with_an_empty_body_says_the_holder_need_not_
     lock, though a body of blanks only names no holder (install.sh, a status or doctor check, a cycle not
     yet written), and agentsync's quiet wait, announced, says nothing of its own. With an empty body the
     line reads in cycle.UNRECORDED_LOCK_WAIT_QUIET's words; a recorded body keeps the line the prompt
-    quotes (the test above)."""
+    quotes (the test above). B13 round 42 C2222: the note was waited-for-the-lock for both, which the report
+    words as a wait for another sync; an empty body's is the agentsync step's own token for that fact,
+    waited-for-an-unrecorded-holder, which the report reads as a wait for the lock to be free."""
     e, lock = _held_sync(env)
     e = {**e, "AGENTSYNC_REINSTALL_WAIT_SECONDS": "1"}
     fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o600)  # held with no body, as a bare lockf holds it
@@ -26163,7 +26165,9 @@ def test_a_first_sync_behind_a_lock_with_an_empty_body_says_the_holder_need_not_
     out = cp.stdout.splitlines()
     assert f"sync: {UNRECORDED_LOCK_WAIT_QUIET}; waiting for it to end, at most 10 minutes" in out, cp.stdout
     assert "sync: another sync is still running; waiting for it to end, at most 10 minutes" not in out
-    assert ("first-sync", "done", "0", "waited-for-the-lock") in steps(install_log(e)), "the note for both"
+    note = "waited-for-an-unrecorded-holder"
+    assert ("first-sync", "done", "0", note) in steps(install_log(e)), steps(install_log(e))
+    assert setup_report._FIRST_SYNC_NOTE_WORDS[note] == "waited for the sync lock to be free"
 
 
 def test_no_lock_file_means_no_wait_and_none_is_created(

@@ -337,7 +337,8 @@
 #      output is shown as its "converted N, deferred M online-only[, read again R | , first read R]" line(s), each prefixed
 #      "first sync: " (and logged as the step's note converted-N-deferred-M, with -reread-R when R > 0, then
 #      -first-F when F of the R were first reads, and
-#      -waited-for-the-lock when another sync held the config's lock as it started), else as all it printed. The option is passed unconditionally: sync --help hides it, and the agentsync
+#      -waited-for-the-lock when another sync held the config's lock as it started, or
+#      -waited-for-an-unrecorded-holder when the lock it waited on held an empty body), else as all it printed. The option is passed unconditionally: sync --help hides it, and the agentsync
 #      installed here always has it. When another sync holds the config's lock as it starts, a line before
 #      the sync says it waits for that one to end, at most 10 minutes; one still running then skips it (75)
 #   With --confirm-install-agent and a first sync that ran:
@@ -13065,7 +13066,7 @@ else
 	# uv_tool_install's. A line says so before the wait (B13 round 6 G37: it was said only in agentsync's own
 	# WARNING lines on stderr, which the prompt never mentions); the setup prompt quotes its words, and it
 	# starts with none of the prefixes the prompt hands to the person (NEXT:, WAITING ON YOU:, [warn]).
-	SYNC_LOCK_BUSY=0
+	SYNC_LOCK_BUSY=0 SYNC_LOCK_BARE=0
 	l="$(sync_lock "$CONFIG")"
 	if [ -n "$l" ] && [ -f "$l" ] && [ -x "$LOCKF" ]; then
 		"$LOCKF" -k -n -s -t 0 "$l" /usr/bin/true 2>/dev/null || [ $? -ne 75 ] || SYNC_LOCK_BUSY=1
@@ -13073,11 +13074,13 @@ else
 	# A lock body of blanks only names no holder: install.sh, a status or doctor check, or a cycle that has not
 	# written its body yet holds it as well as a sync, so the line says so in cycle.UNRECORDED_LOCK_WAIT_QUIET's
 	# words, the body read as the reinstall step reads it; a recorded body keeps the line the prompt quotes
-	# (B13 round 32 C629; round 18 V40)
+	# (B13 round 32 C629; round 18 V40), and the note names that wait as the agentsync step's own token does,
+	# never another sync's (B13 round 42 C2222)
 	if [ "$SYNC_LOCK_BUSY" -eq 1 ]; then
 		grc=0
 		LC_ALL=C grep -q '[^[:space:]]' "$l" 2>/dev/null || grc=$?
 		if [ "$grc" -eq 1 ]; then
+			SYNC_LOCK_BARE=1
 			say "$SYNC_LABEL: another sync is still running (or install.sh or a check holds the lock); waiting for it to end, at most 10 minutes"
 		else
 			say "$SYNC_LABEL: another sync is still running; waiting for it to end, at most 10 minutes"
@@ -13087,8 +13090,12 @@ else
 	with_progress "$SYNC_LABEL" with_timeout "$FIRST_SYNC_LIMIT" first_sync_run || SYNC_RC=$?
 	show_first_sync "$SYNC_RC"
 	if [ "$SYNC_RC" -eq 0 ]; then
-		# a wait the probe missed is booked too, from agentsync's stdout mark (cli.LOCK_WAITED_MARK; U68)
-		if [ "$SYNC_LOCK_BUSY" -eq 1 ] || grep -qx "lock wait: this sync waited for another sync's lock" "$SYNC_OUT" 2>/dev/null; then
+		# a wait the probe missed is booked too, from agentsync's stdout mark (cli.LOCK_WAITED_MARK; U68); a lock
+		# whose body named no holder is waited-for-an-unrecorded-holder, the agentsync step's token for that fact,
+		# which setup_report words as a wait for the lock to be free (B13 round 42 C2222)
+		if [ "$SYNC_LOCK_BUSY" -eq 1 ] && [ "$SYNC_LOCK_BARE" -eq 1 ]; then
+			FIRST_SYNC_NOTE="${FIRST_SYNC_NOTE:+$FIRST_SYNC_NOTE-}waited-for-an-unrecorded-holder"
+		elif [ "$SYNC_LOCK_BUSY" -eq 1 ] || grep -qx "lock wait: this sync waited for another sync's lock" "$SYNC_OUT" 2>/dev/null; then
 			FIRST_SYNC_NOTE="${FIRST_SYNC_NOTE:+$FIRST_SYNC_NOTE-}waited-for-the-lock"
 		fi
 		step_end "done" 0 "$FIRST_SYNC_NOTE"
