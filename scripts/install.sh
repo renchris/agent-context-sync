@@ -1827,7 +1827,8 @@ debug_line() { # NAME VALUE: under --debug, one line on stderr (install.out keep
 }
 # A path for debug_line in printf %q's one-line form, the home's own %q form written as ~: a newline in the
 # working folder or the config path never starts a line no cut reads, and the cwd and the paths under it are
-# spelled alike, so the report cuts a debug: source or config path under that cwd (B13 round 40 C1835)
+# spelled alike, so the report cuts a debug: source path under that cwd (B13 round 40 C1835), and every config path
+# but the default wherever it lies (round 41 C2063; B13 round 42 C2238)
 debug_path() { # PATH
 	local v h tilde='~'
 	v="$(printf '%q' "$1")" h="$(printf '%q' "$HOME")"
@@ -3771,7 +3772,8 @@ redaction_pairs() {
 	[ -z "$own_docs" ] || own_folder_values "$own_docs" "$HOME/agent-context/docs"
 	[ -z "$own_cache" ] || own_folder_values "$own_cache" "$HOME/Library/Caches/agentsync"
 	[ -z "$own_logs" ] || own_folder_values "$own_logs" "$HOME/Library/Logs/agentsync"
-	# Every configured source id, as <source-N> by its [[source]] table's place (B13 round 5 F6): an id is its
+	# Every configured source id, as <source-N> numbered in config order among the ids that take a number of their
+	# own (B13 round 5 F6; round 41 C2071; round 42 C2238): an id is its
 	# folder's name in slug form ("project-beta---general"), and the empty-folder wait an agent quotes names it.
 	# A whole word, where "-" is no word character, so "exclude-empty <id>" is matched. An id that is one of
 	# agentsync's own words is kept unless its source is a cloud folder (setup_report._GENERIC_IDS), so "the
@@ -3824,7 +3826,8 @@ redaction_pairs() {
 	# A source still mirrored whose [[source]] block is gone is in no table above, yet doctor's
 	# config.vanished_sources [FAIL] and the sync's refusal quote its id ("source 'x' (3 files) is mirrored but
 	# no longer in sources.toml"): the ids those lines quote, registered after the configured ones (B13 round
-	# 16 T42). Numbered by table place, the inbox's too, so a number is this report's own (round 18 V51).
+	# 16 T42), numbered after the configured ones on the same counter (B13 round 42 C2238),
+	# so a number is this report's own (round 18 V51).
 	while IFS= read -r v; do
 		case "$ids" in *" $v "*) continue ;; esac
 		case " $GENERIC_SOURCE_IDS " in *" $v "*) continue ;; esac
@@ -5059,8 +5062,9 @@ typed_note_cut() {
 	# existing folder: `; the first-unknown rule\047s `add-source `, which keeps every placeholder and cuts at
 	# its first unknown part (C1832), for a word anywhere, a bare one with no slash, backslash or quote left as
 	# prose as _source_local_shown leaves it (B13 round 41 ruling 142, C2085: one outside CloudStorage printed); the cwd rule\047s `--cwd `, `--cwd=` and `debug: cwd `, the value cut as
-	# _cut_path cuts it, the word --cwd kept (C1835); the under-cwd rule\047s `debug: source ` and `debug:
-	# config `, cut only under that run\047s `debug: cwd ` folder; then the free-text pass (C1862)
+	# _cut_path cuts it, the word --cwd kept (C1835); the under-cwd rule\047s `debug: source `, cut only under that
+	# run\047s `debug: cwd ` folder; the config rule\047s `debug: config `, cut always but the default (C2063); then
+	# the free-text pass (C1862; B13 round 42 C2238)
 	function slcut(l,    k) {
 		ncw = 0 # this line\047s `debug: cwd ` values; the last is the cwd the next line compares with (C2029)
 		for (k = 1; k <= nhp; k++) l = slone(l, hp[k], "provider")
@@ -5103,7 +5107,7 @@ typed_note_cut() {
 	}
 	# whether PATH is the folder CWD or lies under it
 	function under(v, c) { return c != "" && (v == c || index(v, (c ~ /\/$/ ? c : c "/")) == 1) }
-	# each `debug: source <kind> <path>` and `debug: config <path>` on the line: the path, to its next ` | ` or
+	# each `debug: source <kind> <path>` on the line (B13 round 42 C2238: dbconfig takes `debug: config `): the path, to its next ` | ` or
 	# the line\047s end, cut only when it is the cwd an earlier line left or one on this line, or lies under it
 	# (C1835); a path under neither is copied through and the loop goes on (C2029)
 	function dbunder(l, hd,    out, a, r, e, v, kd, b, k, ok) {
