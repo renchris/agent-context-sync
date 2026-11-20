@@ -43814,6 +43814,15 @@ names, the `--cwd` usage error's included, not. Test:
 `test_the_guide_gives_rulings_146_to_148s_cuts_counts_and_second_divergence_c2265`, held to setup_report's legend and
 count words, and the residual clause of `test_the_guides_rows_give_each_heads_rule_for_any_path_as_both_legends_do_c2051`.
 
+**The guide reads the Configuration section's `inbox:` and `[convert]` lines** (the guide words of C2207 and of C2210
+with C2221; docs only; from lane RA's words, whose report halves are in §16.265). Lane RA's report adds two
+Configuration lines: `inbox:`, what sits on the folder setup keeps for the inbox, matched as that folder (`live`,
+`paused` or `retired` with the folder, or `not added` with its reason), and `[convert]`, `default` or the options set,
+`max_page_bytes` with its number and `pandoc_path` by name only, with the run an edit was recorded in. Section 4's
+table of setup-feedback.md gives each line's forms. Test:
+`test_the_guide_reads_the_configurations_inbox_and_convert_lines_c2207_c2210`, held to `setup_report._inbox_line` and
+`_convert_line`.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units

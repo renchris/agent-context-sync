@@ -13584,6 +13584,42 @@ def test_both_guides_say_setup_keeps_an_inbox_with_each_case_it_meets_c2258() ->
     assert 'say "config: $CONFIG exists"' in install and 'exists (inbox ensured)"' not in install
 
 
+def test_the_guide_reads_the_configurations_inbox_and_convert_lines_c2207_c2210() -> None:
+    """B13 round 42, the guide's words for lane RA's two new Configuration lines: `inbox:` names what sits on
+    the folder setup keeps for the inbox, matched by identity (C2207, ruling 151), and `[convert]` names the
+    options set and the run an edit was recorded in (C2210 with C2221, ruling 154). Section 4's table gives
+    each line's forms, held to setup_report's own words."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    guide = (ROOT / "docs" / "deploy" / "setup-feedback.md").read_text(encoding="utf-8")
+    inbox = next(line for line in guide.splitlines() if line.startswith("| Configuration: `inbox:` |"))
+    convert = next(line for line in guide.splitlines() if line.startswith("| Configuration: `[convert]` |"))
+    for words in (
+        "`- inbox: live <folder>` (or `paused`, `retired`), or `- inbox: not added (<reason>)`",
+        "`<folder> is source '<id>' (<kind>, <state>), not an inbox source`, `<folder> is not a folder` or"
+        " `no"
+        " source on <folder>`",
+    ):
+        assert words in inbox, words
+    assert "`- [convert]: default`, or `- [convert]: set (<option names>)`" in convert
+    assert (
+        "`; changed in run N: local and inbox pages made under other converter options are read again`"
+        in convert
+    )
+    source = inspect.getsource(setup_report._inbox_line) + inspect.getsource(setup_report._convert_line)
+    for code in (
+        'f"- inbox: {inbox[0].state.value} {folder}"',
+        "is source '{other.id}' ({other.kind.value}, {other.state.value}), not an inbox source",
+        'f"{folder} is not a folder"',
+        'f"no source on {folder}"',
+        'f"- inbox: not added ({why})"',
+        '"- [convert]: default"',
+        "f\"- [convert]: set ({', '.join(names)})\"",
+        "; changed in run {run}: local and inbox pages made under other converter options are read again",
+    ):
+        assert code in source, code
+
+
 def test_the_folder_row_names_c2060s_gap_only_while_its_strict_xfail_stands_c2259() -> None:
     """B13 round 42 C2259 (ruling 150): the folder row said both reports cut every folder step 1 listed,
     while C2060, unbuilt behind the operator's decision 1476293d00a3, leaves a listed-only name spelled with
