@@ -582,13 +582,24 @@ def test_the_guide_gives_step_1s_timeout_tail_and_its_log_word_c2053() -> None:
     said so, while setup-feedback.md's word list said a status-step word is never one of the comma-joined
     words. The guide gives the tail and the log word, held here to install.sh's own lines, and the list says
     `timeout` joins any word, last. No prompt words: step 2 runs as for any list (the verifier's corrected
-    fix)."""
+    fix). B13 round 42 C2313: a checkout reader at its limit drops the all-clear whatever the installed
+    build's fallback answers (lane RB's install.sh), and the bullet says so, names the two NEXTs the tail
+    joins, its place before the list's cap clause, and that the exit-3 NEXTs carry none."""
     script = SCRIPTS[0].read_text(encoding="utf-8")
     [tail] = re.findall(r'ctail="\$ctail; (step 1\'s check of agentsync\'s config and state[^"]*)"', script)
     assert 'clog="${clog:- config_err=}${clog:+,}timeout"' in script
     guide = " ".join((DEPLOY / "setup-feedback.md").read_text(encoding="utf-8").split())
     bullet = guide.split("- Since B13 round 40 (C1867, C1876; no prompt version),", 1)[1].split(" - ", 1)[0]
-    assert f"drops `(none is needed)` and ends, after any other tail, with `; {tail}`." in bullet
+    # B13 round 42 C2313 (lane RB's words): a checkout reader at its limit too, whatever the installed
+    # build's fallback answers; the two NEXTs that carry it, its place before the cap clause, none on exit 3
+    assert (
+        "a checkout reader too, whatever the installed build's fallback then answers, all-clear or not), the"
+        " list cannot say step 2 needs nothing: the already-synced and choose-folders `NEXT:` lines drop"
+        " `(none is needed)` and add, after any other tail and before the list's cap clause (`; N folders"
+        f" past the first M are not listed: ...`), `; {tail}`. The exit-3 sign-in and access `NEXT:` lines"
+        " carry no config tail, this one included, since their re-run reads again."
+    ) in bullet
+    assert 'NEXT_MSG="$NEXT_MSG; $line not listed: $SELF --list-folders --all"' in script
     assert (
         "adds `timeout` as the last comma-joined word after `config_err=`: `config_err=timeout` alone, or "
         "beside"

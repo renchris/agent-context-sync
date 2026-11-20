@@ -43783,6 +43783,14 @@ C2057 entry, whose neighbor already names the prerequisites, keeps its words. Te
 `test_the_readme_says_a_recording_on_this_mac_with_no_bytes_gets_a_page_c2057_c2089`, held to `Registry.default`
 and `_Cycle._process`.
 
+**The guide's timeout bullet covers a checkout reader, names the NEXTs the tail joins, and none on exit 3** (C2313's
+guide half; docs only; from lane RB's words, whose install.sh half is in §16.266). Lane RB's fix makes a checkout
+reader that stops at its limit drop `(none is needed)` whatever the installed build's fallback then answers. The
+setup-feedback.md bullet now says so, names the already-synced and choose-folders `NEXT:` lines as the two the tail
+joins, after any other tail and before the list's cap clause, and says the exit-3 sign-in and access `NEXT:` lines
+carry no config tail, since their re-run reads again. Test: `test_the_guide_gives_step_1s_timeout_tail_and_its_log_word_c2053`,
+held to install.sh's tail and cap clause.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units

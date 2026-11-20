@@ -1136,9 +1136,13 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   Step 1 tells the person ([CONTRACTS §16.130](../design/CONTRACTS.md), B13 round 18 V77).
 - Since B13 round 40 (C1867, C1876; no prompt version), when any of step 1's readers of agentsync's config and state
   stops at its own time limit (the vanished-folder and config-error readers at 5 s, the misplaced-file and lost-hold
-  readers at 10 s), the list cannot say step 2 needs nothing: the `NEXT:` drops `(none is needed)` and ends, after
-  any other tail, with `; step 1's check of agentsync's config and state did not finish within its time limit (this
-  Mac was busy), so step 2 may still stop on it: ~/.local/bin/agentsync status names any such stop`. Its log line
+  readers at 10 s; since B13 round 42 C2313, a checkout reader too, whatever the installed build's fallback then
+  answers, all-clear or not), the list cannot say step 2 needs nothing: the already-synced and choose-folders
+  `NEXT:` lines drop `(none is needed)` and add, after any other tail and before the list's cap clause (`; N folders
+  past the first M are not listed: ...`), `; step 1's check of agentsync's config and state did not finish within
+  its time limit (this Mac was busy), so step 2 may still stop on it: ~/.local/bin/agentsync status names any such
+  stop`. The exit-3 sign-in and access `NEXT:` lines carry no config tail, this one included, since their re-run
+  reads again. Its log line
   adds `timeout` as the last comma-joined word after `config_err=`: `config_err=timeout` alone, or beside another
   word, such as `config_err=policy,timeout` or `config_err=state-hold-lost,timeout`. A reader that fails with an
   error rather than its time limit still says nothing. The prompt has no words for this tail: step 2 runs as for any
