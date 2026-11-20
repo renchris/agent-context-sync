@@ -43053,6 +43053,8 @@ C2049). Tests: `test_convert_page_cap.py::test_a_long_backtick_run_never_pushes_
 2,000-backtick first line, a 3,000-backtick later line, unclosed backtick and tilde fences of 3,000, a one-line file of
 10,000 backticks, `abc` before 9,000, three lines of 3,000 as `.json` and mixed runs, at 8,192, 20,000 and 1,000,000
 through `Registry.default`) and `test_convert_page_cap.py::test_a_capped_page_with_no_backtick_run_keeps_its_bytes_c2042`.
+Amended 2026-11-20, §16.268 C2208: `_capped`'s cut then grows a whole line at a time while the longer head and its own
+fence fit, so `x` before a 9,000-backtick line shows; a run longer than the room still leaves its line off.
 
 **The guard's banner and footer come off every fit test** (C2044; `agentsync.convert._common` and each converter that
 calls `_cap_body`; amends §16.258 C1886). The registry's guard adds the 136-byte banner and the blank line under it,
@@ -43835,6 +43837,19 @@ splits only a text that is not empty, so it reads `Text (txt): 0 lines`; a file 
 a whitespace-only file still counts its blank lines, and an empty `.url` still reads `Internet shortcut with no URL`.
 This is in text's one `_EMITTER_VERSION` move this round, to 1.0.4; no `_REREAD_BELOW` moves, so an empty file's
 page takes it when the file next changes. Test: `test_convert_formats.py::test_an_empty_text_file_has_0_lines_c2201`.
+
+**A capped text head grows line by line while it and its own fence fit** (C2208, makes worse True for a cut at the
+run's line start; ruling 153; `agentsync.convert.text`; amends §16.263 C2042). `_capped`'s recut is 2 * (R + 1 - 3)
+bytes shorter for a head whose longest backtick run is R, so `x` then 9,000 backticks then `more` (9,008 bytes) at
+8,192 cut to 0 bytes and showed an empty fence, though `x` fits easily (the verifier's run at 1faa3f3a). Cutting
+at the start of the run's line instead lets the shorter head hold another long run: 3,000 backticks, 4,000 backticks
+and 3,000 `y`s gave a 9,104-byte body at 8,192, past the cap C2042 holds. The recut and last-line-end cut stay, and
+the head then grows a whole line at a time while the longer head's bytes and its own fence, 2 * (its longest run + 1
+- 3) more, fit the cap less 512; the longest run is carried line by line, so the walk reads each line once. It never
+shows less than before: `x` shows (2 of 9,008 bytes), and the two-run file's body stays within the cap less the
+guard's reserve. In text's one `_EMITTER_VERSION` move this round, to 1.0.4. Test:
+`test_convert_page_cap.py::test_a_capped_text_head_grows_line_by_line_while_its_fence_fits_c2208` (both files at
+8,192 and 20,000).
 
 ### 16.269 Round 42: the prompt goes to v39 (the paths and folder states setup printed), the gate's stop lines, and the guides (2026-11-20, wave B13 round 42 lane D)
 

@@ -111,6 +111,28 @@ def test_a_capped_page_with_no_backtick_run_keeps_its_bytes_c2042(tmp_path: Path
     assert unit.body == f"{_fence(head, 'text')}\n{note}\n"
 
 
+@pytest.mark.parametrize("cap", [8192, 20_000])
+def test_a_capped_text_head_grows_line_by_line_while_its_fence_fits_c2208(tmp_path: Path, cap: int) -> None:
+    """B13 round 42 C2208: a 9,000-backtick second line shrank the recut to 0 bytes, so the page showed an
+    empty fence though `x` before it fits easily. The cut grows a whole line at a time while the longer head
+    and its own fence fit: `x` shows, and a head of two long runs never takes a line whose fence would pass
+    the cap (cutting at the run's line start gave 9,104 bytes at 8,192)."""
+    src = tmp_path / "ticks.txt"
+    src.write_text("x\n" + "`" * 9000 + "\nmore\n", encoding="utf-8")
+    (unit,) = _pages(src, cap)
+    assert _size(unit) <= cap
+    assert "```text\nx\n```\n" in unit.body  # the run's 9,001-backtick fence leaves its line no room
+    assert "[truncated: first 2 of 9008 bytes shown;" in unit.body
+    two = tmp_path / "two.txt"
+    two.write_text("`" * 3000 + "\n" + "`" * 4000 + "\n" + "y" * 3000 + "\n", encoding="utf-8")
+    (page,) = _pages(two, cap)
+    assert _size(page) <= cap
+    body = text_mod.PlainTextConverter(replace(CFG, max_page_bytes=cap)).convert(two, name="two.txt")[0].body
+    assert len(body.encode()) <= cap - GUARD_RESERVE
+    if cap == 20_000:  # room for both runs and their fence: every line shows
+        assert "y" * 3000 in page.body
+
+
 # ---------------------------------------------------------------------------------------------------------
 # C2044: the guard's banner and footer come off every fit test
 # ---------------------------------------------------------------------------------------------------------

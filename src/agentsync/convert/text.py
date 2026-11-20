@@ -30,7 +30,7 @@ from agentsync.model import RenderedUnit, UnitKind
 from agentsync.text import plural
 
 _EMITTER_VERSION = (  # B13 round 42, its one move (rulings 152, 153): C2302 a CSV row is one record;
-    "1.0.4"  # C2201 with C2209 an empty file has 0 lines
+    "1.0.4"  # C2201 with C2209 an empty file has 0 lines; C2208 a capped head grows while its fence fits
 )
 _TABLE_SIDECAR = "full-table.csv"
 _FENCE_LANG: dict[str, str] = {
@@ -243,7 +243,10 @@ class PlainTextConverter:
         on both sides.  A head whose longest backtick run R is 3 or more needs a fence of R + 1, so it is cut
         again 2 * (R + 1 - 3) bytes shorter: a prefix of the first cut, whose run, and so whose fence, is no
         longer, and the page stays within the cap.  A head with no such run keeps its bytes (B13 round 41
-        C2042, C2087)."""
+        C2042, C2087).  That cut then grows a whole line at a time while the longer head and its own fence
+        still fit, so a long run that shrank the cut to nothing never hides the short lines before it, and a
+        later run's fence is counted before its line is taken (B13 round 42 C2208: cutting at the run's line
+        start without that check let a second run's fence pass the cap)."""
         raw = text.encode("utf-8")
         budget = max(0, self._cfg.max_page_bytes - 512)
         head = raw[:budget].decode("utf-8", errors="ignore")
@@ -253,6 +256,17 @@ class PlainTextConverter:
         cut = head.rfind("\n")
         if cut > 0:
             head = head[: cut + 1]
+        kept = head.encode("utf-8")
+        run = _longest_run(head, "`")
+        end = raw.find(b"\n", len(kept))
+        while 0 <= end < budget:  # each longer whole-line head, while it and its fence fit (C2208)
+            line = raw[raw.rfind(b"\n", 0, len(kept)) + 1 : end + 1]  # a head cut mid-line: its whole line
+            longer = max(run, max((len(m) for m in re.findall(rb"`+", line)), default=0))
+            if end + 1 + 2 * max(0, longer + 1 - 3) > budget:
+                break
+            kept, run = raw[: end + 1], longer
+            end = raw.find(b"\n", end + 1)
+        head = kept.decode("utf-8", errors="ignore")
         shown = len(head.encode("utf-8"))
         note = (
             f"[truncated: first {shown} of {len(raw)} bytes shown; the full text is in the sidecar "
