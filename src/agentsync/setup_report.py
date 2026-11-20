@@ -5525,9 +5525,9 @@ def _unconfigured_ids(config: Config) -> tuple[list[str], list[str]]:
     in two sorted groups: those ``cycle.vanished_from`` reports (present file rows: the ids doctor's
     config.vanished_sources [FAIL] and the sync's refusal quote, which the shell fallback report registers
     too), then the rest (a retired source's tombstones, a hand-edited queue), so in this report the ids a
-    vanished line quotes number before the retired-only ones (B13 round 17 U62). The shell report numbers its
-    ids by their table's place, the inbox's too, so its numbers are its own (round 18 V51). The manifest is
-    opened read-only, as every other read of the report's."""
+    vanished line quotes number before the retired-only ones (B13 round 17 U62). The shell report numbers a
+    vanished id after its configured ones on the same counter (B13 round 41 C2071; the sentence corrected by
+    round 42 C2238). The manifest is opened read-only, as every other read of the report's."""
     from agentsync import governance  # noqa: PLC0415 - lazy, as in _purge_part
     from agentsync.cycle import vanished_from  # noqa: PLC0415
     from agentsync.manifest import present_counts_on  # noqa: PLC0415
@@ -18648,12 +18648,17 @@ _DEBUG_RE = re.compile(
 )
 """B13 round 40 C1835 (ruling 137; privacy): install.sh's ``debug: cwd``, ``debug: source`` and ``debug:
 config`` lines under --debug, whose path debug_path writes in printf %q's one-line form, the home as ~,
-running to the line's first `` | `` or its end: the cwd is cut as :func:`_cut_path` cuts, and a source or
-config path only where it lies under that cwd (:func:`_debug_shown`). B13 round 42 C2286 with C2242 (ruling
-148; privacy): a value is empty only before ``| `` and another ``debug: `` head (the head's blank doubling
-as the separator's) or in the double-space form (``debug: config  | -``), and is kept as written there; an
-empty cell took the next cell as its value, so a ``debug: cwd`` after it was never cut or carried. A value
-that opens ``| `` with no head after it is read as before, to the next `` | `` or the line's end, and cut."""
+running to the line's first `` | `` or its end: the cwd is cut as :func:`_cut_path` cuts, a source path
+only where it lies under that cwd, and a config path wherever it lies but
+:data:`report_cuts.CONFIG_DEFAULT` (:func:`_debug_shown`; round 41 C2063 with C2083; the words corrected by
+round 42 C2238). Each value is compared in the ``%q`` form debug_path writes, never decoded: a value bash
+3.2 writes as ``$'...'`` (a non-ASCII character, a newline or a control byte) is cut whole by the general
+dollar-quote cut (:data:`_ANSI_C_WORD_RE`), under the cwd or not (B13 round 42 C2311). B13 round 42 C2286
+with C2242 (ruling 148; privacy): a value is empty only before ``| `` and another ``debug: `` head (the
+head's blank doubling as the separator's) or in the double-space form (``debug: config | -``), and is kept
+as written there; an empty cell took the next cell as its value, so a ``debug: cwd`` after it was never cut
+or carried. A value that opens ``| `` with no head after it is read as before, to the next `` | `` or the
+line's end, and cut."""
 _ANSI_C_RE = re.compile(r"\\(?:([0-7]{1,3})|x([0-9A-Fa-f]{1,2})|(.))", re.DOTALL)
 _ANSI_C_LETTERS = {
     "a": "\a",
