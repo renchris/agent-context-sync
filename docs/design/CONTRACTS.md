@@ -43682,6 +43682,17 @@ stall bound; no reader needs it. Tests: `tests/test_gate_journal.py`
 `::test_the_ceiling_is_about_twice_the_slowest_part_and_each_record_keeps_its_duration_c2273` and
 `tests/test_ship_land.py::test_a_land_gate_part_stopped_at_status_124_says_which_line_names_a_hang_c2273`.
 
+**The CI record carries round 41, and the head and the limit stay** (C2274; `CLAUDE.md`, `.github/workflows/ci.yml`; a
+fix that raises the head makes things worse). Round 41's ten ci attempts on main (4041089d to 74ceffac) took 63:35 to
+79:45, all past 60 and seven past 70; the slowest green was af21e633 at 78:44 (pytest's step 78:07 at 8793 tests), and
+one attempt, 4041089d's first, failed at 79:45 on `test_an_interrupt_while_queued_terminates_the_helper`, its rerun
+green at 67:28; runners waited 28:35 (4041089d's rerun) and 25:42 (c72c736b); 1faa3f3a, round 42's base, took 74:47.
+Both files add the attempts, the waits and the base. The finder asked to raise CLAUDE.md's head of 81, since the
+slowest came within 1:15 of it, but 81 is round 39's 80:33, the slowest job measured, rounded up, and no round 41 job
+passed it: a higher head would state a range nobody measured, so it stays until a job runs past 80:33, and
+`timeout-minutes` stays 100, 20:15 above the slowest (ci.yml's rule raises it only within 15 minutes). Test:
+`test_claude_md_gives_cis_time_and_its_limit`.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units
