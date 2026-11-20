@@ -295,7 +295,7 @@ def _lint_one_page(repo: Path, path: str) -> list[LintFinding]:
     # with the heading. Both are tombstones.
     tomb = body.lstrip("\n").removeprefix(policy.UNTRUSTED_BANNER).lstrip("\n")
     if status is PageStatus.DELETED and not tomb.startswith(
-        ("# [DELETED UPSTREAM]", "# [MOVED OUT OF SCOPE]", "# [RETIRED]")
+        ("# [DELETED UPSTREAM]", "# [MOVED OUT OF SCOPE]", "# [RETIRED]", "# [NO LONGER PRODUCED]")
     ):
         findings.append(
             LintFinding("FRONTMATTER", path, "status deleted but the body is not a tombstone stub")

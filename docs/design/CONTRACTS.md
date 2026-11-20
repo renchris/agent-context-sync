@@ -989,6 +989,7 @@ class MirrorChange:
     source_id: str
     stable_id: str
     prev_path: str | None = None
+    unit_removed: bool = False  # a unit of a still-live item tombstoned: op D, counted as M (§16.267 C2205)
 
 @dataclass(frozen=True, slots=True)
 class LintFinding:
@@ -43388,6 +43389,22 @@ did not wait on OCR dropped a stub the background pass had not reached, makes wo
 `test_the_ocr_down_mark_stays_while_the_recording_converter_has_not_read_the_stub_c2244`,
 `test_a_replanned_recording_that_raises_rolls_back_alone_c2249`,
 `test_a_settling_inbox_recording_is_not_replanned_until_it_settles_c2293`.
+
+**A unit the source still has is no longer produced, never deleted upstream** (C2205; ruling 155). A recording
+first seen in an OCR outage got a whole stub page; once read, its index and windows replaced it, and
+`write_pages` tombstoned the stub (reason `unit-removed`) under `# [DELETED UPSTREAM]`, saying its source was
+removed upstream, counted `1d` in the commit subject, its body, the CHANGELOG and the run record, while the
+recording was still there. `_tombstone_body` gives `unit-removed` its own neutral heading, `# [NO LONGER
+PRODUCED] <title>`: a whole page replaced by units names its first new page (`publish.superseded_page`, the
+lowest live path of the item, `<name>.d/00-index.md` for a recording) in the frontmatter's `superseded_by` and
+the body (`its current pages start at <path>`); a removed part with nothing in its place (a sheet gone from a
+workbook) says its source no longer contains this part. Status `deleted`, reason `unit-removed` and op D stay,
+so reaping, re-rendering and the breaker's exemption are unchanged; a re-render takes `superseded_by` from the
+page itself, and repair from the item's live pages. `MirrorChange.unit_removed` marks such a change and
+`model.counted_op` counts it as M in `gitops.commit_subject`, `commit_body`, `publish._counts_text` and the
+run record, so it leaves the `d` count. `lints.py`'s tombstone headings take `# [NO LONGER PRODUCED]` in the
+same commit. Tests: `test_a_whole_page_replaced_by_units_names_its_first_new_page_and_counts_no_deletion_c2205`,
+`test_removed_unit_is_tombstoned_and_can_come_back` (the removed sheet's heading, no `superseded_by`, `0d`).
 
 ### 16.268 Round 42: the converters: a record ends where its writer ends it, a capped page shows all the cap leaves room for, and picture pieces keyed on their own revision (2026-11-20, wave B13 round 42 lane E)
 

@@ -162,6 +162,7 @@ from agentsync.model import (
     SourceReport,
     SourceState,
     Verdict,
+    counted_op,
 )
 from agentsync.ops.launchd import rotate_logs, started_by_our_job
 from agentsync.ops.lock import (
@@ -191,6 +192,7 @@ from agentsync.publish import (
     read_needs_download,
     render_tombstone,
     sidecar_rel,
+    superseded_page,
 )
 from agentsync.text import plural
 
@@ -1665,6 +1667,9 @@ def _repair_outputs(
                             durable_id=manifest.durable_id(src.id, stable_id),
                             archived=t.reason == DELETED_UPSTREAM
                             and (repo / archive_path(out.output_path)).is_file(),
+                            superseded_by=superseded_page(
+                                t, [o.output_path for o in outs if o.status is not OutputStatus.TOMBSTONE]
+                            ),
                         )
                         _write_atomic(path, text)
             live = [o for o in outs if o.status is not OutputStatus.TOMBSTONE]
@@ -3907,7 +3912,7 @@ class _Cycle:
         # an install that purged before it existed has it too (B13 round 30 C381; ruling 34)
         with contextlib.suppress(Exception):
             governance.record_purges(self.config.state_paths.root)
-        counts = Counter(c.op.value for c in self.changes)
+        counts = Counter(counted_op(c).value for c in self.changes)  # a unit removed is no d (C2205)
         if retried := self._tally[
             "legacy_retried"
         ]:  # B13 round 22 Z35: the record says what this run made of them

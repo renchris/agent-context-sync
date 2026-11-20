@@ -562,6 +562,36 @@ def test_write_add_then_noop_then_modify(env: Env) -> None:
     assert_pages_valid(env)
 
 
+def test_a_whole_page_replaced_by_units_names_its_first_new_page_and_counts_no_deletion_c2205(
+    env: Env,
+) -> None:
+    """B13 round 42 C2205 (ruling 155): a recording first seen in an OCR outage got a whole stub page; once
+    read, its index and windows replaced it and the stub became a tombstone headed ``[DELETED UPSTREAM]``,
+    saying its source was removed upstream, counted ``1d`` in the commit and the CHANGELOG, while the
+    recording was still there. The tombstone keeps its status, reason and op D, but reads ``[NO LONGER
+    PRODUCED]``, names its first new page in ``superseded_by`` and the body, passes the lint, re-renders to
+    the same bytes, and the counts take it as M, never d."""
+    item = env.observe("vol:7", "contoso-clip.xlsx")
+    env.publish(item, result(unit()))
+    stub = "mirror/src/contoso-clip.xlsx.md"
+    assert (env.repo / stub).is_file()
+    ch = env.publish(item, workbook("Q3"))
+    assert (ChangeOp.DELETED, stub) in [(c.op, c.path) for c in ch]
+    first = min(o.output_path for o in env.manifest.outputs_for("src", "vol:7") if o.output_path != stub)
+    assert first == "mirror/src/contoso-clip.xlsx.d/00-index.md", first
+    fm, body = parse_mirror_page(env.text(stub))
+    assert fm.status is PageStatus.DELETED and fm.reason == "unit-removed" and fm.superseded_by == first
+    assert body.split("\n")[2].startswith("# [NO LONGER PRODUCED] ") and first in body, body
+    assert "removed upstream" not in body and "DELETED UPSTREAM" not in body
+    assert publish._counts_text(ch).endswith(" 0d"), publish._counts_text(ch)
+    assert gitops.commit_subject(ch, ["src"]).endswith(" 0d src")
+    assert " 0d" in gitops.commit_body(ch, run_id=2, mode="poll").splitlines()[0]
+    assert_pages_valid(env)
+    before = env.text(stub)
+    out = next(o for o in env.manifest.outputs_for("src", "vol:7") if o.output_path == stub)
+    assert env.pub.rerender_tombstone(out) is None and env.text(stub) == before, "re-rendered the same"
+
+
 def test_rename_moves_the_page_with_op_r(env: Env) -> None:
     item = env.observe("vol:1", "old/a.docx")
     env.publish(item, result(unit()))
@@ -582,8 +612,11 @@ def test_removed_unit_is_tombstoned_and_can_come_back(env: Env) -> None:
     ch = env.publish(item, workbook("Q3"))
     assert (ChangeOp.DELETED, q4) in [(c.op, c.path) for c in ch]
     fm, body = parse_mirror_page(env.text(q4))
-    assert fm.status is PageStatus.DELETED and fm.reason == "unit-removed"
-    assert body.startswith(policy.UNTRUSTED_BANNER) and body.split("\n")[2] == "# [DELETED UPSTREAM] Q4"
+    assert fm.status is PageStatus.DELETED and fm.reason == "unit-removed" and fm.superseded_by is None
+    # B13 round 42 C2205: the workbook is still there, so the heading is neutral, never "deleted upstream"
+    assert body.startswith(policy.UNTRUSTED_BANNER) and body.split("\n")[2] == "# [NO LONGER PRODUCED] Q4"
+    assert "removed upstream" not in body and "no longer contains this part" in body
+    assert publish._counts_text(ch).endswith(" 0d") and gitops.commit_subject(ch, ["src"]).endswith(" 0d src")
     t = env.manifest.get_tombstone(q4)
     assert t is not None and t.reason == "unit-removed" and t.reap_after == "2027-03-28"
     rows = {o.unit_id: o.status for o in env.manifest.outputs_for("src", "vol:1")}

@@ -393,6 +393,17 @@ class MirrorChange:
     source_id: str
     stable_id: str
     prev_path: str | None = None
+    # a unit of a still-live item tombstoned (``unit-removed``): op D, but no removal from the source, so the
+    # A/M/R/D counts take it as M (:func:`counted_op`, B13 round 42 C2205)
+    unit_removed: bool = False
+
+
+def counted_op(change: MirrorChange) -> ChangeOp:
+    """The letter ``change`` counts under in a commit subject, its body, the CHANGELOG and the run record: its
+    op, but M for a unit of a still-live item the run tombstoned (``unit-removed``: a recording's outage stub
+    replaced by its index and windows, a sheet gone from a workbook), which removed nothing from the source
+    and so is no ``d`` (B13 round 42 C2205, ruling 155)."""
+    return ChangeOp.MODIFIED if change.op is ChangeOp.DELETED and change.unit_removed else change.op
 
 
 @dataclass(frozen=True, slots=True)

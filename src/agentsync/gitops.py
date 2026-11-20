@@ -29,7 +29,7 @@ from pathlib import Path
 
 from agentsync import fsutil
 from agentsync.errors import GitError, PublishError
-from agentsync.model import ChangeOp, MirrorChange
+from agentsync.model import ChangeOp, MirrorChange, counted_op
 from agentsync.ops import deadline
 from agentsync.paths import expand, is_cloud_path
 from agentsync.text import plural
@@ -365,7 +365,7 @@ def has_changes(repo: Path, pathspecs: Sequence[str] = COMMIT_PATHSPECS) -> bool
 
 def commit_subject(changes: Sequence[MirrorChange], source_ids: Sequence[str]) -> str:
     """Return ``"sync: <A>a <M>m <R>r <D>d <comma-joined sorted source ids>"``."""
-    counts = Counter(c.op for c in changes)
+    counts = Counter(counted_op(c) for c in changes)
     ids = ",".join(sorted({s for s in source_ids if s}))
     subject = (
         f"sync: {counts[ChangeOp.ADDED]}a {counts[ChangeOp.MODIFIED]}m "
@@ -384,7 +384,7 @@ def commit_body(
     """Return the structured commit body: per-source A/M/R/D counts, notes, then ``Agentsync-*`` trailers."""
     per_source: dict[str, Counter[ChangeOp]] = {}
     for c in changes:
-        per_source.setdefault(c.source_id, Counter())[c.op] += 1
+        per_source.setdefault(c.source_id, Counter())[counted_op(c)] += 1
     lines = [
         f"{sid}: {n[ChangeOp.ADDED]}a {n[ChangeOp.MODIFIED]}m {n[ChangeOp.RENAMED]}r {n[ChangeOp.DELETED]}d"
         for sid, n in sorted(per_source.items())

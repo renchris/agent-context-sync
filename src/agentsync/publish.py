@@ -63,6 +63,7 @@ from agentsync.model import (
     SourceKind,
     SourceState,
     UnitKind,
+    counted_op,
 )
 from agentsync.paths import expand, same_folder
 from agentsync.text import plural
@@ -553,7 +554,7 @@ def _age(seconds: int | None) -> str:
 
 
 def _counts_text(changes: Iterable[MirrorChange]) -> str:
-    n = Counter(c.op for c in changes)
+    n = Counter(counted_op(c) for c in changes)
     return f"{n[ChangeOp.ADDED]}a {n[ChangeOp.MODIFIED]}m {n[ChangeOp.RENAMED]}r {n[ChangeOp.DELETED]}d"
 
 
@@ -655,9 +656,31 @@ def _withheld_reason(suffix: str) -> str:
     return f"withheld by label rule: the label of a {kind} cannot be read"
 
 
-def _tombstone_body(row: TombstoneRow, title: str, *, archived: bool = False) -> str:
+def superseded_page(row: TombstoneRow, live_paths: Iterable[str]) -> str | None:
+    """The page a ``unit-removed`` tombstone names as ``superseded_by``: the first live page of its item, when
+    the removed unit was the item's whole page (a recording's outage stub, which its index and windows
+    replaced); None for any other tombstone, and for a removed part of a multi-unit item (a sheet gone from a
+    workbook), which nothing replaced (B13 round 42 C2205)."""
+    if row.reason != _UNIT_REMOVED or row.unit_id != UnitKind.WHOLE.value:
+        return None
+    return min((p for p in live_paths if p != row.output_path), default=None)
+
+
+def _tombstone_body(
+    row: TombstoneRow, title: str, *, archived: bool = False, superseded_by: str | None = None
+) -> str:
     path = shlex.quote(row.output_path)
-    if row.reason == "moved":
+    if row.reason == _UNIT_REMOVED:
+        # the source is still there: a neutral heading, never "deleted upstream" (B13 round 42 C2205)
+        heading = "NO LONGER PRODUCED"
+        if superseded_by:
+            what = (
+                "this page is no longer part of its source's mirror (its source still exists; its current "
+                f"pages start at {superseded_by})"
+            )
+        else:
+            what = "its source no longer contains this part (the source itself still exists)"
+    elif row.reason == "moved":
         heading, what = "MOVED OUT OF SCOPE", "its source moved out of this source's scope (it still exists)"
     elif row.reason.startswith("retired:"):
         heading, what = (
@@ -713,8 +736,12 @@ def render_tombstone(
     source_path: str,
     durable_id: str | None = None,
     archived: bool = False,
+    superseded_by: str | None = None,
 ) -> str:
     """Return the full tombstone page text for a tombstone row (deterministic from the row).
+
+    ``superseded_by`` (a ``unit-removed`` row's): the page that replaced it (:func:`superseded_page`),
+    in the frontmatter's ``superseded_by`` and the body.
 
     ``durable_id`` (extension) is the item's durable key (``Manifest.durable_id``) the page names instead of
     the row's current id, so tombstone and live pages of one item carry the same ``stable_id``.
@@ -731,8 +758,10 @@ def render_tombstone(
         last_rendered_sha256=row.last_rendered_sha256 or _EMPTY_SHA256,
         last_commit=row.last_commit,
         source_title=clean_title,
+        superseded_by=superseded_by,
     )
-    return render_mirror_page(_with_trust(fm), _tombstone_body(row, clean_title, archived=archived))
+    body = _tombstone_body(row, clean_title, archived=archived, superseded_by=superseded_by)
+    return render_mirror_page(_with_trust(fm), body)
 
 
 def render_archive_page(
@@ -1481,6 +1510,7 @@ class Publisher:
         today: str,
         last_commit: str | None,
         archive: bool = False,
+        live_paths: Sequence[str] = (),
     ) -> tuple[MirrorChange, OutputRow]:
         path = out.output_path
         last_rendered = out.rendered_sha256
@@ -1515,6 +1545,7 @@ class Publisher:
             source_path=source_path,
             durable_id=durable_id,
             archived=archived,
+            superseded_by=superseded_page(row, live_paths),
         )
         self._manifest.add_tombstone(row)
         self._write_text(path, text)
@@ -1527,7 +1558,10 @@ class Publisher:
             page_sha256=_sha256_text(text),
             built_run=run_id,
         )
-        return MirrorChange(ChangeOp.DELETED, path, out.source_id, out.stable_id), new_row
+        change = MirrorChange(
+            ChangeOp.DELETED, path, out.source_id, out.stable_id, unit_removed=reason == _UNIT_REMOVED
+        )
+        return change, new_row
 
     def _archive_output(
         self, out: OutputRow, *, durable_id: str, source_path: str, today: str, last_commit: str | None
@@ -1617,6 +1651,7 @@ class Publisher:
             source_path=fm.source_path,
             durable_id=fm.stable_id,
             archived=archived,
+            superseded_by=fm.superseded_by,
         )
         if text == current:
             return None
@@ -1702,6 +1737,7 @@ class Publisher:
                 run_id=run_id,
                 today=today,
                 last_commit=last_commit,
+                live_paths=[r.output_path for r in rows if r.status is not OutputStatus.TOMBSTONE],
             )
             changes.append(change)
             rows.append(row)
