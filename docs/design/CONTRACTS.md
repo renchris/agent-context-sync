@@ -43422,6 +43422,18 @@ section reads `Amended <date>, §16.266 C<n>: ...`. Test:
 private `debug: config` line bare and in a cell, a private `AGENTSYNC_CONFIG` with no debug line, the default config
 given or written, and an empty value; no made-up name in setup-report.md or bring-back.md).
 
+**The config step prints the docs repo and inbox it used** (C2317's installer half; ruling 156; `scripts/install.sh`).
+The setup prompt read `~/agent-context`'s config, docs and inbox whatever the installer used, while
+`AGENTSYNC_CONFIG` or a config's `docs_repo` moves them. `config_folder_lines`, after the config step's `folders:`
+count, prints `docs repo: <path>` and `inbox: <path>`, the second right after the first: `expand(docs_repo)` and its
+parent's `inbox`, the folder `config.ensure_inbox` keeps, as the installed agentsync loads `$CONFIG` (only
+`load_config` and `expand`, which every build has), each in `list_name`'s spelling and unresolved, the heads
+`agentsync status` prints. Nothing prints in a dry run or when that agentsync cannot load the config within 10 s. Both
+reports cut each as they cut a moved docs repo (`_own_folder_values`, `own_folder_values`). Lane D's v39 prompt reads
+them. Test: `test_install_oneshot.py::test_the_config_step_prints_the_docs_repo_and_inbox_it_used_c2317` (the real
+agentsync under an `AGENTSYNC_CONFIG` outside `~/agent-context` with a `docs_repo` beside it; the inbox init registered
+is the printed one, and neither report names the made-up folder).
+
 ### 16.267 Round 42: the inbox known as a folder, the options re-read dated by the run that converted a page, and a recording's page following its state (2026-11-20, wave B13 round 42 lane B)
 
 Round 42's lane B items (`docs/plans/bring-back-ocr.md`, "B13 round 42"; specs `round42/items/C<n>.md`, the

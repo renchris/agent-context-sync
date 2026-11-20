@@ -9265,6 +9265,54 @@ def test_the_shell_report_cuts_a_config_path_that_is_not_the_default_c2063(
     assert "- config: ~/agent-context/sources.toml (" in report_path(env).read_text(encoding="utf-8")
 
 
+@pytest.mark.parametrize("renderer", ["shell", "agentsync"])
+def test_the_config_step_prints_the_docs_repo_and_inbox_it_used_c2317(
+    real_env: dict[str, str], wheel: Path, renderer: str
+) -> None:
+    """B13 round 42 ruling 156, C2317: the setup prompt read ~/agent-context's config, docs and inbox whatever
+    the installer used, while AGENTSYNC_CONFIG or a config's docs_repo moves them. The config step now prints
+    `docs repo:` and `inbox:` beside `config:`, as the installed agentsync loads the config: the inbox line
+    names the folder init keeps and registers. Both reports cut each as a moved docs repo is cut."""
+    env = real_env
+    home = Path(env["HOME"])
+    cfg_dir = home / "Projects" / "Kestrel Wharf Plan" / "cfg"
+    cfg_dir.mkdir(parents=True)
+    docs = home / "Projects" / "Kestrel Wharf Plan" / "notes" / "docs"
+    cfg = cfg_dir / "sources.toml"
+    cfg.write_text(f'[agentsync]\ndocs_repo = "{docs}"\n', encoding="utf-8")
+    run = {**env, "AGENTSYNC_CONFIG": str(cfg)}
+    if (
+        renderer == "agentsync"
+    ):  # this checkout's own build (real_env's launcher is a copy), so its render is kept
+        stamp = home / ".local" / ".agentsync-install-source"
+        stamp.parent.mkdir(parents=True, exist_ok=True)
+        stamp.write_text(f"commit={_checkout_head()} source={REPO}\n", encoding="utf-8")
+    cp = install_sh(run, str(wheel), timeout=300)
+    lines = cp.stdout.splitlines()
+    inbox = docs.parent / "inbox"
+    assert f"config: {cfg}" in lines, cp.stdout + cp.stderr
+    assert f"docs repo: {docs}" in lines, cp.stdout + cp.stderr
+    assert lines[lines.index(f"docs repo: {docs}") + 1] == f"inbox: {inbox}", cp.stdout
+    kept = [s for s in load_config(cfg).sources if s.kind == "inbox"]
+    assert [s.path for s in kept] == [canonical_source_root(inbox)], kept
+    assert not (home / "agent-context" / "inbox").exists(), "nothing under ~/agent-context"
+    said = "(agentsync setup-report)" if renderer == "agentsync" else "(shell fallback:"
+    assert said in cp.stdout, cp.stdout
+    for path in (report_path(env), report_path(env).parent / "bring-back.md"):
+        text = path.read_text(encoding="utf-8")
+        assert "Kestrel" not in text and "Wharf" not in text, [
+            ln for ln in text.splitlines() if "Kestrel" in ln or "Wharf" in ln
+        ]
+    shown = [
+        ln
+        for ln in report_path(env).read_text(encoding="utf-8").splitlines()
+        if ln.startswith(("docs repo: ", "inbox: "))
+    ]
+    # the agentsync report's Status prints both; the shell report quotes install.log's step lines, not them
+    assert len(shown) >= (2 if renderer == "agentsync" else 0), shown
+    assert all(ln.split(": ", 1)[1].startswith("~/Projects/<") for ln in shown), shown
+
+
 def test_a_report_over_300_listed_folders_still_cuts_the_last_one_c1836(env: dict[str, str]) -> None:
     """B13 round 40 C1836: agent_words_name opened a process substitution for every listed folder inside
     redaction_pairs' command substitution, and /bin/bash 3.2 segfaults once one has opened about 255 of them.

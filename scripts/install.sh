@@ -11826,6 +11826,34 @@ synced_count() {
 	esac
 	printf '%s' "$n"
 }
+# The docs repo and the inbox folder of $CONFIG, as the agentsync step 2 installed loads it: `docs repo: <path>`
+# (expand(docs_repo)) and `inbox: <path>` (its parent's inbox, the folder config.ensure_inbox keeps), each in
+# list_name's spelling as the config step's folders are, so the setup prompt reads the folders this run used,
+# never ~/agent-context's (B13 round 42 ruling 156, C2317). Both reports cut each as they cut a moved docs repo.
+# Nothing in a dry run, or when that agentsync cannot load the config within 10 s. -I: nothing from the folder
+# this runs in is imported.
+config_folder_lines() {
+	local out="" repo inbox nl=$'\n'
+	if [ "$DRY_RUN" -eq 0 ] && [ -x "$TOOL_PY" ] && [ -f "$CONFIG" ]; then
+		# a newline in a path travels as RS, 0x1e, as list_name shows it (B13 round 35 C932)
+		out="$(with_timeout 10 "$TOOL_PY" -I -c '
+import os, sys
+from pathlib import Path
+from agentsync.config import load_config
+from agentsync.paths import expand
+
+repo = expand(load_config(Path(sys.argv[1])).docs_repo)
+for p in (repo, repo.parent / "inbox"):
+    sys.stdout.buffer.write(os.fsencode(str(p)).replace(b"\n", b"\x1e") + b"\n")
+' "$CONFIG" 2>/dev/null)" || out=""
+	fi
+	repo="${out%%"$nl"*}"
+	inbox="${out#*"$nl"}"
+	case "$inbox" in "" | *"$nl"* | "$out") return 0 ;; esac
+	[ -n "$repo" ] || return 0
+	say "docs repo: $(list_name "$repo")"
+	say "inbox: $(list_name "$inbox")"
+}
 # How many remotes of the docs repo [governance] refuses, as init and add-source read them (cli._refuse_remotes):
 # a number only when the agentsync step 2 installed loads the config and its [governance] table and reads the
 # repo, within 10 s; empty when it cannot say. -I: nothing from the folder this runs in is imported.
@@ -12538,6 +12566,7 @@ if [ -n "$KEPT" ] && [ -n "$NOW" ] && [ "$NOW" -ge "$KEPT" ]; then
 		say "folders: $ADDED added (none was synced before)"
 	fi
 fi
+config_folder_lines
 if [ "$CONFIG_STATE" = "created" ]; then
 	step_end "done" 0 "created$FOLDER_COUNTS"
 elif [ "${#FOLDERS[@]}" -gt 0 ]; then
