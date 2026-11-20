@@ -42742,6 +42742,12 @@ part, so `GoogleDrive-<address>` reads `GoogleDrive-<org-N>` before the email pa
 written so the pronoun `it` stays, as install.sh's flags h and H. Test:
 `test_a_googledrive_address_is_an_organisation_and_a_short_id_is_a_hold_value_c2071`.
 
+Amended 2026-11-20, §16.269 C2261: install.sh's flags h and H are its hold-value pairs, not its short ids. The shell
+matches a two-character source id or folder part as `short_pair` does: flag `w`, as written, for a two-letter word in
+capitals (`IT`), and flag `i`, a whole word in any case, for any other short id; `fallback_redaction` makes that
+report Private only where a two-letter word's placeholder shows, as `Redactor.word_named_shown` judges it here
+(§16.261).
+
 **A line break add-source's echo wrote raw is aliased escaped** (R41-B1, the lead's grown item; privacy).
 `config.toml_string` wrote U+0085, U+2028 and U+2029 raw, and both reports split a line there, so a configured name
 holding one printed both pieces in clear. `report_cuts.TOML_BREAKS` with `toml_break_spellings()` (`CUT_TOML_BREAKS`,
@@ -43700,6 +43706,16 @@ rule now asks for a closing section headed exactly `For later lanes and the rehe
 for one lane inside it, and says the rehearsal reads that section and, in a note without one, its Items and Corrections
 in full; reading only the notes that have one would skip an item listed elsewhere (round 41 lane D's C2077). The
 rehearsal brief's own line is the lead's. Test: `test_every_result_note_ends_with_a_section_for_later_lanes_and_the_rehearsal_c2215`.
+
+**The short-id rule names install.sh's own flags, and only a two-letter word's placeholder makes a report Private
+only** (C2261, C2262, C2312; docs only; ruling 149; amends §16.260 C2071). §16.260 said the agentsync report matches an
+initialism in capitals as written "as install.sh's flags h and H", while those are the shell's hold-value pairs and its
+short ids take `short_pair`'s flags `w` and `i`; its dated line names them. docs/deploy/setup-feedback.md's folder row
+said that where any two-character id's or part's placeholder shows the report is Private only, while both reports set
+that mark only for a two-letter word they list (`_TWO_LETTER_WORDS`, `two_letter_word`): `IT` and `it` make a report
+Private only, `HR` and `QX` are cut and leave it public, and only the shell fallback report had left such an id in
+clear. The row keeps its pinned phrase and says so; the single-id report cases are lane RA's. Test:
+`test_the_guides_rows_give_each_heads_rule_for_any_path_as_both_legends_do_c2051`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

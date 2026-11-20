@@ -13445,6 +13445,19 @@ def test_the_guides_rows_give_each_heads_rule_for_any_path_as_both_legends_do_c2
         "a source id or folder part of two characters, once left in clear, is cut as a whole word (a"
         " two-letter word in capitals, such as `IT`, only as written, so the pronoun `it` stays)"
     ) in folders
+    # B13 round 42 C2262 with C2312 (ruling 149): only a two-letter word's placeholder makes the report
+    # Private only, as setup_report's _TWO_LETTER_WORDS and install.sh's two_letter_word judge it
+    assert (
+        "stays), which only the shell fallback report left in clear (the agentsync report already cut it),"
+        " and where the placeholder of one that is a two-letter word both reports list (`IT` or `it`) shows,"
+        " the report is Private only (below), while any other (`HR`, `QX`) is cut and leaves the report"
+        " public (B13 round 42 C2262, C2312);"
+    ) in folders
+    assert "and where such a word's placeholder shows, the report is Private only" not in folders
+    assert {"it"} <= setup_report._TWO_LETTER_WORDS and not {"hr", "qx"} & setup_report._TWO_LETTER_WORDS
+    words = re.search(r"(?ms)^two_letter_word\(\) \{.*?^\}", (ROOT / "scripts" / "install.sh").read_text())
+    assert words is not None and re.search(r"\bit\b", words.group(0))
+    assert not re.search(r"\b(?:hr|qx)\b", words.group(0))
     loop = " ".join(guide.split())
     assert (
         "whenever status did not give its reading (cut by the report's time budget, not started or failed),"
