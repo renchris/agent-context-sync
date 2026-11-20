@@ -3217,8 +3217,8 @@ config_shown() { # PATH
 redaction_pairs() {
 	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x links walked lk
 	local cfg_cut tilde port k folders_seen=$'\n' ph b auth sep tail rw keys key m sp top folder_keys=$'\n' FUZZY
-	local tables=0 ids=" " hp beside own_state own_docs own_cache own_logs fl
-	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=() listed=() rooted=() placed=() cfgpaths=()
+	local tables=0 ids=" " hp beside own_state own_docs own_cache own_logs fl fuzzy_keys=$'\n' folded_vals=$'\n'
+	local -a known=() logged_late=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=() listed=() rooted=() placed=() cfgpaths=()
 	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
 	# (written with printf %q, which read without -r undoes; a $'..' form is unquoted by the loop after it).
 	# LC_ALL=C: under a UTF-8 locale BSD sed stops at the first byte that is not UTF-8 and every later line is
@@ -3228,10 +3228,10 @@ redaction_pairs() {
 	logged_source_local() {
 		local rel part
 		case "$1" in
-		\~) known+=("$HOME") ;;
-		\~/*) known+=("$HOME/${1#\~/}") rooted+=("$1") ;;
-		/*) known+=("$1") rooted+=("$1") ;;
-		*Library/CloudStorage/*) known+=("$cs/${1#*Library/CloudStorage/}") ;;
+		\~) logged_late+=("$HOME") ;;
+		\~/*) logged_late+=("$HOME/${1#\~/}") rooted+=("$1") ;;
+		/*) logged_late+=("$1") rooted+=("$1") ;;
+		*Library/CloudStorage/*) logged_late+=("$cs/${1#*Library/CloudStorage/}") ;;
 		*)
 			rel="${1#./}" # the word as logged stays the loose one: install.log shows "./Name"
 			part="${rel%%/*}"
@@ -3239,7 +3239,7 @@ redaction_pairs() {
 			# CloudStorage and its bare last word registered: it is loose, shown as <path>.
 			case "$part" in
 			"" | . | ..) loose+=("$1") ;;
-			*) if [ -e "$cs/$part" ]; then known+=("$cs/$rel"); else loose+=("$1"); fi ;;
+			*) if [ -e "$cs/$part" ]; then logged_late+=("$cs/$rel"); else loose+=("$1"); fi ;;
 			esac
 			;;
 		esac
@@ -3589,6 +3589,24 @@ redaction_pairs() {
 			add_pair "$e" "<link-$lk>"
 		done
 	fi
+	# VALUE PLACEHOLDER [fuzzy]: the value as setup_report.Redactor._known finds it again for a later id (B13
+	# round 42 ruling 149, C2233): its folded form, and its fuzzy key (id_key) when it was registered fuzzily
+	# with 3 or more characters, a two-letter word in capitals neither (it is matched as written, C2071)
+	# VALUE: its fuzzy key as setup_report._norm reads it, every CUT_SEP byte (a control byte too) dropped
+	fuzzy_key() {
+		id_key "$(V="$1" CUT_SEP="$CUT_SEP" LC_ALL=C awk 'BEGIN { v = ENVIRON["V"]; gsub(ENVIRON["CUT_SEP"], "", v); printf "%s", v }')"
+	}
+	hidden_by() {
+		local low
+		low="$(recase lower "$1")"
+		case "$1" in [[:upper:]][[:upper:]]) ! two_letter_word "$low" || return 0 ;; esac
+		case "$folded_vals" in *$'\n'"$low"$'\t'*) ;; *) folded_vals+="$low"$'\t'"$2"$'\n' ;; esac
+		[ "${3:-}" = fuzzy ] && [ "${#1}" -ge 3 ] || return 0
+		case "$1" in */*) return 0 ;; esac
+		low="$(fuzzy_key "$1")"
+		[ "${#low}" -ge 3 ] || return 0
+		case "$fuzzy_keys" in *$'\n'"$low"$'\t'*) ;; *) fuzzy_keys+="$low"$'\t'"$2"$'\n' ;; esac
+	}
 	# The configured folders first, then the listed ones, as the Python report registers them. One number per
 	# folder (B13 round 9 K4): a name found in two places (configured and listed), a parent counted again by a
 	# nested listed path, or another spelling of it (id_key, setup_report._norm's sharing) takes the number it
@@ -3623,6 +3641,7 @@ redaction_pairs() {
 				if generic_folder "$part"; then whole=w; fi # "Documents" is kept inside "MyDocuments", byte for byte
 				add_pair "$part" "<folder-$m>" "$whole"
 				short_pair "$part" "<folder-$m>"
+				hidden_by "$part" "<folder-$m>" fuzzy
 				# the number its pair has: a later part of the same bytes loses to the first (add_pair)
 				case "$folders_seen" in *$'\n'"$part"$'\t'*) ;; *) folders_seen+="$part"$'\t'"$m"$'\n' ;; esac
 			done
@@ -3654,7 +3673,7 @@ redaction_pairs() {
 		case "$1" in "$beside" | "$beside/"*) return 0 ;; esac
 		return 1
 	}
-	folder_value() { # VALUE: its <folder-N>, the number another spelling has (folder_keys), in any case
+	folder_value() { # VALUE [fuzzy]: its <folder-N>, the number another spelling has (folder_keys), in any case
 		k="$(id_key "$1")"
 		case "$folder_keys" in
 		*$'\n'"$k"$'\t'*)
@@ -3668,6 +3687,7 @@ redaction_pairs() {
 			;;
 		esac
 		add_pair "$1" "<folder-$m>" i
+		hidden_by "$1" "<folder-$m>" "${2:-}"
 		# and as a double-quoted word shows it, \ " $ and ` escaped (shown_arg, cycle._shown_arg), and as
 		# shlex.quote's single-quoted one does, each ' written '"'"' (a name holding !): a vanished source's
 		# re-add folder is printed so, which the Python report cuts by structure (B13 round 19 W34)
@@ -3699,8 +3719,8 @@ redaction_pairs() {
 				rel="$rest"
 				continue
 			fi
-			folder_value "$rel"
-			[ -z "$rest" ] || folder_value "$first"
+			folder_value "$rel" fuzzy
+			[ -z "$rest" ] || folder_value "$first" fuzzy
 			return 0
 		done
 	}
@@ -3790,24 +3810,23 @@ redaction_pairs() {
 			case " $GENERIC_SOURCE_IDS " in
 			*" $v "*) case "$f" in "$cs"/* | \~/Library/CloudStorage/*) ;; *) continue ;; esac ;;
 			esac
-			ph=""
-			case "$f" in
-			"$cs"/* | \~/Library/CloudStorage/*)
-				b="${f%/}"
-				b="${b##*/}"
-				case "$folders_seen" in
-				*$'\n'"$b"$'\t'*)
-					x="${folders_seen#*$'\n'"$b"$'\t'}"
-					# a 2-character id shares its folder's number only where that folder's pair reads it: a
-					# two-letter word in capitals is matched as written, so `it` beside `IT` is an id of its own
-					# (B13 round 41 C2071, as setup_report.Redactor.add's known() reads it)
-					[ "$(id_key "$v")" != "$(id_key "$b")" ] || { [ "${#v}" -eq 2 ] && [ "$v" != "$b" ] &&
-						case "$b" in [[:upper:]][[:upper:]]) two_letter_word "$(printf '%s' "$b" | LC_ALL=C tr '[:upper:]' '[:lower:]')" ;; *) false ;; esac; } ||
-						ph="<folder-${x%%$'\n'*}>"
-					;;
-				esac
-				;;
+			# an id under 2 characters takes no number and no pair, as setup_report.Redactor.add ignores it; any
+			# other is first looked up as Redactor._known looks it up, an organisation's or a fuzzily registered
+			# folder's key, else a folded folder value (a two-letter word in capitals only as written), and keeps
+			# that placeholder; only a miss takes the next <source-N>, and its pair is always registered (B13
+			# round 42 ruling 149, C2233: a hidden id used up a number, so later ids read one apart from Python)
+			[ "${#v}" -ge 2 ] || continue
+			ph="" k="$(fuzzy_key "$v")"
+			case "$orgs_seen" in
+			*$'\n'"~$k"$'\t'*) x="${orgs_seen#*$'\n'"~$k"$'\t'}" ph="<org-${x%%$'\n'*}>" ;;
 			esac
+			if [ -z "$ph" ] && [ "${#k}" -ge 3 ]; then
+				case "$fuzzy_keys" in *$'\n'"$k"$'\t'*) x="${fuzzy_keys#*$'\n'"$k"$'\t'}" ph="${x%%$'\n'*}" ;; esac
+			fi
+			if [ -z "$ph" ]; then
+				x="$(recase lower "$v")"
+				case "$folded_vals" in *$'\n'"$x"$'\t'*) x="${folded_vals#*$'\n'"$x"$'\t'}" ph="${x%%$'\n'*}" ;; esac
+			fi
 			# numbered in config order among the ids that take a number of their own, as the Python report
 			# numbers them: one that shares its folder's <folder-N> takes none (C2071)
 			[ -n "$ph" ] || { tables=$((tables + 1)) && ph="<source-$tables>"; }
@@ -3835,6 +3854,7 @@ redaction_pairs() {
 		case " $GENERIC_SOURCE_IDS " in *" $v "*) continue ;; esac
 		tables=$((tables + 1)) ids="$ids$v "
 		add_pair "$v" "<source-$tables>" w
+		short_pair "$v" "<source-$tables>" # a 2-character id, as the configured ones (B13 round 42 ruling 149, C2287)
 	done < <({
 		[ -z "$DOCTOR_LOG" ] || [ ! -f "$DOCTOR_LOG" ] || LC_ALL=C grep -E '^\[FAIL\] config\.vanished_sources ' "$DOCTOR_LOG"
 		[ ! -f "$INSTALL_OUT" ] || LC_ALL=C grep -E '(^configuration error: |config\.vanished_sources ).*mirrored but no longer in sources\.toml' "$INSTALL_OUT"
@@ -3851,6 +3871,7 @@ redaction_pairs() {
 		! report_word "$v" || continue
 		tables=$((tables + 1)) ids="$ids$v "
 		add_pair "$v" "<source-$tables>" w
+		short_pair "$v" "<source-$tables>" # as the vanished ids' loop (B13 round 42 ruling 149, C2287)
 	done < <(hold_scopes)
 	# and the folder each one is added back from: doctor's fix and the sync's refusal end with
 	# cycle.vanished_add_back_tail, "... install.sh --source-local "<folder>" [--source-local ...]" under
@@ -3899,6 +3920,12 @@ redaction_pairs() {
 			if (v != "") print v
 		}
 	}' | LC_ALL=C sort -u)
+	# The CloudStorage folders only install.log's --source-local words (and this run's) name, after every value the
+	# Python report numbers, which never numbers them: configured and listed folders and one outside CloudStorage
+	# then read one <folder-N> in both reports, and a product word such as Copilot stays unnumbered (B13 round 42
+	# ruling 149, C2202; makes worse True for numbering it in both, which turned `GitHub Copilot CLI` into
+	# `GitHub <folder-N> CLI`)
+	folder_parts "" ${logged_late[@]+"${logged_late[@]}"}
 	# A ~/ or absolute --source-local argument in install.log outside CloudStorage that is no folder placed
 	# above (configured, or a removed source's add-back folder): a failed run's, or a source whose [[source]]
 	# block is gone (B13 round 22 Z2, Z13, Z29, Z42, Z77: the shell printed it in clear beside the public

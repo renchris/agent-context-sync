@@ -2642,6 +2642,120 @@ def test_both_reports_cut_a_two_character_id_in_any_case_one_id_each_c2287_c2312
         assert shell == python and shell_private == python_private, (shell, python)
 
 
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize("entry", ["hold-scope", "vanished"])
+def test_both_reports_cut_a_two_character_hold_scope_or_vanished_id_in_any_case_c2287(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+    entry: str,
+) -> None:
+    """B13 round 42 ruling 149, C2287 with C2232 (privacy): the shell's vanished-source and hold-scope loops
+    registered an id through add_pair alone, whose floor is 3 characters, so a 2-character vanished id or hold
+    scope printed in clear in the shell report. Each loop now calls short_pair after add_pair with the same
+    <source-N>: a whole word in any case. A hold scope is read by both reports (one line each); a vanished id
+    quoted on install.out's configuration error is read by the shell from that line, the agentsync report
+    from the manifest, so its rows are the shell's alone."""
+    home = Path(env["HOME"])
+    if entry == "hold-scope":
+        state = home / "Library" / "Application Support" / "agentsync"
+        state.mkdir(parents=True, exist_ok=True)
+        (state / "heartbeat.json").write_text(json.dumps({"holds": ["qx"]}), encoding="utf-8")
+    else:
+        out = home / "agent-context" / "setup" / "install.out"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(
+            "configuration error: source 'qx' (3 files) is mirrored but no longer in sources.toml\n",
+            encoding="utf-8",
+        )
+    said = ["waiting on qx now", "waiting on QX now", "waiting on Qx now"]
+    shell, python, shell_private, python_private = _both_reports(env, ["Juniper Notes"], said, locale)
+    assert len(shell) == len(said), shell
+    assert not [ln for ln in shell if "qx" in ln.lower()], shell
+    assert len(set(shell)) == 1 and "<source-" in shell[0], shell
+    if entry == "hold-scope":
+        assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize(
+    ("folders", "ids"),
+    [
+        (["Alpha Plan", "Beta Plan", "Gamma Plan"], ["contoso", "quillon", "brindle"]),
+        (["Alder\x01Birch", "Beta Plan"], ["alderbirch", "quillon"]),
+        (["Alpha Plan", "Beta Plan", "Gamma Plan"], ["x", "quillon", "brindle"]),
+        (["Spruce Ledger", "Maple Ledger", "Gamma Plan"], ["maple-ledger", "quillon", "brindle"]),
+    ],
+    ids=["org", "escaped", "one-character", "another-folders-slug"],
+)
+def test_both_reports_number_an_id_another_value_hides_alike_c2233(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+    folders: list[str],
+    ids: list[str],
+) -> None:
+    """B13 round 42 ruling 149, C2233: the shell's id loop counted an id whose spelling another value already
+    holds (an organisation, a folder whose name holds a TOML escape, another configured folder's slug) and a
+    1-character id, so every later id read one <source-N> apart from the agentsync report's. The loop now
+    finds the placeholder that hides an id first, skips an id under 2 characters and numbers only on a miss:
+    one line each in both reports."""
+    said = [f"waiting on {sid} now" for sid in ids]
+    shell, python, shell_private, python_private = _both_reports(env, folders, said, locale, ids=ids)
+    assert len(python) == len(said), python
+    assert not [ln for ln in python for sid in ids if len(sid) > 1 and f" {sid} " in ln], python
+    assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+def test_both_reports_number_a_folder_install_log_alone_names_after_the_rest_c2202(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+) -> None:
+    """B13 round 42 ruling 149, C2202 (makes worse True for numbering a product word in both): the shell
+    numbered install.log's --source-local folders (a refused run's missing one, a $'..' one) before step 1's
+    listed rows and the folders outside CloudStorage, which the agentsync report numbers and install.log's
+    words never are, so a configured folder outside CloudStorage read another <folder-N> in each report. Those
+    names now come after every value the agentsync report numbers: one line each, and `GitHub Copilot CLI`
+    stays readable with a listed `Copilot` folder."""
+    home = Path(env["HOME"])
+    lib = _cloud(env) / "OneDrive-Contoso"
+    (home / "Kestrel Media").mkdir(parents=True)
+    start = "2026-10-10T00:00:00Z run=20261010T000000Z-4242"
+    gone = "~/Library/CloudStorage/OneDrive-Contoso/Kestrel\\ Gone"
+    log = install_log_path(env)
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text(
+        f"{start} start install.sh compat=5 commit=0123456789ab kind=checkout source=- args="
+        f"--source-local {gone}"
+        " --source-local $'~/Library/CloudStorage/OneDrive-Contoso/Kestrel\\tTab'\n"
+        f"{start} end rc=2 seconds=1\n",
+        encoding="utf-8",
+    )
+    body = (
+        default_config_text()
+        + local_source_table("alpha", lib / "Project Alpha")
+        + local_source_table("kestrel-media", home / "Kestrel Media")
+    )
+    said = [
+        "Project Alpha moved",
+        "~/Kestrel Media is fine",
+        "Project Beta is listed",
+        "GitHub Copilot CLI ran",
+    ]
+    shell, python, shell_private, python_private = _both_reports(
+        env,
+        ["Project Alpha"],
+        said,
+        locale,
+        listed=["Project Beta", "Copilot", "Q3\x08Plans"],
+        config=home / "agent-context" / "sources.toml",
+        config_body=body,
+    )
+    assert len(python) == len(said), python
+    assert not [ln for ln in python for w in ("Kestrel", "Alpha", "Beta") if w in ln], python
+    assert python[-1] == "GitHub Copilot CLI ran", python[-1]
+    assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
+
+
 _PROJECTS_OUTSIDE = "~/Projects/Zephyr Quarry"
 """A private folder outside ~/Library/CloudStorage/ that no config names (B13 round 41 ruling 142)."""
 
