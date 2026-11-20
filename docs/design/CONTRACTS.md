@@ -42799,14 +42799,17 @@ as `typed_note_cut`'s third and fourth arguments. A dated line in another sectio
 with `\ `, single- and double-quoted, the not-a-folder line, a refusal head, and the prose rows, both locales),
 `test_both_reports_read_a_listed_only_folder_outside_cloudstorage_alike_c2062`, and ruling 142's property test.
 
-**A listed name step 1 spelled with a backslash is registered by its bytes** (C2060; ruling 142; privacy;
-`scripts/install.sh`). `folder_parts` registered a listed part only as install.out's escaped row
-(`Alder00\001Birch00`), so every spelling `add_forms` derives (TOML, `safe_shown`, NFC and NFD) came from the escaped
-text and the name printed in clear in the shell report where the agentsync report, which lists CloudStorage itself,
-printed `<folder-N>`. A listed part holding a backslash is now decoded by `list_decoded` under `LC_ALL=C` awk (each
-`\ooo` its byte, `\n`, `\t` and `\r` theirs, any other backslash as written) and registered under the same
-`<folder-N>` with its own fuzzy flag, plus a copy with each newline as 0x1E, since `\n` stands for both. A real name
-holding a literal `\001` only adds one more pair under its number. Test: ruling 142's property test's listed-only arm.
+**A listed name step 1 spelled with a backslash is not yet registered by its bytes: unbuilt** (C2060; ruling 142;
+privacy; `scripts/install.sh`). `folder_parts` registers a listed part only as install.out's escaped row
+(`Alder00\001Birch00`), so every spelling `add_forms` derives (TOML, `safe_shown`, NFC and NFD) comes from the escaped
+text, and a folder step 1 listed but the config does not name, spelled with an escaped byte (0x1E, 0x7F, a tab, a
+backspace), prints in clear in the shell report (`saw ~/Library/CloudStorage/OneDrive-<org-1>/Alder31Birch31`) where
+the agentsync report, which lists CloudStorage itself, prints `<folder-N>`. The fix (decode a listed part holding a
+backslash under `LC_ALL=C` awk, each `\ooo` its byte, `\n`, `\t` and `\r` theirs, and register it under the same
+`<folder-N>` with its own fuzzy flag, plus a copy with each newline as 0x1E) was refused by Claude Code's auto-mode
+classifier when the lane ran it, and it waits on the operator's decision 1476293d00a3; if they allow it, it is a
+round 42 item. Test: `test_report_redaction.py::test_both_reports_cut_a_folder_step_1_listed_but_not_configured_ruling_142`,
+a strict xfail naming C2060 and that decision, so it fails the day the decode lands and the mark comes off with it.
 
 **Every debug head on a line is cut** (C2029; ruling 142; privacy; data integrity; `scripts/install.sh`; dated line
 at §16.256 C1832). `dbcwd` and `dbunder` cut the first occurrence of their head and returned, so a second

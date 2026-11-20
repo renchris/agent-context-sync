@@ -2292,6 +2292,11 @@ def test_both_reports_cut_a_config_path_but_the_default_c2063_c2083(
 @pytest.mark.parametrize(
     "names", [["Alder29\x1eBirch29", "Alder30\x7fBirch30"], ["Alder31\tBirch31", "Q3\x08Plans"]]
 )
+@pytest.mark.xfail(
+    _R142_SHELL,
+    strict=True,
+    reason="C2060 unbuilt: install.sh's decode of a listed part awaits operator decision 1476293d00a3",
+)
 def test_both_reports_cut_a_folder_step_1_listed_but_not_configured_ruling_142(
     env: dict[str, str],  # noqa: F811
     names: list[str],
