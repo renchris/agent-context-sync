@@ -5097,6 +5097,10 @@ passes them all to `agentsync init --source-local …` when the config does not 
 (whether or not the config exists), else the flagless `agentsync init --config …`, which on an existing config
 prints `config: <path> exists (inbox ensured)`. The `agentsync migrate` call is deleted (opening the manifest
 migrates it, KISS K12). The step's note stays `created` / `add-source` / `exists`.
+Amended 2026-11-20, §16.269 C2258 (by §16.266 C2207): over an existing config the step prints `config: <path>
+exists`, its `(inbox ensured)` claim dropped, since init's own line says what happened to the inbox (`added inbox
+source …`, `inbox: not added: …`, `inbox: <path> is source '<id>' (<kind>, <state>), not an inbox source`, or nothing
+when an inbox source is already on the folder), and the step's note logs `inbox=not-added` when it was not added.
 
 ```python
 def derive_source_id(path: Path, taken: Collection[str]) -> str:
@@ -9035,7 +9039,7 @@ change:
 |---|---|
 | 1 uv, 2 agentsync | as in any run: the tool is installed again from this checkout unless the last install was this same clean commit |
 | 3 launcher, helpers | launcher skipped (`not-requested`); the `helpers` step builds the OCR helper when developer tools exist, as in any run |
-| 4 config | `agentsync init`: it keeps every source and ensures the inbox. `sources.toml` is byte for byte what it was. `config: <path> exists (inbox ensured)`, logged `done`, note `exists` (**Amended 2026-11-13, §16.246 C1405:** it was logged `skipped`; `init` ran, ensuring the inbox) |
+| 4 config | `agentsync init`: it keeps every source and ensures the inbox. `sources.toml` is byte for byte what it was. `config: <path> exists (inbox ensured)`, logged `done`, note `exists` (**Amended 2026-11-13, §16.246 C1405:** it was logged `skipped`; `init` ran, ensuring the inbox) (**Amended 2026-11-20, §16.269 C2258 (by §16.266 C2207):** the line is `config: <path> exists`, init's own line saying what happened to the inbox; a source paused or retired on the folder stays so, and one of another kind there keeps no inbox) |
 | 5 status, 6 sync | both run: the config has a source other than the inbox (`HAVE_SOURCES`). The sync's lines say `sync:`, not `first sync:`, and so does the report's Summary line (**Amended (2026-10-11, §16.40)**) |
 | 9 report, `NEXT:` | the report is written, the run ends on the loop's `NEXT:` and exits 0 |
 
@@ -43730,6 +43734,16 @@ waiting on the operator's decision 1476293d00a3; C2263 is built only on "Allow i
 the caveat to C2060's strict xfail on `test_both_reports_cut_a_folder_step_1_listed_but_not_configured_ruling_142`:
 the commit that lands C2263 and drops the mark drops the caveat too. Test:
 `test_the_folder_row_names_c2060s_gap_only_while_its_strict_xfail_stands_c2259`.
+
+**Setup keeps an inbox, and both guides say what sits on its folder** (C2258; docs only; ruling 151, from lanes B's
+and RB's words). Both guides said the inbox always exists and install.sh said `(inbox ensured)`, while `ensure_inbox`
+leaves a paused or retired source on the kept folder as it is, keeps no inbox where a source of another kind sits
+there (lane B's C2309: `inbox: <path> is source '<id>' (<kind>, <state>), not an inbox source`), and `_ensure_inbox`
+prints `inbox: not added: …` and still exits 0 when the folder cannot be made. README.md's paragraph and
+docs/deploy/README.md's Manual inbox bullet now open "Setup keeps an inbox" and give each case; lane RB's C2207
+drops `(inbox ensured)` from install.sh and moves its string pins, and §16.13's KISS K14 paragraph and §16.29's
+no-folder table row, which quote it, get dated lines. Test:
+`test_both_guides_say_setup_keeps_an_inbox_with_each_case_it_meets_c2258`, held to `cli._ensure_inbox`'s own lines.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

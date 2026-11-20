@@ -3707,7 +3707,7 @@ def test_readme_prompt_carries_the_field_lines() -> None:
     # Field report 2026-10-08: the drop folder is the one inbox beside the docs repo, not every inbox-kind
     # source, and a sync does not create it (config.ensure_inbox runs for init and add-source only).
     other = 'ny other `kind = "inbox"` source %s is a folder you added'
-    assert "**The inbox always exists.** `install.sh` keeps a drop folder" in readme
+    assert "**Setup keeps an inbox.** `install.sh` keeps a drop folder" in readme  # B13 round 42 C2258
     assert "the `inbox` folder beside the docs repo (`~/agent-context/inbox` by default)" in readme
     assert other % "there" in readme
     assert "the inbox folders are" not in readme and "every sync keep" not in readme
@@ -7561,6 +7561,17 @@ _ROUND_41_D_PARAGRAPH_AMENDS = (
 blocks as :data:`_ROUND_40_D_PARAGRAPH_AMENDS` pins C1853's: the class table's dated block in §16.28 and
 §16.34's **Waiting.** bullet, after lane B's C1820 line there."""
 
+_ROUND_42_D_PARAGRAPH_AMENDS = (
+    ("16.13", "**SUPERSEDED (2026-10-04, KISS K14):** step 4 runs", "§16.269 C2258 (by §16.266 C2207)"),
+    (
+        "16.29",
+        "| 4 config | `agentsync init`: it keeps every source and ensures the inbox.",
+        "§16.269 C2258 (by §16.266 C2207)",
+    ),
+)
+"""Round 42 lane D's C2258 lines at the two places that quote install.sh's `(inbox ensured)`, which lane
+RB's C2207 drops: §16.13's KISS K14 paragraph and §16.29's no-folder table row, after C1405's amendment."""
+
 _ROUND_35_RB_PARAGRAPH_AMENDS = (
     ("16.41", "Residuals: a cycle longer than the wait still meets the rebuild", "§16.231 C926"),
 )
@@ -7889,6 +7900,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_37_D_PARAGRAPH_AMENDS,
         *_ROUND_40_D_PARAGRAPH_AMENDS,
         *_ROUND_41_D_PARAGRAPH_AMENDS,
+        *_ROUND_42_D_PARAGRAPH_AMENDS,
         *_ROUND_34_B_PARAGRAPH_AMENDS,
         *_ROUND_35_B_PARAGRAPH_AMENDS,
         *_ROUND_36_B_PARAGRAPH_AMENDS,
@@ -13464,6 +13476,36 @@ def test_the_guides_rows_give_each_heads_rule_for_any_path_as_both_legends_do_c2
         " it opens `(the loop's own read when this report was written; ...` in place of `(status when this"
         " report was written; ...`"
     ) in loop
+
+
+def test_both_guides_say_setup_keeps_an_inbox_with_each_case_it_meets_c2258() -> None:
+    """B13 round 42 C2258 (ruling 151): both guides said "The inbox always exists" and install.sh claimed
+    `(inbox ensured)`, while setup leaves a paused or retired inbox source as it is, keeps no inbox where a
+    source of another kind sits on the folder, and prints `inbox: not added: ...` (exit 0) when the folder
+    cannot be made. Both guides say "Setup keeps an inbox" with each case, quoting cli._ensure_inbox's own
+    lines (lane B's C2309 and C2207 words), and no guide says the inbox always exists."""
+    readme = _page("README.md")
+    deploy = _page("docs/deploy/README.md")
+    assert "**Setup keeps an inbox.** `install.sh` keeps a drop folder" in readme
+    assert "- **Manual inbox.** Setup keeps an inbox: `install.sh` and `agentsync add-source` keep" in deploy
+    cases = (
+        "If a source on that folder is already paused or retired, setup leaves it that way, and files dropped"
+        " there do not sync until its state is set back to live. If a source of another kind is already on"
+        " that folder, setup keeps no inbox there and says so (`inbox: <path> is source '<id>' (<kind>,"
+        " <state>), not an inbox source`): the folder syncs as that source while it is live. If the folder"
+        " cannot be made (a file already has the name, for example), `agentsync init` and `agentsync"
+        " add-source` print `inbox: not added: …` and still exit 0."
+    )
+    assert cases in readme and cases in deploy
+    for page in ("README.md", "docs/deploy/README.md", "docs/deploy/setup-feedback.md"):
+        assert "inbox always exists" not in _page(page), page
+    from agentsync import cli  # noqa: PLC0415
+
+    ensure = inspect.getsource(cli._ensure_inbox)
+    assert "is source " in ensure and "not an inbox source" in ensure, "C2309's line, as the guides quote it"
+    assert 'f"inbox: not added: ' in ensure
+    install = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    assert 'say "config: $CONFIG exists"' in install and 'exists (inbox ensured)"' not in install
 
 
 def test_the_folder_row_names_c2060s_gap_only_while_its_strict_xfail_stands_c2259() -> None:

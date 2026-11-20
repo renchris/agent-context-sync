@@ -124,9 +124,14 @@ names a host other than github.com, step 1 of the setup prompt lists where git m
   `~/Library/CloudStorage/OneDrive-<Org>/`, for example a synced SharePoint library or a "shortcut to My files". It
   sees what the sync client syncs. Online-only files are downloaded within `max_materialise_bytes` per cycle, and
   the rest stay `pending` and are never read as deleted.
-- **Manual inbox.** The inbox always exists: `install.sh` and `agentsync add-source` keep a `kind = "inbox"` source
+- **Manual inbox.** Setup keeps an inbox: `install.sh` and `agentsync add-source` keep a `kind = "inbox"` source
   on the `inbox` folder beside the docs repo (`~/agent-context/inbox` by default) and create the folder. That folder
-  is the drop folder; any other `kind = "inbox"` source in `sources.toml` is a folder you added. Drag in exports,
+  is the drop folder; any other `kind = "inbox"` source in `sources.toml` is a folder you added. If a source on that
+  folder is already paused or retired, setup leaves it that way, and files dropped there do not sync until its state
+  is set back to live. If a source of another kind is already on that folder, setup keeps no inbox there and says so
+  (`inbox: <path> is source '<id>' (<kind>, <state>), not an inbox source`): the folder syncs as that source while it
+  is live. If the folder cannot be made (a file already has the name, for example), `agentsync init` and
+  `agentsync add-source` print `inbox: not added: …` and still exit 0. Drag in exports,
   attachments, PDFs or emails (drag a message out of Outlook to save it as `.eml`; save a meeting transcript as
   `.docx` or `.vtt`), and they are converted once they stop changing (`quiescence_s`). Teams messages go in as
   `.teams.json` files in the `agentsync.teams-month/1` shape (`TEAMS_MONTH_SCHEMA` in `src/agentsync/model.py`),
