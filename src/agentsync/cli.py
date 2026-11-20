@@ -1643,18 +1643,36 @@ def _cmd_init(args: argparse.Namespace) -> int:
 
 def _ensure_inbox(config: Config) -> Config:
     """:func:`agentsync.config.ensure_inbox` for init and add-source (KISS K05): prints the inbox it added.
-    An inbox that cannot be added is a warning, never a failure of the command that asked for more."""
+    An inbox that cannot be added is a warning, never a failure of the command that asked for more, worded
+    by its cause (B13 round 42 C2207): a file or a dangling link on the folder's name is the one case moving
+    something aside fixes; any other OSError (a permission refused, a parent that is a file) gives its own
+    words and the path, with no advice that would be wrong for it. A source of another kind already on the
+    folder is kept as it is, and said so, by id, kind and state, since it is not an inbox drop folder
+    (C2309)."""
+    typed = expand(config.docs_repo).parent / "inbox"
     try:
         config, added = ensure_inbox(config.config_path)
-    except (ConfigError, OSError) as exc:
+    except ConfigError as exc:
         _err(f"inbox: not added: {exc}")
         return config
+    except OSError as exc:
+        if isinstance(exc, FileExistsError) or (os.path.lexists(typed) and not typed.is_dir()):
+            _err(f"inbox: not added: {typed} is a file, not a folder; move it aside and run step 2 again")
+        else:
+            _err(f"inbox: not added: {exc.filename or typed}: {exc.strerror or exc}")
+        return config
+    if added is None:
+        kept = canonical_source_root(typed)
+        on = next((s for s in config.sources if s.path is not None and same_folder(s.path, kept)), None)
+        if on is not None and on.kind is not SourceKind.INBOX:
+            _err(
+                f"inbox: {typed} is source {on.id!r} ({on.kind.value}, {on.state.value}), not an inbox source"
+            )
     if added is not None and added.path is not None:
         # The path is stored resolved (canonical_source_root: how a OneDrive link reaches the CloudStorage
         # checks), so a home reached through a link stores /private/tmp/... beside a docs repo and config
         # printed as /tmp/...: the line leads with the form the other lines use and names what is stored
         # (B13 round 4 Q36).
-        typed = expand(config.docs_repo).parent / "inbox"
         shown = f"{added.path}" if typed == added.path else f"{typed}, stored as {added.path}"
         _out(f"added inbox source {added.id!r} ({shown}): drop files you save by hand here")
     return config
@@ -1688,11 +1706,14 @@ def _cmd_add_source(args: argparse.Namespace) -> int:
         return _refused(
             f"add-source {raw}: {path} and the docs repo {docs} must not contain each other", EXIT_USAGE
         )
-    # PATH is the inbox folder of a config with no inbox (one from before K05): the inbox first, so that
-    # folder becomes kind "inbox", never a local source install.sh would count as a folder to sync. The
-    # folder by identity, so `Inbox` is that folder on a case-insensitive Mac (B13 round 42 C2318).
-    if same_folder(canonical_source_root(docs.parent / "inbox"), path) and not any(
-        s.kind is SourceKind.INBOX for s in config.sources
+    # PATH is the inbox folder and no source is on it yet (a config from before K05, or one whose inbox
+    # sources are all elsewhere): the inbox first, so that folder becomes kind "inbox", never a local source
+    # install.sh would count as a folder to sync. Asked of the folder, never of whether an inbox source exists
+    # somewhere, as ensure_inbox asks it (B13 round 42 C2309), and by identity, so `Inbox` is that folder on a
+    # case-insensitive Mac (C2318).
+    kept_inbox = canonical_source_root(docs.parent / "inbox")
+    if same_folder(kept_inbox, path) and not any(
+        s.path is not None and same_folder(s.path, path) for s in config.sources
     ):
         if fresh:
             _write_config(cfg_path, template)
@@ -2151,7 +2172,13 @@ def _status_lines(config: Config, *, checks_beside: bool = True) -> list[str]:
     """What ``agentsync status`` prints (read-only); ``setup-report`` embeds the same lines. ``checks_beside``
     False (the setup report's Status, whose Doctor prints only the lines that are not ok): a line that points
     at an [ok] check line beside it gives that line's words itself (B13 round 28 I18)."""
-    out: list[str] = [f"config: {config.config_path}", f"docs repo: {config.docs_repo}"]
+    # The inbox folder ensure_inbox keeps, resolved as the other two lines are, so a reader takes all three
+    # from what this config uses, never from ~/agent-context assumed (B13 round 42 C2317).
+    out: list[str] = [
+        f"config: {config.config_path}",
+        f"docs repo: {config.docs_repo}",
+        f"inbox: {expand(config.docs_repo).parent / 'inbox'}",
+    ]
     lock_path = config.state_paths.lock
     odd = doctor.own_kind(lock_path)  # never "free" over a folder, fifo, socket or link (E38)
     held = odd is None and lock_path.exists() and SingleWriterLock.is_held(lock_path)

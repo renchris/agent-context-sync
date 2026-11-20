@@ -43316,6 +43316,23 @@ volume), `test_ensure_inbox_keeps_two_folders_that_differ_only_in_case_two_where
 `test_root_guide_names_the_kept_folder_for_an_inbox_source_on_it_in_another_case`,
 `test_add_source_on_the_inbox_folder_typed_in_another_case_keeps_it_the_inbox`.
 
+**Every reader says what sits on the inbox folder** (C2309, with C2207's and C2317's seams; ruling 151).
+add-source's inbox-first branch fired only when no `kind = "inbox"` source existed anywhere, so with a hand-added
+inbox source elsewhere `add-source ~/agent-context/inbox` made the kept folder a local source, against
+ensure_inbox's "other inbox sources do not count"; it now asks whether any source is already on the kept folder
+(`paths.same_folder`). A source of another kind already there (a hand-written or older config) is kept as it is,
+and `cli._ensure_inbox` says so on stderr: `inbox: <path> is source '<id>' (<kind>, <state>), not an inbox
+source`. A failure is worded by its cause, still a warning with exit 0: a file or a dangling link on the name
+`inbox: not added: <path> is a file, not a folder; move it aside and run step 2 again`, any other OSError
+`inbox: not added: <path>: <strerror>` with no move advice (wrong for a permission refused), a ConfigError its own
+text. status prints `inbox: <path>`, the folder ensure_inbox keeps beside the docs repo, right after its `config:`
+and `docs repo:` lines, so a reader takes all three from the config the sync uses, never ~/agent-context assumed.
+The prompt's words (v39) and the installer's config line are lanes D's and RB's. Tests:
+`test_add_source_on_the_kept_folder_beside_an_inbox_elsewhere_keeps_it_the_inbox`,
+`test_ensure_inbox_says_a_source_of_another_kind_sits_on_the_inbox_folder`,
+`test_ensure_inbox_words_a_failure_by_its_cause`,
+`test_status_names_the_inbox_folder_this_config_keeps_beside_the_config_and_docs_repo`.
+
 ### 16.268 Round 42: the converters: a record ends where its writer ends it, a capped page shows all the cap leaves room for, and picture pieces keyed on their own revision (2026-11-20, wave B13 round 42 lane E)
 
 Reserved for round 42 lane E of B13.

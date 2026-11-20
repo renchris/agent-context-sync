@@ -54,6 +54,7 @@ from agentsync.config import (
     canonical_source_root,
     inbox_source_table,
     load_config,
+    local_source_table,
     set_source_exclude,
     toml_string,
 )
@@ -3809,6 +3810,29 @@ def test_offboard_is_a_dry_run_unless_confirmed(
     rc = cli.main(["offboard", "--confirm", str(initialised.docs_repo), "--config", cfg])
     assert rc == cli.EXIT_OK
     assert not initialised.state_paths.root.exists() and initialised.docs_repo.is_dir()  # docs kept
+
+
+def test_status_names_the_inbox_folder_this_config_keeps_beside_the_config_and_docs_repo(
+    initialised: Config, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 42 C2317: the setup prompt read ~/agent-context's config, inbox and docs whatever the
+    installer used. Status prints the three paths this config uses, so AGENTSYNC_CONFIG and a docs_repo set
+    elsewhere are named as the sync uses them, the inbox being the folder ensure_inbox keeps beside the docs
+    repo."""
+    alt = tmp_path / "alt"
+    alt.mkdir()
+    cfg = alt / "sources.toml"
+    cfg.write_text(f"[agentsync]\ndocs_repo = {toml_string(str(alt / 'docs'))}\n", encoding="utf-8")
+    monkeypatch.setenv(paths.CONFIG_ENV, str(cfg))
+    assert cli.main(["init"]) == cli.EXIT_OK
+    config = load_config(cfg)
+    added = [s for s in config.sources if s.kind is SourceKind.INBOX]
+    assert len(added) == 1 and added[0].path == canonical_source_root(alt / "inbox")
+    capsys.readouterr()
+    cli.main(["status"])
+    lines = capsys.readouterr().out.splitlines()
+    at = lines.index(f"config: {cfg}")
+    assert lines[at : at + 3] == [f"config: {cfg}", f"docs repo: {alt / 'docs'}", f"inbox: {alt / 'inbox'}"]
 
 
 def test_status_shows_the_policy_and_a_broken_policy_fails(
@@ -10583,6 +10607,85 @@ def test_add_source_warns_when_the_inbox_cannot_be_added(
     cap = capsys.readouterr()
     assert "inbox: not added: " in cap.err and "added source 'notes'" in cap.out
     assert [s.id for s in load_config(cfg).sources] == ["source", "notes"]
+
+
+def test_add_source_on_the_kept_folder_beside_an_inbox_elsewhere_keeps_it_the_inbox(
+    initialised: Config, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 42 C2309: the inbox-first branch asked whether an inbox source existed anywhere, so with a
+    hand-added inbox source elsewhere add-source made ~/agent-context/inbox a local source, against
+    ensure_inbox's "other inbox sources do not count". It asks whether any source is on the kept folder."""
+    box = initialised.source("inbox")
+    assert box.path is not None
+    cfg = initialised.config_path
+    bridge = tmp_path / "contoso-bridge"
+    bridge.mkdir()
+    text = cfg.read_text(encoding="utf-8").removesuffix(inbox_source_table("inbox", box.path))
+    cfg.write_text(text + inbox_source_table("contoso-bridge", bridge), encoding="utf-8")
+    assert cli.main(["add-source", str(box.path), "--config", str(cfg)]) == cli.EXIT_OK
+    cap = capsys.readouterr()
+    assert "added inbox source 'inbox'" in cap.out and "not an inbox source" not in cap.err, cap
+    on_box = [s.kind for s in load_config(cfg).sources if s.path == box.path]
+    assert on_box == [SourceKind.INBOX]
+
+
+def test_ensure_inbox_says_a_source_of_another_kind_sits_on_the_inbox_folder(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C2309: a hand-written or older config whose ``kind = "local"`` source is on the inbox folder kept it
+    silently: no inbox source and no warning. The source stays as it is (ensure_inbox's any-kind rule), and
+    one line names it by id, kind and state, so the prompt can tell the person it is not their inbox."""
+    box = initialised.source("inbox")
+    assert box.path is not None
+    cfg = initialised.config_path
+    text = cfg.read_text(encoding="utf-8").removesuffix(inbox_source_table("inbox", box.path))
+    cfg.write_text(text + local_source_table("dropbox", box.path) + 'state = "paused"\n', encoding="utf-8")
+    config = cli._ensure_inbox(load_config(cfg))
+    typed = paths.expand(config.docs_repo).parent / "inbox"
+    assert capsys.readouterr().err == (
+        f"inbox: {typed} is source 'dropbox' (local, paused), not an inbox source\n"
+    )
+    assert [(s.id, s.kind) for s in config.sources if s.path == box.path] == [("dropbox", SourceKind.LOCAL)]
+    cfg.write_text(text + inbox_source_table("inbox", box.path), encoding="utf-8")
+    cli._ensure_inbox(initialised)  # the kept inbox source itself: nothing said
+    assert capsys.readouterr().err == ""
+
+
+def test_ensure_inbox_words_a_failure_by_its_cause(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 42 C2207: the warning printed the raw exception (``[Errno 17] File exists: ...``), which
+    named no fix. A file or a dangling link on the name says to move it aside; any other OSError gives its own
+    words and the path, never that advice, which would be wrong for it; every case stays a warning (exit
+    0)."""
+    box = initialised.source("inbox")
+    assert box.path is not None
+    cfg = initialised.config_path
+    cfg.write_text(cfg.read_text(encoding="utf-8").removesuffix(inbox_source_table("inbox", box.path)))
+    config = load_config(cfg)
+    typed = paths.expand(config.docs_repo).parent / "inbox"
+    advice = f"inbox: not added: {typed} is a file, not a folder; move it aside and run step 2 again\n"
+    box.path.rmdir()
+    box.path.write_text("a file, not a folder", encoding="utf-8")
+    assert cli._ensure_inbox(config) is config
+    assert capsys.readouterr().err == advice
+    box.path.unlink()
+    box.path.symlink_to(box.path.parent / "gone")  # a dangling link
+    assert cli._ensure_inbox(config) is config
+    assert capsys.readouterr().err == advice
+    box.path.unlink()
+
+    def refused(_path: Path) -> object:
+        raise PermissionError(13, "Permission denied", str(typed))
+
+    monkeypatch.setattr(cli, "ensure_inbox", refused)
+    assert cli._ensure_inbox(config) is config
+    err = capsys.readouterr().err
+    assert err == f"inbox: not added: {typed}: Permission denied\n" and "move it aside" not in err
+    folder = typed.parent / "Notes"
+    folder.mkdir()
+    assert cli.main(["add-source", str(folder), "--config", str(cfg)]) == cli.EXIT_OK
+    assert "inbox: not added: " in capsys.readouterr().err
 
 
 def test_add_source_derives_a_unique_id(
