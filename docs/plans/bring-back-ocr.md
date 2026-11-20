@@ -2988,6 +2988,77 @@ holds 23: round 42's kit (C2002, C2003, C2005, C2008 to C2012, C2014 to C2020, C
 corrected in this commit (C2067, C2068, C2075's record part), C2066 (every lead trunk read goes through
 `round41/tools/trunk.sh` or `lane-status.sh`, never a fetch), and C2078 (Gemini).
 
+### B13 round 41 landed (2026-11-20)
+
+All five lanes landed, and the prompt is now v38 (`4c1fd00d`, lane D's one commit for C2092, ruling 145). Notes
+`lanes/r41-<lane>.md`, lead notes `round29/lead-notes.md`. Of the 81 confirmed items, 80 are built: the lead's 23 and
+the rest in the lanes' 30 commits (every landed tip's CI green, read back by the lead), plus two grown items, R41-B1 and
+R41-D1. Ruling 142's halves landed in one run, so no trunk commit carries one half, but that run waited on the
+operator's answer to a refused command: the auto-mode classifier refused lane RB's C2060 edit and its probe, which
+ruling 142's listed-but-not-configured test arm needs, and the lead neither re-ran nor reworded it. No answer came in
+two and a half days, so lane RB took the decision's refuse option: C2060 is unbuilt, the listed-but-not-configured arm
+is a strict xfail naming it (`399b9cb6`), §16.261 says so, and the operator's decision stays open; allowed, it becomes a
+round 42 item. The joint run `04467ed2..af21e633` (6) carries lane RA's rows and Python reader, lane RB's shell reader,
+C2036's guards and, on top, lane B's R41-B1 (`config.toml_string` escapes U+2028, U+2029 and U+0085, at which both
+reports split lines); lane D's C2051 guide rows (`74ceffac`) followed it. The other 23 lane commits, `4c1fd00d` to
+`5e8cf133`, landed while it waited. Measured: on the joint stack before the answer, 2,302 tests passed and only C2060's
+four cases (both name sets, both locales) were red.
+
+Choices that differ from a spec's words, each with its measured reason in the lane's note: C2032's example contradicts
+its own rule, so it is built to the rule (lane RA); C2036's dbcwd guard is unreachable while slone's and dbunder's each
+hang without theirs, and C2037's test also asserts no issue form over a failed body, since the spec's asserts let an
+`exit 1` mutant live (lane RB); C2039 re-plans only in a cycle that runs no recording pass, since ruling 144's wording
+turned a stub-path test red, and C2021's drift target is gated on a `convert_options` manifest record, since options
+also move with no edit and 5 tests went red without it (lane B); a recording window reserves a footer line for each
+keyframe sidecar (lane E); C2065's stall bound reads a part's journal size, not its mtime, which `stat` spells
+differently on macOS and Linux (lane D). Trunk run `44079254144` on the lead's commit went red at attempt 1 on
+`test_gate_slot_plugin.py`'s queued-interrupt test (a 300-second timeout, outside every diff); lanes D and RA landed
+over it with `--allow-red-trunk`, and attempt 2 passed unchanged. Round 42's harvest asks whether that test can tell a
+loaded runner from a defect.
+
+Found and not built, each a round 42 harvest item: a recording's 00-index is never cut (12,361 bytes at 8,192 for a
+6-hour reading; a cut broke the grammar its readers parse); a window with 78 or more keyframes cannot fit 8,192 bytes
+without dropping keyframe images; `_cut_row` halves an even share of the room, so a long cell beside short ones is cut
+further than it had to be; on the streamed path a 4-sheet book with thirty 600-character headers still shows no row,
+as C1676 left it (all lane E, recorded in §16.263); and a tenant with no `/` after it on its line stays a named
+residual in both reports (ruling 142, lane RA).
+
+| Lane | Landed (lane commits) |
+|---|---|
+| B | `e3de8830..c72c736b` (5, 7 items); R41-B1 in the joint run |
+| D | `4c1fd00d`, `d7ef8a9d`, `733513b6`, `b29d2005`, `1893223b` (R41-D1), `74ceffac` (C2051) |
+| E | `0fa5dfb6..5e8cf133` (5, 15 items) |
+| RA | `6fbab481..dc969147` (6: C2006, C2013, C2035, C2052, C2034, C2056); ruling 142's Python half in the joint run |
+| RB | `5a7283c0` (C2037), `2ead03aa` (C2065's harness helper); ruling 142's shell half and C2036 in the joint run |
+| Joint (RA, RB, B) | `04467ed2..af21e633` (6) |
+
+Of the lead's 23, the plan records (C2067, C2068, C2075's record part) landed in `4041089d` with rulings 142 to 145;
+the kit items are in round 42's tools (`round42/tools/edit.py`, `edit-xvendor.py`, `harvest-lead.txt`,
+`remove-worktrees.sh`, `trunk.sh`, `lane-status.sh` and the kit, 725 checks in its own `kit-test.sh`): the operator
+checkout's start and end reads go through `kit/srcread.sh` with fixed git reads, run.sh's fresh-restore check unchanged
+(C2016 with C2010 and C2020), the kit is copied before the first checkout read (C2002), seedstore.sh writes the real
+home as `<real home>` (C2008), usertmp.sh takes one guarded lstat (C2009 with C2017 and C2019), helper stand-ins carry
+content pins (C2011), crun.sh picks Doctor's helper call and keys C1223 on the `Cut off` line (C2014, C2015), the
+restore kit reads psroot.sh's exit code (C2018), fixcheck.sh runs per home after step 1 (C2024, C2025), and the brief
+carries `/bin/bash -n`, `ls -ln` and the count idiom (C2003, C2005, C2012), with C2072 the umbrella. C2066: every lead
+trunk read goes through `trunk.sh` or `lane-status.sh`, never a fetch. C2078: Gemini neither ran nor was refused; its
+allow rule is still the operator's (backlog `8ed9dae0fbc0`).
+
+Learnings: from the first fire (2026-11-17, about 10:32Z) to the last land took about 73 hours, the joint run's
+wait included. The capacity gate (eight sessions mid-turn) held lanes E and D's fires and refused lane B's reviewer, so
+B proved each item red without its fix. Lane D's custody closed on its first land while five items remained, so the
+lead fired a successor. Lane RB recycled at full context and the refused prompt went with it, so the operator's C2060
+answer had to be words typed in RB's pane (backlog `52317ac19d03`); once RB retired, it is answered in the decision
+queue. The `next` account reached its weekly limit on 2026-11-18, and the lead and lanes RA, RB and D moved to `next4`
+with their sessions (`cc-lr move`). Trunk sat idle about 54 hours between lane E's land and the joint run.
+
+Round 42: the round 41 workflow (`round41/round41-workflow.js` through `round42/tools/edit.py` and `edit-xvendor.py`,
+codex-only: the allow rule for `~/.claude/scripts/agy-review.sh` is still the operator's) with the harvest list in
+`round42/tools/harvest-lead.txt`, on this section's landed tip, BASE `4041089d`, ids C2201 and up, prompt v38 (v37's
+block from `ded96e18` as the old copy), outputs `round42/`. While its slots run, the lead reads trunk with
+`round42/tools/trunk.sh`, never a fetch in the operator checkout (C1470, C1661, C2066). The stop rule names Codex and
+Gemini: a clean round without Gemini goes to the operator before the loop closes.
+
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be
