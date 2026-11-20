@@ -9,6 +9,7 @@ screen is what OCR reads back.  Names are made up (Contoso).
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import hashlib
 import itertools
 import json
@@ -798,6 +799,52 @@ def test_a_second_conversion_with_its_pieces_stored_runs_the_keyframe_stage_agai
     again = [c["args"][0] for c in media_calls(helper)][len(first) :]
     assert "scan" not in again and {"diff", "pills", "frames"} <= set(again), again
     assert again.count("frames") < first.count("frames"), (first, again)
+
+
+def _scans(helper: Path, since: int) -> tuple[int, bool]:
+    calls = [c["args"][0] for c in media_calls(helper)]
+    return len(calls), "scan" in calls[since:]
+
+
+@pytest.mark.parametrize("change", ["emitter", "cap", "legacy-1.1.0", "legacy-1.1.1", "piece-revision"])
+def test_a_picture_piece_outlives_a_page_change_and_a_legacy_key_is_read_once_c2296(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: str
+) -> None:
+    """B13 round 42 C2296 with C2251: a picture piece's key held the emitter version and max_page_bytes, which
+    no picture stage reads, so round 41's render-only emitter move and any cap edit started every part-read
+    recording again from its first frame. The key holds `_PIECE_REVISION` and the picture options less the
+    cap: a new emitter or cap reads no frame again (no `scan`), a piece saved under a 1.1.0 or 1.1.1 key is
+    read and saved again under the new one, and raising `_PIECE_REVISION` still reads it all."""
+    store = PieceStore(tmp_path / "recordings")
+    src = staged(tmp_path, teams(share(3, FIRST)))
+    conv = converter(tmp_path, pieces=store)
+    helper = tmp_path / "helpers" / "fake-media"
+    key = conv._key()
+    if change.startswith("legacy"):  # an older build saved the pieces under its own key
+        old = conv._legacy_keys()[0 if change.endswith("1.1.0") else 1]
+        with monkeypatch.context() as m:
+            m.setattr(rec.RecordingConverter, "_key", lambda self: old)
+            conv.convert(src, name="meeting.mp4")
+    else:
+        conv.convert(src, name="meeting.mp4")
+    first, scanned = _scans(helper, 0)
+    assert scanned
+    again = conv
+    if change == "emitter":
+        monkeypatch.setattr(rec, "_EMITTER_VERSION", "1.9.9")
+    elif change == "cap":
+        again = rec.RecordingConverter(
+            dataclasses.replace(CFG, max_page_bytes=20_000), conv._ocr, conv._media, pieces=store
+        )
+    elif change == "piece-revision":
+        monkeypatch.setattr(rec, "_PIECE_REVISION", "1.2.0")
+    again.convert(src, name="meeting copy.mp4")
+    _count, rescanned = _scans(helper, first)
+    assert rescanned == (change == "piece-revision"), change
+    assert (again._key() == key) == (change != "piece-revision")
+    if change.startswith("legacy"):
+        sha = hashlib.sha256(src.read_bytes()).hexdigest()
+        assert store.load(sha, 0, key) is not None, "saved again under the new key"
 
 
 INDEX_WORDINGS = {

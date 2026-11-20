@@ -76,6 +76,15 @@ _REREAD_BELOW = "1.0.0"
 """A page or stub an emitter below this wrote is read again once (``RecordingConverter.outdated``).  Raise it
 only for a change worth reading every local recording again for, never above ``_EMITTER_VERSION``."""
 _SELECTION_REVISION = 2  # ``-s<n>`` of the version: the profiles, the gate, the back-offs, the kind rules
+_PIECE_REVISION = "1.1.0"
+"""A picture piece's own revision, in its key (:meth:`RecordingConverter._key`) in place of
+``_EMITTER_VERSION``: raise it only when what a piece holds changes (the picture stages, ``_piece_doc``'s
+shape, a picture constant ``_piece_options`` does not name), never for a change to the page, so a render-only
+emitter move or a ``max_page_bytes`` edit keeps a recording's part-read pieces (B13 round 42 C2296 with C2251;
+round 9 K63 kept the emitter still for this reason, and round 41 C2044's move broke it)."""
+_LEGACY_PIECE_EMITTERS = ("1.1.0", "1.1.1")
+"""The emitters whose pieces were keyed by ``_EMITTER_VERSION`` and the whole picture options, cap included: a
+piece saved under such a key is read once and saved again under the new one (B13 round 42 C2296)."""
 _INDEX_REVISION = 2
 """The fixed wording of the index page (``recording_page``'s ``_HOW_TO_READ``, ``_NOT_DETECTED``,
 ``_TIMES_FACT``, a NOTE): raise it whenever one changes, as
@@ -1604,8 +1613,33 @@ class RecordingConverter:
         return "+asr-" not in produced or not _NAMING_RE.search(produced) or reason in _SPEECH_STUBS
 
     def _key(self) -> str:
-        """A picture piece's key: the stages that made it, never the speech engine's or the cue's."""
-        return f"{_PIECE_TICKS}|{self._picture_version()}|{options_hash(self._picture_options())}"
+        """A picture piece's key: the stages that made it, never the speech engine's or the cue's, the page's
+        cap or the emitter's version (:data:`_PIECE_REVISION`, B13 round 42 C2296)."""
+        made = f"{_PIECE_REVISION}+{self._ocr.identity}+{self._media.identity}-s{_SELECTION_REVISION}"
+        return f"{_PIECE_TICKS}|{made}|{options_hash(self._piece_options())}"
+
+    def _legacy_keys(self) -> tuple[str, ...]:
+        """The keys a 1.1.0 or 1.1.1 emitter saved a picture piece under, at the running cap."""
+        made = f"+{self._ocr.identity}+{self._media.identity}-s{_SELECTION_REVISION}"
+        hashed = options_hash(self._picture_options())
+        return tuple(f"{_PIECE_TICKS}|{v}{made}|{hashed}" for v in _LEGACY_PIECE_EMITTERS)
+
+    def _piece_options(self) -> dict[str, OptionValue]:
+        """:meth:`_picture_options` less ``max_page_bytes``, which no picture stage reads."""
+        return {k: v for k, v in self._picture_options().items() if k != "max_page_bytes"}
+
+    def _stored_piece(self, sha: str, n: int, key: str) -> dict[str, Any] | None:
+        """Piece ``n`` from the store under ``key``, else under a legacy key, saved again under ``key``."""
+        if self._pieces is None:
+            return None
+        doc = _piece_doc(self._pieces.load(sha, n, key))
+        for old in self._legacy_keys() if doc is None else ():
+            data = self._pieces.load(sha, n, old)
+            doc = _piece_doc(data)
+            if doc is not None and data is not None:
+                self._pieces.save(sha, n, key, data)
+                break
+        return doc
 
     def _speech_key(self, engine: SpeechEngine) -> str:
         """The speech piece's key: the media helper that decodes the sound, the engine's identity, the
@@ -1802,7 +1836,7 @@ class RecordingConverter:
         worked = False
         for n in range(count):
             done_ms = min(n * _PIECE_TICKS * STEP_MS, read_ms)
-            doc = _piece_doc(self._pieces.load(sha, n, key)) if self._pieces is not None else None
+            doc = self._stored_piece(sha, n, key)
             if doc is None:
                 if self._pieces is not None and allowance is not None and allowance.used_up and worked:
                     raise RecordingNotFinished(done_ms=done_ms, total_ms=read_ms, timed_out=False)

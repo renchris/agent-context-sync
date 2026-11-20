@@ -11077,9 +11077,10 @@ class VttConverter:
   stubs `recording has no picture; its speech is not read by this version`, `recording's picture cannot be
   decoded on this Mac (VP9 or AV1)` and `no text read on screen; speech is not read by this version`; never for
   the running version or an emitter above it. `_EMITTER_VERSION` is `1.1.0` (the page gained speech, the cue and
-  voices) with `_REREAD_BELOW` left at `1.0.0`, so the bump alone reads nothing again. **Pieces:** a picture piece's key is `<piece ticks>|<picture version>|<picture options
-  hash>`, without the cue or speech parts, so the picture pieces of a recording stay valid when a speech engine
-  appears or fails. S8 is one more piece, numbered past the picture pieces, keyed `speech|<media identity>|<speech
+  voices) with `_REREAD_BELOW` left at `1.0.0`, so the bump alone reads nothing again. **Pieces:** a picture piece's key is `<piece ticks>|<piece revision>+<ocr>+<media>-s<n>|<hash of the picture
+  options less max_page_bytes>`, without the cue or speech parts, the emitter version or the cap (§16.268 C2296: a
+  1.1.0 or 1.1.1 key is read once and the piece saved again), so the picture pieces of a recording stay valid when
+  a speech engine appears or fails, the page's emitter moves or the cap is edited. S8 is one more piece, numbered past the picture pieces, keyed `speech|<media identity>|<speech
   identity>|<hash of the speech_lines options and the diarizer threshold>` (the media helper decodes the sound), holding the whole file's words (hole repair spliced), segments,
   silent runs, unrecognised gaps and decoded length; `audio.pcm` is decoded into the scratch folder, never kept
   and never a key. It is charged to the allowance like a piece, stops before it when the allowance is used up
@@ -18747,6 +18748,9 @@ the legend it has until its recording is converted again (new bytes, or a re-rea
 converter it was read without, per `_lacks`). The index revision is in the options, so a new conversion of the same
 bytes, such as a copy, no longer gets the cached index, and reads every frame and the sound again once the cycle
 has deleted that recording's pieces.
+Amended 2026-11-20, §16.268 C2296, C2251: the emitter version is no longer in a picture piece's key, which holds its
+own `_PIECE_REVISION` and the picture options less the cap, so an emitter move or a cap edit keeps the pieces; only
+`_PIECE_REVISION`, the OCR or media identity, the selection revision or a picture constant ends them.
 
 **K74: a DEL or C1 character in a title or a file name is written as an escape (`agentsync.frontmatter`).**
 `_render_scalar` wrote strings with `json.dumps`, which leaves DEL, U+0080-009F, U+FFFE/FFFF and lone surrogates
@@ -43923,6 +43927,22 @@ the descriptor is only fstat-ed, never read, while a FIFO opens at once and fail
 `S_ISREG` checks, so nothing is staged. Test:
 `test_arm_local.py::test_a_fifo_swapped_in_for_an_empty_recording_never_blocks_the_probe_c2294` (the path renamed
 aside and a FIFO made there at the probe's open, run on a thread under a 10-second bound).
+
+**A picture piece is keyed on its own revision, so a page change keeps a part-read recording's pieces** (C2296 with
+C2251, one defect from two findings; ruling 155; `agentsync.convert.recording`; amends §16.84 K63). A picture piece's
+key was `<piece ticks>|<emitter>+<ocr>+<media>-s<n>|<hash of the picture options>`, and those options held
+`max_page_bytes`, though no picture stage reads either: round 41's C2044 moved the emitter for a render-only change,
+which K63 had ruled against, and any cap edit did the same, so every recording part-way through its read started
+again from its first frame after the upgrade (the verifier's probe at 1faa3f3: `scan` ran again for an emitter of
+1.1.2 or a doubled cap). `RecordingConverter._key` now holds `_PIECE_REVISION` ("1.1.0", raised only when what a
+piece holds changes) and the picture options less the cap; `version()`, `options()` and so the whole file's cache
+key keep the emitter and the cap, which is right for a page change. A piece saved under a 1.1.0 or 1.1.1 key, at the
+running cap, is read once and saved again under the new key (`_stored_piece`, `_legacy_keys`), so the key's own
+change costs no read. The emitter is not stepped back (ruling 155): recording is 1.1.2 (C2272's move), and pages are
+read again only below `_REREAD_BELOW`, still 1.0.0. The piece-key sentence in §16.35 and K63's dated line say so.
+Test: `test_convert_recording.py::test_a_picture_piece_outlives_a_page_change_and_a_legacy_key_is_read_once_c2296`
+(an emitter move and a cap edit run no `scan` and keep the key, a 1.1.0 and a 1.1.1 key are read and saved again,
+and a raised `_PIECE_REVISION` reads it all).
 
 ### 16.269 Round 42: the prompt goes to v39 (the paths and folder states setup printed), the gate's stop lines, and the guides (2026-11-20, wave B13 round 42 lane D)
 
