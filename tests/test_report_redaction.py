@@ -1784,7 +1784,7 @@ _R142_SHELL = True
 land, so trunk never carries one half; on lane RA's branch alone they hold the agentsync report (B13 round 41
 ruling 142, its Python half)."""
 
-_R146_SHELL = False
+_R146_SHELL = True
 """Whether B13 round 42 rulings 146 to 149's rows hold the shell report too. Lane RB's shell half sets it True
 in the one joint land, so trunk never carries one half; on lane RA's branch alone they hold the agentsync
 report (the rulings' Python half), and ruling 142's test compares the shell's line only on its older rows."""

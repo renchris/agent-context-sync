@@ -4300,8 +4300,8 @@ def test_install_sh_carries_the_report_cuts_block_byte_for_byte_ruling_133() -> 
     names = re.findall(r"""(?m)^([A-Z_0-9]+)=['"]""", block)  # CUT_REFUSED_HEADS holds an apostrophe
     # B13 round 40 ruling 137: the argument forms' rows, CUT_ALIAS_FORMS gone; round 41 ruling 142: each
     # head's own list (the cwd's whole-name head, config), the usage and default-config words, the TOML
-    # breaks and the part stop
-    assert len(names) == 25, names
+    # breaks and the part stop; round 42 ruling 146: the free-text path start
+    assert len(names) == 26, names
     for name in names:
         assert len(re.findall(rf"(?m)^\s*{name}\+?=", text)) == 1, name
     assert "import report_cuts" not in text and "report_cuts import" not in text, (

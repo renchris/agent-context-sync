@@ -2701,7 +2701,8 @@ CUT_DEL_ESCAPED='\u007F|\u007f'
 CUT_FREE_HEAD='~/Library/CloudStorage/'
 CUT_FREE_END='[\040\011\042\047\140]'
 CUT_FREE_TRAIL=')]}.,;:'
-CUT_FREE_PART_STOP='[\042\047\140\012]|[)]:|, stored as '
+CUT_FREE_PART_STOP='[\042\047\140\012]|[)]:|, stored as | [|] | \302\267 '
+CUT_FREE_PATH_START='[\040\011](~/|/)'
 CUT_CWD_USAGE='needs a folder, got the option|needs a folder'
 # shellcheck disable=SC2088
 CUT_CONFIG_DEFAULT='~/agent-context/sources.toml'
@@ -3470,13 +3471,14 @@ redaction_pairs() {
 	add_pair "$HOME" "~" "$(home_flag "$HOME")"
 	# a config path other than the default (AGENTSYNC_CONFIG, relative under --cwd or absolute, under the cwd or
 	# not) reads as _cut_path cuts its ~-form on every line that echoes it, `- config:`, `Not run:` and `debug:
-	# config` included: as written, as ~ and as debug_path's escaped form (B13 round 41 ruling 142, C2063)
+	# config` included: as written, as ~ and as debug_path's escaped form (B13 round 41 ruling 142, C2063), each
+	# to its path token's end (flag c; B13 round 42 ruling 147, C2290)
 	if [ -n "${CONFIG:-}" ] && [ "$CONFIG" != "$HOME/agent-context/sources.toml" ]; then
 		tilde='~' cfg_cut="$(config_shown "$CONFIG")"
 		if [ -n "$cfg_cut" ]; then
-			add_pair "$CONFIG" "$cfg_cut"
-			case "$CONFIG" in "$HOME"/*) add_pair "$tilde/${CONFIG#"$HOME"/}" "$cfg_cut" ;; esac
-			add_pair "$(debug_path "$CONFIG")" "$cfg_cut"
+			add_pair "$CONFIG" "$cfg_cut" c
+			case "$CONFIG" in "$HOME"/*) add_pair "$tilde/${CONFIG#"$HOME"/}" "$cfg_cut" c ;; esac
+			add_pair "$(debug_path "$CONFIG")" "$cfg_cut" c
 		fi
 	fi
 	for w in ${loose[@]+"${loose[@]}"}; do # only as the argument: a short relative name is also a common word
@@ -4837,6 +4839,10 @@ redact_stream() {
 			# or `-` but in /System/Volumes/Data, in any case (C1018), so a same-login home behind a volume reaches
 			# foreign_home_cut as /Volumes/.../Users/<user>/ and is cut (C947)
 			esc = (f[3] == "u")
+			# a whole config path (flag c) runs on to its path token\047s end, a sentence-final `.` and every
+			# terminator kept, as setup_report._CUT_TOKEN_END does: `sources.toml-PrivateBackup` keeps no suffix (B13
+			# round 42 ruling 147, C2290; makes worse True for a boundary-only match)
+			cf = (f[3] == "c")
 			hv = (f[3] == "h" || f[3] == "H"); line = ""
 			if (hv) for (j = 1; j <= ns; j++) line = line seg[j] # the line as it stands, for in_fixed
 			at = 0 # the bytes of the line before s
@@ -4846,6 +4852,12 @@ redact_stream() {
 				while ((i = (k in lv) ? index(tolower(s), lv[k]) : index(s, v)) > 0) {
 					pre = (i > 1) ? substr(s, i - 1, 1) : substr(acc, length(acc), 1)
 					post = substr(s, i + n, 1)
+					nn = n
+					if (cf) {
+						q = i + n
+						while (q <= length(s) && substr(s, q, 1) !~ /[] \t\r\f\013\047"),;:|]/ && !(substr(s, q, 1) == "." && (q == length(s) || substr(s, q + 1, 1) ~ /[] \t\r\f\013\047"),;:|]/))) q++
+						nn = q - i
+					}
 					if ((word && (pre ~ /[A-Za-z0-9_]/ || post ~ /[A-Za-z0-9_]/)) || (tail && post ~ /[A-Za-z0-9_.-]/) || (esc && !(post == "" || post == "/" || index(STOP, post) || (post == "\\" && substr(s, i + n + 1, 1) == "\""))) || (esc && pre ~ /[A-Za-z0-9_.-]/ && !sysdata(acc substr(s, 1, i - 1))) || (alnum && post ~ /[A-Za-z0-9]/) || (arg && post != "" && post !~ /[ \t"\047),;\]]/)) {
 						acc = acc substr(s, 1, i + n - 1)
 					} else if (hv && in_fixed(line, at + i, n)) {
@@ -4857,8 +4869,10 @@ redact_stream() {
 							hk = (f[4] != "") ? f[4] : tolower(f[1])
 							if (!(hk in hseen)) { hseen[hk] = 1; hn++ }
 						}
+						n2 = nn
 					}
-					at += i + n - 1; s = substr(s, i + n)
+					if (n2 == "") n2 = n
+					at += i + n2 - 1; s = substr(s, i + n2); n2 = ""
 				}
 				at += length(s)
 				keep(acc s, 0)
@@ -5000,7 +5014,7 @@ typed_note_cut() {
 		TYPED_PAIRS="${1:-}" TYPED_CFG="${2:-}" TYPED_LISTED="${3:-}" TYPED_ALLCFG="${4:-}" CUT_SEP="$CUT_SEP" TYPED_PROVIDER="$CUT_HEADS_PROVIDER" \
 		TYPED_FIRST="$CUT_HEADS_FIRST_UNKNOWN" TYPED_CWDS="$CUT_HEADS_CWD" TYPED_UNDER="$CUT_HEADS_UNDER_CWD" \
 		TYPED_CWDNAME="${CUT_HEADS_CWD_NAME:-}" TYPED_CWDUSAGE="${CUT_CWD_USAGE:-}" TYPED_CONFIG="${CUT_HEADS_CONFIG:-}" \
-		TYPED_CFGDEF="${CUT_CONFIG_DEFAULT:-}" TYPED_FREESTOP="${CUT_FREE_PART_STOP:-}" \
+		TYPED_CFGDEF="${CUT_CONFIG_DEFAULT:-}" TYPED_FREESTOP="${CUT_FREE_PART_STOP:-}" TYPED_FREEPATH="${CUT_FREE_PATH_START:-}" \
 		TYPED_HEADS="$CUT_REFUSED_HEADS" TYPED_APPS="$CUT_APPS" TYPED_FREEHEAD="$CUT_FREE_HEAD" TYPED_FREEEND="$CUT_FREE_END" \
 		TYPED_FREETRAIL="$CUT_FREE_TRAIL" LC_ALL=C awk '
 	function norm(v) { v = tolower(v); gsub(ENVIRON["CUT_SEP"], "", v); return v }
@@ -5027,6 +5041,7 @@ typed_note_cut() {
 		# itself writes after `--cwd `, kept by phrase, and `debug: config `, cut always but the default (C2063)
 		nhn = split(ENVIRON["TYPED_CWDNAME"], hn, "|"); nus = split(ENVIRON["TYPED_CWDUSAGE"], us, "|")
 		nhg = split(ENVIRON["TYPED_CONFIG"], hg, "|"); cfgdef = ENVIRON["TYPED_CFGDEF"]; fstop = ENVIRON["TYPED_FREESTOP"]
+		fpath = ENVIRON["TYPED_FREEPATH"]
 		nh = split(ENVIRON["TYPED_HEADS"], head, "|")
 		appre = "^(" ENVIRON["TYPED_APPS"] ")-"
 		fh = ENVIRON["TYPED_FREEHEAD"]; fe = ENVIRON["TYPED_FREEEND"]; ft = ENVIRON["TYPED_FREETRAIL"]
@@ -5094,12 +5109,26 @@ typed_note_cut() {
 	# each `debug: cwd `\047s value on the line, to its next ` | ` or the line\047s end, cut as _cut_path cuts it;
 	# each value as the line holds it is a folder the under-cwd heads compare with (C1835). Every occurrence,
 	# as slone loops, never the first alone (B13 round 41 ruling 142, C2029)
+	# a debug head\047s value: to the next ` | ` or the line\047s end, empty only before `| ` and another debug head
+	# (the head\047s blank doubling as the separator\047s) or in the double-space form, as setup_report._DEBUG_RE reads
+	# it: an empty cell took the next cell as its value (B13 round 42 ruling 148, C2286 with C2242; makes worse True
+	# for allowing every empty value)
+	function dbval(r,    e, k, x) {
+		if (substr(r, 1, 2) == "| ") {
+			x = substr(r, 3)
+			for (k = 1; k <= nhc; k++) if (index(hc[k], "debug: ") == 1 && index(x, hc[k]) == 1) return ""
+			for (k = 1; k <= nhu; k++) if (hu[k] != "" && index(x, hu[k]) == 1) return ""
+			for (k = 1; k <= nhg; k++) if (hg[k] != "" && index(x, hg[k]) == 1) return ""
+		}
+		e = index(r, " | ")
+		return e ? substr(r, 1, e - 1) : r
+	}
 	function dbcwd(l, hd,    out, a, r, e, v) {
 		if (hd == "") return l
 		out = ""
 		while ((a = index(l, hd)) > 0) {
 			out = out substr(l, 1, a + length(hd) - 1); r = substr(l, a + length(hd))
-			e = index(r, " | "); v = e ? substr(r, 1, e - 1) : r
+			v = dbval(r)
 			if (v != "") { lcw[++ncw] = v; out = out cut(v) }
 			l = substr(r, length(v) + 1)
 		}
@@ -5115,7 +5144,7 @@ typed_note_cut() {
 		out = ""
 		while ((a = index(l, hd)) > 0) {
 			out = out substr(l, 1, a + length(hd) - 1); r = substr(l, a + length(hd))
-			e = index(r, " | "); v = e ? substr(r, 1, e - 1) : r
+			v = dbval(r)
 			l = substr(r, length(v) + 1)
 			kd = ""
 			if (hd == "debug: source ") { if ((b = index(v, " ")) == 0) { out = out v; continue }; kd = substr(v, 1, b); v = substr(v, b + 1) }
@@ -5132,7 +5161,7 @@ typed_note_cut() {
 		out = ""
 		while ((a = index(l, hd)) > 0) {
 			out = out substr(l, 1, a + length(hd) - 1); r = substr(l, a + length(hd))
-			e = index(r, " | "); v = e ? substr(r, 1, e - 1) : r
+			v = dbval(r)
 			l = substr(r, length(v) + 1)
 			out = out ((v == "" || v == cfgdef) ? v : cut(v))
 		}
@@ -5147,8 +5176,15 @@ typed_note_cut() {
 	}
 	# a `~/Library/CloudStorage/<App>-<word>` word on any line, after every other cut: one CUT_PROVIDER_KEPT
 	# does not keep reads `~/Library/CloudStorage/<path>`, never numbered, its trailing CUT_FREE_TRAIL signs
-	# kept after; the word runs to a CUT_FREE_END byte (B13 round 40 C1862, as setup_report._FREE_PROVIDER_RE)
-	function freecut(l,    out, a, r, i, w, j, p, t, x, y, z, nw) {
+	# kept after (B13 round 40 C1862, as setup_report._free_provider_cuts). B13 round 42 ruling 146 (C2285 with
+	# C2235 and C2271; privacy): the keep test read the part\047s first word alone, so `OneDrive-Personal
+	# Secret/Plans` printed whole. The part\047s long run goes across blanks from its start to the first `/`, a
+	# CUT_FREE_PART_STOP, a blank before a CUT_FREE_PATH_START (an independent path start) or the line\047s end,
+	# never stopping at a blank before `-`. A first word that is kept stays to its CUT_FREE_END byte unless the
+	# run reaches its `/` and is not kept whole; any other part is cut whole to the run\047s end, and only after a
+	# `/` on to a CUT_FREE_END byte and each blank-led word after it that holds a `/`, no `=` or `://`, and opens
+	# with none of `-`, `/` or `~` (C2050 with C2032)
+	function freecut(l,    out, a, r, i, w, j, p, t, x, y, z, nw, e, sl) {
 		if (fh == "" || fe == "") return l # as slone: an empty head never ends the loop
 		out = ""
 		while ((a = index(l, fh)) > 0) {
@@ -5157,13 +5193,16 @@ typed_note_cut() {
 			while (i <= length(r) && substr(r, i, 1) !~ fe) i++
 			w = substr(r, 1, i - 1); j = index(w, "/"); p = j ? substr(w, 1, j - 1) : w
 			if (p !~ appre) { out = out fh; l = r; continue }
-			if (p ~ kept) { out = out fh w; l = substr(r, i); continue }
-			# the provider part runs across blanks to the next `/` with no CUT_FREE_PART_STOP before it (a quote,
-			# a backtick, a newline, `):` or `, stored as `), then the rest to a CUT_FREE_END byte and each
-			# blank-led word after it that holds a `/`, no `=` or `://`, and opens with none of `-`, `/` or `~`;
-			# with no such `/`, the blank-ended word as before (B13 round 41 ruling 142, C2050 with C2032)
-			if (fstop != "" && (x = index(r, "/")) > 0 && !match(substr(r, 1, x - 1), fstop)) {
-				i = x + 1
+			# the long run\047s end: the first `/`, stop or blank before a path start, else past the line\047s end
+			e = length(r) + 1
+			if ((x = index(r, "/")) > 0) e = x
+			if (fstop != "" && match(r, fstop) && RSTART < e) e = RSTART
+			if (fpath != "" && match(r, fpath) && RSTART < e) e = RSTART
+			sl = (substr(r, e, 1) == "/")
+			if (p ~ kept && (!sl || substr(r, 1, e - 1) ~ kept)) { out = out fh w; l = substr(r, i); continue }
+			i = e
+			if (sl) {
+				i = e + 1
 				while (i <= length(r) && substr(r, i, 1) !~ fe) i++
 				while (substr(r, i, 1) == " ") {
 					y = i; while (substr(r, y, 1) == " ") y++
@@ -5172,8 +5211,8 @@ typed_note_cut() {
 					if (nw == "" || !index(nw, "/") || index(nw, "=") || index(nw, "://") || substr(nw, 1, 1) ~ /^[-\/~]/) break
 					i = z
 				}
-				w = substr(r, 1, i - 1)
 			}
+			w = substr(r, 1, i - 1)
 			t = w
 			while (t != "" && index(ft, substr(t, length(t), 1))) t = substr(t, 1, length(t) - 1)
 			out = out fh "<path>" substr(w, length(t) + 1); l = substr(r, i)
@@ -5191,7 +5230,7 @@ typed_note_cut() {
 		}
 		return e ? e : length(r) + 1
 	}
-	function slone(l, hd, rule,    out, a, q, w, i, c, e, j, x, lh, u, t, ncs) {
+	function slone(l, hd, rule,    out, a, q, w, i, c, e, j, x, lh, u, t, ncs, wq) {
 		# an empty head ends here: awk\047s index(l, "") is 1 and consumes nothing, so the loop never ended (a
 		# reader that lacks the block; B13 round 40, the joint land\047s hung gate)
 		if (hd == "") return l
@@ -5203,9 +5242,15 @@ typed_note_cut() {
 			# (B13 round 41 ruling 142, C2062 with C2031 and C2085): skipped, it printed in clear
 			ncs = (rule != "cwd" && rule != "cwd_name" && substr(l, length(q) + 1, length(cs)) != cs)
 			if (rule == "cwd" && q == "" && substr(hd, length(hd)) == " " && cwdusage(l, hd)) continue
-			i = length(q) + 1; w = ""; lh = 0
+			i = length(q) + 1; w = ""; lh = 0; wq = 0
 			if (q == "" && (hd == "is not an existing folder: " || rule == "cwd_name")) { # a name with blanks, taken whole
 				i = nfend(l); w = substr(l, 1, i - 1)
+			} else if (q != "" && (hd == "is not an existing folder: " || rule == "cwd_name") && nfend(l) <= length(l)) {
+				# a quoted name that runs to install.sh\047s own ` (see --help)` end is that line\047s, taken whole, its
+				# opening quote and any closing one kept outside the cut; only a name with no such end, prose that ran
+				# to its line\047s end, ends at its matching quote (B13 round 42 ruling 148, C2234; makes worse True for
+				# ending every quoted name there, as setup_report._quoted_cut reads it)
+				i = nfend(l); w = substr(l, 2, i - 2); wq = 1
 			} else if (q == "" && hd == "--source-local " && (x = lasthead(l)) > 1) { # a refused name, to its last head
 				i = x; w = substr(l, 1, i - 1); lh = 1
 			} else while (i <= length(l)) { # a bare word ends at a blank or a quote, a quoted one at its own
@@ -5215,6 +5260,7 @@ typed_note_cut() {
 				w = w c; i++
 			}
 			e = length(w)
+			if (wq && e > 0 && substr(w, e, 1) == q) e--
 			# a bare word with no slash, backslash or quote is prose, as setup_report._source_local_shown leaves it
 			# (`--source-local is not an existing folder: ...` keeps its head, `add-source again` its word); a
 			# not-a-folder or refused name is always a name
