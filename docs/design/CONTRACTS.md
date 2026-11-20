@@ -17538,6 +17538,8 @@ versions, and says the shell report has no such clause. Test:
 "as in the Python report"; the Python report spends no number on an id its folder pair covers, so there it is
 `<source-1>`. Both give the id a `<source-N>` of its own; only the shell report numbers it by its table's place. Test:
 `test_g8_says_the_two_reports_number_a_deduplicated_id_apart`.
+Amended 2026-11-20, §16.266 C2238: since round 41's C2071 the shell report numbers an id as the Python report does,
+in config order among the ids that take a number of their own, so `reports-2` reads `<source-1>` in both.
 
 **Round 6's amends claims have dated lines at their targets** (H54; dated lines at §16.51 Q9 and Q75, §16.54 Q77,
 §16.60 F68, F77, F78 and F94, and §16.61 F88). §16.66 said G59 amends F77, G63 F78, G76 §16.51 Q75 and §16.60 F94,
@@ -36204,6 +36206,9 @@ opening the prompt quotes is unchanged and the `waited-for-the-lock` note stays 
 `test_a_first_sync_behind_a_lock_with_an_empty_body_says_the_holder_need_not_be_a_sync`, the recorded body's line in
 `test_a_sync_still_running_after_the_wait_leaves_the_reinstall_as_before`, and the deploy-pack pin in
 `test_readme_step2_is_the_one_install_command`, which builds the line from `cycle.UNRECORDED_LOCK_WAIT_QUIET`.
+Amended 2026-11-20, §16.266 C2222: the note no longer stays for both: an empty body's wait logs
+`waited-for-an-unrecorded-holder`, the agentsync step's own token, which the report reads as a wait for the sync lock
+to be free; a recorded body, and a wait only agentsync's mark booked, keep `waited-for-the-lock`.
 
 **A damaged purge record beside a lost queued purge names both stops** (C607; `scripts/install.sh`,
 `docs/deploy/setup-feedback.md`). With purge-record.json damaged and purge-queue.json moved aside while a purge was
@@ -43445,6 +43450,59 @@ sign-in and access NEXTs carry no config tail, their re-run reading again. Test:
 `test_install_oneshot.py::test_a_checkout_reader_at_its_limit_drops_none_is_needed_whatever_the_installed_build_answers_c2313`
 (each reader's checkout run alone held 11 s by the installed venv's sitecustomize, and the order beside the cap
 clause).
+
+**The shell halves of rulings 146 to 148** (C2285 with C2235 and C2271, C2290, C2286 with C2242, C2234; rulings 146
+to 148; privacy; data integrity; `scripts/install.sh`). Built on lane RA's Python halves and both-reports rows
+(§16.265) and landed with them in one run. `freecut` judges a tenant's whole run as
+`setup_report._free_provider_cuts` does: the long run goes across blanks from the part's start to the first `/`, a
+`CUT_FREE_PART_STOP` (now holding ` | ` and ` · ` too), a blank before the block's new `CUT_FREE_PATH_START`
+(`[\040\011](~/|/)`) or the line's end; a kept first word stays to its `CUT_FREE_END` byte unless the run reaches its
+`/` and is not kept whole, and any other part is cut whole to the run's end, only after a `/` on through the rest and
+each later slash word. The whole-config pairs carry a new flag `c` in `redact_stream`: the cut runs on to the path
+token's end (a blank, a quote, `)`, `,`, `;`, `:`, `]`, `|` or the line's end), one `.` before such an end given back,
+as `_CUT_TOKEN_END`. `dbcwd`, `dbunder` and `dbconfig` read each value through one `dbval`: empty only before `| ` and
+another debug head or in the double-space form, `v != ""` kept before the carried cwd. `slone` takes a quoted
+not-a-folder or `--cwd` whole-name through `nfend` when a ` (see --help)` end exists, its opening quote and any
+closing one outside the cut; only a name with no such end ends at its matching quote. Tests: lane RA's rows with
+`_R146_SHELL` on (`test_both_reports_judge_a_tenants_whole_run_in_free_text_ruling_146`,
+`test_both_reports_cut_a_config_path_to_its_tokens_end_c2290` and the `_r146_lines` property rows, both locales) and
+`test_install_sh_carries_the_report_cuts_block_byte_for_byte_ruling_133` at 26 values.
+
+**A two-character id takes one rule at every entry point, and an id numbers as the agentsync report numbers it**
+(C2287 with C2232, C2233, C2202; ruling 149; privacy; data integrity; `scripts/install.sh`). The vanished-source and
+hold-scope loops call `short_pair` after `add_pair` with the same `<source-N>`, `short_pair` itself unchanged and no
+flag-w source pair (C2071 rated that worse); Redactor.add's half is lane RA's. The id loop finds the placeholder that
+hides an id before it counts, as `Redactor._known` does: an organisation's key, a fuzzily registered folder's key
+(a CloudStorage part, a project folder holding no `/`) for 3 or more characters, else a folded folder value, a
+two-letter word in capitals only as written; it skips an id under 2 characters and numbers only on a miss, always
+registering the pair. The id loop no longer reads the path's last part byte for byte, so the escape decode the
+verifier named has nothing left to fix (a source's path is read only for its CloudStorage prefix). install.log's
+`--source-local` folders and this run's are registered after every value the agentsync report numbers (listed rows,
+project and own folders, vanished roots), so a configured folder outside CloudStorage reads one `<folder-N>` in both
+reports; `Copilot` stays unnumbered (makes worse True for numbering it in both). Tests:
+`test_report_redaction.py::test_both_reports_number_an_id_another_value_hides_alike_c2233` (an organisation's
+spelling, an escaped folder, a 1-character id, another folder's slug),
+`test_both_reports_number_a_folder_install_log_alone_names_after_the_rest_c2202`,
+`test_both_reports_cut_a_two_character_id_in_any_case_one_id_each_c2287_c2312` and the C2071 test.
+
+**An empty-body lock wait is noted as one** (C2222; dated line at §16.214 C629; `scripts/install.sh`). The first
+sync's note was `waited-for-the-lock` whatever held the lock, which the report words as a wait for another sync. When
+the probe found the lock busy and its body blanks only, the note is `waited-for-an-unrecorded-holder`, the agentsync
+step's own token, after any counts; a recorded body and a wait only agentsync's mark booked keep
+`waited-for-the-lock`. Lane RA's `_CONVERTED_NOTE_RE` reads both suffixes. Test:
+`test_install_oneshot.py::test_a_first_sync_behind_a_lock_with_an_empty_body_says_the_holder_need_not_be_a_sync`.
+
+**The debug: config and <source-N> comments say what the code does** (C2238's install.sh half; docs only;
+`scripts/install.sh`; dated line at §16.73 H69). `debug_path`, `slcut` and `dbunder`'s comments described the
+under-cwd rule for `debug: config`, which `dbconfig` cuts always but the default (C2063), and the id loops' comments
+numbered by table place, which C2071 replaced with one counter. Lane RA's half is §16.265's; H69's present-tense
+claim takes a dated line.
+
+**C2060 stays unbuilt** (C2263; ruling 150; privacy). The operator's class C decision 1476293d00a3 on round 41's
+C2060 edit (decode a step 1 list spelling back to the folder name's bytes so the shell report cuts it) was still
+open when this section's last commit landed, so round 41's strict xfail on
+`test_both_reports_cut_a_folder_step_1_listed_but_not_configured_ruling_142` stays and §16.261's C2060 paragraph is
+unchanged; no lane writes an equivalent change another way.
 
 ### 16.267 Round 42: the inbox known as a folder, the options re-read dated by the run that converted a page, and a recording's page following its state (2026-11-20, wave B13 round 42 lane B)
 
