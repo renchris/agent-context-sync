@@ -33761,6 +33761,10 @@ log-scrub and exclude cuts uncounted, the same mismatch); the reader's text now 
 `A <path> that cuts an item path or document name in a log line, a --source-local argument or an exclude entry is
 not counted: only a link target replaced by <path> is.`; a report with no `<path>` is unchanged. The shell report
 prints no count line, so install.sh has nothing to mirror. Test: `test_the_path_legend_item_names_every_use_of_path`.
+Amended 2026-11-20, §16.265 C2237: the count line names exactly the counted cuts, `... a --cwd or debug line's folder
+(the --cwd usage error's included), a config path or a CloudStorage folder in free text is not counted: only a link
+target replaced by <path> is, and so is a folder install.sh names as missing (after 'is not an existing folder:') or
+refuses (a refused --source-local usage error).`; the --cwd usage error's cut is not among them (C2321).
 
 C362 (2026-10-26): **the report says the path re-read and the older page left in history** (C362 with C319, ruling
 45; the cycle half is §16.206's). The Repeat conversions part said a failure is tried again `in up to 2 later runs`,
@@ -41789,6 +41793,13 @@ backtick, `):`, `, stored as ` or the line's end, print alike in both.
 Amended 2026-11-17, §16.261 C2062: each head's word is cut wherever it lives, outside ~/Library/CloudStorage/ too, an
 `add-source` word at its first unknown part, and a bare word with no `/`, `\` or quote after `--source-local `,
 `--source-local=` or `add-source ` stays prose in both reports, as `_source_local_shown` leaves it.
+Amended 2026-11-20, §16.265 C2265: two divergences are kept and known (ruling 148 amends ruling 138): the second is
+install.log's relative `--source-local` word naming no CloudStorage entry, shown with its `./`, `../` or `./../` head and
+cut from its first unknown part (`./<path>`, `./<folder-N>`) in the agentsync report and cut whole to `<path>` in the
+shell report, neither a name; both legends declare it and
+`test_the_second_kept_divergence_is_pinned_in_both_reports_c2265` pins it. A tenant with a blank and no `/` after it is
+no longer a residual (§16.265 C2271): only a tenant written without the prefix, and a kept first word whose run stops
+before a `/` (`OneDrive-Personal Secret then ~/x`), print alike in both.
 
 **The recut note says which <path> is its own** (C1604; ruling 135; amends §16.246 C1406; `scripts/install.sh`). An
 older build writes `<path>` itself (`set exclude = [<path>] in [[source]]`, an item path in a log line), and the
@@ -42698,6 +42709,9 @@ blanks to the next `/` before a stop, its rest to a `FREE_WORD_END` byte and on 
 `/` and no `=` or `://` and opens with none of `-`, `/`, `~`; with no such `/` it ends where it was read. A tenant with
 a blank and no `/` after it is the named residual beside the prefix-less one (§16.251's C1862 line, §16.255 and
 §16.256 say so). Test: `test_a_tenant_with_a_blank_is_cut_to_its_slash_in_free_text_c2050_c2032`.
+Amended 2026-11-20, §16.265 C2285, C2235, C2271: the long candidate runs across blanks to the first `/`, stop, blank
+before `~/` or `/` (`FREE_PATH_START`) or line end; a part whose first word is not kept is cut whole to that bound
+(the no-`/` residual is gone), and a kept first word is judged on its whole run when the run reaches its `/`.
 
 **The --cwd usage error is a whole-name head, and install.sh's own words after --cwd stay** (C2030; ruling 142). `--cwd
 is not a folder this run can enter: ` is a `PATH_HEADS` row of rule `cwd_name` (`CUT_HEADS_CWD_NAME`), its name
@@ -43294,7 +43308,59 @@ lane RA's 48e4c6b78). C2060 (a listed name step 1 spelled with a backslash, regi
 
 ### 16.265 Round 42: the report: the free-text scan judges a tenant's whole run, every spelling of a config path cut to its end, and one bound for a head's value (2026-11-20, wave B13 round 42 lane RA)
 
-Reserved for round 42 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 42").
+Rulings 146 to 148's Python half (privacy; data integrity), landed with lane RB's shell half (§16.266) in one
+`scripts/ship-land.sh` run, and ruling 149's test words. A dated line this round writes reads `Amended 2026-11-20,
+§16.265 C<n>`.
+
+**The free-text scan judges a tenant's whole run** (C2285 with C2235 and C2271; ruling 146; amends §16.260 C2050).
+The keep test read a tenant's first word, so `~/Library/CloudStorage/OneDrive-Personal Secret/Plans` printed whole,
+and a not-kept part ran to the next `/` anywhere ahead, a later path's included. `_FREE_LONG_PART_RE` runs across
+blanks from the part's start to the first `/`, `report_cuts.FREE_PART_STOP`, a blank before a `FREE_PATH_START` (`~/`
+or `/`; generated as `CUT_FREE_PATH_START`) or the line's end, never stopping at a blank before `-` (`Northwind -
+EMEA`). A part whose first word is not kept is cut whole to that bound, `_FREE_MORE_RE` only after a `/`,
+`FREE_WORD_TRAIL` given back: `OneDrive-Northwind Traders then ~/Documents/x` reads `~/Library/CloudStorage/<path>
+~/Documents/x`, `OneDrive-Tailspin Toys` at a line's end `<path>`. A kept first word is judged on its whole run only
+when the run reaches its `/`: `OneDrive-Personal and ~/Documents/x` stays whole, `OneDrive-Personal and docs/x` reads
+`<path>` (the safe side). Lane RA's measurement adds ` | ` and ` · ` to `FREE_PART_STOP`: a no-`/` part ran to the
+line's end and ate a friction row's next table cell. The named residuals: a tenant written without the head, and a
+kept first word whose run stops before a `/` (`OneDrive-Personal Secret then ~/x`). Tests:
+`test_the_free_text_scan_judges_a_tenants_whole_run_ruling_146`,
+`test_both_reports_judge_a_tenants_whole_run_in_free_text_ruling_146` (both locales).
+
+**Every spelling of the config path is cut to its end** (C2290, C2231, C2320 with C2239; ruling 147). `Redactor.add_cut`
+compiles each whole-config literal with `_CUT_TOKEN_END`, so the cut runs to the end of its path token
+(`sources.toml-PrivateBackup`, `.bak`, `x/Wombat` keep no suffix), a sentence-final `.` and every terminator kept
+(C2290, makes worse True for a boundary-only match, which printed the folder on any line without a head).
+`_add_config_cut` cuts the config's unredacted `~` form, as install.sh's `config_shown` does, so a config under a
+configured folder reads `~/Library/CloudStorage/<path>` in both reports (C2231). `_toml_spellings` builds the old
+writer's base, `_legacy_toml_body` (json.dumps with `ensure_ascii` off, DEL escaped, the breaks raw: config.toml_string
+before af21e6339), beside the current one, never by reversing escapes, and replaces every `TOML_BREAKS` character in
+every form, so a kept pre-af21e6339 add-source echo of a name holding a line break with a tab, control byte or DEL gets
+the new echo's `<folder-N>` (C2320 with C2239; the loop C2239 called dead is live again). Tests:
+`test_a_config_cut_runs_to_its_path_tokens_end_c2290`, `test_both_reports_cut_a_config_path_to_its_tokens_end_c2290`,
+the `cloud` arm of `test_both_reports_cut_a_config_path_but_the_default_c2063_c2083`,
+`test_an_older_writers_add_source_echo_gets_the_new_echos_number_c2320_c2239` and `_r142_lines`' older echo.
+
+**One bound for a head's value** (C2237, C2265, C2286 with C2242, C2234, C2236, C2321, C2275; ruling 148; amends
+§16.203 C331, §16.251 C1625). A debug value is empty only before `| ` and another `debug: ` head or in the
+double-space form, and `cwds` takes non-empty values only, so an empty cell neither eats the next one nor replaces
+the carried cwd (C2286 with C2242, makes worse True for every empty value); `_CWD_NAME_RE` and `_NOT_A_FOLDER_RE` take
+an empty name as written. Only a name on the line's-end branch (group `eol`) that opens with a quote ends at its
+matching quote (`_closing_quote`, as slone reads one), its line kept; a name running to install.sh's own `
+(see --help)` end is taken whole, quotes included (C2234, makes worse True for ending every quoted name there).
+install.sh's `--cwd` usage words stay whole only after a head ending in a blank, never after `--cwd=` (C2236). The
+`--cwd` usage error's cut is not counted (`counted=False`), as the shell counts none; the not-a-folder and refused
+names stay counted, and the count line, `_ANSI_C_WORD_RE`'s docstring and §16.203's C331 passage name exactly those
+(C2321 with C2237, makes worse True for uncounting them). The second kept divergence, install.log's relative
+`--source-local` word, is declared in `_LEGEND['path']`, `report_cuts.PATH_HEADS`' docstring and §16.251, with no
+output changed (C2265, makes worse True for converging). `_r142_lines` gains install.sh's two `--cwd=` forms outside
+CloudStorage (C2275) and `_r146_lines`' rows. Tests: `test_an_empty_debug_value_keeps_the_next_cell_and_the_carried_cwd_c2286_c2242`,
+`test_a_quoted_name_ends_at_its_quote_only_at_its_lines_end_c2234`, the C2030 test's rows and counts,
+`test_the_path_legend_item_names_every_use_of_path`, `test_the_second_kept_divergence_is_pinned_in_both_reports_c2265`
+and `test_both_reports_apply_each_heads_rule_to_any_path_ruling_142`.
+
+**The C2071 test says what it pins** (C2240; ruling 149). The source id `it` cuts the pronoun as well, as
+`<source-N>`, and the test now asserts that line; keeping the pronoun would print the id in clear.
 
 ### 16.266 Round 42: the installer: an older build's render cuts the config path, a two-character id takes one rule in both reports, and C2060 waits on the operator (2026-11-20, wave B13 round 42 lane RB)
 
