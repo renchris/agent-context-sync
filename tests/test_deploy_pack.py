@@ -555,8 +555,11 @@ def test_the_contracts_say_a_help_flag_beside_version_wins_by_order_c2058(
 
     contracts = " ".join((ROOT / "docs" / "design" / "CONTRACTS.md").read_text(encoding="utf-8").split())
     assert (
-        "`--version --fields` without `--json` and without `-h`/`--help` is the same `add --json` refusal"
-        " (`cli.FIELDS_NEED_JSON`, C1845). With `-h` or `--help` also present and no `--json`, `--fields` is"
+        "`--version --fields` without `--json` and without a help flag is the same `add --json` refusal"
+        " (`cli.FIELDS_NEED_JSON`, C1845). A help flag is one `cli._asks_help` finds:"
+    ) in contracts
+    assert (
+        "C2260). With a help flag also present and no `--json`, `--fields` is"
         " not read: argparse acts on whichever of `--version` and the help flag comes first (the version "
         "line or"
         " the help page, exit 0), exactly as `--version --help` does without `--fields` (B13 round 41 C2058)."
@@ -574,6 +577,32 @@ def test_the_contracts_say_a_help_flag_beside_version_wins_by_order_c2058(
     assert capsys.readouterr().out.startswith("usage:")
     assert cli.main(["--version", "--fields", "x"]) == cli.EXIT_USAGE
     assert cli.FIELDS_NEED_JSON in capsys.readouterr().err
+
+
+def test_the_contracts_name_the_help_flag_as_asks_help_finds_it_c2260(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 42 C2260 (makes worse True for "a cluster ending in h"): §16.300.25 named only `-h`/`--help`
+    beside `--version --fields`, while since C2040 a cluster such as `-vh` or `-hv` is a help flag too. After
+    lane B's C2295 `cli._asks_help` asks the parser that owns each token, so a cluster is help only where
+    argparse makes it help: `-hv` is one, `-eh` and a root `-yvh` are not. The sentence names the flag that
+    way, held here to `cli.main`."""
+    from agentsync import cli  # noqa: PLC0415
+
+    contracts = " ".join((ROOT / "docs" / "design" / "CONTRACTS.md").read_text(encoding="utf-8").split())
+    assert (
+        "A help flag is one `cli._asks_help` finds: `-h`, `--help`, or a short-flag cluster argparse makes"
+        " help, every letter a no-value flag of the parser that owns it and one of them `h` (`-vh` and `-hv`,"
+        " `purge -yh`); `-eh`, a root `-yh` or `-yvh` and `--hv` are none (§16.262 C2040, §16.267 C2295; B13"
+        " round 42 C2260)."
+    ) in contracts
+    assert "without `-h`/`--help` is the same" not in contracts and "a cluster ending in h" not in contracts
+    for flag in ("-vh", "-hv"):
+        assert cli.main(["--version", flag, "--fields", "x"]) == cli.EXIT_OK, flag
+        assert capsys.readouterr().out.startswith("agentsync "), flag
+    for flag in ("-eh", "-yvh", "-yh"):
+        assert cli.main(["--version", flag, "--fields", "x"]) == cli.EXIT_USAGE, flag
+        assert cli.FIELDS_NEED_JSON in capsys.readouterr().err, flag
 
 
 def test_the_guide_gives_step_1s_timeout_tail_and_its_log_word_c2053() -> None:

@@ -43791,6 +43791,15 @@ joins, after any other tail and before the list's cap clause, and says the exit-
 carry no config tail, since their re-run reads again. Test: `test_the_guide_gives_step_1s_timeout_tail_and_its_log_word_c2053`,
 held to install.sh's tail and cap clause.
 
+**§16.300.25 names the help flag as `_asks_help` finds it** (C2260; docs only; from lane B's C2295 words). The sentence
+said `--version --fields` without `--json` and without `-h`/`--help` is the `add --json` refusal, while since C2040 a
+cluster such as `-vh` or `-hv` is a help flag too and prints the version or the help page. "A cluster ending in h",
+the finder's words, makes things worse: it leaves out `-hv` and takes in `-eh`. After lane B's C2295, `_asks_help`
+asks the parser that owns each token, so a cluster is help only where argparse makes it help; the sentence names the
+flag that way, with `-vh`, `-hv` and `purge -yh` in and `-eh`, a root `-yh` or `-yvh` and `--hv` out, edited in place
+as C2058 edited it. Test: `test_the_contracts_name_the_help_flag_as_asks_help_finds_it_c2260`, which runs each through
+`cli.main`.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units
@@ -44489,8 +44498,11 @@ deprecation warning becomes a `warnings` entry instead of a stderr line. The ref
   `<cmd> --help --json` (`-h` too, in any order, a graph action's and `help --help`'s alike: `cli._main` scans argv
   before the parse, which ends a help or version run before `_select_fields`, and both print
   `cli.HELP_PAGE_FIELDS`'s same bytes; C1856, C1808, C1844, C1865), or a field is unknown; the last line lists the
-  valid fields. `--version --fields` without `--json` and without `-h`/`--help` is the same `add --json` refusal
-  (`cli.FIELDS_NEED_JSON`, C1845). With `-h` or `--help` also present and no `--json`, `--fields` is not read:
+  valid fields. `--version --fields` without `--json` and without a help flag is the same `add --json` refusal
+  (`cli.FIELDS_NEED_JSON`, C1845). A help flag is one `cli._asks_help` finds: `-h`, `--help`, or a short-flag
+  cluster argparse makes help, every letter a no-value flag of the parser that owns it and one of them `h` (`-vh` and
+  `-hv`, `purge -yh`); `-eh`, a root `-yh` or `-yvh` and `--hv` are none (§16.262 C2040, §16.267 C2295; B13 round 42
+  C2260). With a help flag also present and no `--json`, `--fields` is not read:
   argparse acts on whichever of `--version` and the help flag comes first (the version line or the help page, exit
   0), exactly as `--version --help` does without `--fields` (B13 round 41 C2058). `--version --json --fields` keeps
   its one field, `version`. Without `--fields` every document is
