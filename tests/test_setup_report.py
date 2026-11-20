@@ -9592,6 +9592,15 @@ def test_first_sync_clause_says_the_sync_waited_for_another(
         "- first sync: done in 9s, after waiting for another sync to end (install.log) · "
     ), line
     assert "(waited-for-the-lock)" not in line and "converted 4, deferred 2 online-only" in line, line
+    # B13 round 42 C2222: an empty-body hold's suffix, with counts and alone, says the lock was free at last
+    for note in ("converted-4-deferred-2-waited-for-an-unrecorded-holder", "waited-for-an-unrecorded-holder"):
+        v6_install_log(fake_mac, first_sync=f"seconds=9 rc=0 result=done note={note}")
+        _rc, text, _ = report(tmp_path, fake_mac["config"])
+        [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- first sync: ")]
+        assert line.startswith(
+            "- first sync: done in 9s, after waiting for the sync lock to be free (install.log) · "
+        ), line
+        assert "unrecorded" not in line and "converted 4, deferred 2 online-only" in line, line
 
 
 def test_a_prompt_newer_than_the_reports_agentsync_says_so(fake_mac: dict[str, Path]) -> None:
@@ -27232,7 +27241,11 @@ def test_no_summary_clause_nests_a_bracket_or_puts_two_side_by_side(
         for line in lines:
             assert not re.search(r"\([^()]*\(", line), line  # no bracket inside another
             assert not re.search(r"\)\s*\(", line), line  # no two side by side
-    if not note.startswith("agentsync:") and note != "waited-for-the-lock":  # that one is the counts' clause
+    # those two are the counts' clause (B13 round 42 C2222's too)
+    if not note.startswith("agentsync:") and note not in (
+        "waited-for-the-lock",
+        "waited-for-an-unrecorded-holder",
+    ):
         [line] = [ln for ln in summary.splitlines() if ln.startswith(("- first sync: ", "- sync: "))]
         assert f", {setup_report._first_sync_note(note)} (install.log: the install run of " in line, line
 
@@ -27329,6 +27342,14 @@ def test_the_helpers_steps_note_is_in_words_in_the_installer_table() -> None:
             "in the converted count, after waiting for another sync to end",
         ),
         ("waited-for-the-lock", "0", "done", "waited for another sync to end"),
+        # B13 round 42 C2222: a wait on a lock whose holder left no body says no more than install.sh knew
+        (
+            "converted-0-deferred-0-waited-for-an-unrecorded-holder",
+            "0",
+            "done",
+            "converted 0, deferred 0 online-only, after waiting for the sync lock to be free",
+        ),
+        ("waited-for-an-unrecorded-holder", "0", "done", "waited for the sync lock to be free"),
         ("lock-busy", "75", "skipped", "lock busy: another sync held the lock past the wait"),
         ("no-sources", "0", "skipped", "no folder to sync in sources.toml"),
         ("status-failed", "0", "skipped", "agentsync status reported a failure, so no sync ran"),
@@ -27358,7 +27379,10 @@ def test_the_first_sync_steps_note_is_in_words_in_the_table_and_the_summary(
     assert f"({words})" in row and note not in row, row
     [line] = [ln for ln in summary.splitlines() if ln.startswith("- first sync: ")]
     assert note not in line, line
-    if not note.startswith("converted-") and note != "waited-for-the-lock":
+    if not note.startswith("converted-") and note not in (
+        "waited-for-the-lock",
+        "waited-for-an-unrecorded-holder",
+    ):
         # B13 round 12 N14, N33: after a comma; the source tag is the line's one trailing bracket
         assert f", {words} (install.log)" in line and ") (" not in line, line
 

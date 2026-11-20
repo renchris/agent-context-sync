@@ -1269,10 +1269,16 @@ _INSTRUCTION_RES = (
 _OUT_RUN_RE = re.compile(r"^# run=(\S+) ")  # install.out's header line of each run, with its run id
 _CONVERTED_NOTE_RE = re.compile(  # install.log's note; the suffix: it waited for another sync (Q29)
     # or the suffix alone, when the sync printed no counts (B13 round 5 F59): w2, and no c. -first-F, the
-    # first reads among R, is logged since B13 round 12 N35 (an older install.log has none)
+    # first reads among R, is logged since B13 round 12 N35 (an older install.log has none). B13 round 42
+    # C2222: -waited-for-an-unrecorded-holder (u, u2) when the lock it waited on held an empty body
     r"converted-(?P<c>\d+)-deferred-(?P<d>\d+)(?:-reread-(?P<r>\d+)(?:-first-(?P<f>\d+))?)?"
-    r"(?P<w>-waited-for-the-lock)?|(?P<w2>waited-for-the-lock)"
+    r"(?:(?P<w>-waited-for-the-lock)|(?P<u>-waited-for-an-unrecorded-holder))?"
+    r"|(?P<w2>waited-for-the-lock)|(?P<u2>waited-for-an-unrecorded-holder)"
 )
+_LOCK_FREE_WORDS = ", after waiting for the sync lock to be free"
+"""The first sync's words after a wait on a lock whose holder left no body to read (B13 round 42 C2222):
+"another sync" said more than install.sh knew, as the agentsync step's ``waited-for-an-unrecorded-holder``
+already says."""
 _CONVERTED_LINE_RE = re.compile(  # sync's last line; the rest of it holds its clauses
     r"\bconverted (?P<c>\d+), deferred (?P<d>\d+) online-only\b"
     # R after "read again", or after "first read" when all R were first reads (B13 round 10 L34)
@@ -7022,6 +7028,7 @@ def _agentsync_note(note: str) -> str:
 
 _FIRST_SYNC_NOTE_WORDS = {
     "waited-for-the-lock": "waited for another sync to end",
+    "waited-for-an-unrecorded-holder": "waited for the sync lock to be free",  # B13 round 42 C2222
     "lock-busy": "lock busy: another sync held the lock past the wait",
     "no-sources": "no folder to sync in sources.toml",
     "status-failed": "agentsync status reported a failure, so no sync ran",
@@ -7056,7 +7063,11 @@ def _first_sync_note(note: str) -> str:
             )
         elif again is not None:
             words += f", {again} read again or read for the first time"
-        return words + (", after waiting for another sync to end" if m["w"] else "")
+        return (
+            words
+            + (", after waiting for another sync to end" if m["w"] else "")
+            + (_LOCK_FREE_WORDS if m["u"] else "")
+        )
     return _FIRST_SYNC_NOTE_WORDS.get(note, note)
 
 
@@ -16390,6 +16401,8 @@ def _sync_step_words(v: dict[str, str]) -> tuple[str, tuple[int, int, int] | Non
             counts = (int(note["c"]), int(note["d"]), int(note["r"] or 0))
         if note["w"] or note["w2"]:
             text += ", after waiting for another sync to end"
+        elif note["u"] or note["u2"]:  # B13 round 42 C2222
+            text += _LOCK_FREE_WORDS
     elif v.get("note") and not limited:  # a limit's note is in the rc's words already (C1434)
         # after a comma, not in a bracket of its own: the source tag is the line's one trailing bracket
         # (round 6 G34; B13 round 12 N14, N33 found "(lock busy: ...) (install.log)")
