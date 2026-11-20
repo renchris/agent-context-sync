@@ -4184,13 +4184,20 @@ def loop_stage(baseline: str | None, topics: int | None, synced: bool | None) ->
     return "synced" if synced else "installed"
 
 
+_KEPT_WHOLE_RE = re.compile(f"({re.escape(AGENTSYNC_BIN)}|{re.escape(INSTALL_SH)})")
+"""The two fixed paths :func:`loop_next_text` keeps whole (B13 round 42 C2211 with C2216)."""
+
+
 def loop_next_text(line: str) -> str:
-    """A ``NEXT:`` line without paths: each ``~/...`` or ``/...`` path becomes its last part, except
-    agentsync's own fixed ``~/.local/bin/agentsync`` (``loop.BIN``), which is kept whole: it holds no name,
-    the doctor's fixes and the report's status lines print it the same way, and it stays runnable when
-    ~/.local/bin is not on PATH (B13 round 4 Q12). The loop's wording names no mirror path or file name, so
-    this leaves fixed text, counts and source ids (which the report redacts)."""
-    return AGENTSYNC_BIN.join(_NEXT_PATH_RE.sub(r"\1", part) for part in line.strip().split(AGENTSYNC_BIN))
+    """A ``NEXT:`` line without paths: each ``~/...`` or ``/...`` path becomes its last part, except two
+    fixed paths kept whole: agentsync's own ``~/.local/bin/agentsync`` (``loop.BIN``; B13 round 4 Q12) and
+    the README checkout's ``~/src/agent-context-sync/scripts/install.sh`` (``skill.INSTALL_SH``, B13 round 42
+    C2211 with C2216: the recording wait's ``install.sh --confirm-install-agent`` did not run as shown). Both
+    hold no name, sync, status and the report's other lines print them the same way, and each stays runnable
+    as written. The loop's wording names no mirror path or file name, so this leaves fixed text, counts and
+    source ids (which the report redacts)."""
+    parts = _KEPT_WHOLE_RE.split(line.strip())  # the odd places hold the kept paths
+    return "".join(p if i % 2 else _NEXT_PATH_RE.sub(r"\1", p) for i, p in enumerate(parts))
 
 
 _IT_DRAFT_DATE_RE = re.compile(r"\bdate = (\d{4}-\d{2}-\d{2})\b")

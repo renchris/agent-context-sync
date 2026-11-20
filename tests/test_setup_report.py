@@ -11133,9 +11133,18 @@ def test_loop_stage_and_next_text() -> None:
         "(`~/src/agent-context-sync/scripts/install.sh --list-folders` lists them), then run "
         '`~/.local/bin/agentsync add-source "<folder>"` for each, then `/Users/x/.local/bin/agentsync sync`'
     ) == (
-        "NEXT: no folder is synced yet: ask the operator which folders to sync (`install.sh --list-folders` "
-        'lists them), then run `~/.local/bin/agentsync add-source "<folder>"` for each, then `agentsync sync`'
-    ), "agentsync's own ~/.local/bin/agentsync stays whole; every other path, an absolute one too, is cut"
+        "NEXT: no folder is synced yet: ask the operator which folders to sync "
+        "(`~/src/agent-context-sync/scripts/install.sh --list-folders` lists them), then run "
+        '`~/.local/bin/agentsync add-source "<folder>"` for each, then `agentsync sync`'
+    ), "~/.local/bin/agentsync and the checkout's install.sh stay whole; every other path is cut"
+    # B13 round 42 C2211 with C2216: the recording wait's command runs as shown; an expanded checkout is cut
+    wait_cmd = (
+        f"WAITING ON YOU: run `{loop.INSTALL_SH} --confirm-install-agent`, or `{loop.BIN} materialise <file>`"
+    )
+    assert text(wait_cmd) == wait_cmd
+    assert text("NEXT: run `/Users/x/src/agent-context-sync/scripts/install.sh --report-only`") == (
+        "NEXT: run `install.sh --report-only`"
+    )
     assert setup_report.AGENTSYNC_BIN == loop.BIN == "~/.local/bin/agentsync"
     assert text("NEXT: keep about 10 in _eval/questions.md") == "NEXT: keep about 10 in _eval/questions.md"
     # On its own, loop_next_text keeps the folder's last part; the Loop line names it in words first
