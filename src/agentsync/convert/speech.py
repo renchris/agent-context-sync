@@ -534,9 +534,13 @@ def _git_config(git: str, *, cwd: Path, deadline: float) -> dict[str, str]:
     ``git clone`` reads (the system, global and XDG ones, never an enclosing repository's: ``GIT_DIR`` is
     /dev/null for this one call, since a home folder that is itself a git repository would otherwise lend its
     ``.git/config`` to a call run under ``~/Library/Caches``, B13 round 11 M68): one
-    ``git config --type=path --get-urlmatch http <url>``, so a url-scoped
+    ``git config -z --type=path --get-urlmatch http <url>``, so a url-scoped
     ``[http "https://github.com"]`` value counts and a ``~`` path is expanded (``--type=path`` changes no
-    value that does not start with ``~``; measured with Xcode's git 2.50.1).  Nothing set (git exits 1), a
+    value that does not start with ``~``; measured with Xcode's git 2.50.1).  ``-z`` ends each record
+    ``key<LF>value`` with a NUL, so the bytes are split on NUL alone, decoded with surrogateescape (a path's
+    non-UTF-8 bytes reach curl's environment as they were) and never stripped: a value holding U+2028, VT or
+    U+0085 stays whole and a quoted value keeps its edge spaces, as git uses it (B13 round 42 C2304, ruling
+    152; str.splitlines() cut ``alpha<U+2028>beta.pem`` to ``alpha``).  Nothing set (git exits 1), a
     git that does not run and the build's time running out all read as nothing set.  An empty http.proxy is
     kept as ``""``: it is git's way to turn a proxy off, and git then goes direct whatever the environment
     says (measured with Xcode's git 2.50.1: ls-remote with HTTPS_PROXY at a closed port succeeded)."""
@@ -545,7 +549,7 @@ def _git_config(git: str, *, cwd: Path, deadline: float) -> dict[str, str]:
         return {}
     try:
         cp = subprocess.run(
-            [git, "config", "--type=path", "--get-urlmatch", "http", _GIT_URL],
+            [git, "config", "-z", "--type=path", "--get-urlmatch", "http", _GIT_URL],
             cwd=cwd,
             env={**_build_env(), "GIT_DIR": os.devnull},  # only here: swift and git -C share _build_env
             stdin=subprocess.DEVNULL,
@@ -558,11 +562,13 @@ def _git_config(git: str, *, cwd: Path, deadline: float) -> dict[str, str]:
     if cp.returncode != 0:
         return {}
     found: dict[str, str] = {}
-    for line in cp.stdout.decode("utf-8", errors="replace").splitlines():
-        key, _, value = line.partition(" ")
+    for record in cp.stdout.split(b"\0"):  # each record ends at the NUL git ends it with (ruling 152)
+        if not record:
+            continue
+        key, _, value = record.decode("utf-8", errors="surrogateescape").partition("\n")
         key = key.lower()
-        if key in _GIT_SETTINGS and (value.strip() or key == "http.proxy"):
-            found[key] = value.strip()
+        if key in _GIT_SETTINGS and (value or key == "http.proxy"):
+            found[key] = value
     return found
 
 

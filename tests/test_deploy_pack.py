@@ -6266,6 +6266,8 @@ def test_the_docs_state_what_round_5_changed() -> None:
     for line in (
         "**Amended 2026-10-13, §16.67 G61 (by §16.60 F78):** the query is `git config --type=path "
         "--get-urlmatch http <NEMO_URL>`",
+        "Amended 2026-11-20, §16.268 C2304: the query is `git config -z --type=path --get-urlmatch http "
+        "<NEMO_URL>`, its output split on NUL bytes",
         "**Amended 2026-10-13, §16.67 G61 (by §16.60 F77):** fixed text is de-duplicated a shape at a time",
         "**Amended 2026-10-13, §16.67 G61:** F78 amends §16.54 Q52",
         "**Amended 2026-10-13, §16.67 G68 (by §16.60 F94):** a credential or path stub is rendered again",

@@ -15118,6 +15118,8 @@ Amended 2026-11-03, §16.224 (review backtest er-28#0, er-28#1): beside a CA fol
 `SSL_CERT_FILE`, not `CURL_CA_BUNDLE`, and `http.sslBackend` wins over the shell's `CURL_SSL_BACKEND`.
 Amended 2026-11-04, §16.233 C962: "unless the shell sets one" means one its curl reads: beside a
 `CURL_CA_BUNDLE` of the shell's own, the shell's `SSL_CERT_DIR` is dead, and git's folder replaces it.
+Amended 2026-11-20, §16.268 C2304: the query is `git config -z --type=path --get-urlmatch http <NEMO_URL>`, its
+output split on NUL bytes and decoded with surrogateescape, no value stripped and an empty proxy kept.
 
 **The person's SwiftPM mirrors and registries reach the build (Q53; amends §16.48 R90).** `--config-path`
 replaces SwiftPM's shared configuration folder outright (Swift 6.2.4: a mirror resolved under its own
@@ -43750,6 +43752,18 @@ U+0085, U+2028 and U+2029 stay as they are: the records end at LF, and a reader 
 `test_convert_records.py::test_each_comment_in_the_comment_sidecar_is_one_escaped_record_c2301` (a multi-line,
 tabbed, forged-looking, backslashed and 9,000-character comment) and
 `test_convert_page_cap.py::test_a_sheets_comment_list_stays_within_the_cap_and_rides_whole_in_its_sidecar_c2064`.
+
+**git's settings for the seed are read as NUL-ended records** (C2304; ruling 152; `agentsync.convert.speech`; amends
+§16.54 Q52). `_git_config` split `git config --type=path --get-urlmatch http <NEMO_URL>`'s output with
+`str.splitlines()` and stripped each value, so an `http.sslCAInfo` path holding U+2028, VT, FF, 0x1C to 0x1E or U+0085
+came back cut (`/tmp/contoso/alpha<U+2028>beta.pem` read `/tmp/contoso/alpha`, the verifier's run with git 2.54.0)
+and the seed's curl trusted another bundle than git does, and a quoted value lost the edge spaces git keeps. It now
+runs `git config -z --type=path --get-urlmatch http <NEMO_URL>`, splits the bytes on NUL (each record `key<LF>value`),
+decodes each with surrogateescape, so a path's non-UTF-8 bytes reach curl's environment as they were, strips nothing
+and keeps an empty `http.proxy` as `""`. Test:
+`test_speech.py::test_a_git_ca_path_holding_a_line_separator_reaches_curl_whole_c2304` (a real git under a throwaway
+HOME: a CA path holding U+2028, VT, U+0085 or a non-UTF-8 byte reaches `CURL_CA_BUNDLE` byte for byte, `" openssl"`
+keeps its space and `proxy = ""` turns the proxy off).
 
 ### 16.269 Round 42: the prompt goes to v39 (the paths and folder states setup printed), the gate's stop lines, and the guides (2026-11-20, wave B13 round 42 lane D)
 

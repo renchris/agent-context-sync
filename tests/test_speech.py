@@ -158,7 +158,7 @@ def test_the_build_resolves_checks_the_floor_pins_the_commit_and_leaves_everythi
     ]
     checkout = folder / "build" / ".build" / "checkouts" / "FluidAudio"
     assert lines_of(tools / "git.calls") == [
-        f"config --type=path --get-urlmatch http {speech.NEMO_URL}",  # the seed: no proxy in git's config
+        f"config -z --type=path --get-urlmatch http {speech.NEMO_URL}",  # the seed: no proxy in git's config
         f"-C {checkout} rev-parse HEAD",
         f"-C {checkout} merge-base --is-ancestor {speech.FLUIDAUDIO_FLOOR} {FAKE_PIN}",
     ]
@@ -1347,6 +1347,43 @@ def test_the_seed_never_reads_the_config_of_a_home_folder_that_is_a_git_reposito
     script(git, f'GIT_CONFIG_NOSYSTEM=1 exec {real} "$@"')  # the machine's own system config stays out
     found = speech._git_config(str(git), cwd=build, deadline=speech._clock() + 30)
     assert found == {"http.sslcainfo": f"{home}/contoso-ca.pem"}
+
+
+_SEPARATED = [
+    b"/tmp/contoso/alpha\xe2\x80\xa8beta.pem",  # U+2028
+    b"/tmp/contoso/alpha\x0bbeta.pem",  # VT
+    b"/tmp/contoso/alpha\xc2\x85beta.pem",  # U+0085
+    b"/tmp/contoso/alpha\xffbeta.pem",  # not UTF-8
+]
+
+
+@pytest.mark.parametrize("path", _SEPARATED, ids=["u2028", "vt", "nel", "not-utf8"])
+def test_a_git_ca_path_holding_a_line_separator_reaches_curl_whole_c2304(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, path: bytes
+) -> None:
+    """B13 round 42 C2304 (ruling 152): _git_config split git's output with str.splitlines(), so a CA path
+    holding U+2028, VT or U+0085 came back cut (`/tmp/contoso/alpha`) and the seed's curl trusted another
+    file than git does; it also stripped every value. `git config -z` ends each record with a NUL: the bytes
+    split there, decoded with surrogateescape (a non-UTF-8 byte reaches curl's environment as it was), never
+    stripped, so a quoted value keeps its edge spaces and an empty proxy is kept."""
+    real = shutil.which("git")
+    assert real is not None
+    env = {**os.environ, "GIT_CONFIG_NOSYSTEM": "1"}
+    for key, value in ((b"http.sslcainfo", path), (b"http.sslbackend", b" openssl"), (b"http.proxy", b"")):
+        subprocess.run([real.encode(), b"config", b"--global", key, value], env=env, check=True)
+    git = tmp_path / "bin" / "git"
+    git.parent.mkdir()
+    script(git, f'GIT_CONFIG_NOSYSTEM=1 exec {real} "$@"')
+    build = tmp_path / "build"
+    build.mkdir()
+    found = speech._git_config(str(git), cwd=build, deadline=speech._clock() + 30)
+    cainfo = path.decode("utf-8", errors="surrogateescape")
+    assert found == {"http.sslcainfo": cainfo, "http.sslbackend": " openssl", "http.proxy": ""}
+    for key in ("GIT_SSL_CAINFO", "GIT_SSL_CAPATH", *speech._CURL_CA_VARS):
+        monkeypatch.delenv(key, raising=False)
+    curl_env = speech._curl_env(found)
+    assert os.fsencode(curl_env["CURL_CA_BUNDLE"]) == path
+    assert "HTTPS_PROXY" not in curl_env and "https_proxy" not in curl_env
 
 
 @pytest.mark.parametrize("shell", [{}, {"HTTPS_PROXY": "http://env-proxy.contoso.example:8080"}])
