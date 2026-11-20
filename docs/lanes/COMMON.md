@@ -2163,4 +2163,7 @@ and expects one record back.
 Lane peers (round 20 Y80): once all five lanes are live, the lead messages every lane the five session ids. Send a
 seam note straight to the lane that owns the file, and copy the lead only when it changes another lane's scope.
 
-Result note: `~/.cache/agentsync-bring-back/b13/lanes/r42-<lane>.md`.
+Result note: `~/.cache/agentsync-bring-back/b13/lanes/r42-<lane>.md`. It ends with a section headed exactly `For later
+lanes and the rehearsal`, which says `none` when the lane has nothing for a later lane or the rehearsal; a word for one
+lane, lane D included, goes inside that section, never under a heading of its own (C2215). The rehearsal reads each
+note's section, and where a note has none, its Items and Corrections in full.

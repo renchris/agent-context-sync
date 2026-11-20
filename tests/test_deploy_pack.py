@@ -485,6 +485,22 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
     assert "3f1dee54, a docs-only" not in note and "3f1dee54, a docs-only" not in guide
 
 
+def test_every_result_note_ends_with_a_section_for_later_lanes_and_the_rehearsal_c2215() -> None:
+    """B13 round 42 C2215: the round 42 rehearsal brief read the "for later lanes and the rehearsal" parts of
+    all five round 41 notes, but only lane B's had one, lane E's was headed "For lane D and the rehearsal",
+    and nothing asked for a heading. The lane brief's result-note rule now names the section, `none` when it
+    is empty, a word for one lane inside it, and the rehearsal's fallback to a note's Items and Corrections,
+    so an item listed elsewhere (round 41 lane D's C2077) is still read."""
+    lanes = _page("docs/lanes/COMMON.md")
+    assert (
+        "Result note: `~/.cache/agentsync-bring-back/b13/lanes/r42-<lane>.md`. It ends with a section"
+        " headed exactly `For later lanes and the rehearsal`, which says `none` when the lane has nothing for"
+        " a later lane or the rehearsal; a word for one lane, lane D included, goes inside that section,"
+        " never under a heading of its own (C2215). The rehearsal reads each note's section, and where a note"
+        " has none, its Items and Corrections in full."
+    ) in lanes
+
+
 def test_the_guides_say_when_to_dispatch_ci_and_how_to_find_your_own_land() -> None:
     """B13 round 35 C982 with C990: three round 34 lessons were in no guide. A ship-land exit 9 with no run
     left the hand loop printing nothing, which reads like success, and nothing said that a dispatch runs the

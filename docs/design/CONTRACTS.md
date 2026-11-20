@@ -43693,6 +43693,14 @@ passed it: a higher head would state a range nobody measured, so it stays until 
 `timeout-minutes` stays 100, 20:15 above the slowest (ci.yml's rule raises it only within 15 minutes). Test:
 `test_claude_md_gives_cis_time_and_its_limit`.
 
+**Every result note ends with a section for later lanes and the rehearsal** (C2215; `docs/lanes/COMMON.md`). Round 42's
+rehearsal brief read the "for later lanes and the rehearsal" parts of all five round 41 lane notes, while only lane B's
+had one, lane E's was headed `For lane D and the rehearsal`, and no brief named a heading. The lane brief's result-note
+rule now asks for a closing section headed exactly `For later lanes and the rehearsal`, `none` when it is empty, a word
+for one lane inside it, and says the rehearsal reads that section and, in a note without one, its Items and Corrections
+in full; reading only the notes that have one would skip an item listed elsewhere (round 41 lane D's C2077). The
+rehearsal brief's own line is the lead's. Test: `test_every_result_note_ends_with_a_section_for_later_lanes_and_the_rehearsal_c2215`.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units
