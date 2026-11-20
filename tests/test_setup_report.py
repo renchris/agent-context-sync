@@ -28864,6 +28864,26 @@ def test_a_googledrive_address_is_an_organisation_and_a_short_id_is_a_hold_value
         ("mail dana@example.com and bob@example.org", "mail <org-1> and <email-1>"),
     ):
         assert setup_report._redact_lines(red, [said]) == want, said
+    # B13 round 42 C2288 with C2241: a shared library named with an address keeps its prefix
+    lib = setup_report.Redactor()
+    lib.add("home", "/Users/dana")
+    lib.add("org", setup_report._org_of("OneDrive-SharedLibraries-dana@example.com"), fuzzy=True)
+    assert setup_report._provider_parts("OneDrive-SharedLibraries-dana@example.com") == (
+        "OneDrive-SharedLibraries-",
+        "dana@example.com",
+    )
+    assert setup_report._redact_lines(
+        lib,
+        [
+            "x is not an existing folder: /Users/dana/Library/CloudStorage/"
+            "OneDrive-SharedLibraries-dana@example.com/Zephyr (see --help)",
+            "see OneDrive-SharedLibraries-dana@example.com now",
+        ],
+    ).split("\n") == [
+        "x is not an existing folder: ~/Library/CloudStorage/OneDrive-SharedLibraries-<org-1>/<path> "
+        "(see --help)",
+        "see OneDrive-SharedLibraries-<org-1> now",
+    ]
     short = setup_report.Redactor()
     short.add("folder", "IT", fuzzy=True)
     assert short.redact("it is ok to go on in the IT folder") == "it is ok to go on in the <folder-1> folder"

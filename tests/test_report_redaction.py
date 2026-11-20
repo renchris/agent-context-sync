@@ -2503,9 +2503,13 @@ def test_both_reports_cut_a_folder_step_1_listed_but_not_configured_ruling_142(
 
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize(
+    "provider", ["GoogleDrive-dana@example.com", "OneDrive-SharedLibraries-dana@example.com"]
+)
 def test_both_reports_read_a_googledrive_address_tenant_and_a_short_id_alike_c2071(
     env: dict[str, str],  # noqa: F811
     locale: str,
+    provider: str,
 ) -> None:
     """B13 round 41 C2071 (ruling 142; makes worse True for registering every short id as a plain word): a
     `GoogleDrive-<address>` tenant read `GoogleDrive-<org-N>` in the shell report and `<email-N>` in the
@@ -2514,8 +2518,12 @@ def test_both_reports_read_a_googledrive_address_tenant_and_a_short_id_alike_c20
     text: no address, no folder name, and, with the shell half, one line and one verdict. B13 round 42 C2240
     (ruling 149): the source id `it` cuts the pronoun as well, as <source-N>, which the last line pins; only a
     folder `IT` with no such id keeps it (test_install_oneshot.py's case). Keeping the pronoun here would
-    print the id in clear."""
-    provider = "GoogleDrive-dana@example.com"
+    print the id in clear. B13 round 42 C2288 with C2241: a shared library named with an address reads
+    `OneDrive-SharedLibraries-<org-N>` in both; this report numbers the library `<library-N>` where the shell
+    numbers it `<folder-N>`, which shifts every later folder number, a mismatch of its own (lane RA's round
+    42 note), so for that provider the shell line is held equal only on lines with no folder or library
+    number."""
+    head = provider.removesuffix("dana@example.com")
     cs = f"~/Library/CloudStorage/{provider}"
     said = [
         f"start install.sh args=--source-local {cs}/My\\ Drive/Juniper\\ Notes",
@@ -2537,15 +2545,23 @@ def test_both_reports_read_a_googledrive_address_tenant_and_a_short_id_alike_c20
     assert not [
         ln for ln in python for w in ("dana", "example", "Juniper", "Zephyr", "<email-") if w in ln
     ], python
-    assert python[0].endswith(f"~/Library/CloudStorage/GoogleDrive-<org-1>/{'My Drive'}/<folder-1>") or (
-        "GoogleDrive-<org-1>/" in python[0]
-    ), python[0]
-    assert "GoogleDrive-<org-1>/" in python[1] and python[1].endswith("<path>"), python[1]
+    assert f"~/Library/CloudStorage/{head}<org-1>/" in python[0], python[0]
+    assert f"{head}<org-1>/" in python[1] and python[1].endswith("<path>"), python[1]
     assert not [ln for ln in python[3:] for w in (".qx.", ".hr.", " HR ", " IT ") if w in ln], python
     assert python_private, "a 2-letter id or folder that is a word makes the report private only where cut"
-    assert python[-1] == "the <folder-3> folder and the <folder-4> folder, and <source-2> is ok", python[-1]
+    if not head.endswith("SharedLibraries-"):
+        assert python[-1] == "the <folder-3> folder and the <folder-4> folder, and <source-2> is ok", python[
+            -1
+        ]
     if _R142_SHELL:
-        assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
+        held = [
+            (a, b)
+            for a, b in zip(shell, python, strict=True)
+            if not any(n in a or n in b for n in ("<library-", "<folder-"))
+        ]
+        assert any("<org-1>" in a for a, _b in held) and all(a == b for a, b in held), held
+        if not head.endswith("SharedLibraries-"):
+            assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
 
 
 _PROJECTS_OUTSIDE = "~/Projects/Zephyr Quarry"

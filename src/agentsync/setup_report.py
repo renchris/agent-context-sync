@@ -2249,15 +2249,20 @@ class Redactor:
         elif groups.get("email") is not None:
             # B13 round 41 C2071 (ruling 142): an address registered as an organisation (a
             # GoogleDrive-<address> folder's, _org_of) is that <org-N>, alone or after its app's name, which
-            # the email pattern takes with it; any other address is an <email-N>
-            app, dash, rest = text.partition("-")
+            # the email pattern takes with it; any other address is an <email-N>. B13 round 42 C2288 with
+            # C2241: a shared library's prefix is kept, OneDrive-SharedLibraries-<org-N>
+            parts = _provider_parts(text)
             if (held := self._known(text)) is not None:
                 placeholder = held
-            elif dash and app in _PROVIDER_APPS and (held := self._known(rest)) is not None:
+            elif (
+                parts is not None
+                and parts[0].partition("-")[0] in _PROVIDER_APPS
+                and (held := self._known(parts[1])) is not None
+            ):
                 if self._counting:
                     self.counts[self._kind_of.get(held, "other")] += 1
                     self._used.add(held)
-                return f"{app}-{held}"
+                return f"{parts[0]}{held}"
             else:
                 placeholder = self._pattern("email", text)
         elif groups.get("guid") is not None:
@@ -4965,11 +4970,27 @@ def _org_of(provider: str) -> str | None:
     ``GoogleDrive-<address>`` reads ``GoogleDrive-<org-N>``, which the provider rule keeps, where the email
     pattern turned the whole folder name into ``<email-N>`` and the two reports cut it two ways
     (:meth:`Redactor._replace`)."""
-    app, _, org = provider.partition("-")
-    org = org.removeprefix("SharedLibraries-")
+    parts = _provider_parts(provider)
+    if parts is None:
+        return None
+    app, org = parts[0].partition("-")[0], parts[1]
     if not org or org.casefold() in _GENERIC_DOMAINS or org.casefold() == app.casefold():
         return None
     return org
+
+
+def _provider_parts(text: str) -> tuple[str, str] | None:
+    """A ``<app>-<rest>`` folder name split after its app's name and a shared library's ``SharedLibraries-``
+    (``("OneDrive-SharedLibraries-", "Contoso")``), the one place :func:`_org_of` and the email branch of
+    :meth:`Redactor._replace` read it (B13 round 42 C2288 with C2241: the email branch kept ``OneDrive-``
+    alone, so ``OneDrive-SharedLibraries-<address>`` read ``<email-N>``); None with no hyphen."""
+    app, dash, rest = text.partition("-")
+    if not dash:
+        return None
+    lib = report_cuts.SHARED_LIBRARIES + "-"
+    if rest.startswith(lib):
+        return f"{app}-{lib}", rest[len(lib) :]
+    return f"{app}-", rest
 
 
 _GIT_PROXY_RE = re.compile(r'^[ \t]*proxy[ \t]*=[ \t]*"?([^"\s;#]+)', re.IGNORECASE)
