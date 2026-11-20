@@ -134,17 +134,21 @@ PATH_HEADS = (
     ("debug: config ", "config"),
 )
 """Every argument form both reports read a path after, each with its :data:`PATH_RULES` rule (B13 round 40
-ruling 137, completing ruling 133: the table held the values both reports cut by but not the forms they parse,
-so the shell's hand-kept heads drifted, C1831 with C1881, C1832, C1833, C1834 with C1882, C1835). A bare
-``$'...'`` word after ``--source-local ``, ``--source-local=`` or ``add-source `` is the one divergence ruling
-138 keeps: the shell report cuts it whole to ``<path>``, the agentsync report decodes it and cuts it by its
-head's rule. ``is not an existing folder: ``'s name runs to its line's last `` (see --help)`` that ends a
-name, or the line's end, and so does ``--cwd is not a folder this run can enter: ``'s (B13 round 41 C2030),
-tried before ``--cwd ``; a ``debug: `` head's value (install.sh's debug_path writes the path in printf %q's
-one-line form, the home as ~, and debug_line prints it as given) runs to the line's first `` | `` or its end,
-and every one on a line is cut (C2029); every other head's path is one shell word. B13 round 41 ruling 142: a
-bare word with no slash, backslash or quote after ``--source-local ``, ``--source-local=`` or ``add-source ``
-is prose and stays (C2062 with C2031 and C2085), and so do install.sh's own words after ``--cwd ``
+ruling 137, completing ruling 133: the table held the values both reports cut by but not the forms they
+parse, so the shell's hand-kept heads drifted, C1831 with C1881, C1832, C1833, C1834 with C1882, C1835). A
+bare ``$'...'`` word after ``--source-local ``, ``--source-local=`` or ``add-source `` is the first of two
+kept divergences, ruling 138's: the shell report cuts it whole to ``<path>``, the agentsync report decodes
+it and cuts it by its head's rule. The second (B13 round 42 C2265, ruling 148, amending ruling 138):
+install.log's relative ``--source-local`` word naming no CloudStorage entry keeps its ``./``, ``../`` or
+``./../`` head in the agentsync report, cut from its first unknown part (``./<path>``, ``./<folder-N>`` for
+a configured folder), where the shell report cuts it whole to ``<path>``; neither prints a name. ``is not
+an existing folder: ``'s name runs to its line's last `` (see --help)`` that ends a name, or the line's
+end, and so does ``--cwd is not a folder this run can enter: ``'s (B13 round 41 C2030), tried before
+``--cwd ``; a ``debug: `` head's value (install.sh's debug_path writes the path in printf %q's one-line
+form, the home as ~, and debug_line prints it as given) runs to the line's first `` | `` or its end, and
+every one on a line is cut (C2029); every other head's path is one shell word. B13 round 41 ruling 142: a
+bare word with no slash, backslash or quote after ``--source-local ``, ``--source-local=`` or ``add-source
+`` is prose and stays (C2062 with C2031 and C2085), and so do install.sh's own words after ``--cwd ``
 (:data:`CWD_USAGE`, C2030); a not-a-folder or refused name is always cut."""
 
 CWD_USAGE = ("needs a folder, got the option", "needs a folder")
@@ -178,10 +182,13 @@ holds it to that writer) and ``\\u007f``."""
 
 TOML_BREAKS = ("\u0085", "\u2028", "\u2029")
 """The line breaks ``str.splitlines`` honours that ``config.toml_string`` wrote raw in add-source's echoed
-table (B13 round 41 R41-B1; privacy): both reports split a line there, so a configured name holding one
-printed both pieces in clear in both. Lane B's writer escapes them as ``\\uXXXX``; both reports alias a
-name's TOML spelling with each written so, in both hex cases (:func:`toml_break_spellings`), as
-:data:`DEL_ESCAPED` does for DEL, before that writer lands."""
+table until af21e6339 (B13 round 41 R41-B1; privacy): both reports split a line there, so a configured name
+holding one printed both pieces in clear in both. ``config.toml_string`` now writes each as ``\\uXXXX``.
+Both reports alias a name's TOML spelling as each writer spelled it, the older writer's raw form and the
+current escaped one, each break in each hex case (:func:`toml_break_spellings`), as :data:`DEL_ESCAPED` does
+for DEL: an echo a kept log holds from before af21e6339 is cut as the current one is (B13 round 42 C2320
+with C2239, ruling 147), and install.sh's own escaper, which leaves the breaks raw, needs the escaped
+spellings (``CUT_TOML_BREAKS_ESCAPED``)."""
 
 
 def toml_break_spellings(ch: str) -> tuple[str, ...]:
@@ -199,17 +206,26 @@ keep (a tenant no value registered) is cut with the rest of its word, which read
 FREE_WORD_END = (0x20, 0x09, 0x22, 0x27, 0x60)
 """What ends that word: a blank, a tab, a double or single quote or a backtick."""
 
-FREE_PART_STOP = ('"', "'", "`", "\n", "):", ", stored as ")
+FREE_PART_STOP = ('"', "'", "`", "\n", "):", ", stored as ", " | ", " \u00b7 ")
 """What stops the provider part of that word from running across blanks (B13 round 41 C2050 with C2032;
-privacy): a part read to its first ``/`` or :data:`FREE_WORD_END` byte that the provider rule keeps stays as
-before (``OneDrive-Personal and ~/x``); one it does not keep runs to the next ``/`` when none of these comes
-first, blanks included, so ``OneDrive-Northwind Traders/Q3 Plans`` is one word (an unregistered tenant with a
-blank kept its later words); with no ``/`` before one of these, or before the line's end, the part ends at a
-:data:`FREE_WORD_END` byte as before, and ``OneDrive-Fabrikam Holdings today`` keeps ``Holdings today``: no
-rule built on blanks tells a tenant's word from prose there, the residual named beside a tenant written
-without the head. After a part cut so, the rest runs through each following blank-separated word that
-continues a path (a ``/`` in it, no ``=`` or ``://``, not opening with ``-``, ``/`` or ``~``), as the
-other-home cut's ``more()`` does."""
+privacy). B13 round 42 ruling 146 (C2285 with C2235 and C2271; privacy): the part's long candidate runs across
+blanks from its start to the first ``/``, one of these, a :data:`FREE_PATH_START` or the line's end, and never
+stops at a blank before ``-`` (``Northwind - EMEA``). A part whose first word (read to a ``/`` or a
+:data:`FREE_WORD_END` byte) the provider rule does not keep is cut whole to that bound, so a not-kept part can
+take in later prose up to it (``OneDrive-Northwind Traders then ~/Documents/x`` reads ``<path>
+~/Documents/x``, and ``OneDrive-Tailspin Toys`` at a line's end is cut whole); a part kept so is judged on its
+whole run only when the run reaches its ``/`` (``OneDrive-Personal Secret/Plans`` is cut, ``OneDrive-Personal
+and ~/Documents/x`` stays whole). After a part cut to a ``/``, the rest runs through each following
+blank-separated word that continues a path (a ``/`` in it, no ``=`` or ``://``, not opening with ``-``, ``/``
+or ``~``), as the other-home cut's ``more()`` does. `` | `` and `` · `` (B13 round 42, lane RA's measurement)
+end it too: a report's table cell and a Summary item's field end there, so a part with no ``/`` after it no
+longer runs on into the next cell. Two residuals are named: a tenant written without the
+head, and a kept first word whose run stops before a ``/`` (``OneDrive-Personal Secret then ~/x`` keeps
+``Secret``): no rule built on blanks tells a tenant's word from prose there."""
+
+FREE_PATH_START = ("~/", "/")
+"""What, after a blank (a space or a tab), opens an independent path, which no tenant name holds: the provider
+part's long candidate stops at that blank (B13 round 42 ruling 146, C2285 with C2235)."""
 
 FREE_WORD_TRAIL = ")]}.,;:"
 """What a free-text word's end gives back after the cut, so prose keeps its punctuation, as a bare
@@ -296,6 +312,14 @@ def _octal(ch: str) -> str:
     return "".join(f"\\{b:03o}" for b in ch.encode("utf-8"))
 
 
+def _ere_char(ch: str) -> str:
+    """One character of a phrase in an awk ERE: ``)`` and ``|`` bracketed, a non-ASCII one as its UTF-8
+    bytes in octal (the readers run under LC_ALL=C), any other as written."""
+    if ch in ")|":
+        return f"[{ch}]"
+    return _octal(ch) if ord(ch) > 0x7F else ch
+
+
 def shell_block() -> str:
     """The block ``scripts/install.sh`` carries between ``# BEGIN report_cuts`` and ``# END report_cuts``,
     those two lines included, each value a shell assignment in single quotes that an awk reads through
@@ -309,9 +333,12 @@ def shell_block() -> str:
     ``CUT_DEL_ESCAPED`` (:data:`DEL_ESCAPED`), ``CUT_FREE_HEAD`` (:data:`FREE_PROVIDER_HEAD`) and
     ``CUT_FREE_END`` (:data:`FREE_WORD_END` as an awk bracket class of octal bytes) and ``CUT_FREE_TRAIL``
     (:data:`FREE_WORD_TRAIL`); since B13 round 41 ruling 142, ``CUT_FREE_PART_STOP`` (:data:`FREE_PART_STOP`
-    as an awk ERE: a bracket class of octal bytes, then each phrase, ``)`` bracketed), ``CUT_CWD_USAGE``
-    (:data:`CWD_USAGE`, ``|``-joined, longest first), ``CUT_CONFIG_DEFAULT`` (:data:`CONFIG_DEFAULT`),
-    ``CUT_TOML_BREAKS`` (:data:`TOML_BREAKS`, each one UTF-8 alternative in octal) and
+    as an awk ERE: a bracket class of octal bytes, then each phrase, ``)`` and ``|`` bracketed, a non-ASCII
+    character in octal); since B13 round 42
+    ruling 146, ``CUT_FREE_PATH_START`` (a blank, space or tab in octal, then :data:`FREE_PATH_START` as
+    one ERE group); then ``CUT_CWD_USAGE`` (:data:`CWD_USAGE`, ``|``-joined, longest first),
+    ``CUT_CONFIG_DEFAULT`` (:data:`CONFIG_DEFAULT`), ``CUT_TOML_BREAKS`` (:data:`TOML_BREAKS`, each one UTF-8
+    alternative in octal) and
     ``CUT_TOML_BREAKS_ESCAPED`` (each one's :func:`toml_break_spellings`, ``,``-joined, in the same order,
     ``|`` between characters)."""
     values = {
@@ -339,9 +366,10 @@ def shell_block() -> str:
         "CUT_FREE_PART_STOP": "|".join(
             [
                 "[" + "".join(f"\\{ord(c):03o}" for c in FREE_PART_STOP if len(c) == 1) + "]",
-                *(c.replace(")", "[)]") for c in FREE_PART_STOP if len(c) > 1),
+                *("".join(_ere_char(ch) for ch in c) for c in FREE_PART_STOP if len(c) > 1),
             ]
         ),
+        "CUT_FREE_PATH_START": "[\\040\\011](" + "|".join(FREE_PATH_START) + ")",
         "CUT_CWD_USAGE": "|".join(sorted(CWD_USAGE, key=len, reverse=True)),
         "CUT_CONFIG_DEFAULT": CONFIG_DEFAULT,
         "CUT_TOML_BREAKS": "|".join(_octal(ch) for ch in TOML_BREAKS),

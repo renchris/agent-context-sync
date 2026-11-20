@@ -1145,6 +1145,10 @@ _LEGEND = {
         "wrote in its dollar-quote form, cut whole, so doctor's fix reads open ~/<path> in Finder "
         "once, but one right after --source-local, --source-local= or add-source, shown decoded in double "
         "quotes and cut as its section says, where the shell fallback report cuts it whole; "
+        # B13 round 42 C2265 (ruling 148): the second kept divergence, declared
+        "a relative --source-local word on install.log's run header that names no CloudStorage folder, "
+        "shown with its ./ or ../ head and cut from its first unknown part, where the shell fallback report "
+        "cuts the whole word; "
         # B13 round 41 C2033 (ruling 142): round 40's forms and this round's, every pinned clause above kept
         "the folder after --cwd or --cwd= on install.out's run header and debug: cwd's folder, cut as a path "
         "is (the word --cwd kept), a debug: source path that lies under that cwd, and the folder after "
@@ -1152,6 +1156,10 @@ _LEGEND = {
         "~/agent-context/sources.toml, cut as a path is on every line that echoes it, debug: config's "
         "included; and, on any line, a ~/Library/CloudStorage/<App>-<word> folder the report numbers no "
         "organization for, cut to ~/Library/CloudStorage/<path>, never numbered, its trailing )]}.,;: kept"
+        # B13 round 42 ruling 146 (C2285 with C2235 and C2271)
+        ", with the words after it a name can hold: to the next / and each path word after that, or else to "
+        'a quote, a backtick, "):", ", stored as ", a blank before a path of its own or the line\'s end, '
+        "a generic word such as Personal judged with those words when a / follows them"
     ),
     "link": "<link-N> a symlink's own name in ~/Library/CloudStorage (not an organization)",
     "label": "<label> a label id or name a policy error quotes",
@@ -1191,7 +1199,8 @@ r"""A ``$'...'`` word (one left open runs to the line's end), which :meth:`Redac
 porting this report's form): install.sh's redact_stream cuts the same word first, on every line,
 so doctor's fix reads ``open ~/<path> in Finder once`` in both reports, and a body no alias covers (a
 ``printf %q`` word written under a locale no spelling knows, a look-alike name) never prints in clear. Not
-counted, as the shell's cut is not: only a link target replaced by ``<path>`` is. A word right after
+counted, as the shell's cut is not: only a link target replaced by ``<path>`` is, and a folder install.sh
+names as missing or refuses (B13 round 42 C2321 with C2237, ruling 148). A word right after
 ``--source-local``, ``--source-local=`` or ``add-source`` is left to :func:`_source_local_shown`, which
 decodes it and cuts it by its head's rule: the provider rule for ``--source-local``, the first unknown
 component for ``add-source`` (B13 round 17 U10; round 40 ruling 137). Either cut makes a body no alias matches
@@ -1777,6 +1786,12 @@ def _agent_words(name: str) -> bool:
     return bool(words) and all(w in _AGENT_WORDS for w in words)
 
 
+_CUT_TOKEN_END = r"""[^\s'"),;:\]|]*?(?=\.?(?:[\s'"),;:\]|]|$))"""
+"""Where a whole-path cut (:meth:`Redactor.add_cut`) ends, after its literal: the rest of the path token, to
+a blank, a quote, ``)``, ``,``, ``;``, ``:``, ``]``, ``|`` or the line's end, one ``.`` before such an end
+given back (B13 round 42 C2290, ruling 147; install.sh's config pairs take the same bound)."""
+
+
 class Redactor:
     """Replace known values and email/GUID/hex/temporary-folder patterns with placeholders, the same value
     always with the same placeholder (``<folder-1>``); counts every replacement per kind, and a numbered kind,
@@ -1853,7 +1868,7 @@ class Redactor:
         self.configured_held: set[str] = set()
         # (literal, shown): a whole path cut as written before any other replacement, longest first: the
         # config path but the default (B13 round 41 C2063 with C2083), :meth:`add_cut`
-        self._path_cuts: list[tuple[str, str]] = []
+        self._path_cuts: list[tuple[str, re.Pattern[str], str]] = []
 
     @property
     def total(self) -> int:
@@ -2057,10 +2072,14 @@ class Redactor:
     def add_cut(self, literal: str, shown: str) -> None:
         """Replace ``literal`` with ``shown`` wherever it is written, before the home or any other value is
         replaced, uncounted, as every ``<path>`` cut is: the config path's absolute and ~-forms (B13 round 41
-        C2063 with C2083), so every line that echoes it reads one cut."""
-        if len(literal) >= 2 and literal != shown and all(lit != literal for lit, _s in self._path_cuts):
-            self._path_cuts.append((literal, shown))
-            self._path_cuts.sort(key=lambda pair: -len(pair[0]))
+        C2063 with C2083), so every line that echoes it reads one cut. B13 round 42 C2290 (ruling 147;
+        privacy): the cut runs on to the end of the path token the literal opens (:data:`_CUT_TOKEN_END`),
+        so ``sources.toml-PrivateBackup``, ``sources.toml.bak`` and ``sources.tomlx/Wombat`` keep no suffix,
+        a sentence-final ``.`` and every terminator kept; a match bounded at the literal's end alone printed
+        the private folder on any line without a head."""
+        if len(literal) >= 2 and literal != shown and all(lit != literal for lit, _r, _s in self._path_cuts):
+            self._path_cuts.append((literal, re.compile(re.escape(literal) + _CUT_TOKEN_END), shown))
+            self._path_cuts.sort(key=lambda cut: -len(cut[0]))
 
     def set_app_heads(self, heads: Iterable[str]) -> None:
         """The app names before this Mac's organisations (``OneDrive`` of ``OneDrive-<org>``), with
@@ -2296,9 +2315,9 @@ class Redactor:
         volume on that line can (their heads are a subset), and each head is tried once: linear, never a
         bound on the look-back, which would leak the login a long volume name hides. Uncounted, as every
         ``<path>`` cut is. A whole path :meth:`add_cut` registered is replaced first."""
-        for literal, shown in self._path_cuts:
+        for literal, whole, shown in self._path_cuts:
             if literal in text:
-                text = text.replace(literal, shown)
+                text = whole.sub(shown.replace("\\", "\\\\"), text)
         regex = self._compile()
         if _VOLUME_AT_RE.search(text) is None:
             return regex.sub(self._replace, text)
@@ -5576,15 +5595,30 @@ def _alias_escaped(red: Redactor, value: str) -> None:
             red.alias(spelling, value)
 
 
+def _legacy_toml_body(value: str) -> str:
+    """``value`` inside the quotes of the TOML string add-source's echoed table held before af21e6339 (B13
+    round 41 R41-B1, lane B): :func:`config.toml_string`'s rule then, ``json.dumps`` with ``ensure_ascii``
+    off and DEL written ``\\u007F``, the :data:`report_cuts.TOML_BREAKS` characters raw. Built from the
+    value, never by reversing the current writer's escapes, which would misread a name holding a backslash
+    and ``u2028`` (B13 round 42 C2320, ruling 147)."""
+    return json.dumps(value, ensure_ascii=False)[1:-1].replace("\x7f", report_cuts.DEL_ESCAPED[0])
+
+
 def _toml_spellings(value: str) -> list[str]:
-    """``value`` inside :func:`config.toml_string`'s quotes, and with DEL in each of
-    :data:`report_cuts.DEL_ESCAPED`'s spellings, each that differs from ``value`` (B13 round 40 C1840 with
-    C1887), and each :data:`report_cuts.TOML_BREAKS` character in each of its escaped spellings (B13 round 41
-    R41-B1), whether the writer escapes it yet or not."""
-    escaped = toml_string(value)[1:-1]
-    del_forms = [escaped.replace(report_cuts.DEL_ESCAPED[0], d) for d in report_cuts.DEL_ESCAPED]
-    forms = [escaped, *(del_forms if "\x7f" in value else [])]
-    # B13 round 41 R41-B1: a line break toml_string wrote raw, in each escaped spelling lane B's writer uses
+    """``value`` inside a TOML string's quotes as either writer spelled it, each spelling that differs from
+    ``value``: :func:`config.toml_string`'s now, which writes each :data:`report_cuts.TOML_BREAKS` character
+    ``\\uXXXX``, and the older writer's (:func:`_legacy_toml_body`), which left them raw (B13 round 42 C2320
+    with C2239, ruling 147; privacy): a kept install.out or log can hold an add-source echo from before
+    af21e6339, and with the older base gone the Python report printed a name holding a line break with a
+    tab, a control byte or DEL in clear where the shell report cut it. Each base also with DEL in each of
+    :data:`report_cuts.DEL_ESCAPED`'s spellings (B13 round 40 C1840 with C1887), and every form with each
+    TOML_BREAKS character it still holds raw in each of its escaped spellings, so the mixed forms install.sh's
+    ``dels(o)`` and ``dels(o2)`` alias are aliased here too."""
+    forms: list[str] = []
+    for base in (toml_string(value)[1:-1], _legacy_toml_body(value)):
+        forms.append(base)
+        if "\x7f" in value:
+            forms += [base.replace(report_cuts.DEL_ESCAPED[0], d) for d in report_cuts.DEL_ESCAPED]
     for ch in report_cuts.TOML_BREAKS:
         if ch in value:
             forms += [f.replace(ch, sp) for f in forms for sp in report_cuts.toml_break_spellings(ch)]
@@ -6041,11 +6075,14 @@ def _build_redactor(r: _Run) -> Redactor:
 
 def _add_config_cut(red: Redactor, path: Path) -> None:
     """Register the config path, but :data:`report_cuts.CONFIG_DEFAULT`, as one cut (B13 round 41 C2063 with
-    C2083; privacy): its ~-form redacted (uncounted) and cut by :func:`_cut_path`, never its raw absolute form
+    C2083; privacy): its ~-form cut by :func:`_cut_path`, never its raw absolute form
     (``/<path>``), so ``~/Projects/Zephyr Quarry/cfg/sources.toml`` reads ``~/Projects/<path>``; registered
     with :meth:`Redactor.add_cut` as written, resolved and in each ~-form, so the ``- config:`` line, ``-
     loads:``, both ``Not run:`` lines and the governance and policy refusals read the same. AGENTSYNC_CONFIG,
-    relative under --cwd or absolute, printed its folders in clear in both reports."""
+    relative under --cwd or absolute, printed its folders in clear in both reports. B13 round 42 C2231 (ruling
+    147): the ~-form is cut unredacted, as install.sh's config_shown cuts it, so a config under a configured
+    folder or organization reads ``~/Library/CloudStorage/<path>`` in both reports, where the redacted form
+    kept ``OneDrive-<org-1>/<folder-1>`` here alone."""
     home = Path.home()
     homes = {str(home), os.path.realpath(home)}
     forms = {str(path)}
@@ -6061,8 +6098,7 @@ def _add_config_cut(red: Redactor, path: Path) -> None:
     shown_as = tilde(str(path)) or str(path)
     if shown_as == report_cuts.CONFIG_DEFAULT:
         return
-    with red.quiet():
-        shown = _cut_path(red.redact(shown_as))
+    shown = _cut_path(shown_as)  # unredacted, as install.sh's config_shown cuts it (B13 round 42 C2231)
     for form in [*forms, *filter(None, map(tilde, forms))]:
         red.add_cut(form, shown)
 
@@ -18448,12 +18484,14 @@ def _redaction_section(
     probe = functools.reduce(lambda text, own: text.replace(own, ""), _OWN_PATH_PHRASES, body)
     shown = [k for k in _LEGEND if k in red.kinds_used() or (k == "path" and "<path>" in probe)]
     # B13 round 30 C331: and the count says so where the body shows one, as "counted each time a value was
-    # replaced" reads as if it were counted
+    # replaced" reads as if it were counted; B13 round 42 C2321 with C2237 (ruling 148): naming exactly the
+    # counted cuts, the not-a-folder and refused --source-local names, the --cwd usage error's not among them
     uncounted = (
         " A <path> that cuts an item path or document name in a log line, a --source-local argument, an "
         "added source's typed folder, an exclude entry, a path in another home, a --cwd or debug line's "
-        "folder, a config path or a CloudStorage folder in free text is not counted: only a link "
-        "target replaced by <path> is."
+        "folder (the --cwd usage error's included), a config path or a CloudStorage folder in free text is "
+        "not counted: only a link target replaced by <path> is, and so is a folder install.sh names as "
+        "missing (after 'is not an existing folder:') or refuses (a refused --source-local usage error)."
         if "<path>" in probe
         else ""
     )
@@ -18589,15 +18627,20 @@ registered matches is cut to ``<path>`` there as well (B13 round 18 V7's review)
 :data:`report_cuts.PATH_HEADS` rows read as one shell word (B13 round 40 ruling 137); ``is not an existing
 folder: `` is :data:`_NOT_A_FOLDER_RE`'s and a ``debug: `` head's :data:`_DEBUG_RE`'s. ``--cwd`` and
 ``--cwd=`` (B13 round 40 C1835): the run header install.out keeps names a private project folder there."""
+_DEBUG_HEADS = "|".join(
+    re.escape(head) for head, _rule in report_cuts.PATH_HEADS if head.startswith("debug: ")
+)
 _DEBUG_RE = re.compile(
-    "("
-    + "|".join(re.escape(head) for head, _rule in report_cuts.PATH_HEADS if head.startswith("debug: "))
-    + r")(?P<path>.+?)(?= \| |$)"
+    "(" + _DEBUG_HEADS + r")(?P<path>(?=\| (?:" + _DEBUG_HEADS + r"))|(?= \| )|.+?(?= \| |$))"
 )
 """B13 round 40 C1835 (ruling 137; privacy): install.sh's ``debug: cwd``, ``debug: source`` and ``debug:
 config`` lines under --debug, whose path debug_path writes in printf %q's one-line form, the home as ~,
 running to the line's first `` | `` or its end: the cwd is cut as :func:`_cut_path` cuts, and a source or
-config path only where it lies under that cwd (:func:`_debug_shown`)."""
+config path only where it lies under that cwd (:func:`_debug_shown`). B13 round 42 C2286 with C2242 (ruling
+148; privacy): a value is empty only before ``| `` and another ``debug: `` head (the head's blank doubling
+as the separator's) or in the double-space form (``debug: config  | -``), and is kept as written there; an
+empty cell took the next cell as its value, so a ``debug: cwd`` after it was never cut or carried. A value
+that opens ``| `` with no head after it is read as before, to the next `` | `` or the line's end, and cut."""
 _ANSI_C_RE = re.compile(r"\\(?:([0-7]{1,3})|x([0-9A-Fa-f]{1,2})|(.))", re.DOTALL)
 _ANSI_C_LETTERS = {
     "a": "\a",
@@ -18646,7 +18689,7 @@ NOT_A_FOLDER_SAID = "is not an existing folder: "
 """install.sh's own words before a missing ``--source-local`` folder, in its per-folder lines and its usage
 error (``usage error: --source-local is not an existing folder: <folder> (see --help)``)."""
 _NOT_A_FOLDER_RE = re.compile(
-    rf"({re.escape(NOT_A_FOLDER_SAID)})(?P<path>.+(?= \(see --help\)(?:$|[;,.:]| [|·] ))|.+)"
+    rf"({re.escape(NOT_A_FOLDER_SAID)})(?:(?P<path>.*(?= \(see --help\)(?:$|[;,.:]| [|·] )))|(?P<eol>.*))"
 )
 """B13 round 37 C1299 with C1250 (ruling 120; privacy): the folder after :data:`NOT_A_FOLDER_SAID`, running to
 the line's last `` (see --help)`` or its end, so a name with blanks, quotes or that suffix inside is
@@ -18655,7 +18698,9 @@ taken whole. install.out is a tee of install.sh's stderr, which names the folder
 folder no config names. B13 round 38 C1436 (ruling 126): the name ends at that `` (see --help)`` only where
 what follows it cannot be part of a name, the line's end, one of ``;,.:``, `` | `` or `` · ``, so a friction
 row or a Summary item that goes on after it (``(see --help); retried with ...``) keeps its own words; with no
-such ending the name runs to the line's end, as before."""
+such ending the name runs to the line's end, as before. B13 round 42 (ruling 148): an empty name is taken as
+written, so ``folder:  (see --help)`` keeps its line (C2242), and the line's-end branch is group ``eol``,
+where alone a name that opens with a quote ends at its matching one (:func:`_quoted_cut`, C2234)."""
 _REFUSED_HEADS = report_cuts.REFUSED_HEADS
 """The words every ``source_local_refused`` call in install.sh opens with, after ``--source-local <name>: ``
 (B13 round 38 C1432, ruling 126): a test holds each call to one of them, so a new refusal's words cannot bring
@@ -18682,31 +18727,69 @@ def _not_a_folder_shown(red: Redactor, m: re.Match[str]) -> str:
     142; a regression from C1882): one leading ``"`` or ``'`` and its match at the end are peeled off and the
     inside cut, so a quoted name keeps its quotes and the rest of its line, as the shell prints it; an
     unterminated quote keeps its opening one only."""
-    return m.group(1) + _quoted_cut(red, m.group("path"), configured=red.configured_held)
+    return m.group(1) + _head_name_cut(red, m, configured=red.configured_held)
 
 
-def _quoted_cut(red: Redactor, path: str, *, configured: Collection[str] | None) -> str:
+def _head_name_cut(
+    red: Redactor, m: re.Match[str], *, configured: Collection[str] | None, counted: bool = True
+) -> str:
+    """A whole-name head's name (:data:`_NOT_A_FOLDER_RE`, :data:`_CWD_NAME_RE`, or
+    :data:`_SOURCE_LOCAL_REFUSED_RE`, which has no ``eol`` group) as :func:`_quoted_cut` shows it, its
+    line's-end branch marked (B13 round 42 C2234)."""
+    groups = m.groupdict()
+    if groups.get("path") is not None:
+        return _quoted_cut(red, groups["path"], configured=configured, counted=counted)
+    return _quoted_cut(red, groups["eol"], configured=configured, eol=True, counted=counted)
+
+
+def _closing_quote(text: str, q: str) -> int:
+    """Where the quote ``text`` opens with (``q``) closes, as install.sh's slone reads a quoted word: a ``'``
+    at the next ``'``, a ``"`` at the next ``"`` not taken by a backslash before it; -1 when none does."""
+    i = 1
+    while i < len(text):
+        if text[i] == q:
+            return i
+        i += 2 if q == '"' and text[i] == "\\" else 1
+    return -1
+
+
+def _quoted_cut(
+    red: Redactor, path: str, *, configured: Collection[str] | None, eol: bool = False, counted: bool = True
+) -> str:
     """``path`` cut by :func:`_cut_path` inside one leading ``"`` or ``'`` and its match (backtick never: the
     shell's quote set is those two), counted as a ``<path>`` replacement when the cut changed it (B13 round 41
+    C2027). B13 round 42 C2234 (ruling 148; privacy): only a name that ran to its line's end (``eol``, prose a
+    person or agent wrote) ends at its matching quote, its closing quote and the rest of its line kept; a
+    name that runs to install.sh's own `` (see --help)`` end is install.sh's line, written unquoted, and is
+    taken whole, quotes included, so ``'Alpha' Bravo Ridge (see --help)`` prints no ``Bravo Ridge``. B13
+    round 42 C2321 (ruling 148): ``counted`` False for the --cwd usage error's name, which the shell counts
+    no more than any cut; the not-a-folder and refused --source-local names stay counted (ruling 49,
     C2027)."""
     q = path[:1] if path[:1] in ('"', "'") else ""
+    if q and eol and (k := _closing_quote(path, q)) > 0:
+        inner, rest = path[1:k], path[k:]
+        cut = _cut_path(inner, red.listed_only, configured=configured)
+        if counted and cut != inner:
+            red.note("path")
+        return q + cut + rest
     close = q if q and len(path) >= 2 and path.endswith(q) else ""
     inner = path[len(q) : len(path) - len(close)]
     cut = _cut_path(inner, red.listed_only, configured=configured)
-    if cut != inner:
+    if counted and cut != inner:
         red.note("path")
     return q + cut + close
 
 
 _CWD_NAME_HEAD = next(head for head, rule in report_cuts.PATH_HEADS if rule == "cwd_name")
 _CWD_NAME_RE = re.compile(
-    rf"({re.escape(_CWD_NAME_HEAD)})(?P<path>.+(?= \(see --help\)(?:$|[;,.:]| [|·] ))|.+)"
+    rf"({re.escape(_CWD_NAME_HEAD)})(?:(?P<path>.*(?= \(see --help\)(?:$|[;,.:]| [|·] )))|(?P<eol>.*))"
 )
 """B13 round 41 C2030 (ruling 142; privacy): install.sh's ``usage error: --cwd is not a folder this run can
 enter: <folder> (see --help)``, a whole-name head as :data:`_NOT_A_FOLDER_RE`'s is, its name running to the
 line's last `` (see --help)`` that ends a name or its end, cut by the cwd rule (:func:`_cut_path`, no
 ``configured``) and counted as a ``<path>`` replacement; :data:`_SOURCE_LOCAL_RE`'s ``--cwd `` read its first
-word (``is``) as the folder and left the folder in clear."""
+word (``is``) as the folder and left the folder in clear. B13 round 42 (ruling 148): an empty name is taken
+as written (C2242), and the line's-end branch is group ``eol``, as :data:`_NOT_A_FOLDER_RE`'s (C2234)."""
 
 
 def _source_local_shown(red: Redactor, m: re.Match[str]) -> str:
@@ -18728,7 +18811,9 @@ def _source_local_shown(red: Redactor, m: re.Match[str]) -> str:
     cwd = _HEAD_RULE.get(m.group(1)) == "cwd"  # a relative --cwd word is a folder too (B13 round 40 C1835)
     # B13 round 41 C2030: install.sh's own usage words after --cwd stay whole, by phrase, never by their first
     # word, so a folder literally named `needs` is still cut; the not-a-folder head's name is _CWD_NAME_RE's
-    if cwd and m.string.startswith(_CWD_KEPT, m.start(2)):
+    # B13 round 42 C2236 (ruling 148): only after a head ending in a blank, as install.sh's cwdusage, never
+    # after `--cwd=`
+    if cwd and m.group(1).endswith(" ") and m.string.startswith(_CWD_KEPT, m.start(2)):
         return m.group(0)
     if not re.search(r"""[/\\'"]""", word) and not (cwd and word != "<path>"):
         return m.group(0)
@@ -18859,15 +18944,18 @@ printed in free text and doctor's detail in both reports: the provider rule now 
 :data:`_PROVIDER_KEPT_RE` does not keep reads ``~/Library/CloudStorage/<path>``, never numbered, its trailing
 :data:`report_cuts.FREE_WORD_TRAIL` kept after (:func:`_free_provider_cuts`)."""
 _FREE_STOP_CHARS = re.escape("".join(c for c in report_cuts.FREE_PART_STOP if len(c) == 1))
+_FREE_PATH_START = "[ \t](?:" + "|".join(map(re.escape, report_cuts.FREE_PATH_START)) + ")"
 _FREE_LONG_PART_RE = re.compile(
     f"(?:{_FREE_APPS})-(?:(?!"
     + "|".join(re.escape(c) for c in report_cuts.FREE_PART_STOP if len(c) > 1)
-    + f")[^/{_FREE_STOP_CHARS}])*(?=/)"
+    + f"|{_FREE_PATH_START})[^/{_FREE_STOP_CHARS}])*"
 )
-"""B13 round 41 C2050 with C2032 (ruling 142; privacy): a part :data:`_FREE_PART_RE` read and the provider
-rule does not keep runs across blanks to the next ``/`` before any :data:`report_cuts.FREE_PART_STOP`, so an
-unregistered tenant with a blank (``OneDrive-Northwind Traders/Q3``) is cut whole; a part kept as read stays
-as it was (``OneDrive-Personal and ~/Documents``)."""
+"""B13 round 41 C2050 with C2032 (ruling 142; privacy), B13 round 42 ruling 146 (C2285 with C2235 and C2271;
+privacy): the provider part's long candidate, across blanks from the part's start to the first ``/``, a
+:data:`report_cuts.FREE_PART_STOP`, a blank before a :data:`report_cuts.FREE_PATH_START` (an independent
+path start) or the line's end, never stopping at a blank before ``-`` (``Northwind - EMEA``). It always
+matches where :data:`_FREE_PART_RE` does; whether it reaches a ``/`` decides the rest
+(:func:`_free_provider_cuts`)."""
 _FREE_REST_RE = re.compile(f"[^{_FREE_END}]*")
 _FREE_MORE_RE = re.compile(
     f"(?: +(?![-/~])(?![^{_FREE_END}]*://)[^={_FREE_END}]*/[^={_FREE_END}]*(?![^{_FREE_END}]))*"
@@ -18880,13 +18968,19 @@ round 41 C2032), so ``Q3 Plans/Draft`` goes with the cut while ``Plans,`` stays.
 def _free_provider_cuts(line: str) -> str:
     """``line`` with each ``~/Library/CloudStorage/<App>-<word>`` word whose provider folder the provider rule
     does not keep cut to ``~/Library/CloudStorage/<path>``, its trailing :data:`report_cuts.FREE_WORD_TRAIL`
-    given back (B13 round 40 C1862). The part first reads to a ``/`` or a :data:`report_cuts.FREE_WORD_END`
-    byte; kept so, the word stays to its end, as before. Otherwise it runs across blanks to the next ``/``
-    when no :data:`report_cuts.FREE_PART_STOP` comes first (:data:`_FREE_LONG_PART_RE`), its rest to a
-    :data:`report_cuts.FREE_WORD_END` byte and on through each later slash word (:data:`_FREE_MORE_RE`); with
-    no such ``/`` it ends where it was read (B13 round 41 C2050 with C2032). A tenant written without the
-    head, or one with a blank and no ``/`` after it before a stop or the line's end (``OneDrive-Fabrikam
-    Holdings today``), keeps its later words: the named residuals."""
+    given back (B13 round 40 C1862). B13 round 42 ruling 146 (C2285 with C2235 and C2271; privacy): the keep
+    test read only the part's first word (to a ``/`` or a :data:`report_cuts.FREE_WORD_END` byte), so
+    ``OneDrive-Personal Secret/Plans`` printed whole, and a not-kept part ran to the next ``/`` anywhere
+    ahead, a later path's included. The long candidate (:data:`_FREE_LONG_PART_RE`) now runs to the first
+    ``/``, stop, independent path start or line end. A part whose first word is not kept is cut whole to that
+    bound, the rest to a :data:`report_cuts.FREE_WORD_END` byte and on through each later slash word
+    (:data:`_FREE_MORE_RE`) only after a ``/``, so it can take in later prose up to the bound
+    (``OneDrive-Northwind Traders then ~/Documents/x`` reads ``<path> ~/Documents/x``; ``OneDrive-Tailspin
+    Toys`` at a line's end, ``<path>``). A kept first word is judged on its whole run only when the run
+    reaches its ``/``: not kept so, it is cut as above (``OneDrive-Personal and docs/x`` reads ``<path>``,
+    the safe side); otherwise the word stays to its end, as before (``OneDrive-Personal and ~/Documents/x``).
+    The named residuals: a tenant written without the head, and a kept first word whose run stops before a
+    ``/`` (``OneDrive-Personal Secret then ~/x`` keeps ``Secret``)."""
     head = report_cuts.FREE_PROVIDER_HEAD
     out: list[str] = []
     pos = 0
@@ -18897,15 +18991,19 @@ def _free_provider_cuts(line: str) -> str:
             out.append(line[pos:start])
             pos = start
             continue
-        if _PROVIDER_KEPT_RE.fullmatch(part.group(0)) is not None:
+        long = _FREE_LONG_PART_RE.match(line, start)
+        assert long is not None  # it reads at least what _FREE_PART_RE's head reads
+        to_slash = line.startswith("/", long.end())
+        if _PROVIDER_KEPT_RE.fullmatch(part.group(0)) is not None and (
+            not to_slash or _PROVIDER_KEPT_RE.fullmatch(long.group(0)) is not None
+        ):
             end = _FREE_REST_RE.match(line, part.end()).end()  # type: ignore[union-attr]
             out.append(line[pos:end])
             pos = end
             continue
-        long = _FREE_LONG_PART_RE.match(line, start)
-        end = _FREE_REST_RE.match(line, (long or part).end()).end()  # type: ignore[union-attr]
-        if long is not None:
-            end = _FREE_MORE_RE.match(line, end).end()  # type: ignore[union-attr]
+        end = long.end()
+        if to_slash:
+            end = _FREE_MORE_RE.match(line, _FREE_REST_RE.match(line, end).end()).end()  # type: ignore[union-attr]
         word = line[start:end]
         trail = len(word) - len(word.rstrip(report_cuts.FREE_WORD_TRAIL))
         out.append(line[pos:at] + head + "<path>" + (word[-trail:] if trail else ""))
@@ -19009,7 +19107,7 @@ def _redact_lines(red: Redactor, lines: list[str], agents: Iterable[str] = ()) -
             line = _NOT_A_FOLDER_RE.sub(functools.partial(_not_a_folder_shown, red), line)
         if _CWD_NAME_HEAD in line:  # install.sh's --cwd folder it cannot enter (B13 round 41 C2030)
             line = _CWD_NAME_RE.sub(
-                lambda m: m.group(1) + _quoted_cut(red, m.group("path"), configured=None), line
+                lambda m: m.group(1) + _head_name_cut(red, m, configured=None, counted=False), line
             )
         # a refused pasted row or twin, cut whole (B13 round 38 C1432): one anchored match at the first
         # --source-local, linear in the line (B13 round 39 C1658)
@@ -19020,7 +19118,12 @@ def _redact_lines(red: Redactor, lines: list[str], agents: Iterable[str] = ()) -
         if "debug: " in line:
             # B13 round 41 C2029 (ruling 142): every head on the line, each source path judged under the
             # carried cwd and every debug: cwd on this line, the line's last one carried on
-            cwds = [m.group("path") for m in _DEBUG_RE.finditer(line) if m.group(1) == "debug: cwd "]
+            # an empty cwd never replaces the carried one, as the shell's `v != ""` (round 42 C2286)
+            cwds = [
+                m.group("path")
+                for m in _DEBUG_RE.finditer(line)
+                if m.group(1) == "debug: cwd " and m.group("path")
+            ]
             under = [*debug_cwd, *cwds]
             line = _DEBUG_RE.sub(lambda m: _debug_shown(m, under), line)
             if cwds:

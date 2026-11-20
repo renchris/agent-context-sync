@@ -4,6 +4,7 @@ Every case is tested in both, with made-up names (B13 round 3, CONTRACTS §16.46
 
 from __future__ import annotations
 
+import json
 import re
 import shlex
 import subprocess
@@ -31,12 +32,14 @@ from test_install_oneshot import (  # noqa: F401  (fixture)
     _write_exe,
     env,
     friction_path,
+    install_log_path,
     install_sh,
     report_path,
 )
 from test_setup_report import (  # noqa: F401  (fixtures)
     _REAL_FULL_NAME,
     _RULING_102_LEAKS,
+    R146_FREE_ROWS,
     V5_HAPPY,
     _separator_lines,
     fake_mac,
@@ -1781,6 +1784,60 @@ _R142_SHELL = True
 land, so trunk never carries one half; on lane RA's branch alone they hold the agentsync report (B13 round 41
 ruling 142, its Python half)."""
 
+_R146_SHELL = False
+"""Whether B13 round 42 rulings 146 to 149's rows hold the shell report too. Lane RB's shell half sets it True
+in the one joint land, so trunk never carries one half; on lane RA's branch alone they hold the agentsync
+report (the rulings' Python half), and ruling 142's test compares the shell's line only on its older rows."""
+
+
+def _legacy_echo(path: str) -> str:
+    """add-source's echoed ``path = ...`` line as config.toml_string wrote it before af21e6339: json.dumps
+    with ensure_ascii off and DEL as ``\\u007F``, the line breaks raw (B13 round 42 C2320), spelled here apart
+    from setup_report's helper."""
+    return 'path = "' + json.dumps(path, ensure_ascii=False)[1:-1].replace("\x7f", "\\u007F") + '"'
+
+
+def _r146_lines(
+    n: int, name: str, locale: str, provider: str = "OneDrive-Contoso", home: str = "/Users/dana"
+) -> list[str]:
+    """B13 round 42 rulings 146 to 148's forms for the configured folder ``name`` (source s<n>), part of
+    :func:`_r142_lines`: an empty debug value before another head and in the double-space form, the
+    carried cwd kept (C2286 with C2242); an empty --cwd and not-a-folder name (C2242); and a quoted name
+    for both whole-name heads, single- and double-quoted, run to its line's end and to install.sh's own
+    end (C2234)."""
+    shown = _listed(name)
+    q = _printf_q(name, locale)
+    out = _OUTSIDE.replace(" ", "\\ ")
+    cwd_name = next(h for h, rule in report_cuts.PATH_HEADS if rule == "cwd_name")
+    quoted = [
+        line
+        for head in (
+            f"usage error: --source-local {setup_report.NOT_A_FOLDER_SAID}",
+            f"usage error: {cwd_name}",
+        )
+        for mark in ("'", '"')
+        for line in (
+            f"{head}{mark}~/{_OUTSIDE}/{shown}{mark} and then I retried",
+            f"{head}{mark}{_OUTSIDE}{mark} {shown} (see --help)",
+        )
+    ]
+    return [
+        f"debug: config | debug: cwd ~/{out}",
+        f"debug: source checkout ~/{out}/{q}",
+        f"debug: source | debug: cwd ~/{out}",
+        f"debug: cwd | debug: cwd ~/{out}",
+        f"debug: config  | debug: cwd ~/{out}",
+        f"debug: cwd ~/{out}",
+        "debug: cwd | debug: config ~/a",
+        f"debug: source checkout ~/{out}/{q}",
+        "debug: config ",
+        "debug: cwd ",
+        f"usage error: {cwd_name} (see --help)",
+        f"usage error: --source-local {setup_report.NOT_A_FOLDER_SAID} (see --help)",
+        *quoted,
+    ]
+
+
 _OUTSIDE = "Wombat Ledger"
 """A made-up private folder outside ~/Library/CloudStorage, in no config, with a blank (ruling 142's case of a
 path outside the expected place)."""
@@ -1797,7 +1854,9 @@ def _r142_lines(
     (C2050 with C2032); and prose rows that pin the guard: a bare word after a head, add-source's own
     sentences and install.sh's --cwd usage words, which stay whole. R41-B1: add-source's echoed table with
     each line break config.toml_string wrote raw in each escaped spelling (report_cuts.TOML_BREAKS), the table
-    split at LF only, never by splitlines(), which cuts it at U+2028."""
+    split at LF only, never by splitlines(), which cuts it at U+2028; and the older writer's echo, the breaks
+    raw (B13 round 42 C2320 with C2239). B13 round 42 C2275: install.sh's own two ``--cwd=`` forms outside
+    CloudStorage, never the one whose quote wraps the whole argument; and :func:`_r146_lines`."""
     shown = _listed(name)
     root = f"~/Library/CloudStorage/{provider}"
     q = _printf_q(name, locale)
@@ -1812,6 +1871,9 @@ def _r142_lines(
         if ch in name
         for spelling in report_cuts.toml_break_spellings(ch)
     ]
+    # B13 round 42 C2320 with C2239 (ruling 147): the older writer's echo, its line breaks raw
+    if any(ch in name for ch in report_cuts.TOML_BREAKS):
+        escaped.append(_legacy_echo(f"{home}/Library/CloudStorage/{provider}/{name}"))
     return [
         *escaped,
         f"start install.sh args=--source-local ~/{out}/{q}",
@@ -1823,6 +1885,8 @@ def _r142_lines(
         f"usage error: {cwd_name}~/{_OUTSIDE}/{shown} (see --help)",
         f"usage error: {cwd_name}{_OUTSIDE} (see --help)",
         f"# run=s{n} 2026-11-17T00:00:00Z install.sh --cwd ~/{out} --debug --source-local ./{q}",
+        f"# run=s{n} 2026-11-17T00:00:00Z install.sh --cwd=~/{out}/{q} --debug",  # B13 round 42 C2275
+        f"start install.sh args=--cwd='~/{_OUTSIDE}/{shown}' --source-local ./x",  # B13 round 42 C2275
         f"debug: cwd ~/{out} | debug: source checkout ~/{out}/{q}",
         f"debug: source checkout ~/{out}/{q} | debug: source tree ~/{out}/x",
         f"debug: cwd {root}/{shown} | debug: cwd ~/{out}",
@@ -1837,6 +1901,7 @@ def _r142_lines(
         "~/.local/bin/agentsync add-source failed after adding it; add-source opened past it",
         *(f"usage error: --cwd {usage} --debug (see --help)" for usage in report_cuts.CWD_USAGE),
         f"debug: config {report_cuts.CONFIG_DEFAULT}",
+        *_r146_lines(n, name, locale, provider, home),
     ]
 
 
@@ -2196,7 +2261,10 @@ def test_both_reports_apply_each_heads_rule_to_any_path_ruling_142(
     shell, python, shell_private, python_private = _both_reports(env, names, said, locale, shell=_R142_SHELL)
     assert len(python) == len(said), (len(python), len(said))
     frags = _fragments(names) | {"Wombat", "Ledger", "Fabrikam"}
-    leaks = [ln for ln in [*python, *shell] for f in frags if f in ln]
+    # B13 round 42: the shell's half of rulings 146 to 148's rows is lane RB's (_R146_SHELL)
+    new = {ln for n, name in enumerate(names) for ln in _r146_lines(n, name, locale, home=env["HOME"])}
+    held_shell = [a for a, ln in zip(shell, said, strict=False) if _R146_SHELL or ln not in new]
+    leaks = [ln for ln in [*python, *held_shell] for f in frags if f in ln]
     assert not leaks, (len(leaks), leaks[:4])
     prose = [
         ln for ln in said if "add-source again" in ln or "failed after adding" in ln or "--cwd needs" in ln
@@ -2208,8 +2276,11 @@ def test_both_reports_apply_each_heads_rule_to_any_path_ruling_142(
     )
     assert _numbers(python) == set(range(1, len(_numbers(python)) + 1)) and _numbers(python), python
     if _R142_SHELL:
-        assert shell == python and shell_private == python_private, [
-            (a, b) for a, b in zip(shell, python, strict=True) if a != b
+        held = [
+            (a, b, ln) for a, b, ln in zip(shell, python, said, strict=True) if _R146_SHELL or ln not in new
+        ]
+        assert all(a == b for a, b, _ln in held) and shell_private == python_private, [
+            (a, b) for a, b, _ln in held if a != b
         ][:8]
 
 
@@ -2240,7 +2311,7 @@ def test_both_reports_number_a_mixed_set_one_to_n_c2083(
 
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
-@pytest.mark.parametrize("arm", ["relative", "absolute", "missing", "invalid", "loading", "default"])
+@pytest.mark.parametrize("arm", ["relative", "absolute", "missing", "invalid", "loading", "default", "cloud"])
 def test_both_reports_cut_a_config_path_but_the_default_c2063_c2083(
     env: dict[str, str],  # noqa: F811
     arm: str,
@@ -2250,7 +2321,9 @@ def test_both_reports_cut_a_config_path_but_the_default_c2063_c2083(
     sources.toml printed in clear on the Configuration line, the loads line, both Not run lines and debug:
     config, in both reports. AGENTSYNC_CONFIG relative under --cwd, absolute outside it, missing, invalid TOML
     and loading: every line reads the ~-form's cut, `~/<path>`, never the folder; the default stays in
-    clear."""
+    clear. B13 round 42 C2231 (ruling 147): a config inside a configured folder under a registered provider
+    folder is cut unredacted in both reports, `~/Library/CloudStorage/<path>`, as install.sh's config_shown
+    cuts it, and the two reports' debug: config rows agree."""
     home = Path(env["HOME"])
     cwd = home / _OUTSIDE
     cwd.mkdir(parents=True, exist_ok=True)
@@ -2261,11 +2334,14 @@ def test_both_reports_cut_a_config_path_but_the_default_c2063_c2083(
         "invalid": home / "Tailspin Merger" / "bad.toml",
         "loading": home / "Tailspin Merger" / "sources.toml",
         "default": None,
+        "cloud": _cloud(env) / "OneDrive-Contoso" / "Juniper Notes" / "sources.toml",
     }[arm]
     said = [f"debug: config {cwd}/cfg/sources.toml", f"debug: cwd {cwd}"]
+    if arm == "cloud":
+        said.append(f"debug: config {config}")
     body = {"missing": "", "invalid": "not toml [[[\n"}.get(arm)
     texts: list[str] = []
-    _both_reports(
+    shell, python, _sp, _pp = _both_reports(
         env,
         ["Juniper Notes"],
         said,
@@ -2281,11 +2357,117 @@ def test_both_reports_cut_a_config_path_but_the_default_c2063_c2083(
         [line] = [ln for ln in text.splitlines() if ln.startswith("- config: ")]
         if arm == "default":
             assert line.startswith(f"- config: {report_cuts.CONFIG_DEFAULT} ("), line
+        elif arm == "cloud":
+            assert line.startswith("- config: ~/Library/CloudStorage/<path> ("), line
+            assert "Juniper" not in text and "Contoso" not in line, line
         else:
             assert line.startswith("- config: ~/<path> ("), line
     if _R142_SHELL:
         configs = [[ln for ln in t.splitlines() if ln.startswith("- config: ")] for t in texts]
         assert configs[0] == configs[1], configs
+        if arm == "cloud":
+            assert shell[-1] == python[-1], (shell, python)
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+def test_both_reports_judge_a_tenants_whole_run_in_free_text_ruling_146(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+) -> None:
+    """B13 round 42 ruling 146 (C2285 with C2235 and C2271; privacy; data integrity): the free-text keep test
+    read a tenant's first word, so `OneDrive-Personal Secret/Plans` printed whole in both reports, and a
+    not-kept part swallowed a later path. Every example of the ruling and C2050's rows, under both locales:
+    the agentsync report prints each pinned line, and the shell report the same line (lane RB's half)."""
+    said = [f"saw ~/Library/CloudStorage/{row}" for row, _want in R146_FREE_ROWS] + [
+        "saw ~/Library/CloudStorage/OneDrive-Northwind Traders/Q3 Plans, then",
+        "saw ~/Library/CloudStorage/OneDrive-Fabrikam Holdings/Q3 Plans/Draft x/y today",
+        'saw "~/Library/CloudStorage/OneDrive-Fabrikam Holdings" and x/y',
+        "saw ~/Library/CloudStorage/OneDrive-Fab Co): x/y",
+    ]
+    want = [f"saw ~/Library/CloudStorage/{w}" for _row, w in R146_FREE_ROWS] + [
+        "saw ~/Library/CloudStorage/<path> Plans, then",
+        "saw ~/Library/CloudStorage/<path> today",
+        'saw "~/Library/CloudStorage/<path>" and x/y',
+        "saw ~/Library/CloudStorage/<path>): x/y",
+    ]
+    shell, python, shell_private, python_private = _both_reports(
+        env, ["Juniper Notes"], said, locale, shell=_R146_SHELL
+    )
+    assert python == want, [(a, b) for a, b in zip(python, want, strict=True) if a != b]
+    if _R146_SHELL:
+        assert shell == python and shell_private == python_private, [
+            (a, b) for a, b in zip(shell, python, strict=True) if a != b
+        ]
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+def test_the_second_kept_divergence_is_pinned_in_both_reports_c2265(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+) -> None:
+    """B13 round 42 C2265 (ruling 148, amending ruling 138; makes worse True for converging): install.log's
+    relative --source-local word naming no CloudStorage entry keeps its ./, ../ or ./../ head in the agentsync
+    report, cut from its first unknown part (./<folder-N> for a configured folder), where the shell report
+    cuts the whole word. No output changes: the divergence is declared in both legends and pinned here, and
+    neither report prints a name piece."""
+    words = ["./Zephyr\\ Quarry", "../Zephyr\\ Quarry", "./../Zephyr\\ Quarry", "./Northwind\\ Q1"]
+    args = " ".join(f"--source-local {w}" for w in words)
+    start = "2026-10-10T00:00:00Z run=20261010T000000Z-4242"
+    log = install_log_path(env)
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text(
+        f"{start} start install.sh compat=5 commit=0123456789ab kind=checkout source=- args={args}\n"
+        f"{start} end rc=0 seconds=57\n",
+        encoding="utf-8",
+    )
+    texts: list[str] = []
+    _both_reports(env, ["Northwind Q1"], ["ran it"], locale, texts_out=texts)
+    shell, python = ([ln for ln in t.splitlines() if "args=--source-local" in ln] for t in texts)
+    assert shell and python, texts
+    for text in texts:
+        assert "Zephyr" not in text and "Quarry" not in text and "Northwind" not in text, text
+    assert all(ln.count("--source-local <path>") == 4 for ln in shell), shell
+    tail = " ".join(f"--source-local {w}" for w in ("./<path>", "../<path>", "./../<path>", "./<folder-1>"))
+    assert any(tail in ln for ln in python), python
+    legend = " ".join(setup_report._LEGEND["path"].split())
+    assert "shown with its ./ or ../ head and cut from its first unknown part" in legend
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+def test_both_reports_cut_a_config_path_to_its_tokens_end_c2290(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+) -> None:
+    """B13 round 42 C2290 (ruling 147; privacy; makes worse True for a boundary-only match): the whole-config
+    cut stopped at the literal, so a longer token printed its suffix, `-PrivateBackup` or `.bak`. Both
+    reports cut to the path token's end on every line, a sentence-final `.` and every terminator kept."""
+    home = Path(env["HOME"])
+    cfg = home / "Tailspin Merger" / "sources.toml"
+    tilde = "~/Tailspin Merger/sources.toml"
+    said = [
+        f"{cfg}-PrivateBackup",
+        f"{tilde}.bak",
+        f"{cfg}x/Wombat",
+        f"saw {cfg}, then",
+        f"saw ({cfg}) and '{cfg}'",
+        f"saw {cfg}.",
+        f"ConfigError: {cfg}: bad",
+    ]
+    want = [
+        "~/<path>",
+        "~/<path>",
+        "~/<path>",
+        "saw ~/<path>, then",
+        "saw (~/<path>) and '~/<path>'",
+        "saw ~/<path>.",
+        "ConfigError: ~/<path>: bad",
+    ]
+    shell, python, _sp, _pp = _both_reports(
+        env, ["Juniper Notes"], said, locale, shell=_R146_SHELL, config=cfg
+    )
+    assert python == want, python
+    if _R146_SHELL:
+        assert shell == python, shell
 
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
@@ -2329,8 +2511,10 @@ def test_both_reports_read_a_googledrive_address_tenant_and_a_short_id_alike_c20
     `GoogleDrive-<address>` tenant read `GoogleDrive-<org-N>` in the shell report and `<email-N>` in the
     agentsync report, and a 2-letter source id stayed in clear in one and was cut in the other. Configured,
     unconfigured and gone folders under `My Drive`, the not-a-folder line, each id's listable warning and free
-    text: no address, no folder name, the pronoun `it` of `IT` kept, and, with the shell half, one line and
-    one verdict."""
+    text: no address, no folder name, and, with the shell half, one line and one verdict. B13 round 42 C2240
+    (ruling 149): the source id `it` cuts the pronoun as well, as <source-N>, which the last line pins; only a
+    folder `IT` with no such id keeps it (test_install_oneshot.py's case). Keeping the pronoun here would
+    print the id in clear."""
     provider = "GoogleDrive-dana@example.com"
     cs = f"~/Library/CloudStorage/{provider}"
     said = [
@@ -2359,6 +2543,7 @@ def test_both_reports_read_a_googledrive_address_tenant_and_a_short_id_alike_c20
     assert "GoogleDrive-<org-1>/" in python[1] and python[1].endswith("<path>"), python[1]
     assert not [ln for ln in python[3:] for w in (".qx.", ".hr.", " HR ", " IT ") if w in ln], python
     assert python_private, "a 2-letter id or folder that is a word makes the report private only where cut"
+    assert python[-1] == "the <folder-3> folder and the <folder-4> folder, and <source-2> is ok", python[-1]
     if _R142_SHELL:
         assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
 

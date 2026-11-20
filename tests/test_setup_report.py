@@ -1094,8 +1094,9 @@ def test_the_path_legend_item_names_every_use_of_path() -> None:
     uncounted = (
         " A <path> that cuts an item path or document name in a log line, a --source-local argument, an "
         "added source's typed folder, an exclude entry, a path in another home, a --cwd or debug line's "
-        "folder, a config path or a CloudStorage folder in free text is not counted: only a link "
-        "target replaced by <path> is."
+        "folder (the --cwd usage error's included), a config path or a CloudStorage folder in free text is "
+        "not counted: only a link target replaced by <path> is, and so is a folder install.sh names as "
+        "missing (after 'is not an existing folder:') or refuses (a refused --source-local usage error)."
     )
     red = setup_report.Redactor()
     red.add("path", "/Volumes/Contoso Drive/state")
@@ -5560,6 +5561,7 @@ def test_the_report_cuts_table_is_what_both_reports_read_ruling_133() -> None:
         "CUT_FREE_END",
         "CUT_FREE_TRAIL",
         "CUT_FREE_PART_STOP",
+        "CUT_FREE_PATH_START",  # B13 round 42 ruling 146
         "CUT_CWD_USAGE",
         "CUT_CONFIG_DEFAULT",
         "CUT_TOML_BREAKS",
@@ -28437,10 +28439,19 @@ def test_the_cwd_usage_error_is_a_whole_name_head_and_its_own_words_stay_c2030()
     """B13 round 41 C2030 (ruling 142; privacy): `--cwd ` read the next word as a folder, so install.sh's
     usage errors read `--cwd <path> not a folder ...` and the folder it names stayed in clear. `--cwd is not a
     folder this run can enter: ` is a whole-name head cut by the cwd rule; `--cwd needs a folder` and its `,
-    got the option` form stay whole, by phrase; a bare --cwd word is still cut (C1835)."""
-    red = setup_report.Redactor()
-    red.add("home", "/Users/dana")
+    got the option` form stay whole, by phrase; a bare --cwd word is still cut (C1835). B13 round 42 C2236
+    (ruling 148): the usage words stay whole only after a head ending in a blank, never after `--cwd=`. C2321
+    (ruling 148): the usage error's cut is not counted, as the shell counts none, a quoted name keeping its
+    quotes; the not-a-folder name stays counted."""
     for said, want in (
+        (
+            'usage error: --cwd is not a folder this run can enter: "Projects/Zephyr Quarry" (see --help)',
+            'usage error: --cwd is not a folder this run can enter: "Projects/<path>" (see --help)',
+        ),
+        (
+            "start install.sh args=--cwd=needs a folder then",
+            "start install.sh args=--cwd=<path> a folder then",
+        ),
         (
             "usage error: --cwd is not a folder this run can enter: Projects/Zephyr Quarry (see --help)",
             "usage error: --cwd is not a folder this run can enter: Projects/<path> (see --help)",
@@ -28457,7 +28468,19 @@ def test_the_cwd_usage_error_is_a_whole_name_head_and_its_own_words_stay_c2030()
         ("start install.sh args=--cwd needs", "start install.sh args=--cwd <path>"),
         ("start install.sh args=--cwd is --debug", "start install.sh args=--cwd <path> --debug"),
     ):
+        red = setup_report.Redactor()
+        red.add("home", "/Users/dana")
         assert setup_report._redact_lines(red, [said]) == want, said
+        if "can enter: " in said:
+            assert red.counts.get("path", 0) == 0, (said, red.counts)
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    shown = setup_report._redact_lines(
+        red, ["usage error: --source-local is not an existing folder: Projects/Zephyr Quarry (see --help)"]
+    )
+    assert shown.endswith("folder: Projects/<path> (see --help)") and red.counts.get("path", 0) == 1, (
+        red.counts
+    )
 
 
 def test_every_debug_head_on_a_line_is_cut_and_the_config_path_always_c2029_c2063() -> None:
@@ -28491,7 +28514,8 @@ def test_a_tenant_with_a_blank_is_cut_to_its_slash_in_free_text_c2050_c2032() ->
     """B13 round 41 C2050 with C2032 (ruling 142; privacy): the free-text provider part stopped at a blank,
     so an unregistered tenant with one kept its later words. It runs across blanks to the next `/` before a
     quote, a backtick, `):` or `, stored as ` (FREE_PART_STOP), the rest carried through each later slash
-    word; a kept one, and a tenant with no `/` after it (the named residual), stay as before."""
+    word; a kept one stays as before. B13 round 42 C2271 (ruling 146): a tenant with no `/` after it is cut
+    whole to its stop or the line's end, no longer a residual."""
     red = setup_report.Redactor()
     red.add("home", "/Users/dana")
     red.add("org", "Contoso", fuzzy=True)
@@ -28506,20 +28530,206 @@ def test_a_tenant_with_a_blank_is_cut_to_its_slash_in_free_text_c2050_c2032() ->
             "saw ~/Library/CloudStorage/<path> today",
         ),
         (f"saw {cs}/OneDrive-SharedLibraries-Northwind Traders/A", "saw ~/Library/CloudStorage/<path>"),
-        (
-            f'saw "{cs}/OneDrive-Fabrikam Holdings" and x/y',
-            'saw "~/Library/CloudStorage/<path> Holdings" and x/y',
-        ),
-        (f"saw {cs}/OneDrive-Fabrikam Holdings today", "saw ~/Library/CloudStorage/<path> Holdings today"),
+        (f'saw "{cs}/OneDrive-Fabrikam Holdings" and x/y', 'saw "~/Library/CloudStorage/<path>" and x/y'),
+        (f"saw {cs}/OneDrive-Fabrikam Holdings today", "saw ~/Library/CloudStorage/<path>"),
         (
             f"saw {cs}/OneDrive-Personal and ~/Documents/x",
             "saw ~/Library/CloudStorage/OneDrive-Personal and ~/Documents/x",
         ),
         (f"saw {cs}/OneDrive-Contoso/Plans x/y", "saw ~/Library/CloudStorage/OneDrive-<org-1>/Plans x/y"),
         (f"saw {cs}/OneDrive-Fabrikam/Plans x", "saw ~/Library/CloudStorage/<path> x"),
-        (f"saw {cs}/OneDrive-Fab Co): x/y", "saw ~/Library/CloudStorage/<path> Co): x/y"),
+        (f"saw {cs}/OneDrive-Fab Co): x/y", "saw ~/Library/CloudStorage/<path>): x/y"),
     ):
         assert setup_report._redact_lines(red, [said]) == want, said
+
+
+R146_FREE_ROWS = (
+    # C2285 with C2235: a kept first word is judged on its whole run when the run reaches its `/`
+    ("OneDrive-Personal Secret/Plans", "<path>"),
+    ("OneDrive-Personal Finance Group/Plans", "<path>"),
+    ("OneDrive-Business Solutions Inc/Plans", "<path>"),
+    ("OneDrive-Business Partners/x", "<path>"),
+    ("OneDrive-Personal and docs/x", "<path>"),
+    ("OneDrive-Personal and ~/Documents/x", "OneDrive-Personal and ~/Documents/x"),
+    ("OneDrive-Personal/Plans x", "OneDrive-Personal/Plans x"),
+    # the second named residual: a kept first word whose run stops before a `/`
+    ("OneDrive-Personal Secret then ~/x", "OneDrive-Personal Secret then ~/x"),
+    # a not-kept part is cut whole to its bound: a blank before `~/` or `/`, a stop or the line's end
+    (
+        "OneDrive-Northwind then ~/Library/CloudStorage/Dropbox-Acme/Plans",
+        "<path> ~/Library/CloudStorage/<path>",
+    ),
+    ("OneDrive-Northwind then ~/Documents/x", "<path> ~/Documents/x"),
+    ("OneDrive-Northwind Traders then ~/Documents/x", "<path> ~/Documents/x"),
+    ("OneDrive-Northwind then /opt/x", "<path> /opt/x"),
+    (
+        "OneDrive-Northwind and ~/Library/CloudStorage/OneDrive-Contoso/Alpha too",
+        "<path> ~/Library/CloudStorage/OneDrive-<org-1>/Alpha too",
+    ),
+    ("OneDrive-Northwind - EMEA/Plans x", "<path> x"),
+    # C2271: no `/` after the tenant, cut whole
+    ("OneDrive-Tailspin Toys", "<path>"),
+    ("OneDrive-Tailspin Toys today", "<path>"),
+    ("OneDrive-Tailspin Toys.", "<path>."),
+    ("OneDrive-Tailspin Toys: error 5, retry in 30s", "<path>"),
+)
+"""B13 round 42 ruling 146's free-text rows, each after ``~/Library/CloudStorage/`` in a friction row, and
+what both reports print for it there, ``OneDrive-Contoso`` configured (``<org-1>``)."""
+
+
+def test_the_free_text_scan_judges_a_tenants_whole_run_ruling_146() -> None:
+    """B13 round 42 ruling 146 (C2285 with C2235 and C2271; privacy): the keep test read the tenant's first
+    word, so `OneDrive-Personal Secret/Plans` printed whole, and a not-kept part ran to the next `/` anywhere,
+    swallowing a later path. The long candidate runs across blanks to the first `/`, stop, blank before `~/`
+    or `/` or the line's end, never stopping at a blank before `-`; a not-kept part is cut whole to it, a kept
+    first word judged on its whole run only when the run reaches its `/`."""
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    red.add("org", "Contoso", fuzzy=True)
+    head = "~/Library/CloudStorage/"
+    for said, want in R146_FREE_ROWS:
+        got = setup_report._redact_lines(red, [f"saw /Users/dana/Library/CloudStorage/{said}"])
+        assert got == f"saw {head}{want}", (said, got)
+
+
+def test_a_config_cut_runs_to_its_path_tokens_end_c2290() -> None:
+    """B13 round 42 C2290 (ruling 147; privacy; makes worse True for a boundary-only match): the whole-config
+    cut replaced the literal alone, so `sources.toml-PrivateBackup` printed its suffix after the cut, and a
+    match bounded at the literal's end printed the private folder on any line without a head. The cut runs on
+    to its path token's end through one compiled regex, a sentence-final `.` and every terminator kept."""
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    cfg = "/Users/dana/Projects/Contoso Merger/sources.toml"
+    for form in (cfg, "~/Projects/Contoso Merger/sources.toml"):
+        red.add_cut(form, "~/Projects/<path>")
+    for said, want in (
+        (f"{cfg}-PrivateBackup", "~/Projects/<path>"),
+        ("~/Projects/Contoso Merger/sources.toml.bak", "~/Projects/<path>"),
+        (f"{cfg}x/Wombat", "~/Projects/<path>"),
+        (f"{cfg}-Fabrikam then", "~/Projects/<path> then"),
+        (f"{cfg},", "~/Projects/<path>,"),
+        (f"({cfg})", "(~/Projects/<path>)"),
+        (f"'{cfg}'", "'~/Projects/<path>'"),
+        (f'"{cfg}"', '"~/Projects/<path>"'),
+        (f"{cfg}.", "~/Projects/<path>."),
+        (f"{cfg}. Then", "~/Projects/<path>. Then"),
+        (f"ConfigError: {cfg}: bad", "ConfigError: ~/Projects/<path>: bad"),
+        (f"[{cfg}]", "[~/Projects/<path>]"),
+        (f"debug: config {cfg} | debug: cwd ~/x", "debug: config ~/Projects/<path> | debug: cwd ~/x"),
+        (f"- config: {cfg} (loads)", "- config: ~/Projects/<path> (loads)"),
+    ):
+        got = red.redact(said)
+        assert got == want, (said, got)
+        assert not any(w in got for w in ("Fabrikam", "bak", "Wombat", "Private", "Merger")), got
+
+
+def test_an_older_writers_add_source_echo_gets_the_new_echos_number_c2320_c2239() -> None:
+    """B13 round 42 C2320 with C2239 (ruling 147; privacy): config.toml_string escapes U+0085, U+2028 and
+    U+2029 since af21e6339, so _toml_spellings' raw-break loop had nothing to replace and the older writer's
+    echo, its breaks raw beside an escaped tab, control byte or DEL, printed in clear where the shell cut it.
+    The older writer's base is built from the value (json.dumps, DEL escaped), never by reversing escapes, and
+    every form takes every break's escaped spellings: the old echo and the new one read one <folder-N>."""
+    assert setup_report._legacy_toml_body("A\u2028\x7f\u2028B") == json.dumps(
+        "A\u2028\x7f\u2028B", ensure_ascii=False
+    )[1:-1].replace("\x7f", "\\u007F")
+    assert setup_report._legacy_toml_body("a\\u2028b") == "a\\\\u2028b"  # never read back as a break
+    for name in ("Zephyrine\u2028\tQuarry", "Zephyrine\x85\x01Quarry", "Zephyrine\u2029\x7fQuarry"):
+        red = setup_report.Redactor()
+        red.add("home", "/Users/dana")
+        red.add("folder", name, fuzzy=True)
+        setup_report._alias_escaped(red, name)
+        new = f"path = {toml_string('~/Projects/' + name)}"
+        old = f'path = "~/Projects/{setup_report._legacy_toml_body(name)}"'
+        assert old != new and "\\u2028" not in old
+        assert red.redact(new) == red.redact(old) == 'path = "~/Projects/<folder-1>"', (
+            red.redact(new),
+            red.redact(old),
+        )
+
+
+def test_an_empty_debug_value_keeps_the_next_cell_and_the_carried_cwd_c2286_c2242() -> None:
+    """B13 round 42 C2286 with C2242 (ruling 148; privacy; makes worse True for allowing every empty value):
+    an empty debug cell took the next cell as its value, so a `debug: cwd` after it was neither cut on its
+    line nor carried, and a table row's next cell was eaten. A value is empty only before `| ` and another
+    debug head, or in the double-space form, and is kept as written; an empty cwd never replaces the carried
+    one; an empty --cwd or not-a-folder name is taken as written."""
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    for said, want in (
+        (
+            ["debug: config | debug: cwd ~/Projects/Secret", "debug: source checkout ~/Projects/Secret/sub"],
+            ["debug: config | debug: cwd ~/Projects/<path>", "debug: source checkout ~/Projects/<path>"],
+        ),
+        (["debug: source | debug: cwd ~/Projects/Secret"], ["debug: source | debug: cwd ~/Projects/<path>"]),
+        (["debug: cwd | debug: cwd ~/Projects/Secret"], ["debug: cwd | debug: cwd ~/Projects/<path>"]),
+        (
+            ["debug: config  | debug: cwd ~/Projects/Secret"],
+            ["debug: config  | debug: cwd ~/Projects/<path>"],
+        ),
+        (["| 3 | debug: config  | - |"], ["| 3 | debug: config  | - |"]),
+        (["| 3 | debug: cwd  | - |"], ["| 3 | debug: cwd  | - |"]),
+        (
+            [
+                "debug: cwd ~/Projects/Old",
+                "debug: cwd | debug: config ~/a",
+                "debug: source checkout ~/Projects/Old/s",
+            ],
+            [
+                "debug: cwd ~/Projects/<path>",
+                "debug: cwd | debug: config ~/<path>",
+                "debug: source checkout ~/Projects/<path>",
+            ],
+        ),
+        (
+            [
+                "debug: cwd ~/Projects/Old",
+                "| 3 | debug: cwd  | - |",
+                "debug: source checkout ~/Projects/Old/s",
+            ],
+            [
+                "debug: cwd ~/Projects/<path>",
+                "| 3 | debug: cwd  | - |",
+                "debug: source checkout ~/Projects/<path>",
+            ],
+        ),
+        (["debug: config | /Users/dana/Projects/Secret"], ["debug: config <path>"]),
+        (
+            ["usage error: --cwd is not a folder this run can enter:  (see --help)"],
+            ["usage error: --cwd is not a folder this run can enter:  (see --help)"],
+        ),
+        (
+            ["usage error: --source-local is not an existing folder:  (see --help)"],
+            ["usage error: --source-local is not an existing folder:  (see --help)"],
+        ),
+    ):
+        assert setup_report._redact_lines(red, said).split("\n") == want, said
+    assert "Secret" not in setup_report._redact_lines(
+        red, ["debug: config | debug: cwd ~/Projects/Secret", "debug: source tree ~/Projects/Secret/x"]
+    )
+
+
+def test_a_quoted_name_ends_at_its_quote_only_at_its_lines_end_c2234() -> None:
+    """B13 round 42 C2234 (ruling 148; privacy; makes worse True for ending every quoted name there): a quoted
+    not-a-folder or --cwd name that ran to its line's end lost the rest of its line. Only such a name, prose a
+    person wrote, ends at its matching quote, the rest kept; one that runs to install.sh's own ` (see --help)`
+    end is install.sh's unquoted name, taken whole, so `'Alpha' Bravo Ridge` prints no `Bravo Ridge`."""
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    heads = (
+        "usage error: --source-local is not an existing folder: ",
+        "usage error: --cwd is not a folder this run can enter: ",
+    )
+    for head in heads:
+        for q in ("'", '"'):
+            for said, want in (
+                (f"{q}~/Zephyr Quarry{q} and then I retried", f"{q}~/<path>{q} and then I retried"),
+                (f"{q}Alpha{q} Bravo Ridge (see --help)", f"{q}<path> (see --help)"),
+                (f"{q}~/Zephyr Quarry{q} (see --help); retried", f"{q}~/<path>{q} (see --help); retried"),
+                (f"{q}~/Zephyr Quarry and on", f"{q}~/<path>"),
+            ):
+                got = setup_report._redact_lines(red, [head + said])
+                assert got == head + want, (head, said, got)
+    assert setup_report._closing_quote('"a\\"b" c', '"') == 5
 
 
 def test_the_config_path_is_cut_on_every_line_but_the_default_c2063_c2083(
