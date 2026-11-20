@@ -8462,8 +8462,9 @@ def test_the_guides_redaction_legend_gives_every_unnumbered_kind_and_the_link_ta
     want = {"~" if k == "home" else f"<{k}>" for k in setup_report._UNNUMBERED}
     assert sorted(re.findall(r"`([^`]+)`", listed)) == sorted(want) and len(want) == 11
     assert (
-        "`<path>` is counted only for a replaced link target; a log line's `<path>` cut is not counted"
-        in page
+        "`<path>` is counted only for a replaced link target and, since B13 round 42 (C2321 with C2237,"
+        " ruling 148), for a folder install.sh names as missing (after `is not an existing folder:`) or"
+        " refuses (a refused `--source-local` usage error); a log line's `<path>` cut is not counted" in page
     )
     assert "a link's target outside this home" in setup_report._LEGEND["path"]
     [row] = [line for line in _feedback_page().splitlines() if line.startswith("| `<path>` |")]
@@ -13479,8 +13480,8 @@ def test_the_guides_rows_give_each_heads_rule_for_any_path_as_both_legends_do_c2
         "a config path other than `~/agent-context/sources.toml`, cut as its `~` form is",
         "a `~/Library/CloudStorage/<App>-<word>` folder the report numbers no organization for, cut to"
         " `~/Library/CloudStorage/<path>`, never numbered, its trailing `)]}.,;:` kept",
-        "two forms stay in clear: a tenant written without that `~/Library/CloudStorage/` head, and one with"
-        " a blank and no `/` after it",
+        "two forms stay in clear: a tenant written without that `~/Library/CloudStorage/` head, and a run"
+        " whose kept first word stops before a `/` (`OneDrive-Personal Secret then ~/x`)",
     )
     for clause in clauses:
         assert clause in row, clause
@@ -13603,6 +13604,52 @@ def test_the_folder_row_names_c2060s_gap_only_while_its_strict_xfail_stands_c225
     )
     assert (caveat in folders) == (xfail is not None), "the caveat stands exactly while C2060's xfail does"
     assert "(both reports), except a generic name such as `Documents`" in folders
+
+
+def test_the_guide_gives_rulings_146_to_148s_cuts_counts_and_second_divergence_c2265() -> None:
+    """B13 round 42 rulings 146 to 148, the guide's words from lane RA's (C2265, C2321 with C2237, C2285
+    with C2235 and C2271): the free-text provider part runs to its `/` and the path words after it, a kept
+    first word judged with them only when a `/` follows, so the no-`/` residual is gone and the run of a
+    kept first word is the second; the relative `--source-local` word install.log's run header gives is
+    declared the second kept divergence; and the count names the folder install.sh names as missing or
+    refuses beside the link target. Each is held to setup_report's legend and count words."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    guide = (ROOT / "docs" / "deploy" / "setup-feedback.md").read_text(encoding="utf-8")
+    row = " ".join(next(line for line in guide.splitlines() if line.startswith("| `<path>` |")).split())
+    flat = " ".join(guide.split())
+    assert (
+        "the provider part running across blanks to the next `/` and each path word after that, or else to a"
+        " quote, a backtick, `):`, `, stored as `, a blank before a path of its own or the line's end, a"
+        " generic first word such as `Personal` judged with those words only when a `/` follows them (B13"
+        " round 42 ruling 146, C2285 with C2235 and C2271)"
+    ) in row
+    assert "and one with a blank and no `/` after it" not in row
+    assert (
+        "a relative `--source-local` argument from install.log that names no CloudStorage folder, cut whole,"
+        " where the agentsync report shows its `./` or `../` head and cuts it from its first unknown part: a"
+        " second kept divergence beside ruling 138's (B13 round 42 C2265, ruling 148);"
+    ) in row
+    assert (
+        "`<path>` is counted only for a replaced link target and, since B13 round 42 (C2321 with C2237,"
+        " ruling 148), for a folder install.sh names as missing (after `is not an existing folder:`) or"
+        " refuses (a refused `--source-local` usage error); a log line's `<path>` cut is not counted"
+    ) in flat
+    legend = " ".join(setup_report._LEGEND["path"].split())
+    for words in (
+        "with the words after it a name can hold: to the next / and each path word after that",
+        "a generic word such as Personal judged with those words when a / follows them",
+        "a relative --source-local word on install.log's run header naming no CloudStorage folder, shown"
+        " with its ./ or ../ head and cut from its first unknown part, where the shell fallback report cuts"
+        " the"
+        " whole word",
+    ):
+        assert words in legend, words
+    source = " ".join(inspect.getsource(setup_report).split())
+    assert (
+        "not counted: only a link target replaced by <path> is, and so is a folder install.sh names as"
+        in (source.replace('" "', ""))
+    )
 
 
 def test_the_guides_name_round_40s_empty_stub_and_cache_line_c1850_c1821() -> None:

@@ -43800,6 +43800,20 @@ flag that way, with `-vh`, `-hv` and `purge -yh` in and `-eh`, a root `-yh` or `
 as C2058 edited it. Test: `test_the_contracts_name_the_help_flag_as_asks_help_finds_it_c2260`, which runs each through
 `cli.main`.
 
+**The guide gives rulings 146 to 148's cuts, the counted cuts and the second kept divergence** (C2265's guide half,
+with the guide words of C2285, C2235, C2271, C2321 and C2237; docs only; from lane RA's words, whose report halves
+are in §16.265). setup-feedback.md's `<path>` row said a tenant with a blank and no `/` after it stays in clear, while
+ruling 146 runs the provider part across blanks to its `/` and the path words after it, or else to a quote, a
+backtick, `):`, `, stored as `, a blank before a path of its own or the line's end, and judges a kept first word such
+as `Personal` with those words only when a `/` follows: the row says so, and its two residuals are now a tenant
+without the `~/Library/CloudStorage/` head and a kept first word whose run stops before a `/`. Its relative
+`--source-local` clause now says the shell fallback report cuts that word whole where the agentsync report keeps its
+`./` or `../` head, the second kept divergence beside ruling 138's (ruling 148), and the Redaction count paragraph
+names the folder install.sh names as missing or refuses as counted beside the link target, every other cut the legend
+names, the `--cwd` usage error's included, not. Test:
+`test_the_guide_gives_rulings_146_to_148s_cuts_counts_and_second_divergence_c2265`, held to setup_report's legend and
+count words, and the residual clause of `test_the_guides_rows_give_each_heads_rule_for_any_path_as_both_legends_do_c2051`.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units
