@@ -29,8 +29,8 @@ from agentsync.errors import ConversionError
 from agentsync.model import RenderedUnit, UnitKind
 from agentsync.text import plural
 
-_EMITTER_VERSION = (
-    "1.0.4"  # B13 round 42 C2302, ruling 153: a CSV row is one record, a capped page shows its room
+_EMITTER_VERSION = (  # B13 round 42, its one move (rulings 152, 153): C2302 a CSV row is one record;
+    "1.0.4"  # C2201 with C2209 an empty file has 0 lines
 )
 _TABLE_SIDECAR = "full-table.csv"
 _FENCE_LANG: dict[str, str] = {
@@ -143,7 +143,7 @@ class PlainTextConverter:
             raise ConversionError(f"cannot read: {exc}") from exc
         text = _decode_text(data)
         suffix = _suffix(name)
-        lines = text.split("\n")
+        lines = text.split("\n") if text else []  # an empty file has 0 lines (B13 round 42 C2201, C2209)
         if text.endswith("\n"):
             lines = lines[:-1]
         sidecars: tuple[tuple[str, bytes], ...] = ()

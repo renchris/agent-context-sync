@@ -3823,6 +3823,27 @@ def test_text_edge_cases(tmp_path: Path) -> None:
     assert broken.body.startswith("```csv\n")  # not well-formed CSV: fenced, not dropped
 
 
+@pytest.mark.parametrize(
+    ("name", "data", "said"),
+    [
+        ("e.txt", b"", "Text (txt): 0 lines"),
+        ("bom.txt", b"\xef\xbb\xbf", "Text (txt): 0 lines"),
+        ("e.csv", b"", "Text (csv): 0 lines"),
+        ("n.txt", b"\n", "Text (txt): 1 line"),
+        ("a.txt", b"a", "Text (txt): 1 line"),
+        ("ab.txt", b"a\nb\n", "Text (txt): 2 lines"),
+        ("e.url", b"", "Internet shortcut with no URL"),
+    ],
+)
+def test_an_empty_text_file_has_0_lines_c2201(tmp_path: Path, name: str, data: bytes, said: str) -> None:
+    """B13 round 42 C2201 with C2209: `"".split("\\n")` is `[""]`, so a 0-byte or BOM-only file's summary read
+    `1 line`, the same as a file of one newline. An empty text has no lines."""
+    unit = _one(PlainTextConverter(CFG).convert(_write(tmp_path, name, data), name=name))
+    assert unit.summary == said
+    if not data.strip(b"\xef\xbb\xbf\n"):
+        assert unit.body == "[empty file]\n"
+
+
 def test_csv_row_cap_sidecar(tmp_path: Path) -> None:
     text = "id,v\n" + "".join(f"{i},{i * 2}\n" for i in range(50))
     u = _one(

@@ -43828,6 +43828,14 @@ Test: `test_convert_page_cap.py::test_the_index_header_formula_says_what_the_cod
 verifier's mutation at 1faa3f3a). The value is now row 1 of a second sheet, `Contoso long`, and the test checks it
 whole on that sheet's streamed summary at the default cap; the first sheet's 30 headers and the index checks stay.
 
+**An empty text file has 0 lines** (C2201 with C2209, one defect from two findings; ruling 153;
+`agentsync.convert.text`). `"".split("\n")` is `[""]`, so a 0-byte or BOM-only `.txt`, `.csv` or `.tsv` read `Text
+(txt): 1 line`, the same as a file of one newline (the verifiers' runs at 1faa3f3a). `PlainTextConverter.convert`
+splits only a text that is not empty, so it reads `Text (txt): 0 lines`; a file of `\n` or `a` still reads `1 line`,
+a whitespace-only file still counts its blank lines, and an empty `.url` still reads `Internet shortcut with no URL`.
+This is in text's one `_EMITTER_VERSION` move this round, to 1.0.4; no `_REREAD_BELOW` moves, so an empty file's
+page takes it when the file next changes. Test: `test_convert_formats.py::test_an_empty_text_file_has_0_lines_c2201`.
+
 ### 16.269 Round 42: the prompt goes to v39 (the paths and folder states setup printed), the gate's stop lines, and the guides (2026-11-20, wave B13 round 42 lane D)
 
 Round 42's lane D items (`docs/plans/bring-back-ocr.md`, "B13 round 42"; specs `round42/items/C<n>.md`, the verifier's
