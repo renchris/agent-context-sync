@@ -1990,6 +1990,10 @@ class Redactor:
             printed = short = True
             if kind != "value" and value.isupper():  # an initialism ("IT"): as written, so the pronoun stays
                 ignore_case = fuzzy = False
+        if kind == "source" and len(_norm(value)) == 2 and not value.isupper():
+            # B13 round 42 C2287 with C2232 (ruling 149; privacy): a 2-character source id is a whole word in
+            # any case, as install.sh's short_pair cuts it, where this report cut it only as written
+            ignore_case = True
         context = word and fuzzy and kind == "org" and _norm(value) in _CONTEXT_ORG_WORDS  # B13 round 6 G46
         if context and _norm(value) in self._context:
             return

@@ -28900,6 +28900,24 @@ def test_a_googledrive_address_is_an_organisation_and_a_short_id_is_a_hold_value
     assert not short.private_only
 
 
+def test_a_two_character_source_id_is_a_whole_word_in_any_case_c2287_c2232() -> None:
+    """B13 round 42 C2287 with C2232 (ruling 149; privacy): a 2-character source id was cut only as written
+    here and in any case by the shell, so `QX` of the id `qx` printed in clear in this report alone. It is a
+    whole word in any case; a word id such as `it` keeps the report private only, a non-word such as `qx`
+    leaves it public, and an initialism folder `IT` with no such id is still matched as written."""
+    red = setup_report.Redactor()
+    red.add("source", "qx")
+    assert red.redact("qx QX Qx aqx qxa") == "<source-1> <source-1> <source-1> aqx qxa"
+    assert not red.private_only
+    red = setup_report.Redactor()
+    red.add("source", "it")
+    assert red.redact("It is empty and it is ok") == "<source-1> is empty and <source-1> is ok"
+    assert red.private_only
+    red = setup_report.Redactor()
+    red.add("folder", "IT", fuzzy=True)
+    assert red.redact("it is in IT") == "it is in <folder-1>"
+
+
 def test_both_legends_name_round_40_and_41s_path_forms_c2033() -> None:
     """B13 round 41 C2033 (ruling 142): the <path> legend did not name the --cwd and debug lines' folders
     (C1835) or the free-text tenant (C1862); it names them, the --cwd usage error's folder and the config

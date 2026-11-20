@@ -2616,6 +2616,32 @@ def test_both_reports_read_a_googledrive_address_tenant_and_a_short_id_alike_c20
             assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
 
 
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize(("sid", "private"), [("it", True), ("hr", False), ("qx", False)])
+def test_both_reports_cut_a_two_character_id_in_any_case_one_id_each_c2287_c2312(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+    sid: str,
+    private: bool,
+) -> None:
+    """B13 round 42 C2287 with C2232 and C2312 (ruling 149; privacy): a 2-character source id is a whole word
+    in any case in both reports, quoted as written, in capitals and capitalized, in free text and on doctor's
+    vanished-sources line; one id a report each, so the private-only verdict is the id's own: a word id
+    (`it`) makes the report private only where its placeholder shows, `hr` and `qx` leave it public, the id
+    still cut. The shell half is lane RB's (_R146_SHELL)."""
+    said = [
+        f"the {sid} source, {sid.upper()} and {sid.capitalize()} too",
+        f"[FAIL] config.vanished_sources — {sid}, reports-2 have files on record",
+    ]
+    shell, python, shell_private, python_private = _both_reports(
+        env, ["My Drive/Juniper Notes"], said, locale, shell=_R146_SHELL, ids=[sid]
+    )
+    assert python[0] == "the <source-1> source, <source-1> and <source-1> too", python
+    assert python_private is private, (python_private, python)
+    if _R146_SHELL:
+        assert shell == python and shell_private == python_private, (shell, python)
+
+
 _PROJECTS_OUTSIDE = "~/Projects/Zephyr Quarry"
 """A private folder outside ~/Library/CloudStorage/ that no config names (B13 round 41 ruling 142)."""
 
