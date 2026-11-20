@@ -43498,6 +43498,17 @@ under-cwd rule for `debug: config`, which `dbconfig` cuts always but the default
 numbered by table place, which C2071 replaced with one counter. Lane RA's half is §16.265's; H69's present-tense
 claim takes a dated line.
 
+**The config line claims nothing of the inbox** (C2207's installer half, with C2258's pins; ruling 151; data
+integrity; `scripts/install.sh`). With a file where the inbox folder belongs, init and add-source print `inbox: not
+added: ...` and exit 0, and the config step then said `config: <path> exists (inbox ensured)`, with no sign in
+install.log. The flagless init's stderr is held and printed as the add-source loop's is; the line reads `config:
+<path> exists`, init's and add-source's own line saying what became of the inbox; and when either printed `inbox:
+not added`, the config step's log line ends `inbox=not-added`. The pins at `test_install_oneshot.py`'s
+`test_confirm_install_agent_without_any_source_exits_1` and its kept-folders re-run and `test_launcher.py`'s
+`test_install_sh_full_run_is_idempotent` moved in the same commit. Test:
+`test_install_oneshot.py::test_a_file_named_inbox_is_not_called_an_ensured_inbox_c2207` (the real agentsync, a file
+named inbox, with and without `--source-local`, then the folder back).
+
 **C2060 stays unbuilt** (C2263; ruling 150; privacy). The operator's class C decision 1476293d00a3 on round 41's
 C2060 edit (decode a step 1 list spelling back to the folder name's bytes so the shell report cuts it) was still
 open when this section's last commit landed, so round 41's strict xfail on

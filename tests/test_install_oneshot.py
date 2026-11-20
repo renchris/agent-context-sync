@@ -1298,6 +1298,36 @@ def test_a_lock_wait_the_probe_missed_is_booked_from_agentsyncs_stdout_mark(
     assert f'grep -qx "{cli.LOCK_WAITED_MARK}" "$SYNC_OUT"' in INSTALL_SH.read_text(encoding="utf-8")
 
 
+@pytest.mark.parametrize("with_folder", [False, True], ids=["init", "add-source"])
+def test_a_file_named_inbox_is_not_called_an_ensured_inbox_c2207(
+    real_env: dict[str, str], wheel: Path, folder: Path, with_folder: bool
+) -> None:
+    """B13 round 42 ruling 151, C2207: with a file where the inbox folder belongs, init and add-source print
+    `inbox: not added: ...` and exit 0, and the config step then said `config: <path> exists (inbox
+    ensured)`, and install.log kept no sign of it. The config line now claims nothing of the inbox, init's
+    and add-source's own line saying what happened, and the config step's log line ends `inbox=not-added`."""
+    env = real_env
+    cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
+    assert install_sh(env, str(wheel), timeout=300).returncode in (0, 2), "a first run makes the config"
+    inbox = cfg.parent / "inbox"
+    shutil.rmtree(inbox)
+    inbox.write_text("not a folder\n", encoding="utf-8")
+    (cfg).write_text(default_config_text(), encoding="utf-8")  # no inbox source, so one is asked for
+    args = [str(wheel), *(["--source-local", str(folder)] if with_folder else [])]
+    cp = install_sh(env, *args, timeout=300)
+    assert cp.returncode in (0, 2), cp.stdout + cp.stderr
+    assert "inbox: not added" in cp.stderr, cp.stderr
+    assert "(inbox ensured)" not in cp.stdout, cp.stdout
+    if not with_folder:
+        assert f"config: {cfg} exists" in cp.stdout.splitlines(), cp.stdout
+    line = _config_line(env)
+    assert line.endswith(" inbox=not-added"), line
+    inbox.unlink()
+    again = install_sh(env, *args, timeout=300)
+    assert "inbox: not added" not in again.stderr, again.stderr
+    assert not _config_line(env).endswith(" inbox=not-added"), _config_line(env)
+
+
 def test_confirm_install_agent_without_any_source_exits_1(env: dict[str, str], wheel: Path) -> None:
     cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
     for again in (False, True):  # a fresh install, then a re-run over a config holding only the inbox
@@ -1310,7 +1340,9 @@ def test_confirm_install_agent_without_any_source_exits_1(env: dict[str, str], w
         assert cp.returncode == (1 if again else 2), "KISS K02: a created config with no folder exits 2"
         assert len(re.findall(r"(?m)^kind = .inbox.", cfg.read_text())) == 1, "exactly one inbox"
         assert f"agentsync init --config {cfg}" in calls(env), "the flagless init ensures the inbox"
-        assert ("config: " in cp.stdout and "exists (inbox ensured)" in cp.stdout) is again
+        # B13 round 42 ruling 151 (C2258 with C2207): the line claims nothing of the inbox
+        assert (f"config: {cfg} exists" in cp.stdout.splitlines()) is again
+        assert "(inbox ensured)" not in cp.stdout
         assert not any(
             c.startswith(("agentsync sync", "agentsync install-agent", "launchctl")) for c in calls(env)
         )
@@ -13022,7 +13054,7 @@ def test_a_rerun_with_no_folder_keeps_what_the_mac_already_syncs(
     assert again.returncode == 0, again.stdout + again.stderr
     assert cfg.read_bytes() == before, "every source is kept and none is added"
     out = again.stdout.splitlines()
-    assert f"config: {cfg} exists (inbox ensured)" in out
+    assert f"config: {cfg} exists" in out, "B13 round 42 ruling 151 (C2258): no (inbox ensured) claim"
     assert "folders: kept the 1 already synced (none added)" in out
     assert "sync: converted 0, deferred 0 online-only" in out, "a sync ran; the one file was converted before"
     assert calls(env)[2].startswith("uv tool install --force --reinstall-package agentsync "), calls(env)

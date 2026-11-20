@@ -687,7 +687,7 @@ def test_install_sh_full_run_is_idempotent(stubs: dict[str, str], launcher_app: 
 
     second = install_sh(stubs)
     assert second.returncode == 0, second.stderr
-    assert f"config: {cfg} exists (inbox ensured)" in second.stdout
+    assert f"config: {cfg} exists" in second.stdout.splitlines(), "B13 round 42 ruling 151 (C2258)"
     log2 = calls(stubs)[len(log1) :]
     assert f"agentsync init --config {cfg}" in log2, "a re-run's flagless init ensures the inbox"
     assert cfg.read_text().count('kind = "inbox"') == 1

@@ -12596,6 +12596,7 @@ if [ "${#FOLDERS[@]}" -gt 0 ]; then
 		HELD_RC=0
 		run "$AGENTSYNC" add-source "$f" --config "$CONFIG" </dev/null 2>"$ERRF" | add_source_filter "$nth" "${#FOLDERS[@]}" "$HELD" "$MARK" || HELD_RC=$?
 		cat "$ERRF" >&2
+		! LC_ALL=C grep -q '^inbox: not added' "$ERRF" 2>/dev/null || INBOX_NOT_ADDED=1
 		: >"$ERRF" # printed: on_exit prints only what a signal kept from this line
 		[ "$HELD_RC" -ne 0 ] || continue
 		[ -z "$HELD" ] || { cat "$HELD" && rm -f "$HELD"; }
@@ -12627,12 +12628,23 @@ if [ "${#FOLDERS[@]}" -gt 0 ]; then
 	rm -f "$MARK" "$ERRF"
 	RERUN_ARGS="$BASE_ARGS" # every add-source that failed stopped the run: each folder is in the config now
 else
-	run "$AGENTSYNC" init --config "$CONFIG" </dev/null || config_failed "agentsync init failed (see the error above)"
-	[ "$CONFIG_STATE" = "created" ] || say "config: $CONFIG exists (inbox ensured)"
+	ERRF="$(tmp_make)"
+	INIT_RC=0
+	run "$AGENTSYNC" init --config "$CONFIG" </dev/null 2>"$ERRF" || INIT_RC=$?
+	cat "$ERRF" >&2
+	! LC_ALL=C grep -q '^inbox: not added' "$ERRF" 2>/dev/null || INBOX_NOT_ADDED=1
+	rm -f "$ERRF"
+	ERRF=""
+	(exit "$INIT_RC") || config_failed "agentsync init failed (see the error above)"
+	# what became of the inbox is init's own line to say (`added inbox source ...`, `inbox: not added: ...`,
+	# `inbox: <path> is source ...`): this line claimed `(inbox ensured)` after `inbox: not added` (B13 round 42
+	# ruling 151, C2207)
+	[ "$CONFIG_STATE" = "created" ] || say "config: $CONFIG exists"
 fi
 # What became of the folder choice, as counts: a re-run with no --source-local keeps what the person chose
 # before, and one with it adds only the folders not yet there. One line for the reader, and two fields on
-# the step's log line for the setup report.
+# the step's log line for the setup report; and inbox=not-added when init or add-source printed `inbox: not
+# added`, so install.log carries it (B13 round 42 ruling 151, C2207).
 FOLDER_COUNTS=""
 NOW="$(synced_count)"
 kill "$TICKER" 2>/dev/null || true
@@ -12649,6 +12661,7 @@ if [ -n "$KEPT" ] && [ -n "$NOW" ] && [ "$NOW" -ge "$KEPT" ]; then
 	fi
 fi
 config_folder_lines
+[ "${INBOX_NOT_ADDED:-0}" -eq 0 ] || FOLDER_COUNTS="$FOLDER_COUNTS inbox=not-added"
 if [ "$CONFIG_STATE" = "created" ]; then
 	step_end "done" 0 "created$FOLDER_COUNTS"
 elif [ "${#FOLDERS[@]}" -gt 0 ]; then
