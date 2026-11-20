@@ -175,6 +175,80 @@ def test_a_cap_body_page_with_other_sidecars_stays_within_the_cap_c2044(cap: int
             assert _size(_with_sidecar_digests(_bannered(unit))) <= cap, (others, delta)
 
 
+def _guarded(body: str, cap: int, others: tuple[str, ...] = ()) -> tuple[str, int]:
+    """``body`` capped at ``cap`` and its guarded page's size, ``others`` as keyframe sidecars."""
+    capped, full = _cap_body(body, cap, sidecar_name="full-text.txt", others=others)
+    sidecars = (*full, *((n, b"\xff\xd8") for n in others))
+    unit = make_unit(
+        unit_id="whole", kind=UnitKind.WHOLE, index=0, of=1, name="", file_stem="", title="t",
+        summary="s", body=capped, sidecars=sidecars,
+    )  # fmt: skip
+    return capped, _size(_with_sidecar_digests(_bannered(unit)))
+
+
+_ROOM_8192 = 8192 - GUARD_RESERVE - 2 * len("full-text.txt") - 200  # _cap_body's budget at 8,192
+
+
+@pytest.mark.parametrize(
+    ("shape", "body", "kept"),
+    [
+        ("heading", "## Page 1\n\n" + "Contoso plan words " * 900, "Contoso plan words Contoso"),
+        ("json", "```json\n" + '{"k": "Contoso value"} ' * 600 + "\n```\n", '{"k": "Contoso value"}'),
+        (
+            "long-fence",
+            "`" * 4000 + "python\n" + "print('Contoso')\n" * 600 + "`" * 4000 + "\n",
+            "print('Contoso')",
+        ),
+    ],
+    ids=["heading", "json", "long-fence"],
+)
+def test_a_cut_past_a_long_line_or_a_long_fence_shows_half_its_room_c2272(
+    shape: str, body: str, kept: str
+) -> None:
+    """B13 round 42 C2272: `_line_head` kept the last line end whatever it cost, so a heading before one
+    16 KB line showed 10 bytes and a fenced one-line JSON 7 (the opener), and a 4,000-backtick fence's opener
+    and close left its content no room. The cut keeps a line end only when it keeps half the budget, else
+    cuts at a blank in the budget's second half or a character, and an open fence longer than half the
+    budget gives way to a short one, its info string kept: each shows at least half its room."""
+    capped, size = _guarded(body, 8192)
+    assert size <= 8192, shape
+    head = capped.split("\n\n[truncated: first ")[0]
+    assert 2 * len(head.encode()) >= _ROOM_8192 and kept in head, (shape, head[:200])
+    shown = int(capped.split("[truncated: first ")[1].split(" ")[0])
+    assert shown <= len(body.encode()) and 2 * shown >= _ROOM_8192
+    if shape == "long-fence":
+        assert head.startswith("```python\n") and head.endswith("\n```") and "````" not in head
+    if shape == "json":
+        assert head.startswith("```json\n") and head.endswith("\n```")
+
+
+def test_a_mid_line_cut_never_ends_inside_an_escape_c2272() -> None:
+    """B13 round 42 C2272: a mid-line cut drops a trailing lone backslash, so it never ends inside `\\*`."""
+    for pad in range(4):
+        body = "Contoso\n" + "x" * pad + "\\*" * 9000
+        head = _cap_body(body, 8192, sidecar_name="full-text.txt")[0].split("\n\n[truncated")[0]
+        assert (len(head) - len(head.rstrip("\\"))) % 2 == 0, pad
+
+
+@pytest.mark.parametrize("count", [80, 90, 150])
+def test_a_window_with_many_keyframes_keeps_its_text_and_passes_only_by_their_footers_c2254(
+    count: int,
+) -> None:
+    """B13 round 42 C2254: past about 78 keyframes their footer lines left a window's text no room, so the
+    page kept 0 bytes of text and still passed the cap. The room is worked out again without them: a small
+    body comes back whole, a larger one keeps the text a keyframe-free page shows, and the page passes the
+    cap by the keyframe footer lines only. Returning it uncut instead had no bound."""
+    others = tuple(f"t00{n // 60:02d}{n % 60:02d}{n:02d}.jpg" for n in range(count))
+    footers = sum(_common._footer_bytes(n) for n in others)
+    small = "KEYFRAME: Contoso slide\n" * 90  # 2,250 bytes
+    capped, size = _guarded(small, 8192, others)
+    assert capped == small and size <= 8192 + footers
+    large = "KEYFRAME: Contoso slide with its words\n" * 500  # 19,500 bytes
+    capped, size = _guarded(large, 8192, others)
+    head = capped.split("\n\n[truncated: first ")[0]
+    assert 2 * len(head.encode()) >= _ROOM_8192 and size <= 8192 + footers
+
+
 def test_every_cap_body_caller_passes_the_configured_cap() -> None:
     """B13 round 41 C2044: the reserve lives in `_cap_body`, so it holds for a converter only while that
     converter hands `_cap_body` the configured cap, not one it has already cut."""

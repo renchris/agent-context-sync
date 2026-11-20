@@ -32,7 +32,7 @@ from test_convert_builders import ole_encrypted, png_bytes
 from test_ocr import calls, fake_engine, fake_image
 
 CFG = ConvertConfig()
-VERSION = "2.0.1+ocr-paper-vision-r2-h0.3.0-l1"  # the emitter, then the fake engine's identity
+VERSION = "2.0.2+ocr-paper-vision-r2-h0.3.0-l1"  # the emitter, then the fake engine's identity
 HEAD = "[image · 800x600 px · text read by on-device OCR (Apple Vision)]"
 
 MAGIC: dict[str, bytes] = {

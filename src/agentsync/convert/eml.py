@@ -28,7 +28,7 @@ from agentsync.model import RenderedUnit, UnitKind
 from agentsync.policy import ZERO_BYTES_REASON
 from agentsync.text import plural
 
-_EMITTER_VERSION = "1.1.1"  # B13 round 41 C2044: a page near the cap leaves the guard its room
+_EMITTER_VERSION = "1.1.2"  # B13 round 42 C2272 a cut shows half its room
 _HEADERS: tuple[str, ...] = ("From", "To", "Cc", "Date", "Subject", "Message-ID", "In-Reply-To", "References")
 _SMIME_ENCRYPTED = frozenset({"application/pkcs7-mime", "application/x-pkcs7-mime"})
 # codecs.lookup() names of the labels Windows mail clients put on cp1252 bytes.

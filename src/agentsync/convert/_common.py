@@ -427,30 +427,42 @@ def _footer_bytes(name: str) -> int:
 def _cap_body(
     body: str, max_bytes: int, *, sidecar_name: str, others: Sequence[str] = ()
 ) -> tuple[str, tuple[tuple[str, bytes], ...]]:
-    """Cut ``body`` at a line boundary so it fits ``max_bytes``; the full text rides as a sidecar.
+    """Cut ``body`` so it fits ``max_bytes``; the full text rides as a sidecar.
 
-    Returns ``(body, ())`` when it already fits.  The cut is deterministic (byte budget, last newline).  A
-    cut inside a code block closes it; the note's budget holds a three-character close, and a longer one
-    (a fence opened by a long backtick or tilde run) cuts the head again R + 1 bytes shorter, R the head's
-    longest such run, and closes the fence still open on that shorter head, so the page stays within
-    ``max_bytes``; a head whose close fits keeps its bytes (B13 round 41 C2042).  Both the fit test and the
-    cut's budget leave :data:`GUARD_RESERVE` for the guard's banner and footer, and the footer lines of the
-    page's ``others`` sidecars (a recording window's keyframes), so the guarded page stays within
-    ``max_bytes`` too (B13 round 41 C2044).
+    Returns ``(body, ())`` when it already fits.  The cut is deterministic (byte budget, then
+    :func:`_line_head`): at a line, or mid-line at a word or character boundary when the last line end
+    keeps under half the budget, never inside a ``\\`` escape (B13 round 42 C2272).  A cut inside a code
+    block closes it; the note's budget holds a three-character close, and a longer one (a fence opened by a
+    long backtick or tilde run) cuts the head again R + 1 bytes shorter, R the head's longest such run, and
+    closes the fence still open on that shorter head, so the page stays within ``max_bytes``; a head whose
+    close fits keeps its bytes (B13 round 41 C2042).  An open fence longer than half the budget, whose
+    opener and close would leave its content no room, gives way to a short one (:func:`_short_fence`), its
+    info string kept, so the content shows (C2272).  Both the fit test and the cut's budget leave
+    :data:`GUARD_RESERVE` for the guard's banner and footer, and the footer lines of the page's ``others``
+    sidecars (a recording window's keyframes), so the guarded page stays within ``max_bytes`` too (B13
+    round 41 C2044).  When those footer lines leave the text less than the note's own room, the room is
+    worked out again without them: the window keeps the text a keyframe-free page would show and passes
+    the cap by its keyframe footer lines only (B13 round 42 C2254; returning it uncut has no bound).
     """
     raw = body.encode("utf-8")
+    name_bytes = len(sidecar_name.encode("utf-8"))
+    note_budget = 200 + name_bytes
     room = max_bytes - GUARD_RESERVE - sum(_footer_bytes(name) for name in others)
+    if room - note_budget - name_bytes < note_budget:  # the footers leave the text no room (C2254)
+        room = max_bytes - GUARD_RESERVE
     if len(raw) <= room:
         return body, ()
-    note_budget = 200 + len(sidecar_name.encode("utf-8"))
-    budget = max(0, room - note_budget - len(sidecar_name.encode("utf-8")))
+    budget = max(0, room - note_budget - name_bytes)
     head = _line_head(raw, budget)
+    shown = len(head.encode("utf-8"))
     fence = _open_fence(head)
-    if fence is not None and len(head.rstrip("\n").encode("utf-8")) + 1 + len(fence) > budget + 4:
+    if fence is not None and 2 * len(fence) > budget:  # its opener and close leave no room (C2272)
+        head, fence, shown = _short_fence(raw, head, budget)
+    elif fence is not None and len(head.rstrip("\n").encode("utf-8")) + 1 + len(fence) > budget + 4:
         runs = max(_longest_run(head, "`"), _longest_run(head, "~"))
         head = _line_head(raw, max(0, budget - (runs + 1)))
+        shown = len(head.encode("utf-8"))
         fence = _open_fence(head)
-    shown = len(head.encode("utf-8"))
     head = head.rstrip("\n")
     if fence is not None:  # the cut landed inside a code block: close it so the note renders as text
         head += "\n" + fence
@@ -461,12 +473,69 @@ def _cap_body(
     return head + note, ((sidecar_name, raw),)
 
 
+_CUT_SPACE = (" ", "\t")
+
+
 def _line_head(raw: bytes, budget: int) -> str:
-    """The first ``budget`` bytes of ``raw`` cut back to the last line end, when one falls after the first
-    character (that line end left out)."""
+    """The first ``budget`` bytes of ``raw``, cut back to the last line end (that line end left out) when it
+    keeps at least half the budget; else at the last blank in the budget's second half, else at the
+    character boundary the decode gives, a trailing lone ``\\`` dropped so the cut never ends inside an
+    escape (B13 round 42 C2272: a short line before one long line kept that short line alone)."""
     head = raw[:budget].decode("utf-8", errors="ignore")
+    if len(raw) <= budget:
+        return head
     cut = head.rfind("\n")
-    return head[:cut] if cut > 0 else head
+    if cut > 0 and 2 * len(head[:cut].encode("utf-8")) >= budget:
+        return head[:cut]
+    blank = max(head.rfind(c) for c in _CUT_SPACE)
+    if blank > cut and 2 * len(head[:blank].encode("utf-8")) >= budget:
+        head = head[:blank]
+    slashes = len(head) - len(head.rstrip("\\"))
+    return head[:-1] if slashes % 2 else head
+
+
+def _short_fence(raw: bytes, head: str, budget: int) -> tuple[str, str, int]:
+    """``(head, close, shown)`` for a cut ``head`` whose open fence's opener is longer than half ``budget``:
+    the text before the opener, a short fence of the opener's character, longer than any run of it in the
+    content it shows (three at least), the opener's info string (dropped past a fourth of the budget), and
+    the content after the opener line cut to the room left; ``shown`` counts the source bytes the head stands
+    for, the long opener line's included (B13 round 42 C2272)."""
+    text = raw.decode("utf-8", errors="ignore")
+    start, marker = _fence_opener(head)
+    line_end = text.find("\n", start)
+    opener_end = line_end if line_end >= 0 else len(text)
+    before = text[:start]
+    info = text[start:opener_end].strip()[len(marker) :]
+    if 4 * len(info.encode("utf-8")) > budget:
+        info = ""
+    opener_bytes = len(text[: opener_end + 1].encode("utf-8"))
+    content = raw[opener_bytes:]
+    char = marker[0]
+    room = max(0, budget - len(before.encode("utf-8")) - len(info.encode("utf-8")) - 8)  # 3 + 1 + 3 + 1
+    shows = _line_head(content, room).rstrip("\n")
+    run = _longest_run(shows, char)
+    if run >= 3:  # a prefix whose run, and so whose fence, is no longer (as C2042's recut)
+        shows = _line_head(content, max(0, room - 2 * (run + 1 - 3))).rstrip("\n")
+    short = char * max(3, _longest_run(shows, char) + 1)
+    shown = min(len(raw), opener_bytes + len(shows.encode("utf-8")))
+    return f"{before}{short}{info}\n{shows}", short, shown
+
+
+def _fence_opener(text: str) -> tuple[int, str]:
+    """``(start, marker)`` of the fence opener still open at the end of ``text``: its line's first character
+    and its marker; ``(0, "```")`` when none is (the caller asks only when :func:`_open_fence` found one)."""
+    found = (0, "```")
+    open_marker: str | None = None
+    pos = 0
+    for line in text.split("\n"):
+        m = _FENCE_RE.match(line)
+        marker = m.group(1) if m else ""
+        if marker and open_marker is None:
+            open_marker, found = marker, (pos, marker)
+        elif marker and open_marker and marker[0] == open_marker[0] and len(marker) >= len(open_marker):
+            open_marker = None if not line.strip()[len(marker) :] else open_marker
+        pos += len(line) + 1
+    return found
 
 
 def _open_fence(markdown: str) -> str | None:

@@ -21,7 +21,7 @@ from agentsync.model import TEAMS_MONTH_SCHEMA, RenderedUnit, UnitKind
 from agentsync.policy import ZERO_BYTES_REASON
 from agentsync.text import plural
 
-_EMITTER_VERSION = "1.0.1"  # B13 round 41 C2044: a page near the cap leaves the guard its room
+_EMITTER_VERSION = "1.0.2"  # B13 round 42 C2272 a cut shows half its room
 _MARK = "AGENTSYNCMSGSPLIT"
 _SPLIT_RE = re.compile(rf"^{_MARK}(\d{{6}})[ \t]*$", re.MULTILINE)
 _EMOJI_RE = re.compile(r"<emoji\b[^>]*?\balt=\"([^\"]*)\"[^>]*>(?:\s*</emoji>)?", re.IGNORECASE)

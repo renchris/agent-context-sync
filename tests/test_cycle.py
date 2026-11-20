@@ -2982,7 +2982,7 @@ def test_an_image_on_this_mac_is_read_once_in_the_staging_folder(
     fetched = _fetches(monkeypatch)
     assert run(sample_config).exit_code == 0
     fm, body = _image_page(sample_config, SITE_PLAN)
-    assert fm["status"] == "current" and fm["converter"].startswith("image-ocr@2.0.1+ocr-paper-vision-")
+    assert fm["status"] == "current" and fm["converter"].startswith("image-ocr@2.0.2+ocr-paper-vision-")
     assert fm["source_title"] == "Contoso Site Plan.png", "the unit has no title: the shown name stands in"
     assert fm["summary"] == "Image 800x600 px; OCR: 2 lines"
     assert body.startswith("> [UNTRUSTED CONTENT]") and body.rstrip().endswith(
@@ -3149,14 +3149,14 @@ def test_a_deck_and_a_word_document_are_read_like_a_pdf_and_an_rtf_file_is_as_it
         return fm, body.rstrip()
 
     fm, body = published("minutes.docx")
-    assert fm["converter"].startswith("pandoc-gfm@1.0.1+pandoc-") and "+ocr-paper-vision-" in fm["converter"]
+    assert fm["converter"].startswith("pandoc-gfm@1.0.2+pandoc-") and "+ocr-paper-vision-" in fm["converter"]
     assert fm["summary"] == "Word document; text of 1 picture read by on-device OCR; headings: Minutes"
     assert body.endswith("read by on-device OCR (Apple Vision):]\n\nOrders by month")
     fm, body = published("review.pptx")
-    assert fm["converter"].startswith("pptx-python-pptx@1.0.2+") and "+ocr-paper-vision-" in fm["converter"]
+    assert fm["converter"].startswith("pptx-python-pptx@1.0.3+") and "+ocr-paper-vision-" in fm["converter"]
     assert body.endswith("read by on-device OCR (Apple Vision):]\nUnits by region")
     rtf, rtf_body = published("minutes.rtf")
-    assert rtf["converter"].startswith("pandoc-gfm@1.0.1+pandoc-") and "ocr" not in rtf["converter"]
+    assert rtf["converter"].startswith("pandoc-gfm@1.0.2+pandoc-") and "ocr" not in rtf["converter"]
     assert "Orders by month" not in rtf_body
     staging = sample_config.state_paths.staging.resolve()
     runs = calls(engine.helper)
@@ -3566,7 +3566,7 @@ def test_a_msg_is_read_and_under_a_label_rule_its_page_becomes_a_stub(
     open_config = config_with(tmp_path, local_source_dir)
     assert run(open_config).exit_code == 0
     fm, body = _mirror_page(open_config, KICKOFF_MSG)
-    assert fm["status"] == "current" and fm["converter"].startswith("msg-olefile@1.0.2+olefile-")
+    assert fm["status"] == "current" and fm["converter"].startswith("msg-olefile@1.0.3+olefile-")
     assert fm["source_title"] == "Contoso kickoff recap" and "Renewal is in March." in body
     labelled = config_with(tmp_path, local_source_dir, LABEL_RULE)
     late = "projects/Contoso renewal.msg"
@@ -4353,7 +4353,7 @@ def test_a_mime_msg_settled_as_not_msg_by_emitter_1_0_0_is_read_once_as_a_page(
     fetched = _fetches(monkeypatch)
     assert run(sample_config).commit_sha is not None and sorted(fetched) == sorted([plan, junk])
     fm, body = _mirror_page(sample_config, plan)
-    assert fm["status"] == "current" and fm["converter"].startswith("msg-olefile@1.0.2+")
+    assert fm["status"] == "current" and fm["converter"].startswith("msg-olefile@1.0.3+")
     assert "| From | Ann Contoso <ann@contoso.example> |" in body and "Hello Bob." in body
     assert _mirror_page(sample_config, junk)[0]["reason"] == msg_mod.NOT_MSG_REASON
     assert run(sample_config).commit_sha is None and len(fetched) == 2, "no file is read a second time"
@@ -5900,7 +5900,7 @@ def test_a_pdf_converted_before_comments_were_kept_gains_them_and_is_read_again_
     assert (rep.converted, rep.deferred, rep.errors) == (0, 0, ()), "the same bytes are no new conversion"
     assert [c.path for c in second.changes] == [slug.mirror_rel_path(SID, REVIEW)]
     fm, body = _mirror_page(sample_config, REVIEW)
-    assert fm["converter"].startswith("pdf-pypdfium2@2.1.1+") and fm["summary"].endswith(
+    assert fm["converter"].startswith("pdf-pypdfium2@2.1.2+") and fm["summary"].endswith(
         "1 comment on 1 page"
     )
     assert body.rstrip().endswith(f"{COMMENTS}\n- Note by Roe, John: Check Contoso widget review")
@@ -6027,7 +6027,7 @@ def test_a_transcript_mirrored_as_plain_text_is_read_again_once_as_turns(
     assert again.sources[0].converted == 0, "the same bytes are no new conversion"
     assert [c.path for c in again.changes] == [slug.mirror_rel_path(SID, vtt)]
     fm, body = _mirror_page(sample_config, vtt)
-    assert fm["converter"].startswith("vtt-turns@1.0.2+")
+    assert fm["converter"].startswith("vtt-turns@1.0.3+")
     assert "\n[00:00:07] SAID Sam Roe: Thanks, I will check them.\n" in body
     assert _mirror_page(sample_config, "projects/sample.txt")[0]["converter"].startswith("text-plain@")
     assert _reread_record(sample_config) == (True, [])
@@ -6107,7 +6107,7 @@ def test_a_potx_stub_from_before_the_deck_converter_read_templates_is_read_once_
     assert (again.read_again, again.read_first, again.sources[0].converted) == (1, 1, 1)
     fm, body = _mirror_page(sample_config, rel)
     assert (fm["status"], fm["source_title"]) == ("current", "Contoso Quarterly Template")
-    assert fm["converter"].startswith("pptx-python-pptx@1.0.2+") and "## Contoso Quarterly Template" in body
+    assert fm["converter"].startswith("pptx-python-pptx@1.0.3+") and "## Contoso Quarterly Template" in body
     assert run(sample_config).commit_sha is None and fetched == [rel], "no file is read a second time"
 
 

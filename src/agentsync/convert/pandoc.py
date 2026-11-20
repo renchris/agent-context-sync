@@ -65,7 +65,7 @@ from agentsync.skill import INSTALL_SH
 
 log = logging.getLogger(__name__)
 
-_EMITTER_VERSION = "1.0.1"  # B13 round 41 C2044: a page near the cap leaves the guard its room
+_EMITTER_VERSION = "1.0.2"  # B13 round 42 C2272 a cut shows half its room
 _TIMEOUT_S = 300.0
 _VERSION_RE = re.compile(r"^pandoc(?:\.exe)?\s+(\S+)", re.MULTILINE)
 _META_CHARSET_RE = re.compile(rb"<meta[^>]+charset\s*=\s*[\"']?\s*([A-Za-z0-9_.:-]+)", re.IGNORECASE)

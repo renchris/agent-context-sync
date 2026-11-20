@@ -11042,7 +11042,8 @@ build tree, passed to both swift steps, instead of the real `~/Library` ones.
   checked by the curate rules before use. No `WEBVTT` first line (after an optional BOM, or bytes that are not
   text) is `UnreadableSourceError("not a WebVTT transcript (no WEBVTT first line)")`; no cue with words is
   `UnreadableSourceError("a WebVTT transcript with no cue")`. Output depends on the bytes only; over
-  `max_page_bytes` the body is cut at a line with the full text in `full-text.txt`.
+  `max_page_bytes` the body is cut at a line, or mid-line at a word or character boundary when the line end keeps
+  under half the budget (§16.268 C2272), with the full text in `full-text.txt`.
 - **Read again once.** `VttConverter.replaces = ("text-plain",)`: a converter may name the converter ids whose
   pages it makes anew. `cycle._reread_targets` adds a target for each `produced_by` record whose converter id is
   in some current converter's `replaces`, for that converter's suffixes only (so a `.txt` page of `text-plain`
@@ -43081,6 +43082,10 @@ moved, so no page is read again for it. Tests:
 caller takes, three keyframes beside it),
 `test_convert_page_cap.py::test_the_guard_reserve_holds_the_banner_and_one_footer_line_c2044` and
 `test_convert_page_cap.py::test_every_cap_body_caller_passes_the_configured_cap`.
+Amended 2026-11-20, §16.268 C2254, C2272: past the keyframe count the cap cannot hold, a window keeps the text a
+keyframe-free page would show and passes the cap by its keyframe footer lines only, never by its text; and a cut keeps
+a line end only when it keeps half the budget, else cuts mid-line, and an open fence longer than half the budget gives
+way to a short one.
 
 **A sheet page's comment and object lists stay within the cap, whole in their sidecars** (C2043 with C2088, C2064 and
 C2046, one defect from four findings, built once; `agentsync.convert.xlsx`; amends §16.258 C1848, C1886 and §16.253
@@ -43850,6 +43855,32 @@ shows less than before: `x` shows (2 of 9,008 bytes), and the two-run file's bod
 guard's reserve. In text's one `_EMITTER_VERSION` move this round, to 1.0.4. Test:
 `test_convert_page_cap.py::test_a_capped_text_head_grows_line_by_line_while_its_fence_fits_c2208` (both files at
 8,192 and 20,000).
+
+**A cut page shows at least half its room, and a window past its keyframes keeps its text** (C2272 with C2254;
+ruling 153; `agentsync.convert._common`, every `_cap_body` caller; amends §16.263 C2044). C2272: `_line_head` kept
+the last line end whatever it cost, so at 8,192 `## Page 1` before a 16 KB one-line paragraph showed 10 of 16,011
+bytes, a fenced one-line JSON 7 (the opener alone), and a body opening a 4,000-backtick fence 3,736 backticks and no
+content, since its opener and close cost 8,000 (the verifier's runs at 1faa3f3). `_line_head` now keeps the last line
+end only when it keeps at least half the budget, else cuts at the last blank in the budget's second half, else at the
+character boundary the decode gives, and drops a trailing lone backslash, so a cut never ends inside a `\` escape. An
+open fence longer than half the budget gives way to `_short_fence`: the text before its opener, a short fence of the
+opener's character longer than any run of it in the content shown (three at least), the opener's info string, and the
+content after the opener line in the room left, closed with that short fence; the note's count is the source bytes
+the head stands for. The `_cap_body` docstring and §16.35's VTT bullet say "cut at a
+line, or mid-line at a word or character boundary when the line end keeps under half the budget". C2254, makes worse
+True for returning the body uncut: each keyframe footer line is about 99 bytes, so from about 80 keyframes a window's
+footers left its text no room and the page kept 0 bytes of text while still passing 8,192 (15,180 at 150); returning
+it uncut has no bound (27,409 bytes for a 19,350-byte body with 80). When the footers leave the text less than the
+note's own room, `_cap_body` works the room out again without them: a small body comes back whole, a larger one keeps
+the text a keyframe-free page shows, and the page passes the cap by its keyframe footer lines only. Each `_cap_body`
+caller's `_EMITTER_VERSION` moves one step (diagram 1.3.2, eml 1.1.2, image 2.0.2, markdown 1.0.2, msg 1.0.3, pandoc
+1.0.2, pdf 2.1.2, pptx 1.0.3, recording 1.1.2, teams 1.0.2, vtt 1.0.3); no `_REREAD_BELOW` moves, so a page takes the
+new cut when its file next changes. Tests:
+`test_convert_page_cap.py::test_a_cut_past_a_long_line_or_a_long_fence_shows_half_its_room_c2272` (the three shapes,
+each within 8,192 and showing at least half its room),
+`test_convert_page_cap.py::test_a_mid_line_cut_never_ends_inside_an_escape_c2272` and
+`test_convert_page_cap.py::test_a_window_with_many_keyframes_keeps_its_text_and_passes_only_by_their_footers_c2254`
+(80, 90 and 150 keyframes).
 
 ### 16.269 Round 42: the prompt goes to v39 (the paths and folder states setup printed), the gate's stop lines, and the guides (2026-11-20, wave B13 round 42 lane D)
 

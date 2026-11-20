@@ -649,7 +649,7 @@ def test_an_image_page_or_stub_from_the_field_emitter_is_outdated_and_one_from_t
     image with no text in it.  Pages and stubs alike are read again once; what this emitter wrote is not."""
     reg = Registry.default(ConvertConfig(), ocr=_engine())
     conv = reg.for_name("a.png").inner  # type: ignore[union-attr]
-    assert (image._REREAD_BELOW, conv.outdated_key) == ("2.0.0", "2.0.1<2.0.0")
+    assert (image._REREAD_BELOW, conv.outdated_key) == ("2.0.0", "2.0.2<2.0.0")
     for produced in ("1.0.0" + _FIELD_IDENTITY, "1.0.0+ocr-apple-vision-r3-h2.0.0-l1", "1.9.9"):
         assert _outdated(reg, "a.png", produced) and _outdated(reg, "a.heic", produced, "any stub"), produced
     for produced in (conv.version(), "2.0.0", "2.0.1+x", "3.0.0", "1.0.0rc1", "unavailable", ""):
@@ -676,7 +676,7 @@ def test_a_not_msg_stub_from_before_mime_text_was_read_is_outdated_and_one_from_
     emitter, which is never outdated, so a file that is no message at all is read once and no more."""
     reg = Registry.default(ConvertConfig())
     conv = reg.for_name("a.msg").inner  # type: ignore[union-attr]
-    assert msg._REREAD_BELOW == "1.0.1" and conv.outdated_key == "1.0.2<1.0.1"
+    assert msg._REREAD_BELOW == "1.0.1" and conv.outdated_key == "1.0.3<1.0.1"
     assert _outdated(reg, "a.msg", "1.0.0+olefile-0.47+python-3.12.7+pandoc-3.5", msg.NOT_MSG_REASON)
     for produced in (conv.version(), "unavailable", "1.0.1+x", "1.1.0+x"):
         assert not _outdated(reg, "a.msg", produced, msg.NOT_MSG_REASON), produced
@@ -707,7 +707,7 @@ def test_a_pdf_page_from_before_comments_is_outdated_and_nothing_at_or_above_the
     never outdated.  That holds for a floor set above the running emitter and for a version nobody can read,
     the two ways the same file could otherwise be read again every cycle."""
     plain = Registry.default(ConvertConfig())
-    assert pdf._REREAD_BELOW == "2.1.0" and pdf.PdfConverter(ConvertConfig()).outdated_key == "2.1.1<2.1.0"
+    assert pdf._REREAD_BELOW == "2.1.0" and pdf.PdfConverter(ConvertConfig()).outdated_key == "2.1.2<2.1.0"
     assert _emitter(pdf._REREAD_BELOW) <= _emitter(pdf._EMITTER_VERSION)  # type: ignore[operator]
     assert _outdated(plain, "a.pdf", "2.0.0+pypdfium2-4.30.0+pdfium-6462+pdfminer.six-20231228")
     assert _outdated(plain, "a.pdf", "1.9.9") and _outdated(plain, "scan.pdf", "2.0.0+x", pdf._NO_TEXT)
