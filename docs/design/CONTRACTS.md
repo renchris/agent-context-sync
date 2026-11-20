@@ -43325,6 +43325,10 @@ lane RA's 48e4c6b78). C2060 (a listed name step 1 spelled with a backslash, regi
 (§16.261, 399b9cb64's strict xfail), so the rows claim nothing about it. Test:
 `test_the_guides_rows_give_each_heads_rule_for_any_path_as_both_legends_do_c2051`.
 
+Amended 2026-11-20, §16.269 C2259: while C2060 is unbuilt the folder row names its gap, no longer claiming nothing
+about it: in the shell fallback report a folder step 1 listed and no source configures, spelled with an escaped byte,
+is not yet cut, while the agentsync report cuts it. The caveat is pinned to C2060's strict xfail and leaves with it.
+
 ### 16.265 Round 42: the report: the free-text scan judges a tenant's whole run, every spelling of a config path cut to its end, and one bound for a head's value (2026-11-20, wave B13 round 42 lane RA)
 
 Rulings 146 to 148's Python half (privacy; data integrity), landed with lane RB's shell half (§16.266) in one
@@ -43716,6 +43720,16 @@ that mark only for a two-letter word they list (`_TWO_LETTER_WORDS`, `two_letter
 Private only, `HR` and `QX` are cut and leave it public, and only the shell fallback report had left such an id in
 clear. The row keeps its pinned phrase and says so; the single-id report cases are lane RA's. Test:
 `test_the_guides_rows_give_each_heads_rule_for_any_path_as_both_legends_do_c2051`.
+
+**The folder row names C2060's gap while C2060 is unbuilt** (C2259; docs only; ruling 150; amends §16.264 C2051).
+The folder row said both reports cut each folder step 1's `--list-folders` printed into install.out, while the shell
+fallback report registers a listed part only by its escaped row, so a folder step 1 listed and no source configures,
+spelled with an escaped byte (a control character, DEL, a tab or a backspace), prints in clear there (§16.261 C2060,
+waiting on the operator's decision 1476293d00a3; C2263 is built only on "Allow it"). The row now says so after the
+`<library-N>` clause, its pinned `(both reports), except a generic name such as `Documents`` kept, and the test holds
+the caveat to C2060's strict xfail on `test_both_reports_cut_a_folder_step_1_listed_but_not_configured_ruling_142`:
+the commit that lands C2263 and drops the mark drops the caveat too. Test:
+`test_the_folder_row_names_c2060s_gap_only_while_its_strict_xfail_stands_c2259`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

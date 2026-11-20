@@ -13466,6 +13466,30 @@ def test_the_guides_rows_give_each_heads_rule_for_any_path_as_both_legends_do_c2
     ) in loop
 
 
+def test_the_folder_row_names_c2060s_gap_only_while_its_strict_xfail_stands_c2259() -> None:
+    """B13 round 42 C2259 (ruling 150): the folder row said both reports cut every folder step 1 listed,
+    while C2060, unbuilt behind the operator's decision 1476293d00a3, leaves a listed-only name spelled with
+    an escaped byte in clear in the shell fallback report. The row names that gap exactly while
+    test_report_redaction's strict xfail for C2060 stands, so C2263's commit, which drops the mark, must
+    drop the caveat too; the row's pinned phrase stays."""
+    guide = (ROOT / "docs" / "deploy" / "setup-feedback.md").read_text(encoding="utf-8")
+    folders = next(line for line in guide.splitlines() if line.startswith("| `<library-N>`, `<folder-N>`,"))
+    caveat = (
+        "which is a `<library-N>`; in the shell fallback report, a folder step 1 listed and no source"
+        " configures, spelled in install.out with an escaped byte (a control character, DEL, a tab or a"
+        " backspace, printed with a backslash), is not yet cut, while the agentsync report cuts it (CONTRACTS"
+        " §16.261 C2060, unbuilt, B13 round 42 C2259); every configured source id"
+    )
+    redaction = (ROOT / "tests" / "test_report_redaction.py").read_text(encoding="utf-8")
+    xfail = re.search(
+        r"@pytest\.mark\.xfail\(\n    _R142_SHELL,\n    strict=True,\n    reason=\"C2060 unbuilt[^\n]*\n\)\n"
+        r"def test_both_reports_cut_a_folder_step_1_listed_but_not_configured_ruling_142\(",
+        redaction,
+    )
+    assert (caveat in folders) == (xfail is not None), "the caveat stands exactly while C2060's xfail does"
+    assert "(both reports), except a generic name such as `Documents`" in folders
+
+
 def test_the_guides_name_round_40s_empty_stub_and_cache_line_c1850_c1821() -> None:
     """B13 round 40, lane D's guide halves of lane RA's C1850 and C1821 (e00e07d42): the OCR row named every
     image outcome but the `empty stub` a zero-byte image now is, after the `not-readable stub`, and the Repeat
