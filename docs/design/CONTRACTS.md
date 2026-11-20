@@ -1414,6 +1414,7 @@ class ConvertConfig:
     max_page_bytes: int = 1_000_000  # hard cap before a unit is split / row-capped with a sidecar
     # Amended 2026-11-16, §16.258 C1886: a config sets at least 8 KiB (MIN_PAGE_BYTES); pages stay within any cap it accepts
     # Amended 2026-11-17, §16.263 C2055, C2091: every page converted under any cap it accepts stays within it, a sheet's lists included (a recording's index and a window with more keyframes than its footer lines fit aside, §16.263); a new cap reaches existing local and inbox pages over the next syncs (lane B's C2021)
+    # Amended 2026-11-20, §16.268 C2220, C2306: the cap bounds each page's guarded body (a window past its keyframes keeps its text and passes by their footer lines only, C2254); the front matter above it, up to about 1 KB, sits outside the cap, never budgeted; a [convert] edit re-reads local and inbox pages converted under other options, not recordings or Graph files, nor after an edit made before the first sync that recorded [convert] (lane B's C2297); a recording's page keeps its cap until it is read again for another reason (C2256 with C2253)
     pandoc_path: Path | None = None  # None = the pypandoc_binary bundled pandoc, by absolute path
     # Amended 2026-10-17, §16.114 Q62: None = that pandoc, or on macOS its native arm64 copy when installed
     ocr: bool = True  # False = never build or run the on-device OCR helper (§16.25)
@@ -42536,7 +42537,8 @@ now counts the lists' real bytes, with no guess per item.
 Amended 2026-11-17, §16.263 C2042, C2044: a fence a backtick run outgrew, and the guard's banner and footer, still passed the cap on
 text and `_cap_body` pages; both now stay within it.
 Amended 2026-11-17, §16.263 C2055, C2091: with every list bounded, `(C1848's sheet-comment residual aside)` no longer holds: the
-config's comment and the ConvertConfig row say every page stays within any cap the config accepts.
+config's comment and the ConvertConfig row say every page stays within any cap the config accepts (a recording's index
+and a window with more keyframes than its footer lines fit aside, C2044's residuals at §16.263; §16.268 C2269).
 
 **A cut table's note counts no rows** (C1849; `agentsync.convert.text`; amends §16.253 C1676). `_table` decides the
 cut on the GFM sizes of the header, its delimiter and the first row, about 4 bytes a short cell (`| x `), while the
@@ -43180,6 +43182,8 @@ in lane B's words for its C2021, that a new cap reaches existing local and inbox
 each sync, and a Graph file's page when its bytes next change. The ConvertConfig row in §15 takes a dated line saying
 so, and a dated line at §16.258's C1886 paragraph withdraws its `(C1848's sheet-comment residual aside)`. No test
 pins the comment's words; the contract scan reads the dated lines.
+Amended 2026-11-20, §16.268 C2220, C2306: the cap bounds each page's guarded body; the publisher's front matter above
+it, up to about 1 KB, sits outside the cap, never budgeted, so a page file can pass it by that much.
 
 **A zero-byte file's reason says it holds 0 bytes** (C2001, makes worse True; `agentsync.policy`, `agentsync.convert`;
 amends §16.233 C930; dated line at §16.28). Every zero-byte branch (`screen_file`'s Office guard, msg, diagram, the
@@ -43881,6 +43885,34 @@ each within 8,192 and showing at least half its room),
 `test_convert_page_cap.py::test_a_mid_line_cut_never_ends_inside_an_escape_c2272` and
 `test_convert_page_cap.py::test_a_window_with_many_keyframes_keeps_its_text_and_passes_only_by_their_footers_c2254`
 (80, 90 and 150 keyframes).
+
+**The cap's words say it bounds the guarded body, the front matter outside it, and what an options edit re-reads**
+(C2220 with C2306, makes worse True each for budgeting the front matter; ruling 153 with ruling 154's words;
+`agentsync.config` and docs; amends §16.263 C2055; dated line at §15). config.py's comment and the ConvertConfig row
+said every page converted under any cap the config accepts stays within it, but a converter sizes only the body: the
+publisher writes `render_mirror_page`, the front matter then the body, so a page file passed 8,192 by its front matter
+(a 400-row CSV: body 7,354 bytes, front matter 967, file 8,321; a synced `.txt` 8,719 with 707 of front matter; the
+verifiers' runs at 1faa3f3a). Budgeting the front matter makes things worse: it holds the source's path, URL, etag
+and title, which do not follow the file's bytes, and the body's own `rendered_sha256` and token count, so a rename or
+a longer URL would re-cut the body and change its hash and the cache, and the budget would feed on itself. The words
+now say the cap bounds the guarded body (the guard's banner and footer, a fence and a sheet's lists included; a
+recording's index, and a window past its keyframes, which keeps its text and passes by their footer lines only, C2254,
+aside), and the front matter above it, up to about 1 KB (paths, URL, digests, title, summary), sits outside the cap,
+never budgeted. The same comment and row carry lane B's re-read words once (ruling 154, §16.267): a [convert] edit
+re-reads every local and inbox page converted under other options before the edit's sync, a few per sync, its note
+starting `sync again:` only while another sync reads more; an edit made before the first sync that recorded
+[convert] re-reads nothing, recordings and cloud (Graph) files are not re-read for an options edit, a Graph file's
+page takes a new cap when its bytes next change and a recording's keeps its cap until it is read again for another
+reason (C2297, C2256 with C2253, C2308). Test:
+`test_convert_page_cap.py::test_the_cap_bounds_the_guarded_body_and_the_words_say_the_front_matter_is_outside_c2220`.
+
+**§16.258's C2055 line names the two exceptions its sources name** (C2269; ruling 153; docs). §16.258's dated line
+for C2055 and C2091 said the config's comment and the ConvertConfig row say every page stays within any cap the
+config accepts, with no exception, while both, and §16.263's C2055 paragraph, set aside a
+recording's index and a window with more keyframes than its footer lines fit. The line keeps its prefix, which the
+paragraph-amend pins read, and now ends with that exception. Test:
+`test_convert_page_cap.py::test_the_cap_bounds_the_guarded_body_and_the_words_say_the_front_matter_is_outside_c2220`
+(the line's words).
 
 ### 16.269 Round 42: the prompt goes to v39 (the paths and folder states setup printed), the gate's stop lines, and the guides (2026-11-20, wave B13 round 42 lane D)
 

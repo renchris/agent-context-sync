@@ -249,6 +249,36 @@ def test_a_window_with_many_keyframes_keeps_its_text_and_passes_only_by_their_fo
     assert 2 * len(head.encode()) >= _ROOM_8192 and size <= 8192 + footers
 
 
+def test_the_cap_bounds_the_guarded_body_and_the_words_say_the_front_matter_is_outside_c2220(
+    tmp_path: Path,
+) -> None:
+    """B13 round 42 C2220 with C2306: the config's comment and the ConvertConfig row said every page stays
+    within the cap, but a page file is the front matter then the guarded body, and only the body is sized
+    (a 400-row CSV's file was 8,321 bytes at 8,192). Budgeting the front matter makes things worse (it
+    holds the path, URL and the body's own hash), so the words say what the cap bounds: the guarded body,
+    the front matter outside it. C2269: §16.258's C2055 line names the two exceptions its sources name."""
+    src = tmp_path / "contoso.csv"
+    src.write_text("id,name\n" + "".join(f"{i},Contoso row {i}\n" for i in range(400)), encoding="utf-8")
+    (unit,) = _pages(src, 8192)
+    assert _size(unit) <= 8192 and [n for n, _ in unit.sidecars] == ["full-table.csv"]
+    config_py = Path(setup_report.__file__).with_name("config.py").read_text(encoding="utf-8")
+    comment = " ".join(config_py.replace("    # ", " ").split())
+    assert "the cap bounds the guarded body of every page converted under any cap it accepts" in comment
+    assert (
+        "the front matter above it, up to about 1 KB (paths, URL, digests, title, summary), sits outside"
+        in comment
+    )
+    assert "an edit made before the first sync that recorded [convert] re-reads nothing" in comment
+    contracts = " ".join(Path("docs/design/CONTRACTS.md").read_text(encoding="utf-8").split())
+    assert "the cap bounds each page's guarded body (a window past its keyframes keeps its text" in contracts
+    assert "the front matter above it, up to about 1 KB, sits outside the cap, never budgeted;" in contracts
+    assert (
+        "say every page stays within any cap the config accepts (a recording's index and a window with more "
+        "keyframes than its footer lines fit aside, C2044's residuals at §16.263; §16.268 C2269)."
+        in contracts
+    )
+
+
 def test_every_cap_body_caller_passes_the_configured_cap() -> None:
     """B13 round 41 C2044: the reserve lives in `_cap_body`, so it holds for a converter only while that
     converter hands `_cap_body` the configured cap, not one it has already cut."""

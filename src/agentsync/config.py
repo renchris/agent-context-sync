@@ -211,11 +211,18 @@ class ConvertConfig:
     xlsx_stream_threshold_bytes: int = 20 * 1000**2
     max_rows_per_sheet: int = 5000
     max_page_bytes: int = 1_000_000  # hard cap before a unit is split / row-capped with a sidecar
-    # a config sets at least MIN_PAGE_BYTES (8 KiB); every page converted under any cap it accepts stays
-    # within it, the guard's banner and footer, a fence and a sheet's lists included (a recording's index
-    # and a window with more keyframes than its footer lines fit aside, CONTRACTS §16.263), and a new cap
-    # reaches existing local and inbox pages over the next syncs, re-read a few per sync; a Graph file's
-    # page takes it when its bytes next change (B13 round 40 C1886, round 41 C2055, C2091, C2021)
+    # a config sets at least MIN_PAGE_BYTES (8 KiB); the cap bounds the guarded body of every page converted
+    # under any cap it accepts, the guard's banner and footer, a fence and a sheet's lists included (a
+    # recording's index, and a window with more keyframes than its footer lines fit, which keeps the text a
+    # keyframe-free page shows and passes by those lines only, aside: CONTRACTS §16.263, §16.268); the front
+    # matter above it, up to about 1 KB (paths, URL, digests, title, summary), sits outside the cap, never
+    # budgeted, so a page file can pass it by that much. A [convert] edit re-reads every local and inbox page
+    # converted under other options before the edit's sync, a few per sync (its note starts `sync again:`
+    # only while another sync reads more), except that an edit made before the first sync that recorded
+    # [convert] re-reads nothing, and recordings and cloud (Graph) files are not re-read for an options edit:
+    # a Graph file's page takes the new cap when its bytes next change, and a recording's page keeps its cap
+    # until it is read again for another reason (B13 round 40 C1886, round 41 C2055, C2091, C2021, round 42
+    # C2220, C2306, C2254, lane B's C2297, C2256 with C2253, C2308)
     # None = the pypandoc_binary bundled pandoc, or on macOS its native arm64 copy when the operator installed
     # one (convert.pandoc.resolved_pandoc, CONTRACTS §16.114), by absolute path
     pandoc_path: Path | None = None

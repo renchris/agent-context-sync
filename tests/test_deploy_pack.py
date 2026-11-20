@@ -7820,9 +7820,10 @@ block, C2001's at §16.28's class table and C2048's at §16.42's signal paragrap
 no item, and C2043's at §16.258's C1848 paragraph, whose claim also reaches the C1886 one, which names it."""
 _ROUND_42_E_PARAGRAPH_AMENDS = (
     ("16.42", "`subprocess` reports a child a signal stopped as the negative signal", "§16.268 C2252"),
+    ("15", "max_page_bytes: int = 1_000_000 # hard cap before a unit is split", "§16.268 C2220, C2306"),
 )
-"""Round 42 lane E's dated lines no one claim holds alone: C2252's at §16.42's signal paragraph, which its
-claim names with no item."""
+"""Round 42 lane E's dated lines no one claim holds alone: C2252's at §16.42's signal paragraph and C2220's at
+the ConvertConfig row in §15's code block, which their claims name with no item."""
 _ROUND_32_B_PARAGRAPH_AMENDS = (
     ("16.200", "**C112, C125, C146, C155, C177, C178, C139, C141, C145, C210: status", "§16.215 C624"),
     ("16.205", "C381 (ruling 34): what governance/ keeps survives the folder's loss", "§16.215 C632"),
