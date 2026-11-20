@@ -12135,11 +12135,12 @@ STEP1_CHECK_CUT = (
 """Step 1's clause when one of its state readers stopped at its own limit (B13 round 40 C1867, C1876)."""
 
 
-def _slow_tool_python(env: dict[str, str], marker: str, seconds: float) -> Path:
+def _slow_tool_python(env: dict[str, str], marker: str, seconds: float, last: str = "") -> Path:
     """The installed agentsync's interpreter as a real venv, whose sitecustomize holds back the one ``-c``
     program holding ``marker`` (read from sys.orig_argv) for ``seconds``: install.sh's own reader, past its
-    own limit, with no seam in install.sh. A .pth puts this checkout's site-packages on its path, so
-    agentsync imports as _tool_python's wrapper gives it."""
+    own limit, with no seam in install.sh; with ``last``, only a run whose last argument ends so (the
+    checkout's ``<repo>/src``). A .pth puts this checkout's site-packages on its path, so agentsync imports as
+    _tool_python's wrapper gives it."""
     root = Path(env["HOME"]) / ".local" / "share" / "uv" / "tools" / "agentsync"
     venv.EnvBuilder(with_pip=False, symlinks=True).create(root)
     site = root / "lib" / f"python{sys.version_info[0]}.{sys.version_info[1]}" / "site-packages"
@@ -12148,7 +12149,8 @@ def _slow_tool_python(env: dict[str, str], marker: str, seconds: float) -> Path:
         "".join(f"import site; site.addsitedir({p!r})\n" for p in outer), encoding="utf-8"
     )
     (site / "sitecustomize.py").write_text(
-        f"import sys, time\nif any({marker!r} in a for a in getattr(sys, 'orig_argv', ())):\n"
+        f"import sys, time\nargv = getattr(sys, 'orig_argv', [''])\n"
+        f"if any({marker!r} in a for a in argv) and argv[-1].endswith({last!r}):\n"
         f"    time.sleep({seconds})\n",
         encoding="utf-8",
     )
@@ -12182,6 +12184,43 @@ def test_list_folders_says_no_none_is_needed_when_its_state_reader_stops_at_its_
     assert last_line(cp).startswith(head), last_line(cp)
     logged = install_log(env)[-2]
     assert logged.endswith(" config_err=timeout"), logged
+
+
+@pytest.mark.parametrize(
+    "marker",
+    [
+        "from agentsync.ops.doctor import state_not_a_file",
+        "lost_holds = governance.lost_holds",
+        "capped:from agentsync.ops.doctor import state_not_a_file",
+    ],
+    ids=["misplaced", "lost-hold", "capped"],
+)
+def test_a_checkout_reader_at_its_limit_drops_none_is_needed_whatever_the_installed_build_answers_c2313(
+    env: dict[str, str], marker: str
+) -> None:
+    """B13 round 42 C2313: step 1's misplaced and lost-hold readers ask this checkout's code first and the
+    installed build's only when it says nothing, and a checkout reader stopped at its limit set ccut only
+    when that fallback said nothing too; the installed build's all-clear (`- `, `none`) is not empty, so on a
+    busy Mac its verdict for the older build said "(none is needed)" for the build step 2 installs. Such a
+    stop now sets ccut whatever the fallback answers: the checkout reader alone is held 11 s."""
+    capped = marker.startswith("capped:")
+    marker = marker.removeprefix("capped:")
+    code = INSTALL_SH.read_text(encoding="utf-8")
+    assert code.count(marker) == 1, "the marker names one reader's program alone"
+    _config_step_2_stops_on(env, "clean-real")
+    if capped:  # the list's cap clause comes after the timeout clause
+        for i in range(1, 206):
+            (_cloud(env) / "OneDrive-Contoso" / f"Wren Plan {i:03d}").mkdir(parents=True)
+    _slow_tool_python(env, marker, 11, last="/src")
+    cp = install_sh(env, "--list-folders", timeout=300)
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert "(none is needed)" not in last_line(cp), last_line(cp)
+    if capped:
+        _head, cap = last_line(cp).split(STEP1_CHECK_CUT, 1)
+        assert cap.startswith("; ") and " folders past the first " in cap, last_line(cp)
+    else:
+        assert last_line(cp).endswith(STEP1_CHECK_CUT), last_line(cp)
+    assert install_log(env)[-2].endswith(" config_err=timeout"), install_log(env)[-2]
 
 
 def misplaced_tail(role: str, kind: str = "folder", kept: str = "") -> str:

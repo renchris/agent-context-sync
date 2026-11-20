@@ -10419,7 +10419,9 @@ list_folders() {
 				cmisread="$(misplaced_reader "$py")" || rrc=$?
 				! at_limit "$rrc" "$rt0" 10 || rcut=1
 			fi
-			[ -n "$cmisread" ] || [ -z "$rcut" ] || ccut=1
+			# a checkout reader at its limit cuts the all-clear whatever the installed build answers: that verdict is the
+			# older build's, not the one step 2 installs (B13 round 42 C2313)
+			[ -z "$rcut" ] || ccut=1
 			rcut="" rrc=0 rt0=$SECONDS
 			config_errors "$py" "$cmisread" >"$tmp/cerr" 2>/dev/null || rrc=$?
 			! at_limit "$rrc" "$rt0" 5 || ccut=1
@@ -10445,7 +10447,9 @@ list_folders() {
 				chold="$(lost_hold_reader "$py")" || rrc=$?
 				! at_limit "$rrc" "$rt0" 10 || rcut=1
 			fi
-			[ -n "$chold" ] || [ -z "$rcut" ] || ccut=1
+			# a checkout reader at its limit cuts the all-clear whatever the installed build answers: that verdict is the
+			# older build's, not the one step 2 installs (B13 round 42 C2313)
+			[ -z "$rcut" ] || ccut=1
 		fi
 	fi
 	# Every synced folder is printed with its mark, so the reader can name each: the ones the list does not

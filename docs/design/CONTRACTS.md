@@ -43434,6 +43434,18 @@ them. Test: `test_install_oneshot.py::test_the_config_step_prints_the_docs_repo_
 agentsync under an `AGENTSYNC_CONFIG` outside `~/agent-context` with a `docs_repo` beside it; the inbox init registered
 is the printed one, and neither report names the made-up folder).
 
+**A checkout reader at its limit drops the all-clear whatever the installed build answers** (C2313; data integrity;
+`scripts/install.sh`). Step 1's misplaced and lost-hold readers ask this checkout's code first and the installed
+build's only when it says nothing, and a checkout reader stopped at its limit set `ccut` only when that fallback said
+nothing too. The installed build's all-clear (`- `, `none`) is not empty, so on a busy Mac its verdict, the older
+build's, printed `(none is needed)` for the build step 2 installs. Such a stop now sets `ccut` whatever the fallback
+answers, so the NEXT carries step 1's timeout clause and step_end logs `config_err=timeout`. The clause comes after
+any other tail and before the list's cap clause (`; N folders past the first M are not listed: ...`); the exit-3
+sign-in and access NEXTs carry no config tail, their re-run reading again. Test:
+`test_install_oneshot.py::test_a_checkout_reader_at_its_limit_drops_none_is_needed_whatever_the_installed_build_answers_c2313`
+(each reader's checkout run alone held 11 s by the installed venv's sitecustomize, and the order beside the cap
+clause).
+
 ### 16.267 Round 42: the inbox known as a folder, the options re-read dated by the run that converted a page, and a recording's page following its state (2026-11-20, wave B13 round 42 lane B)
 
 Round 42's lane B items (`docs/plans/bring-back-ocr.md`, "B13 round 42"; specs `round42/items/C<n>.md`, the
