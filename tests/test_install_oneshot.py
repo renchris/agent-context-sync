@@ -3705,7 +3705,9 @@ def test_the_shell_report_reads_tilde_and_relative_folders_from_install_log(env:
     assert re.search(r"\| <folder-\d>, <folder-\d> \|", text)
     # "$cs/.." always exists: a ".." first part was placed in CloudStorage and "Notes", "docs" became pairs
     assert "| Release Notes in ~/agent-context/docs |" in text
-    assert text.count("args=--source-local <path>\n") == 4, "the bare, ./, ../ and ./../ relative words"
+    # B13 round 41 ruling 142 (C2062): a word outside CloudStorage is cut() as _cut_path cuts it, so the
+    # relative OneDrive-Contoso/Northwind\ Q1 reads <path> here as it does in the agentsync report
+    assert text.count("args=--source-local <path>\n") == 5, "OneDrive-…, the bare, ./, ../ and ./../ words"
     for name in ("Fabrikam", "Northwind", "Tailspin"):
         assert name not in text, name
 
@@ -3780,14 +3782,20 @@ def test_the_shell_report_reads_past_a_dollar_quoted_install_log_word(
     kinds = _legend_kinds(text)
     assert {"<path>", "<folder-N>"} <= set(kinds) and "<proxy-N>" not in kinds, kinds
     item = {i.split(":", 1)[0].lstrip("- "): " ".join(i.split()) for i in items}
-    assert item["<path>"].endswith(
+    # B13 round 41 C2033: ruling 142's clauses follow this one, which test_the_shell_legend_names_each_heads_
+    # rule_for_any_path_c2033 pins
+    assert (
         "and every word bash or doctor's fix wrote in its dollar-quote form ($'...'), cut whole, so doctor's "
         "fix reads open ~/<path> in Finder once, which install.log uses for a name with a tab or another "
         "control character, a curly apostrophe, an en dash, a decomposed accent or many precomposed ones, "
         "such as É, ß, í or ł, and under the C locale for any accent (any character outside ASCII); one "
         "right after --source-local, --source-local= or add-source is cut whole here, where the agentsync "
-        "report shows it decoded in double quotes and cut by its argument's rule"
-    ), "the Redaction text is not itself redacted, and reads plainly (B13 R7; round 38 C1493; round 39 C1648)"
+        "report shows it decoded in double quotes and cut by its argument's rule. In both reports, a"
+    ) in item["<path>"], (
+        "the Redaction text is not itself redacted, and reads plainly (B13 R7; round 38 C1493; round 39"
+        " C1648)"
+    )
+    assert item["<path>"].endswith("never numbered, its trailing )]}.,;: kept"), item["<path>"]
     # B13 round 40 ruling 138: the one divergence between the reports is named where the cut is described
     # B13 round 39 C1601: a CloudStorage argument no configured source names keeps only its provider folder
     assert (
