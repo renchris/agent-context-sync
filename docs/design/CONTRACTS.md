@@ -43136,6 +43136,9 @@ workbook, full and streamed), with `test_convert_formats.py::test_xlsx_first_row
 moved to the new note.
 Amended 2026-11-20, §16.268 C2300: a cut row cuts each cell's value and formula apart (`value `=FORMULA``), and every
 formula a page does not show whole rides whole in `NN-<slug>.formulas.txt`, which the row-cap note names.
+Amended 2026-11-20, §16.268 C2268: the later rows that fit uncut keep their bytes and the cut row takes the largest
+length whose rendered row fits the rest, and a streamed summary's rows get the real room left (no flat 4,096), so the
+four-sheet book's streamed pages show all six rows.
 
 **The per-cell cuts stay, scaled with the cap** (C2045, makes worse True; `agentsync.convert.xlsx`; amends §16.258
 C1848). C1848's 600-character headers cell and 200-character first-row value applied at any cap, so thirty headers of
@@ -43784,6 +43787,28 @@ value-only contract and its bytes stay. Tests:
 cell beside a short and a 6,000-character formula, full and streamed, every row shown and a one-row cap),
 `test_convert_page_cap.py::test_a_row_cap_with_no_formula_writes_no_formulas_sidecar_c2300` and
 `test_convert_formats.py::test_xlsx_row_cap_emits_csv_sidecar` (rows 6 to 31's formulas).
+
+**A cut row takes the room the later rows leave, and a streamed summary's rows the real room left** (C2268, makes
+worse True for filling the room; ruling 153; `agentsync.convert.xlsx`; amends §16.263 C2022). Of the four
+page-cap residuals the harvest named, two were fixable. (3) C2022 cut a row to an even share of the room left, halved
+until it fit, so one 20,008-character cell beside 29 one-character cells was cut to 124 characters on an 870-byte page
+at 8,192 (83 streamed). Filling the whole room instead makes things worse: in the four-sheet book the cut row would
+take the five short rows' bytes and show `first 1 of 6` (the verifier's probe). `_table_lines` now takes off the
+bytes of the later rows that fit uncut, up to `max_rows_per_sheet`, then `_cut_row` takes the largest length whose
+rendered line fits what is left, searched on the rendered UTF-8 bytes (escapes and the 3-byte `…` make a character's
+cost uneven) and keeping only a length it rendered and saw fit. (4) The streamed path took a flat 4,096 bytes off
+the rows' budget, so the book's 30-column sheets showed `[no row fits the page; ...]` on a 4,116-byte page;
+`_streamed_tail` now reserves the real bytes of what follows (the rows' heading, the longest cut note, the formulas
+and no-cached-values notes, the guard's banner and the footer lines of the CSV and formulas sidecars), and the Schema
+keeps its order and its 16 columns: each page shows all six rows within the cap. (1) and (2) stay the named
+exceptions §16.263 C2044 gives: a recording's 00-index is never cut (its Windows block's label lines allow no
+`showing` line, so a cut is a grammar change, not a cap fix; the renderer has no on-screen Terms list, and scaling
+the Names list saves at most about 1.6 KB of a 12,361-byte index), and a window with 78 or more keyframes passes the
+cap by its footer lines (C2254). Tests:
+`test_convert_page_cap.py::test_a_long_cell_beside_short_ones_takes_the_room_the_later_rows_leave_c2268` (full and
+streamed, over 2,000 characters where 124 and 83 were) and
+`test_convert_page_cap.py::test_an_oversized_first_row_is_shown_with_its_cells_cut_c2022` (the streamed pages now
+show all six rows).
 
 ### 16.269 Round 42: the prompt goes to v39 (the paths and folder states setup printed), the gate's stop lines, and the guides (2026-11-20, wave B13 round 42 lane D)
 

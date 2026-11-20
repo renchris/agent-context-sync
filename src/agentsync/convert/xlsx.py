@@ -339,11 +339,11 @@ def _table_lines(
     table, so the caller's sidecar holds every row (B13 round 39 C1676).  A row too long for the table by
     itself is shown with its cells cut, never dropped: each cell's value and formula cut apart to the same
     number of characters ending ``…`` before :func:`_cell` and :func:`_code` render them (:func:`_cut_cell`),
-    so no cut splits an escape or a formula's code span: an even share of the room left, halved until the
-    row fits, kept as (row, characters) in the cut rows (B13 round 41 C2022, round 42 C2300).  The rows shown
-    stay a
-    run from the top: a row that fits the table but not the room left, or a cut row that still does not
-    fit, ends it."""
+    so no cut splits an escape or a formula's code span, kept as (row, characters) in the cut rows (B13
+    round 41 C2022, round 42 C2300).  The later rows that fit uncut (up to ``max_rows``) keep their bytes
+    first, and the cut row takes the largest length whose rendered row fits what is left (:func:`_cut_row`,
+    B13 round 42 C2268).  The rows shown stay a run from the top: a row that fits the table but not the room
+    left, or a cut row that still does not fit, ends it."""
     assert sheet.bounds is not None
     _r0, c0, _r1, c1 = sheet.bounds
     header = ["Row", *(_col_letter(c) for c in range(c0, c1 + 1))]
@@ -353,15 +353,26 @@ def _table_lines(
         return [], 0, []
     shown = 0
     cut: list[tuple[int, int]] = []
-    for r in rows:
+
+    def whole(r: int) -> str:
+        return _gfm_table(header, [[str(r), *(cells.get((r, c), "") for c in range(c0, c1 + 1))]])[2]
+
+    for i, r in enumerate(rows):
         if shown >= max_rows:
             break
-        line = _gfm_table(header, [[str(r), *(cells.get((r, c), "") for c in range(c0, c1 + 1))]])[2]
+        line = whole(r)
         size = len(line.encode("utf-8")) + 1
         if used + size > budget:
             if start + size <= budget:
                 break
-            fitted = _cut_row(sheet, header, r, budget - used)
+            floor = len(_cut_line(sheet, header, r, 1).encode("utf-8")) + 1
+            later = 0  # the later rows that fit uncut keep their bytes (B13 round 42 C2268)
+            for after in rows[i + 1 : i + max_rows - shown]:
+                more = len(whole(after).encode("utf-8")) + 1
+                if start + more > budget or used + floor + later + more > budget:
+                    break
+                later += more
+            fitted = _cut_row(sheet, header, r, budget - used - later)
             if fitted is None:
                 break
             line, limit = fitted
@@ -385,22 +396,37 @@ def _cut_cell(sheet: _Sheet, key: tuple[int, int], limit: int) -> str:
     return f"{_cell(_cut_value(value, limit))} {code}" if value else code
 
 
-def _cut_row(sheet: _Sheet, header: list[str], r: int, room: int) -> tuple[str, int] | None:
-    """Row ``r`` with each cell cut to one number of characters (:func:`_cut_cell`), an even share of
-    ``room`` bytes (its line end included) halved until the row fits, with that number; None when one
-    character a cell does not fit (B13 round 41 C2022)."""
+def _cut_line(sheet: _Sheet, header: list[str], r: int, limit: int) -> str:
+    """Row ``r``'s table line with each cell cut to ``limit`` characters (:func:`_cut_cell`)."""
     assert sheet.bounds is not None
     _r0, c0, _r1, c1 = sheet.bounds
-    ncols = c1 - c0 + 1
-    limit = max(1, (room - 5 - len(str(r)) - 3 * ncols) // ncols)
-    while True:
-        plain = [_cut_cell(sheet, (r, c), limit) for c in range(c0, c1 + 1)]
-        line = _gfm_table(header, [[str(r), *plain]])[2]
-        if len(line.encode("utf-8")) + 1 <= room:
-            return line, limit
-        if limit == 1:
-            return None
-        limit //= 2
+    return _gfm_table(header, [[str(r), *(_cut_cell(sheet, (r, c), limit) for c in range(c0, c1 + 1))]])[2]
+
+
+def _cut_row(sheet: _Sheet, header: list[str], r: int, room: int) -> tuple[str, int] | None:
+    """Row ``r`` with each cell cut to the largest number of characters (:func:`_cut_cell`) whose rendered
+    line fits ``room`` bytes, its line end included, with that number; None when one character a cell does
+    not fit (B13 round 41 C2022).  The search is on the rendered UTF-8 bytes, since escapes and the 3-byte
+    ``…`` make a character's cost uneven, and keeps only a length it rendered and saw fit, so a cost that
+    is not monotone never passes the room (B13 round 42 C2268: halving an even share left most of it)."""
+    assert sheet.bounds is not None
+    _r0, c0, _r1, c1 = sheet.bounds
+
+    def fits(limit: int) -> bool:
+        return len(_cut_line(sheet, header, r, limit).encode("utf-8")) + 1 <= room
+
+    if not fits(1):
+        return None
+    keys = [(r, c) for c in range(c0, c1 + 1)]
+    texts = [*(sheet.plain.get(k, "") for k in keys), *(sheet.formula.get(k, "") for k in keys)]
+    lo, hi = 1, max(1, *(len(x) for x in texts))
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if fits(mid):
+            lo = mid
+        else:
+            hi = mid - 1
+    return _cut_line(sheet, header, r, lo), lo
 
 
 def _formulas_left(sheet: _Sheet, rows: list[int], shown: int, cut: list[tuple[int, int]]) -> list[str]:
@@ -466,6 +492,36 @@ def _listed(out: list[str], heading: str, lines: list[str], *, room: int, what: 
         out.append(f"[{what} truncated at the page size cap: {kept} of {len(lines)} listed{where}]")
     out.append("")
     return kept
+
+
+def _streamed_tail(sheet: _Sheet, total_rows: int, sc: str, fsc: str) -> int:
+    """The most bytes a streamed summary adds after its rows' table: the rows' heading and blank lines, the
+    longest cut note or the no-row note, the formulas note when the sheet has a formula, the no-cached-values
+    note, and the guard's banner and the footer lines of its CSV and formulas sidecars, so the rows get every
+    byte the page has left (B13 round 42 C2268: a flat 4,096 left a 30-column book no row at 8,192)."""
+
+    def size(*lines: str) -> int:
+        return sum(len(x.encode("utf-8")) + 1 for x in lines)
+
+    rows = sheet.rows()
+    longest = max((len(x) for x in (*sheet.plain.values(), *sheet.formula.values())), default=1)
+    widest = [(rows[-1] if rows else 0, longest)] * max(2, len(rows))  # the note's longest form
+    tail = size(f"## First {len(rows)} of {plural(total_rows, 'non-empty row')}", "", "")
+    tail += max(
+        size(f"[{_cut_rows_note(widest)}; every row is in the sidecar `{sc}`]", ""),
+        size(f"[no row fits the page; every row is in the sidecar `{sc}`]", ""),
+    )
+    if sheet.formulas:
+        tail += size(f"[{_formulas_note(fsc)}]", "") + _footer_bytes(fsc)
+    if sheet.missing_cache:
+        tail += size(_streamed_uncached_note(sheet), "")
+    return tail + GUARD_RESERVE + _footer_bytes(sc)
+
+
+def _streamed_uncached_note(sheet: _Sheet) -> str:
+    """A streamed summary's note on formulas with no stored result."""
+    cells = _uncached_cells(sheet)
+    return f"[no cached values: {_uncached(sheet)} no stored result; {cells} the formula only]"
 
 
 def _formulas_note(name: str) -> str:
@@ -973,7 +1029,8 @@ class XlsxConverter:
             sidecars: list[tuple[str, bytes]] = [(sc, csv_data)]
             if rows:
                 used = sum(len(x.encode("utf-8")) + 1 for x in out)
-                budget = max(0, self._cfg.max_page_bytes - 4096 - used)
+                after = _streamed_tail(sheet, total_rows, sc, fsc)
+                budget = max(0, self._cfg.max_page_bytes - used - after)  # no flat 4,096 (C2268)
                 lines, shown, cut = _table_lines(
                     sheet, rows, sheet.shown, budget, self._cfg.max_rows_per_sheet
                 )
@@ -994,8 +1051,7 @@ class XlsxConverter:
                 out += ["[empty sheet]", ""]
             if sheet.missing_cache:
                 out += [
-                    f"[no cached values: {_uncached(sheet)} "
-                    f"no stored result; {_uncached_cells(sheet)} the formula only]",
+                    _streamed_uncached_note(sheet),
                     "",
                 ]
             units.append(

@@ -431,9 +431,9 @@ def test_an_oversized_first_row_is_shown_with_its_cells_cut_c2022(tmp_path: Path
     pages = _pages(src, 8192, xlsx_stream_threshold_bytes=0 if streamed else CFG.xlsx_stream_threshold_bytes)
     assert len(pages) == 5 and [p.unit_id for p in pages if _size(p) > 8192] == []
     for page in pages[1:]:
-        if streamed:  # thirty first-row values fill the Schema's room, so the rows get none (C1676)
-            assert "[schema cut at the page size cap: " in page.body and "[no row fits the page;" in page.body
-            continue
+        if streamed:  # the Schema keeps its 16 columns, and the rows get the real room left (C2268)
+            assert "[schema cut at the page size cap: 16 of 30 columns listed;" in page.body
+            assert "## First 6 of 6 non-empty rows" in page.body and "[no row fits the page;" not in page.body
         assert re.search(r"\| 1 \| H00 h+… \| H01 h+… \|", page.body), page.body[:600]
         assert "| 6 | r4c0 | r4c1 |" in page.body
         assert re.search(
@@ -442,6 +442,30 @@ def test_an_oversized_first_row_is_shown_with_its_cells_cut_c2022(tmp_path: Path
         )
         rows = list(csv.reader(io.StringIO(_sidecar_text(page, ".csv").split("\n\n", 1)[-1])))
         assert rows[1][1] == "H00 " + "h" * 596 and len(rows) == 7
+
+
+@pytest.mark.parametrize("streamed", [False, True], ids=["full", "streamed"])
+def test_a_long_cell_beside_short_ones_takes_the_room_the_later_rows_leave_c2268(
+    tmp_path: Path, streamed: bool
+) -> None:
+    """B13 round 42 C2268 (3): an even share of the room, halved until the row fit, cut one 20,008-character
+    cell beside 29 one-character cells to 124 characters on an 870-byte page at 8,192 (83 streamed). The
+    later rows that fit uncut keep their bytes, and the cut row takes the largest length whose rendered
+    line fits the rest, searched on the rendered bytes."""
+    book = openpyxl.Workbook()
+    ws = book.active
+    assert ws is not None
+    ws.title = "Contoso"
+    ws.append(["Contoso " + "x" * 20_000, *"abcdefghijklmnopqrstuvwxyzABC"])
+    for n in range(2, 7):
+        ws.append([f"r{n}", *"abcdefghijklmnopqrstuvwxyzABC"])
+    src = tmp_path / "long.xlsx"
+    book.save(src)
+    _index, page = _pages(src, 8192, **({"xlsx_stream_threshold_bytes": 0} if streamed else {}))
+    assert _size(page) <= 8192
+    found = re.search(r"row 1's cells cut to (\d+) characters", page.body)
+    assert found and int(found.group(1)) > 2000, page.body[-400:]
+    assert "| 6 | r6 | a | b |" in page.body and f"| 1 | Contoso {'x' * 1990}" in page.body
 
 
 def test_xlsx_first_row_past_the_budget_is_cut_and_the_short_row_follows_c2022(tmp_path: Path) -> None:
