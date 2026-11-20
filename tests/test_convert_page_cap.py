@@ -961,22 +961,46 @@ def test_two_parses_on_two_threads_never_lower_the_csv_field_limit_c2049(
     """B13 round 41 C2049: `_parse_delimited` read the limit and then raised it in two calls, so a parse of a
     shorter text on another thread could set its lower limit after a longer one's, and the longer CSV came
     back as fenced text. The read and the raise run under one lock now: one thread's pair is never split by
-    the other's, and the limit ends at the longer text's."""
+    the other's, and the limit ends at the longer text's. Round 42 C2305: the test slept before A's read and
+    started B late, so a late B passed it with no lock, and A read B's raise and never lowered it. A now
+    pauses after its read until B is at the lock (a watched lock says so), and up to 0.3 s more for B's read,
+    which only a missing lock lets happen; both threads must enter the lock, and the saved limit returns."""
     real = csv.field_size_limit
     events: list[str] = []
-    first_read = threading.Event()
+    entered: list[str] = []
+    first_read, b_attempting, b_read = threading.Event(), threading.Event(), threading.Event()
+
+    class Watched:
+        def __init__(self) -> None:
+            self.inner = threading.Lock()
+
+        def __enter__(self) -> None:
+            who = threading.current_thread().name
+            entered.append(who)
+            if who == "B":
+                b_attempting.set()
+            self.inner.acquire()
+
+        def __exit__(self, *exc: object) -> None:
+            self.inner.release()
 
     def limit(*new: int) -> int:
         who = threading.current_thread().name
+        value = real(*new)
         events.append(f"{who}:{'set' if new else 'read'}")
+        if not new and who == "B":
+            b_read.set()
         if not new and who == "A" and not first_read.is_set():
             first_read.set()
-            threading.Event().wait(0.3)  # room for B to read in between, were there no lock
-        return real(*new)
+            b_attempting.wait(5)  # B is at the lock (or, with none, past it)
+            b_read.wait(0.3)  # times out under the lock; without it B reads and raises here
+        return value
 
+    saved = real()
+    monkeypatch.setattr(text_mod, "_FIELD_LIMIT_LOCK", Watched())
     monkeypatch.setattr(text_mod.csv, "field_size_limit", limit)
-    real(131_072)
     try:
+        real(131_072)
         short, long_ = "a," + "x" * 200_000 + "\n1,2\n", "a," + "y" * 500_000 + "\n1,2\n"
         got: dict[str, object] = {}
         a = threading.Thread(name="A", target=lambda: got.update(A=text_mod._parse_delimited(short, ",")))
@@ -986,8 +1010,8 @@ def test_two_parses_on_two_threads_never_lower_the_csv_field_limit_c2049(
         b.start()
         a.join(10)
         b.join(10)
-        pairs = [e.split(":")[0] for e in events]
-        assert pairs in (["A", "A", "B", "B"], ["A", "A", "B"]), events
+        assert sorted(entered) == ["A", "B"], entered
+        assert events == ["A:read", "A:set", "B:read", "B:set"], events
         assert got["A"] and got["B"] and real() > 500_000
     finally:
-        real(131_072)
+        real(saved)

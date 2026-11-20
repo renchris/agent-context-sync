@@ -43227,6 +43227,8 @@ its docstring said two parses cannot undo each other. The read and the raise now
 parse outside it, so parses never wait on each other; code elsewhere that sets the limit itself still can, and no
 caller runs two parses on two threads today. Test:
 `test_convert_page_cap.py::test_two_parses_on_two_threads_never_lower_the_csv_field_limit_c2049`.
+Amended 2026-11-20, §16.268 C2305: the test proves its race: A pauses after its read until a watched lock shows B
+at it, both threads must enter the lock, and the saved limit is restored.
 
 ### 16.264 Round 41: the prompt goes to v38 (step 2's inbox), a bound on a hung gate test, and the guides (2026-11-17, wave B13 round 41 lane D)
 
@@ -43943,6 +43945,17 @@ read again only below `_REREAD_BELOW`, still 1.0.0. The piece-key sentence in §
 Test: `test_convert_recording.py::test_a_picture_piece_outlives_a_page_change_and_a_legacy_key_is_read_once_c2296`
 (an emitter move and a cap edit run no `scan` and keep the key, a 1.1.0 and a 1.1.1 key are read and saved again,
 and a raised `_PIECE_REVISION` reads it all).
+
+**The CSV field-limit lock test proves its race** (C2305; ruling 155's cluster; `tests/test_convert_page_cap.py`;
+amends §16.263 C2049). `test_two_parses_on_two_threads_never_lower_the_csv_field_limit_c2049` slept 0.3 s before A's
+read and started B only after it, so with the lock removed a B scheduled late (as under `-n auto`) still gave
+`A, A, B, B` and passed, and A, reading after its sleep, read B's raise and never lowered it, so the final-limit check
+could not fail (the verifier's probe at 1faa3f3a); it also reset the limit to a hard-coded 131,072. The test now
+swaps `_FIELD_LIMIT_LOCK` for a watched lock that records each thread entering it and signals when B is at it; A's
+wrapper reads first, then waits until B is at the lock, and up to 0.3 s more for B's read, which only a missing lock
+lets happen, so without the lock B raises the limit and A lowers it after. It asserts both threads entered the lock,
+the events `A:read, A:set, B:read, B:set` and a final limit past 500,000, and restores the limit it saved. It never
+waits without a bound on B's call, which the lock holds back. Test: the same test (fails with the `with` removed).
 
 ### 16.269 Round 42: the prompt goes to v39 (the paths and folder states setup printed), the gate's stop lines, and the guides (2026-11-20, wave B13 round 42 lane D)
 
