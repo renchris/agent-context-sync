@@ -29,7 +29,9 @@ from agentsync.errors import ConversionError
 from agentsync.model import RenderedUnit, UnitKind
 from agentsync.text import plural
 
-_EMITTER_VERSION = "1.0.3"  # B13 round 41 C2042: a fence a backtick run outgrows stays within the cap
+_EMITTER_VERSION = (
+    "1.0.4"  # B13 round 42 C2302, ruling 153: a CSV row is one record, a capped page shows its room
+)
 _TABLE_SIDECAR = "full-table.csv"
 _FENCE_LANG: dict[str, str] = {
     ".txt": "text",

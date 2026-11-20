@@ -43720,6 +43720,20 @@ before `pandoc: contoso-secret`, crash and exit),
 `test_convert_page_cap.py::test_a_pandoc_exit_names_its_first_line_that_is_no_warning_or_info_c2252` and
 `test_convert_page_cap.py::test_a_pandoc_that_cannot_start_says_why_c2252`.
 
+**A CSV sidecar row holding a CR is one record** (C2302; ruling 152; `agentsync.convert._common`, read by
+`agentsync.convert.xlsx` and `agentsync.convert.text`). `_csv_bytes` wrote every row through one QUOTE_MINIMAL writer,
+and on a 3.11 patch release as old as 3.11.4 (the verifier's) that quotes only the line terminator's characters, so a
+workbook cell `alpha<CR>beta` went out bare and `csv.reader` read the row-capped sidecar's and the streamed one's
+record as two, the second with no row number (3.11.16, the machine's own, quotes a lone CR itself). A row with a CR in
+a field now goes through a QUOTE_ALL writer and every other row keeps its bytes, so the output is the same on every
+Python. text's and xlsx's `_EMITTER_VERSION` are 1.0.4 (ruling 153's one move each); no `_REREAD_BELOW` moves, so a
+sidecar already written takes the fix when its file next changes. Tests:
+`test_convert_records.py::test_rows_without_a_cr_keep_their_bytes_c2302` (the exact bytes),
+`test_convert_records.py::test_a_csv_field_holding_a_line_break_reads_back_as_one_record_c2302` (CR, LF, CRLF and
+the other separators) and
+`test_convert_records.py::test_an_xlsx_cell_holding_a_lone_cr_stays_one_record_in_its_sidecar_c2302` (the row-capped
+and the streamed path).
+
 ### 16.269 Round 42: the prompt goes to v39 (the paths and folder states setup printed), the gate's stop lines, and the guides (2026-11-20, wave B13 round 42 lane D)
 
 Round 42's lane D items (`docs/plans/bring-back-ocr.md`, "B13 round 42"; specs `round42/items/C<n>.md`, the verifier's

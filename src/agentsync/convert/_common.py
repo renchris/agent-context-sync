@@ -489,11 +489,17 @@ def _open_fence(markdown: str) -> str | None:
 
 
 def _csv_bytes(rows: Iterable[Sequence[str]]) -> bytes:
-    """Serialise rows as RFC 4180 CSV with LF line ends (deterministic)."""
+    """Serialise rows as RFC 4180 CSV with LF line ends (deterministic).
+
+    Python 3.11's QUOTE_MINIMAL quotes only the characters of the line terminator, so a field holding a lone
+    CR went out bare and a reader split it into two records.  A row with a CR in a field goes through a
+    QUOTE_ALL writer, every other row's bytes unchanged, so each row is one record on every Python (B13 round
+    42 C2302)."""
     buf = io.StringIO()
     writer = csv.writer(buf, lineterminator="\n")
+    quoted = csv.writer(buf, lineterminator="\n", quoting=csv.QUOTE_ALL)
     for row in rows:
-        writer.writerow(row)
+        (quoted if any("\r" in field for field in row) else writer).writerow(row)
     return buf.getvalue().encode("utf-8")
 
 

@@ -32,7 +32,7 @@ from agentsync.errors import ConversionError
 from agentsync.model import RenderedUnit, UnitKind
 from agentsync.text import plural
 
-_EMITTER_VERSION = "1.0.3"  # B13 round 41 C2043, C2064: a sheet page's lists stay within the page cap
+_EMITTER_VERSION = "1.0.4"  # B13 round 42 C2302, C2300, C2301, C2268: one record a row, formulas kept whole
 _INDEX_TERM_LIMIT = 400  # distinct terms kept on 00-index (most frequent first, then listed sorted)
 _TERM_MAX_CHARS = 80  # a text cell up to this long is one term; longer text contributes its words
 _HEADER_LIMIT = 30  # column headers listed per sheet on 00-index
