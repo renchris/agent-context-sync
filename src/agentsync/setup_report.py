@@ -1986,7 +1986,7 @@ class Redactor:
             kind in ("value", "source", "folder")
             and len(_norm(value)) == 2
             and _norm(value) in _TWO_LETTER_WORDS
-        ):  # B13 round 26 E72; round 41 C2071: a source id or folder too, as install.sh's short hold path
+        ):  # B13 round 26 E72; round 41 C2071: a source id or folder too, as install.sh's short_pair (C2261)
             printed = short = True
             if kind != "value" and value.isupper():  # an initialism ("IT"): as written, so the pronoun stays
                 ignore_case = fuzzy = False
@@ -2002,7 +2002,7 @@ class Redactor:
         # and nor does a product's name ("Copilot"), as install.sh's fallback_redaction reads both (Y7, Y72)
         generic = kind in ("folder", "library") and (value in _GENERIC_FOLDERS or _agent_words(value))
         named = (printed and kind in ("folder", "library", "org") and not context and not generic) or (
-            short and kind == "source"  # cut where shown, the report private only, as flag h (C2071)
+            short and kind == "source"  # cut where shown, private only, as install.sh's fallback_redaction
         )
         if printed and kind == "value":  # B13 round 25 D80: the F92 rule for a hold's one-word value
             self._value_words.add(_bare(value).lower())
