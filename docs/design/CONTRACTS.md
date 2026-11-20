@@ -43403,7 +43403,24 @@ both locales, each `$'...'` value prints `<path>`, both reports alike. Test:
 
 ### 16.266 Round 42: the installer: an older build's render cuts the config path, a two-character id takes one rule in both reports, and C2060 waits on the operator (2026-11-20, wave B13 round 42 lane RB)
 
-Reserved for round 42 lane RB of B13.
+**Another build's render of a config other than the default falls back** (C2230 with C2284; ruling 147; privacy;
+`scripts/install.sh`). A build before C2063 (04467ed28) prints a config path other than `CUT_CONFIG_DEFAULT` in clear
+on its `- config:`, `- loads:` and `Not run:` lines and in install.out's echoes, and `report_recut` has no config
+rule, so with a private `AGENTSYNC_CONFIG`, or a `debug: config` line naming one, another build's kept render printed
+the project folder. `report_config_lines`, after `report_cwd_lines` in `write_report`'s fallback chain and behind
+`other -eq 1` as the other arms are, returns 0 when `$CONFIG`'s ~-form (`debug_path`) is not `CUT_CONFIG_DEFAULT` and
+`config_shown` cuts it, or when a regular install.out holds a `CUT_HEADS_CONFIG` head anywhere on a line, a ` | `
+cell included, whose value up to the next ` | ` or the line's end is neither empty nor the default. The warning reads
+`agentsync setup-report was not kept: a config path other than ~/agent-context/sources.toml` (or ``a `debug: config`
+line with a config path other than ~/agent-context/sources.toml in install.out``), and the shell report, which cuts
+every spelling of the path, takes the render's place. A recut port was left out: it would have to match every
+spelling an older Redactor may already have rewritten in part. The cost is fidelity only: a non-default config with
+an installed build other than this checkout's gets the shell report, the trade C1210, C1447 and C2028 already make.
+C2028's 'none' control now holds the default config and a checkout outside any project. A dated line in another
+section reads `Amended <date>, §16.266 C<n>: ...`. Test:
+`test_install_oneshot.py::test_another_builds_render_of_a_config_other_than_the_default_falls_back_c2230_c2284` (a
+private `debug: config` line bare and in a cell, a private `AGENTSYNC_CONFIG` with no debug line, the default config
+given or written, and an empty value; no made-up name in setup-report.md or bring-back.md).
 
 ### 16.267 Round 42: the inbox known as a folder, the options re-read dated by the run that converted a page, and a recording's page following its state (2026-11-20, wave B13 round 42 lane B)
 

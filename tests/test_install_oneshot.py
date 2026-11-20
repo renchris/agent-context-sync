@@ -18051,14 +18051,17 @@ def test_another_builds_render_of_a_cwd_run_falls_back_to_the_shell_report_c2028
     recut of another build's render does not port the cwd rule, so the project folder printed. A render by
     another build over an install.out holding a run header with a CUT_HEADS_CWD word or a `debug: cwd` line, a
     ` | ` cell included, is replaced by the shell report, which cuts them; with neither, the render is
-    kept."""
+    kept. The 'none' control holds the default config and a checkout outside any project, so the render it
+    keeps names no private folder (B13 round 42 ruling 147, C2284: it kept a private `debug: config` line)."""
     env = _renderer_home(env, "older", stamp="0123456789ab" * 3)
     out = Path(env["HOME"]) / "agent-context" / "setup" / "install.out"
     out.parent.mkdir(parents=True, exist_ok=True)
     # what 7747b2890^'s render left in clear beside that line
     out.write_text(
         f"{line}\ndebug: config ~/Projects/acquisition-fabrikam/cfg/sources.toml\n"
-        "debug: source checkout ~/Projects/acquisition-fabrikam/agent-context-sync\n",
+        "debug: source checkout ~/Projects/acquisition-fabrikam/agent-context-sync\n"
+        if line
+        else "debug: config ~/agent-context/sources.toml\ndebug: source checkout ~/src/agent-context-sync\n",
         encoding="utf-8",
     )
     cp = install_sh(env, "--report-only")
@@ -18066,6 +18069,10 @@ def test_another_builds_render_of_a_cwd_run_falls_back_to_the_shell_report_c2028
     text = report_path(env).read_text(encoding="utf-8")
     if not line:
         assert "(agentsync setup-report)" in cp.stdout and "older stub render" in text, cp.stdout
+        assert "debug: config ~/agent-context/sources.toml" in text, text
+        for path in (report_path(env), report_path(env).parent / "bring-back.md"):
+            if path.exists():
+                assert "acquisition" not in path.read_text(encoding="utf-8"), path
         return
     why = "a run header with --cwd" if line.startswith("# run=") else "a `debug: cwd` line"
     assert (
@@ -18076,6 +18083,75 @@ def test_another_builds_render_of_a_cwd_run_falls_back_to_the_shell_report_c2028
     for path in (report_path(env), report_path(env).parent / "bring-back.md"):
         if path.exists():
             assert "acquisition" not in path.read_text(encoding="utf-8"), path
+
+
+# OLDER_RENDERER that also prints the --config it was given, as a build before B13 round 41 C2063 printed it
+CONFIG_RENDERER = OLDER_RENDERER.replace(
+    'do [ "$1" = --out ] && out="$2"; shift; done',
+    'do [ "$1" = --out ] && out="$2"; [ "$1" = --config ] && cfg="$2"; shift; done',
+).replace(
+    "printf '# agentsync setup report\\n\\nolder stub render\\n\\n## Installer\\n\\n```\\n'",
+    "printf '# agentsync setup report\\n\\nolder stub render\\n\\n- config: %s (exists)\\n\\n"
+    '## Installer\\n\\n```\\n\' "$cfg"',
+)
+
+
+@pytest.mark.parametrize("case", ["debug", "cell", "env", "env-default", "debug-default", "debug-empty"])
+def test_another_builds_render_of_a_config_other_than_the_default_falls_back_c2230_c2284(
+    env: dict[str, str], case: str
+) -> None:
+    """B13 round 42 ruling 147, C2230 with C2284 (privacy): a build before C2063 (04467ed28^) prints a config
+    path other than ~/agent-context/sources.toml in clear on its `- config:`, `- loads:` and `Not run:` lines
+    and in install.out's echoes, and this checkout's recut has no config rule, so with a private
+    AGENTSYNC_CONFIG, or a `debug: config` line naming one, another build's kept render printed the project
+    folder. Such a render is now replaced by the shell report, which cuts every spelling of it; the default
+    config, given or written, and an empty `debug: config` value keep the render."""
+    assert 'cfg="$2"' in CONFIG_RENDERER and ' "$cfg"' in CONFIG_RENDERER, "the stub prints its --config"
+    env = _renderer_home(env, "older", stamp="0123456789ab" * 3)
+    home = Path(env["HOME"])
+    _write_exe(
+        home / ".local" / "share" / "uv" / "tools" / "agentsync" / "bin" / "agentsync", CONFIG_RENDERER
+    )
+    out = home / "agent-context" / "setup" / "install.out"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    folder = home / "Projects" / "acquisition-fabrikam" / "cfg"
+    folder.mkdir(parents=True)
+    (folder / "sources.toml").write_text("", encoding="utf-8")
+    run = dict(env)
+    lines = {
+        "debug": "debug: config ~/Projects/acquisition-fabrikam/cfg/sources.toml\n",
+        "cell": "2026-11-20T00:00:01Z | step 2 | note | debug: config"
+        " ~/Projects/acquisition-fabrikam/cfg/sources.toml | -\n",
+        "debug-default": "debug: config ~/agent-context/sources.toml\n",
+        "debug-empty": "2026-11-20T00:00:01Z | step 2 | note | debug: config  | -\n",
+    }
+    out.write_text(
+        "# run=r1 2026-11-20T00:00:00Z install.sh --report-only\n" + lines.get(case, ""), encoding="utf-8"
+    )
+    if case == "env":
+        run["AGENTSYNC_CONFIG"] = str(folder / "sources.toml")
+    elif case == "env-default":
+        run["AGENTSYNC_CONFIG"] = str(home / "agent-context" / "sources.toml")
+    cp = install_sh(run, "--report-only")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    text = report_path(env).read_text(encoding="utf-8")
+    if case in ("env-default", "debug-default", "debug-empty"):
+        assert "(agentsync setup-report)" in cp.stdout and "older stub render" in text, cp.stdout
+        assert "- config: ~/agent-context/sources.toml (exists)" in text, text
+        return
+    why = (
+        "a config path other than ~/agent-context/sources.toml"
+        if case == "env"
+        else "a `debug: config` line with a config path other than ~/agent-context/sources.toml"
+        " in install.out"
+    )
+    assert (
+        f"(shell fallback: the installed agentsync, another build, may print {why} in clear)" in cp.stdout
+    ), cp.stdout
+    assert f"warning: agentsync setup-report was not kept: {why}" in cp.stderr, cp.stderr
+    assert "older stub render" not in text, text
+    for path in (report_path(env), report_path(env).parent / "bring-back.md"):
+        assert "acquisition" not in path.read_text(encoding="utf-8"), path
 
 
 def test_a_mark_outside_a_list_row_keeps_another_builds_render_c1630(env: dict[str, str]) -> None:

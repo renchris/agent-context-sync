@@ -7628,6 +7628,31 @@ report_cwd_lines() {
 	SPLIT_WHY="$m in ${INSTALL_OUT##*/}"
 	SPLIT_HOW="may not cut the folder in $SPLIT_WHY"
 }
+# 0, with SPLIT_WHY set, when the report may name a config path other than the default: $CONFIG's ~-form is not
+# CUT_CONFIG_DEFAULT and config_shown cuts it, or install.out holds a CUT_HEADS_CONFIG head, anywhere on a line, a
+# ` | ` cell included, whose value up to the next ` | ` or the line's end is neither empty nor CUT_CONFIG_DEFAULT. A
+# build before B13 round 41 C2063 prints that path in clear on its `- config:`, `- loads:` and `Not run:` lines and in
+# install.out's echoes, and report_recut has no config rule, so such a render is replaced by the shell report, which
+# cuts every spelling of it (B13 round 42 ruling 147, C2230 with C2284).
+report_config_lines() {
+	local m=""
+	if [ -n "${CONFIG:-}" ] && [ "$(debug_path "$CONFIG")" != "$CUT_CONFIG_DEFAULT" ] && [ -n "$(config_shown "$CONFIG")" ]; then
+		m="a config path other than $CUT_CONFIG_DEFAULT"
+	elif [ -f "$INSTALL_OUT" ] && [ ! -L "$INSTALL_OUT" ]; then
+		m="$(H="$CUT_HEADS_CONFIG" D="$CUT_CONFIG_DEFAULT" LC_ALL=C awk 'BEGIN { h = ENVIRON["H"]; d = ENVIRON["D"] }
+			h != "" { s = $0
+				while ((i = index(s, h)) > 0) {
+					s = substr(s, i + length(h)); v = s
+					if ((j = index(v, " | ")) > 0) v = substr(v, 1, j - 1)
+					if (substr(v, 1, 2) == "| ") v = ""
+					if (v != "" && v != d) { print "a `" substr(h, 1, length(h) - 1) "` line with a config path other than " d; exit }
+				} }' "$INSTALL_OUT" 2>/dev/null)" || m=""
+		[ -z "$m" ] || m="$m in ${INSTALL_OUT##*/}"
+	fi
+	[ -n "$m" ] || return 1
+	SPLIT_WHY="$m"
+	SPLIT_HOW="may print $SPLIT_WHY in clear"
+}
 # The report agentsync rendered, cut again by this checkout in place (B13 round 37 ruling 120, C1210, C1237): a path
 # in another home by foreign_home_cut recut, always, which leaves a current render byte for byte. OTHER=1, a render
 # by another build (report_build_other, which fails closed), also takes the fixed-word cuts of install.sh's own
@@ -7755,8 +7780,9 @@ write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2
 		# build may predate its cut, and a render by another build is replaced by the fallback when a line it
 		# reads holds a separator such a build splits a line on, whose tail no shell cut can follow, a folder row
 		# in marks such a build may not strip (B13 round 38 C1447), or a --cwd run header or `debug: cwd` line
-		# such a build may print in clear (B13 round 41 C2028).
-		if [ "$src" -eq 0 ] && [ -s "$REPORT_PATH" ] && [ "$other" -eq 1 ] && { report_split_lines || report_new_marks || report_cwd_lines; }; then
+		# such a build may print in clear (B13 round 41 C2028), or a config path other than the default, which a
+		# build before C2063 prints in clear (B13 round 42 ruling 147, C2230 with C2284).
+		if [ "$src" -eq 0 ] && [ -s "$REPORT_PATH" ] && [ "$other" -eq 1 ] && { report_split_lines || report_new_marks || report_cwd_lines || report_config_lines; }; then
 			warn "agentsync setup-report was not kept: $SPLIT_WHY"
 			rm -f "$REPORT_PATH" # never left in the report's place, should the fallback fail too
 			why="the installed agentsync, another build, $SPLIT_HOW"
