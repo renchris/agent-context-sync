@@ -13288,22 +13288,36 @@ def test_the_readme_says_a_recording_on_this_mac_with_no_bytes_gets_a_page_c2057
     """B13 round 41 C2057, C2089 (ruling 144): README.md said an interactive `sync` reads no recording and
     counts them in a `note:` line, while `_empty_recording` runs in every sync's queue and gives a recording
     on this Mac listed at 0 bytes a page saying it is empty, neither counted nor waiting; an online-only or
-    Graph one still waits. The paragraph says so in plain words, with no internal names."""
+    Graph one still waits. The paragraph says so in plain words, with no internal names. B13 round 42 C2298
+    with C2307 (ruling 155): that page comes only where recordings are read at all, `Registry.default`'s
+    OCR engine, media helper and `[convert] recordings`, since `_process` asks `_no_converter` first; the
+    exception names that condition in plain words, and the missing-helper case, with no internal name."""
     from agentsync import cycle  # noqa: PLC0415
+    from agentsync.convert.registry import Registry  # noqa: PLC0415
 
     probe = inspect.getsource(cycle._Cycle._empty_recording)
     assert "row.dataless or row.size != 0 or src.kind.is_graph" in probe
-    assert "_empty_recording(" in inspect.getsource(cycle._Cycle._process)
+    process = inspect.getsource(cycle._Cycle._process)
+    assert "_empty_recording(" in process
+    assert process.index("self._no_converter(") < process.index("self._empty_recording(")
+    assert "ocr is not None and media is not None and cfg.recordings" in inspect.getsource(Registry.default)
     readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
     para = readme[readme.index("Only runs that no tool timeout ends read recordings") :]
     para = para[: para.index("Waiting recordings never hold the `NEXT:` step.")]
     assert (
-        "An interactive `sync` reads none: it counts them in a `note:` line. The exception is a recording on"
-        " this Mac that has no bytes in it: it gets a page saying the file is empty, and it is not counted or"
-        " left waiting (while the OCR helper is not working, it waits for the helper first). An online-only"
-        " recording, or one in a Microsoft Graph source, that has no bytes still waits like the others."
+        "An interactive `sync` reads none: it counts them in a `note:` line. The exception, while recordings"
+        " are read on this Mac (OCR on, the media helper built, `recordings` not turned off), is a recording"
+        " on this Mac that has no bytes in it: it gets a page saying the file is empty, and it is not counted"
+        " or left waiting (while the OCR helper is not working, it waits for the helper first). An"
+        " online-only recording, or one in a Microsoft Graph source, that has no bytes still waits like the"
+        " others. Otherwise every recording, empty or not, keeps the unconverted page any recording gets"
+        " there."
     ) in para
-    for internal in ("probe", "classif", "recording converter", "empty-output", "_empty"):
+    assert (
+        "recordings = false ``` Where the media helper is not built, a recording stays unconverted the same"
+        " way, empty or not."
+    ) in readme
+    for internal in ("probe", "classif", "recording converter", "empty-output", "_empty", "registr"):
         assert internal not in para
 
 

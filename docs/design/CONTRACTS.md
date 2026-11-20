@@ -43772,6 +43772,17 @@ every upgrade under a false note (makes worse True, C2297; C2256's optional code
 tests each limit, lane E's config comment and ConvertConfig row carry the same exceptions. Test:
 `test_the_readme_says_a_convert_edit_reaches_existing_pages_r41_d1`.
 
+**The README names when an empty recording gets its page** (C2298, C2307; docs only; ruling 155). README.md said a
+recording on this Mac with no bytes gets a page saying the file is empty, while that page comes only where recordings
+are read at all: `Registry.default` registers the recording converter only with an OCR engine, a media helper and
+`[convert] recordings` on, and `_process` asks `_no_converter` before `_empty_recording`, so without one of them every
+recording, empty or not, keeps the unconverted page. The exception now names that condition in plain words (OCR on,
+the media helper built, `recordings` not turned off) and the otherwise case, and the line after the `recordings =
+false` example names a Mac where the media helper is not built; no internal name enters the paragraph, and §16.264's
+C2057 entry, whose neighbor already names the prerequisites, keeps its words. Test:
+`test_the_readme_says_a_recording_on_this_mac_with_no_bytes_gets_a_page_c2057_c2089`, held to `Registry.default`
+and `_Cycle._process`.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units

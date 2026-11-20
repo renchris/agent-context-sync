@@ -261,9 +261,11 @@ the clock time of a moment; the index lists these.
 
 Only runs that no tool timeout ends read recordings: a background sync, and `~/.local/bin/agentsync materialise
 <file>` for one recording, which reads it to the end. An interactive `sync` reads none: it counts them in a `note:`
-line. The exception is a recording on this Mac that has no bytes in it: it gets a page saying the file is empty, and
-it is not counted or left waiting (while the OCR helper is not working, it waits for the helper first). An
-online-only recording, or one in a Microsoft Graph source, that has no bytes still waits like the others. A
+line. The exception, while recordings are read on this Mac (OCR on, the media helper built, `recordings` not turned
+off), is a recording on this Mac that has no bytes in it: it gets a page saying the file is empty, and it is not
+counted or left waiting (while the OCR helper is not working, it waits for the helper first). An online-only
+recording, or one in a Microsoft Graph source, that has no bytes still waits like the others. Otherwise every
+recording, empty or not, keeps the unconverted page any recording gets there. A
 background sync reads about three minutes of recording work at a time and keeps what it has read, so a two-hour
 meeting is read within about half an hour of arriving; until then `sync` and `status` say how many minutes are read.
 Waiting recordings never hold the `NEXT:` step.
@@ -281,6 +283,8 @@ turn recordings off, so that the helper is neither built nor run and a recording
 [convert]
 recordings = false
 ```
+
+Where the media helper is not built, a recording stays unconverted the same way, empty or not.
 
 A sensitivity-label rule under `[policy]` does not stop recordings: they are read on this Mac, a recording's own
 label cannot be read, and each index (and the `policy` line of `status`) says so.
