@@ -44,7 +44,7 @@ import time
 import unicodedata
 import zlib
 from collections import Counter
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
@@ -518,6 +518,12 @@ beside a recording keep theirs; recordings are read after every source, so nothi
 _CONVERT_OPTIONS_META = "convert_options"
 """Manifest meta ``convert_options``: ``"<fingerprint of [convert]> <run id>"``, the run in which the section
 last changed (``_Cycle._drift_since``, B13 round 41 C2021)."""
+_CONVERT_EDIT_HASHES_META = "convert_options_hashes"
+"""Manifest meta ``convert_options_hashes``: JSON ``{"run": <run id>, "hashes": {"<converter id>\\t<suffix>":
+[<options hash>, ...]}}``, the options hashes each converter gave in the run ``[convert]`` last changed in,
+stored with it (``_Cycle._drift_since``). A page carrying one of them was converted under the edited options,
+so a later BANNER_VERSION or SIDECAR_DIGEST_VERSION bump, which moves today's hashes and no option, makes no
+page an options-drift target (B13 round 42 C2270, ruling 154). An older build ignores the key."""
 
 
 def _convert_fingerprint(config: Config) -> str:
@@ -4824,7 +4830,8 @@ class _Cycle:
         for them alone with ``recordings``."""
         targets: set[tuple[str, str, str | None, str]] = set()
         converters, extensions = self.registry.converters(), self.registry.extensions()
-        for converter_id, version, reason in self.manifest.produced_by(source_id):
+        produced = self.manifest.produced_by(source_id)
+        for converter_id, version, reason in produced:
             if reason is not None and reason.startswith(NO_CONVERTER_PREFIX):
                 suffix = reason[len(NO_CONVERTER_PREFIX) :]
                 targets.update(
@@ -4848,7 +4855,18 @@ class _Cycle:
                 if outdated or converter_id in _replaced(conv):
                     targets.update((converter_id, version, reason, ext) for ext in conv.extensions)
         if not recordings:
-            targets.update(self._drift_targets())
+            live, down = self._drift_targets({cid for cid, _version, _reason in produced})
+            targets.update(live)
+            # A converter that cannot start keeps its drift targets waiting, as its own stubs wait (V57): the
+            # source's record stays open and they are counted in reread_waiting, never "sync again", so the
+            # first cycle it starts in reads them; only while some file of the source is one, so a missing
+            # pandoc holds no source whose pages it did not make open for good (B13 round 42 C2292)
+            waiting = sorted(t for t in down if t[3] not in self._recording_suffixes())
+            if waiting and self.manifest.reread_count(
+                source_id, waiting, skip=self._reread_load(source_id).tried()
+            ):
+                self._reread_waits.add(source_id)
+                self._reread_wait_targets.setdefault(source_id, set()).update(waiting)
         mine = [t for t in targets if (t[3] in self._recording_suffixes()) == recordings]
         return sorted(mine, key=lambda t: (t[0], t[1], t[2] or "", t[3]))
 
@@ -4878,32 +4896,57 @@ class _Cycle:
             self._drift = {key: frozenset(h) for key, h in found.items()}
         return self._drift
 
-    def _drift_targets(self) -> set[tuple[str, str, str | None, str]]:
-        """The options-drift targets (``manifest.OPTIONS_DRIFT_VERSION``): for each converter of this cycle's
-        registry and each suffix it reads, the live OK pages it made, at any version, built before the run
-        ``[convert]`` last changed in (``_drift_since``), whose options hash is none of
-        :meth:`_drift_hashes`', for a converter that starts this cycle (``_runs``: no sync reads the files of
-        one that cannot, B13 round 17 U3).  An edit of ``[convert] max_page_bytes`` (any option a converter
-        hashes) so reads again the local and inbox pages built under the old options, under the re-read's
-        budget and attempts, nothing downloaded; a page that comes out the same moves its action key and
-        nothing is committed (B13 round 41 C2021, ruling 143)."""
+    def _drift_targets(
+        self, made: Collection[str]
+    ) -> tuple[set[tuple[str, str, str | None, str]], set[tuple[str, str, str | None, str]]]:
+        """The options-drift targets (``manifest.OPTIONS_DRIFT_VERSION``) of a source whose pages the
+        converters ``made`` made: for each of them in this cycle's registry and each suffix it reads, the live
+        OK pages it made, at any version, converted before the run ``[convert]`` last changed in
+        (``_drift_since``; the cache row's ``created_run``, so a rename or a repair from cache, which restamp
+        ``built_run``, exempts no page, B13 round 42 C2243), whose options hash is none of
+        :meth:`_drift_hashes`' and none that converter gave in the edit's own run (:meth:`_drift_edit_hashes`,
+        so a later BANNER_VERSION or SIDECAR_DIGEST_VERSION bump re-reads nothing, C2270). Returned as (the
+        targets of converters that start this cycle, those of converters that cannot), the second kept
+        waiting by the caller (C2292); a converter is asked whether it starts only when the source has pages
+        it made, so a [convert] edit prints no "cannot run" line for a converter the source never used
+        (C2246). An edit of ``[convert] max_page_bytes`` (any option a converter hashes) so reads again the
+        local and inbox pages converted under the old options, under the re-read's budget and attempts,
+        nothing downloaded; a page that comes out the same moves its action key and nothing is committed (B13
+        round 41 C2021, ruling 143). Not covered: an edit made before the first sync that recorded the
+        section, and recordings and cloud files (C2297)."""
         since = self._drift_since()
-        if not since:
-            return set()
-        hashes = self._drift_hashes()
-        down = {
-            c.converter_id for c in self.registry.converters() if c.converter_id in {k[0] for k in hashes}
-        }
+        if not since or not made:
+            return set(), set()
+        hashes = {key: found for key, found in self._drift_hashes().items() if key[0] in made}
+        edited = self._drift_edit_hashes(since)
         down = {
             cid
-            for cid in down
+            for cid in {key[0] for key in hashes}
             if not all(self._runs(c) for c in self.registry.converters() if c.converter_id == cid)
         }
-        return {
-            (cid, OPTIONS_DRIFT_VERSION, f"{since}:," + ",".join(sorted(found)) + ",", ext)
-            for (cid, ext), found in hashes.items()
-            if cid not in down
-        }
+        live: set[tuple[str, str, str | None, str]] = set()
+        waiting: set[tuple[str, str, str | None, str]] = set()
+        for (cid, ext), found in hashes.items():
+            allowed = found | edited.get((cid, ext), frozenset())
+            target = (cid, OPTIONS_DRIFT_VERSION, f"{since}:," + ",".join(sorted(allowed)) + ",", ext)
+            (waiting if cid in down else live).add(target)
+        return live, waiting
+
+    def _drift_edit_hashes(self, since: int) -> dict[tuple[str, str], frozenset[str]]:
+        """The options hashes each (converter id, suffix) gave in run ``since``, the run ``[convert]`` last
+        changed in, as :data:`_CONVERT_EDIT_HASHES_META` stored them then; empty when that record is of
+        another run, missing (an edit an older build saw) or does not parse (B13 round 42 C2270)."""
+        try:
+            stored = json.loads(self.manifest.get_meta(_CONVERT_EDIT_HASHES_META) or "{}")
+            if not isinstance(stored, dict) or stored.get("run") != since:
+                return {}
+            out: dict[tuple[str, str], frozenset[str]] = {}
+            for key, found in dict(stored.get("hashes") or {}).items():
+                cid, _, ext = str(key).partition("\t")
+                out[(cid, ext)] = frozenset(str(h) for h in found)
+            return out
+        except (ValueError, TypeError, AttributeError):
+            return {}
 
     def _drift_since(self) -> int:
         """The run in which ``[convert]`` last changed (manifest meta :data:`_CONVERT_OPTIONS_META`, ``"<its
@@ -4921,6 +4964,10 @@ class _Cycle:
                 self._drift_run = self.run_id if len(stored) == 2 else 0
                 if not self.dry:
                     self.manifest.set_meta(_CONVERT_OPTIONS_META, f"{mine} {self._drift_run}")
+                    if self._drift_run:  # the edit's own hashes, stored with it (C2270)
+                        edit = {f"{cid}\t{ext}": sorted(h) for (cid, ext), h in self._drift_hashes().items()}
+                        record = {"run": self._drift_run, "hashes": edit}
+                        self.manifest.set_meta(_CONVERT_EDIT_HASHES_META, json.dumps(record, sort_keys=True))
         return self._drift_run
 
     def _claims(self, suffix: str) -> str:

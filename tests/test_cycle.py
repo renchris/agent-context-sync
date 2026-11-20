@@ -4863,10 +4863,12 @@ def test_a_re_read_that_waits_for_its_converter_is_no_sync_again(
     for _ in range(2):
         report = run(broken)
         record = _run_record(sample_config)
-        assert record.get("reread_waits") == 1 and "reread_left" not in record, record
+        # the stub, and since B13 round 42 C2292 pandoc's own pages too: pandoc_path is a [convert] edit, and
+        # a converter that cannot start keeps its drift targets waiting rather than dropping them
+        assert record.get("reread_waits", 0) >= 1 and "reread_left" not in record, record
         notes = loop.next_step(sample_config).notes
         assert not [n for n in notes if n.startswith(loop.SYNC_AGAIN)], notes
-        assert [n for n in notes if loop._REREAD_STUCK_ONE in n], notes
+        assert [n for n in notes if loop._REREAD_STUCK_ONE in n or loop._REREAD_STUCK in n], notes
         assert report.converter_down and not [e for s in report.sources for e in s.errors]
         assert cli._unavailable_steps(broken, report), "NEXT names the pandoc check"
     report = run(sample_config)
@@ -5659,6 +5661,213 @@ def test_a_lower_max_page_bytes_reaches_existing_pages_through_the_re_read_c2021
     assert "reread_options" not in _run_record(capped) and _reread_notes(capped) == []
     assert run(capped).commit_sha is None, "a second sync commits nothing"
     assert "reread_options" not in _run_record(capped) and _reread_notes(capped) == []
+
+
+RENAMED_CSV = "Contoso long table renamed.csv"
+
+
+def _long_csv_synced(tmp_path: Path, meetings: Path) -> tuple[Config, Config, int]:
+    """C2021's setup: a long CSV page built under the default cap, then the config with the cap at 8,192,
+    and the uncapped page's size."""
+    rows = "\n".join(f"Contoso-{n:04d},Northwind order {n},{n * 7 % 1000}" for n in range(1200))
+    (meetings / LONG_CSV).write_text("id,name,amount\n" + rows + "\n", encoding="utf-8")
+    config = config_with(tmp_path, meetings)
+    assert run(config).exit_code == 0
+    big = len((config.docs_repo / slug.mirror_rel_path(SID, LONG_CSV)).read_bytes())
+    assert big > 8192
+    return config, config_with(tmp_path, meetings, "\n[convert]\nmax_page_bytes = 8192\n"), big
+
+
+def _read_again_and_capped(capped: Config, rel: str, big: int, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A sync with the re-read's full budget row-caps ``rel``'s page, and the next counts nothing."""
+    monkeypatch.setattr(cycle_mod, "_REREAD_BUDGET_S", 120.0)
+    assert run(capped).exit_code == 0
+    page_bytes = (capped.docs_repo / slug.mirror_rel_path(SID, rel)).read_bytes()
+    assert b"[row cap:" in page_bytes and len(page_bytes) < 8192 + 1024 < big, len(page_bytes)
+    assert run(capped).commit_sha is None
+    assert "reread_options" not in _run_record(capped) and _reread_notes(capped) == []
+
+
+def test_a_page_renamed_in_the_edits_own_sync_is_still_read_again_for_its_options_c2243(
+    tmp_path: Path, meetings: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 42 C2243 with C2291 (ruling 154): a rename restamps the page's ``built_run``
+    (``rewrite_frontmatter``) and keeps its options, and the drift query dated a page by that column, so a CSV
+    renamed in the sync that first saw the cap edit kept its 54,907-byte page for good. The query dates a page
+    by the run that converted it (its cache row's ``created_run``): the renamed page is still counted, then
+    row-capped."""
+    _config, capped, big = _long_csv_synced(tmp_path, meetings)
+    monkeypatch.setattr(cycle_mod, "_REREAD_BUDGET_S", 0.0)
+    (meetings / LONG_CSV).rename(meetings / RENAMED_CSV)
+    assert run(capped).exit_code == 0
+    assert (capped.docs_repo / slug.mirror_rel_path(SID, RENAMED_CSV)).is_file()
+    assert _run_record(capped)["reread_options"] == 3, _run_record(capped)
+    _read_again_and_capped(capped, RENAMED_CSV, big, monkeypatch)
+
+
+def test_a_page_renamed_in_a_later_sync_than_the_edit_is_still_read_again_for_its_options_c2291(
+    tmp_path: Path, meetings: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C2291: the cap edit in one sync, the rename in the next, both under a re-read budget used up at once;
+    the renamed page was exempt from then on. It is counted in both syncs, then row-capped."""
+    _config, capped, big = _long_csv_synced(tmp_path, meetings)
+    monkeypatch.setattr(cycle_mod, "_REREAD_BUDGET_S", 0.0)
+    assert run(capped).exit_code == 0 and _run_record(capped)["reread_options"] == 3
+    (meetings / LONG_CSV).rename(meetings / RENAMED_CSV)
+    assert run(capped).exit_code == 0
+    assert _run_record(capped)["reread_options"] == 3, _run_record(capped)
+    _read_again_and_capped(capped, RENAMED_CSV, big, monkeypatch)
+
+
+def test_a_page_repaired_after_the_edit_is_still_read_again_for_its_options_c2291(
+    tmp_path: Path, meetings: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C2291's repair variant: recover's repair (``rewrite_frontmatter`` on a provenance mismatch, or
+    ``_republish_from_cache`` for a damaged page) stamps the page's ``outputs`` row with the repairing run
+    and keeps its options hash, as a rename does. A page so stamped after the edit is still a drift target
+    (its cache row still dates its conversion) and is row-capped."""
+    _config, capped, big = _long_csv_synced(tmp_path, meetings)
+    monkeypatch.setattr(cycle_mod, "_REREAD_BUDGET_S", 0.0)
+    assert run(capped).exit_code == 0 and _run_record(capped)["reread_options"] == 3
+    with Manifest(capped.state_paths.db) as m:
+        row = m.item_by_path(SID, LONG_CSV)
+        assert row is not None
+        (last,) = m._db.execute("SELECT MAX(run_id) FROM runs").fetchone()
+        with m._db:  # what the repairing run writes: built_run, nothing else that dates the conversion
+            m._db.execute(
+                "UPDATE outputs SET built_run = ? WHERE source_id = ? AND stable_id = ?",
+                (last, SID, row.stable_id),
+            )
+    assert run(capped).exit_code == 0
+    assert _run_record(capped)["reread_options"] == 3, _run_record(capped)
+    _read_again_and_capped(capped, LONG_CSV, big, monkeypatch)
+
+
+def test_an_options_edit_with_a_converter_that_cannot_start_keeps_its_pages_waiting_c2292(
+    sample_config: Config, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 42 C2292 (ruling 154): the drift targets of a converter that could not start were dropped,
+    the source's record was closed, and once pandoc was back no sync read its pages again under the new
+    options. They wait as its stubs wait (V57): the record stays open, they are counted in ``reread_waits``
+    and never as a "sync again", and the first sync in which pandoc starts reads them, once."""
+    assert run(sample_config).exit_code == 0
+    edited = dataclasses.replace(
+        sample_config, convert=dataclasses.replace(sample_config.convert, max_page_bytes=200_000)
+    )
+    broken = _pandoc_gone(edited, tmp_path)
+    for n in range(2):
+        run(broken)
+        record = _run_record(sample_config)
+        assert record.get("reread_waits", 0) >= 1, record
+        assert _reread_record(sample_config)[0] is False, "the source's record stays open"
+        notes = loop.next_step(sample_config).notes
+        # the first sync reads the other converters' pages again (so another sync may read more); the second
+        # reads none, and its files wait on pandoc: no sync clears them while it cannot start
+        if n:
+            assert not [n for n in notes if n.startswith(loop.SYNC_AGAIN)], notes
+            assert [n for n in notes if loop._REREAD_STUCK in n or loop._REREAD_STUCK_ONE in n], notes
+    fetched = _fetches(monkeypatch)
+    assert run(edited).exit_code == 0
+    assert any(rel.endswith(".docx") for rel in fetched), fetched
+    assert "reread_waits" not in _run_record(sample_config)
+    assert _reread_record(sample_config)[0] is True
+    del fetched[:]
+    assert run(edited).commit_sha is None and fetched == [], "read once"
+
+
+def test_an_options_edit_asks_only_the_converters_that_made_a_page_whether_they_start_c2246(
+    tmp_path: Path, meetings: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 42 C2246 (ruling 154): the drift check asked every converter of the registry whether it
+    starts, so after a [convert] edit a source with no pandoc page printed pandoc's "cannot run" WARNING and
+    its NEXT. Only a converter that made a page for the source is asked."""
+    config = config_with(tmp_path, meetings)
+    assert run(config).exit_code == 0
+    edited = config_with(tmp_path, meetings, "\n[convert]\nmax_page_bytes = 200000\n")
+    broken = _pandoc_gone(edited, tmp_path)
+    asked: list[str] = []
+    real = cycle_mod._Cycle._runs
+
+    def runs(self: Any, conv: Any) -> bool:
+        asked.append(conv.converter_id)
+        return bool(real(self, conv))
+
+    monkeypatch.setattr(cycle_mod._Cycle, "_runs", runs)
+    report = run(broken)
+    assert report.exit_code == 0 and not report.converter_down, report
+    with Manifest(config.state_paths.db) as m:
+        made = {cid for cid, _version, _reason in m.produced_by(SID)}
+    assert asked and set(asked) <= made, (asked, made)
+    assert not any(cid.startswith("pandoc") for cid in asked), asked
+
+
+def test_a_banner_bump_after_an_options_edit_reads_no_page_again_c2270(
+    tmp_path: Path, meetings: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 42 C2270 (ruling 154): after an edit that moved one converter's options (max_rows_per_sheet:
+    text-plain's), the pages of the others kept their hashes and their old runs; a later BANNER_VERSION bump
+    moved every hash and made them drift targets, with a note blaming an edit nobody made. The edit's own hash
+    set is stored with it, so a bump re-reads nothing, as a bump with no edit before it does; the note names
+    no cause."""
+    assert loop._REREAD_OPTIONS == (
+        "have pages made under other converter options; they are among the files read again"
+    )
+    config = config_with(tmp_path, meetings)
+    assert run(config).exit_code == 0
+    edited = config_with(tmp_path, meetings, "\n[convert]\nmax_rows_per_sheet = 100\n")
+    assert run(edited).exit_code == 0
+    assert "reread_options" not in _run_record(edited) and _reread_notes(edited) == []
+    with Manifest(edited.state_paths.db) as m:
+        stored = json.loads(m.get_meta(cycle_mod._CONVERT_EDIT_HASHES_META) or "{}")
+    assert stored["run"] and any(k.startswith("markdown") for k in stored["hashes"]), stored
+    monkeypatch.setattr(content_policy, "BANNER_VERSION", content_policy.BANNER_VERSION + 1)
+    fetched = _fetches(monkeypatch)
+    assert run(edited).exit_code == 0
+    assert "reread_options" not in _run_record(edited) and _reread_notes(edited) == []
+    assert "notes.md" not in fetched, fetched
+
+
+def test_an_options_edit_made_before_the_first_recorded_sync_opens_nothing_c2297(
+    tmp_path: Path, meetings: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 42 C2297 (ruling 154), the first limit the guides now name: a manifest with no record of
+    [convert] (written by a build from before C2021) takes the section as it finds it, so an edit made before
+    that first recorded sync re-reads no page; the record starts there."""
+    config = config_with(tmp_path, meetings)
+    assert run(config).exit_code == 0
+    with Manifest(config.state_paths.db) as m, m._db:
+        m._db.execute("DELETE FROM meta WHERE key = ?", (cycle_mod._CONVERT_OPTIONS_META,))
+    capped = config_with(tmp_path, meetings, "\n[convert]\nmax_page_bytes = 8192\n")
+    fetched = _fetches(monkeypatch)
+    assert run(capped).exit_code == 0
+    assert "reread_options" not in _run_record(capped) and fetched == [], fetched
+    with Manifest(capped.state_paths.db) as m:
+        assert (m.get_meta(cycle_mod._CONVERT_OPTIONS_META) or "").endswith(" 0")
+
+
+def test_an_options_edit_reads_no_recording_again_c2297(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C2297's second limit: a recording is not read again for an options edit, even one its converter's
+    options hold (the piece key held max_page_bytes until C2296); its page keeps the old cap until the
+    recording is read again for another reason. Sending recordings through the drift redid every recording's
+    OCR (makes worse True)."""
+    monkeypatch.setattr(
+        StubRecording,
+        "options",
+        lambda self: {"piece_ms": PIECE_MS, "max_page_bytes": self._cfg.max_page_bytes},
+    )
+    config = config_with(tmp_path, meetings)
+    stub_recording(meetings / MEETING, 10)
+    for _ in range(3):
+        run(config)
+    assert rec.converts, "the recording has its page"
+    read = len(rec.converts)
+    capped = config_with(tmp_path, meetings, "\n[convert]\nmax_page_bytes = 8192\n")
+    for _ in range(2):
+        assert run(capped).exit_code == 0
+    assert len(rec.converts) == read, rec.converts
+    assert "reread_options" not in _run_record(capped) or _run_record(capped)["reread_options"] == 0
 
 
 def test_a_pdf_converted_before_comments_were_kept_gains_them_and_is_read_again_once(

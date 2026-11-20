@@ -42970,6 +42970,9 @@ Test: `test_cycle.py::test_a_lower_max_page_bytes_reaches_existing_pages_through
 CSV at the default cap, then `max_page_bytes = 8192`: with the re-read budget used up the three pages are counted and
 none moves; then the CSV's page is row-capped with its sidecar and only its pages change; a second sync commits
 nothing and counts none).
+Amended 2026-11-20, §16.267 C2270: the note reads `<N> files in <ids> have pages made under other converter options;
+they are among the files read again`, no cause named; a page is dated by the run that converted it, not `built_run`
+(C2243), and a converter that cannot start keeps its targets waiting rather than making none (C2292).
 
 **A configured name holding a line separator is written escaped** (R41-B1, the lead's grown item from lane RA's
 measurement). `config.toml_string` wrote U+2028, U+2029 and U+0085 raw, which TOML 1.0 takes in a basic string, but
@@ -43332,6 +43335,39 @@ The prompt's words (v39) and the installer's config line are lanes D's and RB's.
 `test_ensure_inbox_says_a_source_of_another_kind_sits_on_the_inbox_folder`,
 `test_ensure_inbox_words_a_failure_by_its_cause`,
 `test_status_names_the_inbox_folder_this_config_keeps_beside_the_config_and_docs_repo`.
+
+**The options re-read dates a page by the run that converted it, and keeps a down converter's pages
+waiting** (C2270, C2243 with C2291, C2292, C2246, C2297; ruling 154; data integrity for C2243 and C2292; amends
+§16.262 C2021).
+`_REREAD_SQL`'s options-drift arm compared `outputs.built_run` with the run `[convert]` last changed in, and a
+rename or recover's repair (`rewrite_frontmatter`, `_republish_from_cache`) restamps that column and keeps the
+page's options, so a CSV renamed in or after the edit's sync kept its 54,907-byte page for good. The arm now
+compares `COALESCE(c.created_run, o.built_run)`, the run that made the page's cache row, its `built_run` only
+where that row is gone; `built_run` itself is unchanged, since the setup report reads it. A converter that
+cannot start had its drift targets dropped and the source's record closed; `_drift_targets` returns them apart
+and `_reread_targets` keeps them waiting when a count finds a file of the source among them (never otherwise,
+so a missing pandoc holds no source it made no page for open): the record stays open, they are counted in
+`reread_waits`, never as `sync again`, and the first sync in which the converter starts reads them once
+(C2292). Only a converter that made a page for the source is asked whether it starts, so an edit prints no
+`cannot run` WARNING for one the source never used (C2246). The run that records an edit stores, beside
+`convert_options`, the options hashes each converter gave then (manifest meta `convert_options_hashes`, JSON
+`{"run": N, "hashes": {"<converter id>\t<suffix>": [...]}}`, ignored by an older build), and a target's
+reason lists them beside today's, so a later BANNER_VERSION or SIDECAR_DIGEST_VERSION bump re-reads no page, as
+a bump with no edit before it re-reads none; `loop._REREAD_OPTIONS` reads `have pages made under other
+converter options; they are among the files read again`, its tested prefix kept and its `[convert] or
+[policy] edit` cause gone (C2270). Two limits stay, each tested, and the guides name them (lanes E and D): an
+edit made before the first sync that recorded `[convert]` re-reads nothing, and a recording or a cloud file is
+not read again for an options edit; a recording's page keeps its cap until it is read again for another
+reason (C2297, makes worse True for routing recordings through the drift, which redid their OCR, and for an
+upgrade-time re-read). §16.262's C2021 paragraph takes a dated line for the note's words and these two changes.
+Tests: `test_a_page_renamed_in_the_edits_own_sync_is_still_read_again_for_its_options_c2243`,
+`test_a_page_renamed_in_a_later_sync_than_the_edit_is_still_read_again_for_its_options_c2291`,
+`test_a_page_repaired_after_the_edit_is_still_read_again_for_its_options_c2291`,
+`test_an_options_edit_with_a_converter_that_cannot_start_keeps_its_pages_waiting_c2292`,
+`test_an_options_edit_asks_only_the_converters_that_made_a_page_whether_they_start_c2246`,
+`test_a_banner_bump_after_an_options_edit_reads_no_page_again_c2270`,
+`test_an_options_edit_made_before_the_first_recorded_sync_opens_nothing_c2297`,
+`test_an_options_edit_reads_no_recording_again_c2297`.
 
 ### 16.268 Round 42: the converters: a record ends where its writer ends it, a capped page shows all the cap leaves room for, and picture pieces keyed on their own revision (2026-11-20, wave B13 round 42 lane E)
 

@@ -470,8 +470,11 @@ _REREAD_TARGETS = 200  # targets per statement: four bound values each, under SQ
 OPTIONS_DRIFT_VERSION = "*options*"
 """The version of a re-read target that names pages built under other converter options (``cycle``'s
 options-drift target, B13 round 41 C2021): its reason is ``<run>:,<hash>,<hash>,``, the run ``[convert]`` last
-changed in and the options hashes a page may have; a page built before that run with any other hash (the cache
-row's, else the ``outputs`` row's) makes the file one to read again."""
+changed in and the options hashes a page may have; a page converted before that run (the run that made its
+cache row, else its ``outputs`` row's ``built_run``) with any other hash (the cache row's, else the
+``outputs`` row's) makes the file one to read again. The cache row dates it because a rename or a repair from
+cache restamps ``built_run`` (``rewrite_frontmatter`` keeps it for the setup report) with the old options kept
+(B13 round 42 C2243 with C2291); a page whose cache row is gone falls back to ``built_run``."""
 _REREAD_SQL = (
     "WITH t(cid, ver, why, ext) AS (VALUES {values}) SELECT {columns} FROM items i "
     "WHERE i.source_id = ? AND i.is_dir = 0 AND i.dataless = 0 "
@@ -484,7 +487,7 @@ _REREAD_SQL = (
     "WHERE o.source_id = i.source_id AND o.stable_id = i.stable_id "
     "AND length(i.name) > length(t.ext) AND substr(lower(i.name), -length(t.ext)) = t.ext "
     "AND ((t.ver = '" + OPTIONS_DRIFT_VERSION + "' AND o.status = 'ok' AND i.state = 'live' "
-    "AND o.built_run < CAST(substr(t.why, 1, instr(t.why, ':') - 1) AS INTEGER) "
+    "AND COALESCE(c.created_run, o.built_run) < CAST(substr(t.why, 1, instr(t.why, ':') - 1) AS INTEGER) "
     "AND instr(t.why, ',' || COALESCE(c.options_hash, o.options_hash, '') || ',') = 0) "
     "OR (t.ver != '"
     + OPTIONS_DRIFT_VERSION
@@ -496,9 +499,9 @@ _REREAD_SQL = (
 """The files ``Manifest.reread_candidates`` and ``reread_left`` look for; the caller adds the rest of the
 WHERE clause.  The cache row is joined LEFT: a page whose row is gone is judged by its ``outputs`` columns,
 which costs at most one more read of the file (that read writes the row).  An options-drift target (its
-version :data:`OPTIONS_DRIFT_VERSION`) names the live OK pages of its converter, at any version, built before
-the run its reason starts with (``<run>:``) and whose options hash is none of the ``,``-delimited hashes after
-it (B13 round 41 C2021)."""
+version :data:`OPTIONS_DRIFT_VERSION`) names the live OK pages of its converter, at any version, converted
+before the run its reason starts with (``<run>:``; ``COALESCE(c.created_run, o.built_run)``, B13 round 42
+C2243) and whose options hash is none of the ``,``-delimited hashes after it (B13 round 41 C2021)."""
 _INSERT_ITEM_SQL = (
     "INSERT INTO items (source_id, stable_id, parent_id, name, rel_path, prev_path, is_dir, "
     "size, mtime_ns, ctime_ns, created_ns, ino, mode, gen_count, dataless, quickxor, "

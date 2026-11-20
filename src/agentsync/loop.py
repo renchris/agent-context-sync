@@ -708,13 +708,11 @@ _REREAD_CROWDED_ONE = _REREAD_CROWDED.replace(
     "waits to be read again, and the last sync did not read it",
     1,
 ).replace("They are read once", "It is read once", 1)
-_REREAD_OPTIONS = (
-    "have pages made under other converter options (a [convert] or [policy] edit); they are among the files "
-    "read again"
-)
+_REREAD_OPTIONS = "have pages made under other converter options; they are among the files read again"
 """What the note of the files whose pages a re-read reads again for their options says (``reread_options``,
-B13 round 41 C2021); they are in ``reread_left`` too, so the note beside it says whether another sync reads
-them."""
+B13 round 41 C2021): no cause named, since a [convert] edit is the one cause and the words say what is true of
+the pages (B13 round 42 C2270, which dropped a "[policy]" no code reads); they are in ``reread_left`` too, so
+the note beside it says whether another sync reads them."""
 _REREAD_OPTIONS_ONE = _REREAD_OPTIONS.replace("have pages", "has pages", 1).replace(
     "they are among the files", "it is among the files", 1
 )
