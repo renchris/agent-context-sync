@@ -43387,6 +43387,16 @@ optional `SharedLibraries-` for `_org_of` and the email branch, so the folder re
 `<folder-N>`, a separate mismatch, so the C2071 both-reports test holds the shell equal for that provider only on lines
 with no folder or library number. Tests: the C2071 tests in both files.
 
+**The inbox is one folder, and Configuration says what sits on it** (C2318, C2207; ruling 151, this file's half).
+The overlap pairing asks agentsync's own same-folder rule (`cli._same_folder`, lane B's `paths.same_folder`), so
+`Inbox` and `inbox` on a case-insensitive Mac read `has the same folder as` (C2318). After the docs repo line,
+Configuration prints `- inbox: <live|paused|retired> <folder>` for the inbox source on the folder setup keeps
+(`inbox` beside the docs repo), matched by identity, or `- inbox: not added (<reason>)`: another kind's source there
+(`<folder> is source '<id>' (<kind>, <state>), not an inbox source`), `<folder> is not a folder`, or `no source on
+<folder>`; never any live inbox source elsewhere (C2207). install.log's `inbox=not-added` note is not read: the disk
+read decides the same fact. Tests: `test_overlapping_sources_part_finds_one_folder_in_two_cases_c2318`,
+`test_the_configuration_says_what_sits_on_the_inbox_folder_c2207`.
+
 **A dollar-quoted debug value is cut whole** (C2311; amends §16.260 C2034). Docs and a test only: over real `/bin/bash` debug_path output in
 both locales, each `$'...'` value prints `<path>`, both reports alike. Test:
 `test_both_reports_cut_each_dollar_quoted_debug_value_whole_c2311`.

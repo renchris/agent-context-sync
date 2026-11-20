@@ -18342,6 +18342,67 @@ def test_overlapping_sources_part_finds_a_folder_stored_through_a_link(fake_mac:
 
 
 @pytest.mark.usefixtures("roomy_calls")
+def test_overlapping_sources_part_finds_one_folder_in_two_cases_c2318(fake_mac: dict[str, Path]) -> None:
+    """B13 round 42 C2318 (ruling 151): `Inbox` and `inbox` on a case-insensitive Mac are one folder, but the
+    overlap pairing compared paths as text, so two sources on it showed no pair. It asks agentsync's own
+    same-folder rule; on a case-sensitive volume the two stay two folders and the test does not apply."""
+    base = fake_mac["config"].parent
+    (base / "Inbox").mkdir(exist_ok=True)
+    if not (base / "inbox").exists() or not (base / "Inbox").samefile(base / "inbox"):
+        pytest.skip("a case-sensitive volume holds two folders here")
+    cfg = fake_mac["config"]
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8")
+        + f'\n[[source]]\nid = "drop-a"\nkind = "inbox"\npath = "{base / "Inbox"}"\n',
+        encoding="utf-8",
+    )
+    assert 'path = "' + str(base / "inbox") + '"' in cfg.read_text(encoding="utf-8")  # setup's own, as typed
+    part = status_parts(fake_mac)[1]["Overlapping sources"].strip()
+    assert " has the same folder as " in part and not part.startswith("- none"), part
+
+
+def _inbox_said(fake_mac: dict[str, Path]) -> str:
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    [line] = [ln for ln in section(text, "Configuration").splitlines() if ln.startswith("- inbox: ")]
+    return line
+
+
+def test_the_configuration_says_what_sits_on_the_inbox_folder_c2207(fake_mac: dict[str, Path]) -> None:
+    """B13 round 42 C2207 (ruling 151): setup said `(inbox ensured)` after `inbox: not added`, and the report
+    never said the inbox was missing. Configuration's `inbox:` line reads sources.toml and the disk for the
+    folder setup keeps, matched by identity, never any live inbox source: `live` with the folder, `paused`,
+    another kind's source there, a file in its place, or no source on it."""
+    cfg = fake_mac["config"]
+    folder = cfg.parent / "inbox"
+    assert _inbox_said(fake_mac) == "- inbox: live ~/agent-context/inbox"  # setup's own inbox source
+    base = re.sub(
+        r'\n\[\[source\]\]\nid = "inbox"\nkind = "inbox"\npath = "[^"]*"\n(?:#[^\n]*\n)?',
+        "\n",
+        cfg.read_text("utf-8"),
+    )
+    assert 'kind = "inbox"' not in base, base
+    elsewhere = cfg.parent / "drop elsewhere"
+    elsewhere.mkdir()
+    cfg.write_text(base + f'\n[[source]]\nid = "drop"\nkind = "inbox"\npath = "{elsewhere}"\n', "utf-8")
+    assert _inbox_said(fake_mac) == "- inbox: not added (no source on ~/agent-context/inbox)"
+    folder.mkdir(exist_ok=True)
+    cfg.write_text(base + f'\n[[source]]\nid = "inbox"\nkind = "inbox"\npath = "{folder}"\n', "utf-8")
+    assert _inbox_said(fake_mac) == "- inbox: live ~/agent-context/inbox"
+    paused = f'\n[[source]]\nid = "inbox"\nkind = "inbox"\nstate = "paused"\npath = "{folder}"\n'
+    cfg.write_text(base + paused, "utf-8")
+    assert _inbox_said(fake_mac) == "- inbox: paused ~/agent-context/inbox"
+    cfg.write_text(base + f'\n[[source]]\nid = "notes"\nkind = "local"\npath = "{folder}"\n', "utf-8")
+    line = _inbox_said(fake_mac)
+    assert line.startswith("- inbox: not added (~/agent-context/inbox is source '") and line.endswith(
+        "' (local, live), not an inbox source)"
+    ), line
+    folder.rmdir()
+    folder.write_text("x", encoding="utf-8")
+    cfg.write_text(base, "utf-8")
+    assert _inbox_said(fake_mac) == "- inbox: not added (~/agent-context/inbox is not a folder)"
+
+
+@pytest.mark.usefixtures("roomy_calls")
 def test_empty_cloud_folders_part_says_its_zeros_in_words(fake_mac: dict[str, Path]) -> None:
     """B13 round 4 Q17: one empty folder that is still there and holds nothing. The line keeps its head (the
     dataless count is the measured answer to the open question) and "1 of 1 checked", drops the kinds with

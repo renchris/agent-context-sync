@@ -8086,6 +8086,10 @@ def _configuration(r: _Run) -> list[str]:
     git = _path_reached(docs / ".git")
     repo = _reach_words(git, "a git repo", "not a git repo yet")
     out.append(f"- docs repo: {docs} ({_reach_words(docs_there, 'exists, ' + repo)})")
+    try:
+        out.append(_inbox_line(c))
+    except OSError as exc:  # a folder above that refuses a search: the line says so, the section goes on
+        out.append(f"- inbox: not read ({_why_not_read(exc)})")
     out.append(f"- [graph] client_id: {'set' if c.graph.client_id else 'not set'} (the id is never shown)")
     tenant = c.graph.tenant not in ("", "organizations", "common")
     out.append(f"- [graph] tenant: {'set' if tenant else 'not set'}")
@@ -11394,6 +11398,42 @@ def _source_counts(m: _Mirror, source_id: str) -> list[str]:
     ]
 
 
+def _same_folder(configured: Path, path: Path) -> bool:
+    """Whether two folders are one, as agentsync's own same-folder rule answers it (``paths.same_folder``,
+    ``cli._same_folder`` its alias: lexical equality, then the collision key, then samefile; B13 round 42
+    C2318, ruling 151); lexical equality alone when that rule cannot be imported (the report must build)."""
+    try:
+        from agentsync import cli  # noqa: PLC0415 - lazy: cli imports the report, never the reverse
+
+        return bool(cli._same_folder(configured, path))
+    except Exception:  # any failure keeps the report working, on the stricter lexical test
+        return configured == path
+
+
+def _inbox_line(c: Config) -> str:
+    """Configuration's ``inbox:`` line (B13 round 42 C2207, ruling 151): what sits on the folder setup keeps
+    for the inbox, ``inbox`` beside the docs repo, read from sources.toml and the disk and matched by identity
+    (:func:`_same_folder`), never "any live inbox source": ``live``, ``paused`` or ``retired`` with the
+    folder, or ``not added`` with its reason (another kind's source there, a file or dangling link in its
+    place, or no source on it). Setup said ``(inbox ensured)`` after ``inbox: not added``, and the report
+    said nothing."""
+    folder = expand(c.docs_repo).parent / "inbox"
+    on = [s for s in c.sources if s.path is not None and _same_folder(expand(s.path), folder)]
+    inbox = [s for s in on if s.kind == SourceKind.INBOX]
+    if inbox:
+        return f"- inbox: {inbox[0].state.value} {folder}"
+    if on:
+        other = on[0]
+        why = (
+            f"{folder} is source '{other.id}' ({other.kind.value}, {other.state.value}), not an inbox source"
+        )
+    elif (folder.is_symlink() and not folder.exists()) or (folder.exists() and not folder.is_dir()):
+        why = f"{folder} is not a folder"
+    else:
+        why = f"no source on {folder}"
+    return f"- inbox: not added ({why})"
+
+
 def _overlap_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     """Pairs of sources whose configured folder is the same or one inside the other, with each one's file
     counts and whether the outer source's exclude list prunes the inner folder. A folder stored through a
@@ -11411,14 +11451,19 @@ def _overlap_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     pairs = 0
     for outer, outer_root in roots:
         for inner, inner_root in roots:
-            if inner is outer or not inner_root.is_relative_to(outer_root):
+            if inner is outer:
                 continue
-            if inner_root == outer_root and outer.id > inner.id:
+            # B13 round 42 C2318 (ruling 151): one folder known by identity, `Inbox` and `inbox` on a
+            # case-insensitive Mac included, as add-source and ensure_inbox judge it
+            twin = _same_folder(outer_root, inner_root)
+            if not twin and not inner_root.is_relative_to(outer_root):
+                continue
+            if twin and outer.id > inner.id:
                 continue  # the same folder twice: one line for the pair
             pairs += 1
             if pairs > _PAIRS_SHOWN:
                 continue
-            rel = inner_root.relative_to(outer_root).as_posix()
+            rel = "." if twin else inner_root.relative_to(outer_root).as_posix()
             if rel == ".":
                 where = "has the same folder as"
                 pruned = "n/a"
