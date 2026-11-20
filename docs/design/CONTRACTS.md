@@ -43914,6 +43914,16 @@ paragraph-amend pins read, and now ends with that exception. Test:
 `test_convert_page_cap.py::test_the_cap_bounds_the_guarded_body_and_the_words_say_the_front_matter_is_outside_c2220`
 (the line's words).
 
+**The zero-byte recording probe opens without blocking** (C2294; ruling 155; `agentsync.arm_local`).
+`LocalArm.stage_if_empty` lstat-ed a listed 0-byte recording as a regular empty file, then opened it with
+`O_RDONLY | O_NOFOLLOW | O_CLOEXEC`, so a FIFO swapped in between blocked the open with no writer and the sync
+(`cycle._empty_recording`, no timeout) hung before the fstat check ran (the verifier's probe at 1faa3f3). The open
+adds `O_NONBLOCK`, as `cycle._NO_LINK`, `ops/lock.py` and `curate.py` already open: a regular file opens as before and
+the descriptor is only fstat-ed, never read, while a FIFO opens at once and fails `_still_empty`'s inode and
+`S_ISREG` checks, so nothing is staged. Test:
+`test_arm_local.py::test_a_fifo_swapped_in_for_an_empty_recording_never_blocks_the_probe_c2294` (the path renamed
+aside and a FIFO made there at the probe's open, run on a thread under a 10-second bound).
+
 ### 16.269 Round 42: the prompt goes to v39 (the paths and folder states setup printed), the gate's stop lines, and the guides (2026-11-20, wave B13 round 42 lane D)
 
 Round 42's lane D items (`docs/plans/bring-back-ocr.md`, "B13 round 42"; specs `round42/items/C<n>.md`, the verifier's

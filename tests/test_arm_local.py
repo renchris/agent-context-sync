@@ -1815,3 +1815,39 @@ def test_in_scope_applies_the_folder_rule_that_plain_is_included_lacks(tmp_path:
     assert al.in_scope(cfg, "a/b/Archive.md") and al.in_scope(cfg, "top.md")
     inbox = _cfg(tmp_path, kind=SourceKind.INBOX, exclude=())
     assert al.in_scope(inbox, "drop/report.pdf") and not al.in_scope(inbox, "drop/report.pdf.part")
+
+
+def test_a_fifo_swapped_in_for_an_empty_recording_never_blocks_the_probe_c2294(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 42 C2294: stage_if_empty lstat-ed a 0-byte recording, then opened it without O_NONBLOCK, so a
+    FIFO swapped in between blocked the open with no writer and hung the sync. The open is non-blocking: the
+    FIFO opens at once, fails the fstat check, and nothing is staged. Run on a thread under a time bound, so a
+    regression fails instead of hanging."""
+    root = tmp_path / "root"
+    _write(root / "contoso-meeting.m4a", b"")
+    arm = al.LocalArm(_cfg(root))
+    (item,) = [i for i in arm.scan(None, full=True).items if i.rel_path == "contoso-meeting.m4a"]
+    real_open, swapped = os.open, []
+    target = root / "contoso-meeting.m4a"
+
+    def swapping_open(path: Any, flags: int, *args: Any, **kw: Any) -> int:
+        if Path(path) == target and not swapped:
+            swapped.append(True)
+            target.rename(root / "aside.m4a")
+            os.mkfifo(target)
+        return real_open(path, flags, *args, **kw)
+
+    monkeypatch.setattr(al.os, "open", swapping_open)
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    found: list[object] = []
+    probe = threading.Thread(target=lambda: found.append(arm.stage_if_empty(item, staging)), daemon=True)
+    probe.start()
+    probe.join(10)
+    if probe.is_alive():  # free the blocked open so the thread ends
+        with contextlib.suppress(OSError):
+            os.close(real_open(target, os.O_WRONLY | os.O_NONBLOCK))
+        probe.join(5)
+        pytest.fail("stage_if_empty blocked on a FIFO swapped in after its lstat")
+    assert swapped and found == [None] and list(staging.rglob("*")) == []

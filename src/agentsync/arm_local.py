@@ -1603,8 +1603,8 @@ class LocalArm:
             return None
         if not stat.S_ISREG(st0.st_mode) or st0.st_size != 0 or is_dataless(st0):
             return None
-        try:
-            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        try:  # a FIFO swapped in after the lstat opens at once and fails the fstat check (B13 round 42 C2294)
+            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
         except OSError:
             return None
         dest = _staging_dest(dest_dir, item)
