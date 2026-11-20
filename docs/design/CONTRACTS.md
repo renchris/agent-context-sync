@@ -37304,6 +37304,8 @@ stub, so a bump of `_EMITTER_VERSION` would read nothing again and is not made. 
 the next sync, and one on a manifest that has yet to run `_queue_path_stubs` by its one-shot re-read.
 Amended 2026-11-04, §16.234 C995: the one-shot re-read takes only a stub whose stored reason names a path
 (`_names_a_path`), and not a dataless one; a path-free stub with its retries used up gets none on any manifest.
+Amended 2026-11-20, §16.268 C2303: when the bytes find no template type, the part is parsed (bounded, no entities, DTD
+or network) and an element whose decoded type is the template's is typed as a deck's, so `templa&#116;e` reads too.
 
 **The test session warms the wheel pandoc once (C769, makes worse True, its lane E part; `tests/conftest.py`).** A
 `real_env` test's agentsync runs this venv's wheel pandoc, an x86_64 binary whose first start under Rosetta took
@@ -43956,6 +43958,22 @@ wrapper reads first, then waits until B is at the lock, and up to 0.3 s more for
 lets happen, so without the lock B raises the limit and A lowers it after. It asserts both threads entered the lock,
 the events `A:read, A:set, B:read, B:set` and a final limit past 500,000, and restores the limit it saved. It never
 waits without a bound on B's call, which the lock holds back. Test: the same test (fails with the `with` removed).
+
+**A template whose type holds a character reference is read as a deck, and its family told** (C2303; `agentsync.convert.pptx`,
+`agentsync.convert._common`; amends §16.221 C781). `_deck_types` and `_ooxml_family` match the content types' raw
+spelling, so `...presentationml.templa&#116;e.main+xml`, which any XML parser reads as the template type, went to
+python-pptx unadapted and became a `cannot read the deck` stub, and a Word type spelled `wordprocessing&#109;l` named
+`.potx` told no family and failed open into the same stub, not `not the type its name says` (the verifier's probe at
+1faa3f3). The byte and UTF-16 paths stay first; only when they find nothing, `content_types_tree` parses the part's
+own bytes, at most `_CONTENT_TYPES_MAX` (1 MiB), with `resolve_entities=False`, `no_network=True`, `huge_tree=False`
+and `load_dtd=False`, and returns None on any error, so the caller's answer stands. `_decoded_deck_types` types each
+Override or Default whose decoded ContentType is the template's as the deck's and writes the part again with its
+declaration in its own encoding (a UTF-16 part keeps its mark and byte order); `_ooxml_family` reads the decoded
+values against `_MAIN_TYPE_VALUE_RE`. Hand-made files only: no Office writer puts a character reference in a type.
+pptx's `_EMITTER_VERSION` stays at its one move this round (C2272's 1.0.3). Tests:
+`test_convert_formats.py::test_a_potx_whose_type_holds_a_character_reference_is_read_as_a_deck_c2303` (an escaped
+template and an escaped family token, UTF-8 and both UTF-16 orders, the staged file untouched) and
+`test_convert_formats.py::test_a_word_typed_potx_with_an_escaped_family_is_told_as_not_its_type_c2303`.
 
 ### 16.269 Round 42: the prompt goes to v39 (the paths and folder states setup printed), the gate's stop lines, and the guides (2026-11-20, wave B13 round 42 lane D)
 

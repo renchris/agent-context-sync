@@ -13,6 +13,7 @@ import zipfile
 from collections.abc import Iterable, Sequence
 from importlib import metadata
 from pathlib import Path
+from typing import Any
 
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.policy import UNTRUSTED_BANNER
@@ -90,6 +91,11 @@ _MAIN_TYPE_RE = re.compile(
     rb"\bContentType\s*=\s*[\"']application/vnd\.(?:openxmlformats-officedocument\."
     rb"(wordprocessingml|spreadsheetml|presentationml)|ms-(word|excel|powerpoint))\.[^\"']*\.main(?:\+xml)?[\"']"
 )
+_MAIN_TYPE_VALUE_RE = re.compile(
+    r"application/vnd\.(?:openxmlformats-officedocument\.(wordprocessingml|spreadsheetml|presentationml)"
+    r"|ms-(word|excel|powerpoint))\.[^\"']*\.main(?:\+xml)?"
+)
+""":data:`_MAIN_TYPE_RE` for a ContentType value an XML parser has decoded (B13 round 42 C2303)."""
 _FAMILY_OF = {
     b"wordprocessingml": "word",
     b"word": "word",
@@ -120,13 +126,35 @@ def _ooxml_family(src: Path) -> str | None:
             info = zf.getinfo("[Content_Types].xml")
             if info.file_size > _CONTENT_TYPES_MAX:
                 return None
-            types = zf.read(info)
+            raw = types = zf.read(info)
             if types.startswith(_UTF16_BOMS):
                 types = types.decode("utf-16").encode("utf-8")
     except Exception:  # KeyError, BadZipFile, OSError, an encrypted member, a compression zipfile lacks
         return None
     families = {_FAMILY_OF[m[1] or m[2]] for m in _MAIN_TYPE_RE.finditer(types)}
+    if not families:  # a character reference in a type: read it decoded (B13 round 42 C2303)
+        tree = content_types_tree(raw)  # its own bytes, which its declaration names
+        values = [] if tree is None else [el.get("ContentType") or "" for el in tree.iter()]
+        for value in values:
+            if m := _MAIN_TYPE_VALUE_RE.fullmatch(value):
+                families.add(_FAMILY_OF[(m[1] or m[2]).encode("ascii")])
     return families.pop() if len(families) == 1 else None
+
+
+def content_types_tree(types: bytes) -> Any | None:
+    """``[Content_Types].xml``'s root element, parsed only when the byte reads find nothing: at most
+    :data:`_CONTENT_TYPES_MAX` bytes, with no entity, DTD or network resolution and no huge tree, so a
+    character reference (``templa&#116;e``) reads as the value it stands for; None when it is too large or
+    does not parse, and the caller's answer stands (B13 round 42 C2303)."""
+    if len(types) > _CONTENT_TYPES_MAX:
+        return None
+    from lxml import etree  # type: ignore[import-untyped]  # noqa: PLC0415 - python-pptx's parser
+
+    parser = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False, load_dtd=False)
+    try:
+        return etree.fromstring(types, parser)
+    except Exception:  # XMLSyntaxError, a ValueError on a declared encoding lxml refuses
+        return None
 
 
 def _check_ooxml_family(src: Path, family: str, noun: str) -> None:

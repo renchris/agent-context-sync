@@ -30,6 +30,7 @@ from agentsync.convert._common import (
     _first_line,
     _gfm_table,
     _join_limited,
+    content_types_tree,
 )
 from agentsync.convert.base import OptionValue, make_unit
 from agentsync.convert.image import (
@@ -422,10 +423,33 @@ def _deck_types(types: bytes) -> bytes | None:
         except UnicodeDecodeError:
             return None
         template, deck = _TEMPLATE_MAIN.decode("ascii"), _DECK_MAIN.decode("ascii")
-        if template not in text:
-            return None
-        return bom + text.replace(template, deck).encode(codec)
-    return None
+        if template in text:
+            return bom + text.replace(template, deck).encode(codec)
+    return _decoded_deck_types(types)
+
+
+def _decoded_deck_types(types: bytes) -> bytes | None:
+    """:func:`_deck_types` when the bytes do not spell the template type: the part parsed safely
+    (:func:`content_types_tree`), each Override or Default whose decoded ContentType is the template's typed
+    as the deck's, written again with its declaration in its own encoding and a UTF-16 part's byte order
+    mark kept; None when no element carries it or the part does not parse (B13 round 42 C2303: a
+    ``templa&#116;e`` spelling went to python-pptx unadapted and became a ``cannot read the deck`` stub)."""
+    from lxml import etree  # type: ignore[import-untyped]  # noqa: PLC0415 - only on this rare path
+
+    root = content_types_tree(types)
+    template, deck = _TEMPLATE_MAIN.decode("ascii"), _DECK_MAIN.decode("ascii")
+    hits = [] if root is None else [el for el in root.iter() if el.get("ContentType") == template]
+    if root is None or not hits:
+        return None
+    for el in hits:
+        el.set("ContentType", deck)
+    tree = root.getroottree()
+    encoding = tree.docinfo.encoding or "UTF-8"
+    standalone = tree.docinfo.standalone
+    out: bytes = etree.tostring(tree, xml_declaration=True, encoding=encoding, standalone=standalone)
+    if types.startswith(codecs.BOM_UTF16_BE) and out.startswith(codecs.BOM_UTF16_LE):  # lxml writes LE
+        out = codecs.BOM_UTF16_BE + out[2:].decode("utf-16-le").encode("utf-16-be")
+    return out
 
 
 class PptxConverter:

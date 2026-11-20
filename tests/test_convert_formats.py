@@ -674,6 +674,65 @@ def test_a_potx_template_is_read_as_a_deck(tmp_path: Path) -> None:
         PptxConverter(CFG).convert(make_zip(tmp_path / "c.potx", {"x": b"y"}), name="c.potx")
 
 
+def _respelled_potx(tmp_path: Path, spelled: str, codec: str) -> Path:
+    """build_potx's template with its main type spelled ``spelled``, its ``[Content_Types].xml`` in
+    ``codec`` (a UTF-16 one with its byte order mark and declaration)."""
+    import codecs  # noqa: PLC0415
+
+    utf8 = build_potx(tmp_path / "plain.potx")
+    template = tmp_path / "Contoso Quarterly.potx"
+    with zipfile.ZipFile(utf8) as zin, zipfile.ZipFile(template, "w", zipfile.ZIP_DEFLATED) as zout:
+        for info in zin.infolist():
+            data = zin.read(info.filename)
+            if info.filename == "[Content_Types].xml":
+                text = data.decode("utf-8").replace(POTX_MAIN, spelled)
+                assert spelled in text
+                if codec != "utf-8":
+                    text = text.replace("encoding='UTF-8'", "encoding='UTF-16'")
+                    bom = codecs.BOM_UTF16_LE if codec == "utf-16-le" else codecs.BOM_UTF16_BE
+                    data = bom + text.encode(codec)
+                else:
+                    data = text.encode("utf-8")
+            zout.writestr(info, data)
+    return template
+
+
+_ESCAPED = {
+    "template": POTX_MAIN.replace("template", "templa&#116;e"),
+    "family": POTX_MAIN.replace("presentationml", "presentation&#109;l"),
+}
+
+
+@pytest.mark.parametrize("codec", ["utf-8", "utf-16-le", "utf-16-be"])
+@pytest.mark.parametrize("escaped", ["template", "family"])
+def test_a_potx_whose_type_holds_a_character_reference_is_read_as_a_deck_c2303(
+    tmp_path: Path, codec: str, escaped: str
+) -> None:
+    """B13 round 42 C2303: the template type was matched on its raw spelling, so `templa&#116;e`, which an XML
+    parser reads as the template type, went to python-pptx unadapted and became a `cannot read the deck`
+    stub. When the bytes find nothing, the part is parsed (bounded, no entities, DTD or network) and an
+    element whose decoded type is the template's is typed as a deck's, in the part's own encoding; the
+    staged file is not touched."""
+    template = _respelled_potx(tmp_path, _ESCAPED[escaped], codec)
+    before = template.read_bytes()
+    u = _one(PptxConverter(CFG).convert(template, name=template.name))
+    assert u.title == "Contoso Quarterly Template" and "## Contoso Quarterly Template" in u.body
+    assert template.read_bytes() == before
+
+
+@pytest.mark.parametrize("codec", ["utf-8", "utf-16-le"])
+def test_a_word_typed_potx_with_an_escaped_family_is_told_as_not_its_type_c2303(
+    tmp_path: Path, codec: str
+) -> None:
+    """B13 round 42 C2303: `_ooxml_family` matched raw bytes, so a Word type spelled `wordprocessing&#109;l`
+    told no family and failed open into python-pptx's `cannot read the deck`. Read decoded when the bytes
+    find nothing, it is a Word document: the `not the type its name says` stub."""
+    word = "application/vnd.openxmlformats-officedocument.wordprocessing&#109;l.document.main+xml"
+    template = _respelled_potx(tmp_path, word, codec)
+    with pytest.raises(UnreadableSourceError, match="not the type its name says"):
+        PptxConverter(CFG).convert(template, name=template.name)
+
+
 @pytest.mark.parametrize("codec", ["utf-16-le", "utf-16-be"])
 def test_a_potx_whose_content_types_are_utf_16_is_read_as_a_deck_c781(tmp_path: Path, codec: str) -> None:
     """B13 round 33 C781: the template's type was looked for as UTF-8 bytes, so a ``[Content_Types].xml``
