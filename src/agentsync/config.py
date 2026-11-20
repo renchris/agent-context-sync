@@ -28,6 +28,7 @@ from agentsync.paths import (
     expand,
     is_cloud_path,
     is_under,
+    same_folder,
 )
 from agentsync.policy import PolicyConfig, parse_policy_table
 from agentsync.skill import AGENTSYNC_BIN
@@ -730,9 +731,10 @@ def inbox_source_table(source_id: str, path: Path) -> str:
 def ensure_inbox(config_path: Path) -> tuple[Config, SourceConfig | None]:
     """Keep the mail inbox (KISS K05): create ``inbox`` beside the docs repo (``~/agent-context/inbox``, mode
     0700) and append :func:`inbox_source_table` for it with :func:`append_to_config`, unless a source (any
-    kind, any state) is already on that folder, so no folder is configured twice.  Other inbox sources do not
-    count: the guides name this folder, and a Mac with hand-added inbox sources elsewhere (field report
-    2026-10-05: six of them) would otherwise get no source on it.  Returns the config as it now stands and
+    kind, any state) is already on that folder, in any spelling macOS takes for it
+    (:func:`paths.same_folder`), so no folder is configured twice.  Other inbox sources do not count: the
+    guides name this folder, and a Mac with hand-added inbox sources elsewhere (field report 2026-10-05: six
+    of them) would otherwise get no source on it.  Returns the config as it now stands and
     the source added (None when nothing changed).  Raises ConfigError (sources.toml missing or the result
     would not load) or OSError (the folder cannot be created, or a non-folder has its name), writing no
     table."""
@@ -742,7 +744,9 @@ def ensure_inbox(config_path: Path) -> tuple[Config, SourceConfig | None]:
         raw.mkdir(mode=0o700, parents=True)  # FileExistsError when a file has the name
         raw.chmod(0o700)  # mkdir's mode is masked by the umask
     path = canonical_source_root(raw)
-    if any(s.path is not None and s.path == path for s in config.sources):
+    # by identity (paths.same_folder), so a source on ``Inbox`` is on this folder on a case-insensitive Mac
+    # and no second source is added for it (B13 round 42 C2318)
+    if any(s.path is not None and same_folder(s.path, path) for s in config.sources):
         return config, None
     sid = derive_source_id(path, {s.id for s in config.sources})
     config = append_to_config(config.config_path, inbox_source_table(sid, path))

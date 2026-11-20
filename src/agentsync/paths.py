@@ -108,6 +108,32 @@ def provider_link_resolved(path: Path) -> Path:
     return root.joinpath(target.name, *rel.parts[1:])
 
 
+def same_folder(configured: Path, path: Path) -> bool:
+    """Whether ``path`` (an existing folder) is the folder a source already has as ``configured``: the one
+    answer to "is this the same folder" for add-source, :func:`agentsync.config.ensure_inbox`, the docs repo's
+    inbox line and the setup report's overlap pairing (B13 round 42 C2318). macOS takes a name in any case
+    and in either Unicode form for the same folder, so a path typed back in lower case (``Inbox`` beside
+    ``inbox``), or with a composed é where the disk holds e and an accent, is not a second folder. Lexical
+    equality first; then the key the manifest and the docs repo use for "the same path"
+    (:func:`agentsync.slug.collision_key`), so nothing is read from disk unless the two names fold to one
+    key; the file system then confirms it, so on a case-sensitive volume two folders that differ only in case
+    stay two (and a configured folder that is gone is not the one that exists; any OSError is False). A
+    folder stored through a link that is a provider entry in ~/Library/CloudStorage (``OneDrive-Link ->
+    OneDrive-Contoso``) is compared by its real name, read with one readlink of that entry
+    (:func:`provider_link_resolved`, B13 round 6 G39), so typing it by that name is not a second folder."""
+    from agentsync.slug import collision_key  # noqa: PLC0415 - slug imports policy; paths stays light
+
+    if configured == path:
+        return True
+    keys = [collision_key(str(provider_link_resolved(p))) for p in (configured, path)]
+    if keys[0] != keys[1]:
+        return False
+    try:
+        return configured.samefile(path)
+    except OSError:
+        return False
+
+
 def cloud_relative(path: Path) -> PurePosixPath | None:
     """``path`` relative to the :func:`cloud_storage_roots` entry that holds it (its first part is the
     provider folder, ``OneDrive-Contoso``); None outside every one."""

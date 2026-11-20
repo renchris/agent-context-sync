@@ -10509,6 +10509,26 @@ def test_add_source_on_the_inbox_folder_of_an_inbox_less_config_keeps_it_the_inb
     assert "sources: no folder yet besides the inbox" in capsys.readouterr().out
 
 
+def test_add_source_on_the_inbox_folder_typed_in_another_case_keeps_it_the_inbox(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 42 C2318: the inbox-first branch compared ``Inbox`` with the kept ``inbox`` by spelling, so
+    on a case-insensitive Mac add-source made the inbox folder a local source install.sh would count. It
+    asks paths.same_folder, as ensure_inbox and add-source's own lookup do."""
+    box = initialised.source("inbox")
+    assert box.path is not None and box.path.is_dir()
+    upper = box.path.with_name("Inbox")
+    if not upper.exists() or not upper.samefile(box.path):
+        pytest.skip("the tmp volume is case-sensitive: Inbox and inbox are two folders there")
+    assert cli._same_folder is paths.same_folder  # the old name stays for its callers
+    cfg = initialised.config_path
+    cfg.write_text(cfg.read_text(encoding="utf-8").removesuffix(inbox_source_table("inbox", box.path)))
+    assert cli.main(["add-source", str(upper), "--config", str(cfg)]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert "added inbox source 'inbox'" in out and "already configured: source 'inbox' (inbox, live)" in out
+    assert [s.kind for s in load_config(cfg).sources if s.id != "source"] == [SourceKind.INBOX]
+
+
 def test_init_counts_and_names_every_inbox_source(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """B13 round 11 M13: with three hand-added inbox sources beside the inbox, init said "none yet besides the
     inbox". It counts and names them, and still points at add-source. B13 round 12 N13: after a colon, so the

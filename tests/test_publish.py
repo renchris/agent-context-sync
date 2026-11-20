@@ -1776,6 +1776,21 @@ def test_root_guide_names_the_kept_inbox_whatever_the_other_inbox_ids(env: Env) 
     assert f"into `{publish._display_path(bridge_dir)}`; the next" in text
 
 
+def test_root_guide_names_the_kept_folder_for_an_inbox_source_on_it_in_another_case(env: Env) -> None:
+    """B13 round 42 C2318: an inbox source stored as ``Inbox`` is the kept ``inbox`` folder on a
+    case-insensitive Mac; the guide matched by spelling and fell to the list of every live inbox, naming no
+    one of them the inbox. It matches by folder identity and names the kept folder."""
+    kept = canonical_source_root(env.repo.parent / "inbox")
+    kept.mkdir(exist_ok=True)
+    upper = kept.with_name("Inbox")
+    if not upper.exists() or not upper.samefile(kept):
+        pytest.skip("the tmp volume is case-sensitive: Inbox and inbox are two folders there")
+    bridge = SourceConfig(id="alpha-bridge", kind=SourceKind.INBOX, path=env.repo.parent / "alpha-bridge")
+    text = _inbox_guide(env, bridge, SourceConfig(id="contoso-inbox", kind=SourceKind.INBOX, path=upper))
+    assert f"into `{publish._display_path(kept)}`; the next\nsync converts them.\n\n" in text, text
+    assert "alpha-bridge" not in text and "(contoso-inbox)" not in text
+
+
 def test_root_guide_names_the_inbox_by_the_home_under_a_home_reached_through_a_link(
     env: Env, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

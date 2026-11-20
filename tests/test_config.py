@@ -16,6 +16,7 @@ from agentsync.config import (
     Config,
     ConvertConfig,
     append_to_config,
+    canonical_source_root,
     default_config_text,
     derive_source_id,
     ensure_inbox,
@@ -463,6 +464,54 @@ def test_ensure_inbox_adds_one_inbox_beside_the_docs_repo(tmp_path: Path) -> Non
     assert text == before + inbox_source_table("inbox", inbox.resolve())
     assert ensure_inbox(cfg_path) == (config, None)  # idempotent: one kind = "inbox", nothing written
     assert cfg_path.read_text(encoding="utf-8") == text
+
+
+def _case_insensitive(folder: Path) -> bool:
+    """Whether ``folder``'s volume takes a name in any case (APFS's default on a Mac)."""
+    probe = folder / "case-probe-x"
+    probe.mkdir()
+    try:
+        return (folder / "case-probe-X").exists() and probe.samefile(folder / "case-probe-X")
+    finally:
+        probe.rmdir()
+
+
+def test_ensure_inbox_takes_a_source_on_the_folder_in_another_case_as_the_inbox(tmp_path: Path) -> None:
+    """B13 round 42 C2318: a source on ``Inbox`` is on the folder ``inbox`` on a case-insensitive Mac, so
+    ensure_inbox adds no second source for it; compared lexically, it added ``inbox`` beside ``Inbox`` and the
+    one folder became two live sources mirroring the same files."""
+    if not _case_insensitive(tmp_path):
+        pytest.skip("the tmp volume is case-sensitive: Inbox and inbox are two folders there")
+    upper = tmp_path / "ctx" / "Inbox"
+    upper.mkdir(parents=True)
+    cfg_path = _ctx_config(tmp_path, inbox_source_table("contoso-inbox", canonical_source_root(upper)))
+    before = cfg_path.read_text(encoding="utf-8")
+    config, added = ensure_inbox(cfg_path)
+    assert added is None, added
+    assert [(s.id, s.kind) for s in config.sources] == [("contoso-inbox", SourceKind.INBOX)]
+    assert cfg_path.read_text(encoding="utf-8") == before
+
+
+def test_ensure_inbox_keeps_two_folders_that_differ_only_in_case_two_where_the_disk_does(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C2318's other side: on a case-sensitive volume ``Inbox`` and ``inbox`` are two folders, and the file
+    system says so (samefile False, or an OSError for one that is gone): the kept folder gets its own
+    source."""
+    upper = tmp_path / "ctx" / "Inbox"
+    upper.mkdir(parents=True)
+    for answer in (False, OSError("gone")):
+
+        def samefile(self: Path, other: object, answer: object = answer) -> bool:
+            if isinstance(answer, OSError):
+                raise answer
+            return bool(answer)
+
+        monkeypatch.setattr(Path, "samefile", samefile)
+        cfg_path = _ctx_config(tmp_path, inbox_source_table("contoso-inbox", canonical_source_root(upper)))
+        added = ensure_inbox(cfg_path)[1]
+        assert added is not None and added.id == "inbox" and added.kind is SourceKind.INBOX
+        assert [s.id for s in load_config(cfg_path).sources] == ["contoso-inbox", "inbox"]
 
 
 def test_ensure_inbox_adds_the_named_inbox_beside_other_inboxes(tmp_path: Path) -> None:

@@ -43298,7 +43298,23 @@ Reserved for round 42 lane RB of B13.
 
 ### 16.267 Round 42: the inbox known as a folder, the options re-read dated by the run that converted a page, and a recording's page following its state (2026-11-20, wave B13 round 42 lane B)
 
-Reserved for round 42 lane B of B13.
+Round 42's lane B items (`docs/plans/bring-back-ocr.md`, "B13 round 42"; specs `round42/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's rulings 151, 154 and 155 settle it). A dated line this round writes
+reads `Amended 2026-11-20, §16.267 C<n>`.
+
+**The inbox is one folder, known by identity** (C2318; ruling 151; data integrity). `config.ensure_inbox` skipped
+its table only when a source's path equalled the kept folder's spelling, `Publisher.root_guide` matched the inbox
+line the same way and add-source's inbox-first branch compared the two paths as written, so on a case-insensitive
+Mac a source on `~/agent-context/Inbox` and the kept `inbox` became two live sources mirroring the same files, and
+the guide listed every live inbox instead of naming the kept one. `cli._same_folder` moves to
+`paths.same_folder`, unchanged (lexical equality, then the `slug.collision_key` gate, so nothing is read from disk
+unless the names fold to one key, then `samefile`, any OSError False); `cli._same_folder` stays as its alias, and
+ensure_inbox's skip test, root_guide's match (the line names the kept folder) and the inbox-first branch use it, as
+the setup report's overlap pairing does (lane RA). On a case-sensitive volume `Inbox` and `inbox` stay two folders.
+Tests: `test_ensure_inbox_takes_a_source_on_the_folder_in_another_case_as_the_inbox` (skipped on a case-sensitive
+volume), `test_ensure_inbox_keeps_two_folders_that_differ_only_in_case_two_where_the_disk_does`,
+`test_root_guide_names_the_kept_folder_for_an_inbox_source_on_it_in_another_case`,
+`test_add_source_on_the_inbox_folder_typed_in_another_case_keeps_it_the_inbox`.
 
 ### 16.268 Round 42: the converters: a record ends where its writer ends it, a capped page shows all the cap leaves room for, and picture pieces keyed on their own revision (2026-11-20, wave B13 round 42 lane E)
 

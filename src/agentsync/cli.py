@@ -146,10 +146,9 @@ from agentsync.paths import (
     default_state_dir,
     expand,
     is_under,
-    provider_link_resolved,
+    same_folder,
 )
 from agentsync.publish import Publisher, archive_path, notice_gone_why
-from agentsync.slug import collision_key
 from agentsync.text import plural, safe_text
 
 EXIT_OK = 0
@@ -1661,25 +1660,9 @@ def _ensure_inbox(config: Config) -> Config:
     return config
 
 
-def _same_folder(configured: Path, path: Path) -> bool:
-    """Whether ``path`` (an existing folder) is the folder a source already has as ``configured``. macOS
-    takes a name in any case and in either Unicode form for the same folder, so a path typed back in lower
-    case, or with a composed é where the disk holds e and an accent, is not a second folder. The key is the
-    one the manifest and the docs repo use for "the same path" (:func:`agentsync.slug.collision_key`); the
-    file system then confirms it, so on a case-sensitive volume two folders that differ only in case stay
-    two (and a configured folder that is gone is not the one that exists). A folder stored through a link
-    that is a provider entry in ~/Library/CloudStorage (``OneDrive-Link -> OneDrive-Contoso``) is compared
-    by its real name, read with one readlink of that entry (:func:`paths.provider_link_resolved`, B13 round
-    6 G39), so typing it by that name is not a second folder."""
-    if configured == path:
-        return True
-    keys = [collision_key(str(provider_link_resolved(p))) for p in (configured, path)]
-    if keys[0] != keys[1]:
-        return False
-    try:
-        return configured.samefile(path)
-    except OSError:
-        return False
+_same_folder = same_folder
+"""The folder-identity test add-source has used since B13 round 6, now :func:`agentsync.paths.same_folder`
+(B13 round 42 C2318), kept by this name for its callers."""
 
 
 def _cmd_add_source(args: argparse.Namespace) -> int:
@@ -1706,8 +1689,9 @@ def _cmd_add_source(args: argparse.Namespace) -> int:
             f"add-source {raw}: {path} and the docs repo {docs} must not contain each other", EXIT_USAGE
         )
     # PATH is the inbox folder of a config with no inbox (one from before K05): the inbox first, so that
-    # folder becomes kind "inbox", never a local source install.sh would count as a folder to sync.
-    if path == canonical_source_root(docs.parent / "inbox") and not any(
+    # folder becomes kind "inbox", never a local source install.sh would count as a folder to sync. The
+    # folder by identity, so `Inbox` is that folder on a case-insensitive Mac (B13 round 42 C2318).
+    if same_folder(canonical_source_root(docs.parent / "inbox"), path) and not any(
         s.kind is SourceKind.INBOX for s in config.sources
     ):
         if fresh:

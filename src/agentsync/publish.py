@@ -64,7 +64,7 @@ from agentsync.model import (
     SourceState,
     UnitKind,
 )
-from agentsync.paths import expand
+from agentsync.paths import expand, same_folder
 from agentsync.text import plural
 
 log = logging.getLogger(__name__)
@@ -1001,8 +1001,9 @@ class Publisher:
     def root_guide(self) -> str:
         """:func:`root_guide` for this config: archive lines under ``[governance] archive``, and the inbox
         line.  It names the live inbox source on the folder :func:`config.ensure_inbox` keeps (``inbox``
-        beside the docs repo, matched by path: its id may differ), else the only live inbox source; with
-        several and none on that folder it lists them all by id, since no one of them is the inbox."""
+        beside the docs repo, matched by folder identity: its id and spelling may differ), else the only live
+        inbox source; with several and none on that folder it lists them all by id, since no one of them is
+        the inbox."""
         inboxes = sorted(
             (
                 (s.path, s.id)
@@ -1013,7 +1014,9 @@ class Publisher:
         )
         kept = canonical_source_root(expand(self._config.docs_repo).parent / "inbox")
         inbox: str | list[str] | None = None
-        if any(path == kept for path, _ in inboxes):
+        # by identity (paths.same_folder): a source on ``Inbox`` is the kept folder on a case-insensitive
+        # Mac, and the line names the kept folder whichever spelling the source stores (B13 round 42 C2318)
+        if any(same_folder(path, kept) for path, _ in inboxes):
             inbox = _display_path(kept)
         elif len(inboxes) == 1:
             inbox = _display_path(inboxes[0][0])
