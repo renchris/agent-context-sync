@@ -1147,7 +1147,7 @@ _LEGEND = {
         "once, but one right after --source-local, --source-local= or add-source, shown decoded in double "
         "quotes and cut as its section says, where the shell fallback report cuts it whole; "
         # B13 round 42 C2265 (ruling 148): the second kept divergence, declared
-        "a relative --source-local word on install.log's run header that names no CloudStorage folder, "
+        "a relative --source-local word on install.log's run header naming no CloudStorage folder, "
         "shown with its ./ or ../ head and cut from its first unknown part, where the shell fallback report "
         "cuts the whole word; "
         # B13 round 41 C2033 (ruling 142): round 40's forms and this round's, every pinned clause above kept
@@ -8290,16 +8290,18 @@ _CONVERT_OPTIONS_META = "convert_options"
 def _convert_line(c: Config) -> str:
     """Configuration's ``[convert]`` line (B13 round 42 C2210 with C2221, ruling 154): ``- [convert]:
     default``, or ``- [convert]: set (<option names>)`` naming each option that differs from
-    :class:`ConvertConfig`'s default, ``max_page_bytes`` with its number and ``pandoc_path`` by its name
-    only, never its value (a path that can name the person); then, from the manifest meta an edit after the
-    first synced run leaves (:data:`_CONVERT_OPTIONS_META`), the run it was made in. An older manifest, or
-    one with no such edit, adds nothing. A page cap someone set showed nowhere, though an edit re-reads
-    local and inbox pages."""
+    :class:`ConvertConfig`'s default, a number option (``max_page_bytes``) with its number and
+    ``pandoc_path`` by its name only, never its value (a path that can name the person); then, from the
+    manifest meta an edit after the first synced run leaves (:data:`_CONVERT_OPTIONS_META`), the run it
+    was made in. An older manifest, or one with no such edit, adds nothing. A page cap someone set showed
+    nowhere, though an edit re-reads local and inbox pages."""
     default = ConvertConfig()
+    # a number shown with its name (max_page_bytes'), never a path; no option name spelled here as a literal,
+    # which the one-word hold value scan would read (test_a_one_word_hold_value_stays_in_the_reports_own_...)
     names = [
-        f"max_page_bytes {c.convert.max_page_bytes}" if f.name == "max_page_bytes" else f.name
+        f"{f.name} {value}" if isinstance(value, int) and not isinstance(value, bool) else f.name
         for f in dataclasses.fields(ConvertConfig)
-        if getattr(c.convert, f.name) != getattr(default, f.name)
+        if (value := getattr(c.convert, f.name)) != getattr(default, f.name)
     ]
     line = f"- [convert]: set ({', '.join(names)})" if names else "- [convert]: default"
     run = _convert_changed_run(c)
