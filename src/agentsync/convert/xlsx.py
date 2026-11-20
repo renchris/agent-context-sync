@@ -654,7 +654,8 @@ def _index_body(
 
     Each list counts against one running total within ``max_bytes`` less :data:`_INDEX_RESERVE`, and a
     sheet's headers cell is cut before escaping to :data:`_HEADER_CHARS` characters or, when more, a fourth
-    of the room past 2,048 bytes shared by the sheets (B13 round 41 C2045), so the page stays within the
+    of each sheet's share of that room past 2,048 bytes after 200 bytes for its row (B13 round 41 C2045,
+    round 42 C2314), so the page stays within the
     cap with any number of sheets; a list past it ends in a note, the sheet list's naming each sheet's own
     page or its CSV sidecar, one of which holds its headers (B13 round 40 C1848, round 41 C2047).  A list
     under the budget whose headers cells are within that limit renders byte for byte as before; a longer

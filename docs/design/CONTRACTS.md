@@ -42501,8 +42501,8 @@ sections' real bytes, up to a quarter of the cap, and each list fits the room le
 names `<NN>-<sheet-slug>.comments.txt` or `.objects.txt`, which holds every comment or object whole; a chart title or
 pivot name is cut to 200 characters on the page.
 Amended 2026-11-17, §16.263 C2045: a list under the budget renders byte for byte as before only when its headers cells are within
-the limit, now 600 characters or a fourth of what each sheet's share of the room past 2,048 bytes leaves after 200
-bytes for its row (a streamed first-row value 200, or a fourth of each column's share of the cap less 5,120 after 128
+the limit, now 600 characters or a fourth of each sheet's share of the cap less 3,072 bytes (the index's 1,024-byte
+reserve and 2,048) after 200 bytes for its row (a streamed first-row value 200, or a fourth of each column's share of the cap less 5,120 after 128
 bytes for its row); a longer cell ends `…` at any cap, its whole text on the sheet's page or in its sidecar.
 Amended 2026-11-17, §16.263 C2047: the sheet list's note ends `each sheet's own page or its CSV sidecar has its headers]`, since a
 sheet page whose first row passed its budget showed no header.
@@ -43146,13 +43146,16 @@ C1848). C1848's 600-character headers cell and 200-character first-row value app
 the budget renders byte for byte as before. Dropping the cuts makes things worse: `_fit` stops at the first line that
 does not fit, so one huge headers cell would push every later sheet off the index, and one huge first-row value every
 later column off the Schema (the verifier's measure). The cuts stay and scale: a headers cell gets 600 characters or,
-when more, a fourth of each sheet's share of the room past 2,048 bytes after 200 bytes for its row, and a streamed
+when more, a fourth of each sheet's share of the cap less 3,072 bytes (the index's 1,024-byte reserve and 2,048) after
+200 bytes for its row, and a streamed
 first-row value 200 or a fourth of each column's share of the cap less 5,120 after 128 bytes for its row; the row's
 allowance keeps one wide-character cell (4 bytes a character) from leaving its own row no room. The docstring and the dated line say a list whose cells are within
 that limit renders as before and a longer cell ends `…`, its whole text on the sheet's page or in its sidecar. Test:
 `test_convert_page_cap.py::test_thirty_short_headers_are_all_listed_on_the_index_at_the_default_cap_c2045` and
 `test_convert_page_cap.py::test_a_streamed_first_row_of_wide_characters_still_lists_its_column_c2045`, with C1848's
 test moved to the scaled cut lengths.
+Amended 2026-11-20, §16.268 C2314: the headers cell's share is of the cap less 3,072 bytes, the index's 1,024-byte reserve
+and 2,048, after 200 bytes for its row; the streamed first-row value's sentence already counted its 1,024.
 
 **The index's cut note names the sheet's page or its CSV sidecar** (C2047; `agentsync.convert.xlsx`; amends §16.258
 C1848). `[sheet list truncated at the page size cap: N of M sheets listed; each sheet's own page has its headers]` was
@@ -43809,6 +43812,21 @@ cap by its footer lines (C2254). Tests:
 streamed, over 2,000 characters where 124 and 83 were) and
 `test_convert_page_cap.py::test_an_oversized_first_row_is_shown_with_its_cells_cut_c2022` (the streamed pages now
 show all six rows).
+
+**The index's header formula names its 1,024-byte reserve and the 200-byte row** (C2314; ruling 153;
+`agentsync.convert.xlsx`; amends §16.263 C2045). `_index_body` cuts a headers cell to 600 characters or
+`(cap - 1,024 - 2,048 - 200 * sheets) // (4 * sheets)`, but §16.263's C2045 paragraph and its dated line at §16.258
+put each sheet's share "of the room past 2,048 bytes", a room that reads as the cap: at 8,192 with one sheet
+that gives 1,486 characters where the code gives 1,230 (the verifier's reading at 1faa3f3a). Both now say "a fourth
+of each sheet's share of the cap less 3,072 bytes (the index's 1,024-byte reserve and 2,048) after 200 bytes for
+its row", and `_index_body`'s docstring, which already names the reserve, names the 200-byte row. No code moves.
+Test: `test_convert_page_cap.py::test_the_index_header_formula_says_what_the_code_computes_c2314`.
+
+**The C2045 test checks its 258-character first-row value** (C2255; ruling 153; `tests/test_convert_page_cap.py`).
+`test_thirty_short_headers_are_all_listed_on_the_index_at_the_default_cap_c2045` put `Contoso ` and 250 `v`s on row
+2, which the streamed Schema's First-row value never reads, so it passed with the old 200-character cut put back (the
+verifier's mutation at 1faa3f3a). The value is now row 1 of a second sheet, `Contoso long`, and the test checks it
+whole on that sheet's streamed summary at the default cap; the first sheet's 30 headers and the index checks stay.
 
 ### 16.269 Round 42: the prompt goes to v39 (the paths and folder states setup printed), the gate's stop lines, and the guides (2026-11-20, wave B13 round 42 lane D)
 

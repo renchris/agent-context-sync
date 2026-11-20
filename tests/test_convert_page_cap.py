@@ -18,7 +18,7 @@ from openpyxl.comments import Comment
 
 from agentsync import policy, setup_report
 from agentsync.config import ConvertConfig
-from agentsync.convert import _common, registry
+from agentsync.convert import _common, registry, xlsx
 from agentsync.convert import text as text_mod
 from agentsync.convert._common import GUARD_RESERVE, _cap_body, _fence
 from agentsync.convert.base import make_unit
@@ -540,24 +540,51 @@ def test_a_row_cap_with_no_formula_writes_no_formulas_sidecar_c2300(tmp_path: Pa
     assert not [n for n, _ in page.sidecars if n.endswith(".formulas.txt")] and "formula" not in page.body
 
 
+def test_the_index_header_formula_says_what_the_code_computes_c2314(tmp_path: Path) -> None:
+    """B13 round 42 C2314: the contract said a headers cell gets "a fourth of each sheet's share of the room
+    past 2,048 bytes", which reads as the cap and gives 1,486 characters at 8,192 with one sheet; the code
+    takes the index's 1,024-byte reserve off first and gives 1,230. The words now name the cap less 3,072
+    bytes and the 200-byte row, and the sentence's number is the one a headers cell is cut to."""
+    contracts = " ".join(Path("docs/design/CONTRACTS.md").read_text(encoding="utf-8").split())
+    said = "each sheet's share of the cap less 3,072 bytes (the index's 1,024-byte reserve and 2,048)"
+    assert contracts.count(said) >= 2 and "share of the room past 2,048" not in contracts
+    assert xlsx._INDEX_RESERVE + 2048 == 3072
+    cap, chars = 20_000, (20_000 - 3072 - 200) // 4  # one sheet: 4,182 characters
+    book = openpyxl.Workbook()
+    ws = book.active
+    assert ws is not None
+    ws.title = "Contoso"
+    ws.append(["Contoso " + "h" * 9000, "b"])
+    src = tmp_path / "contoso.xlsx"
+    book.save(src)
+    index = _pages(src, cap)[0].body
+    assert "Contoso " + "h" * (chars - 9) + "…" in index and "Contoso " + "h" * (chars - 8) + "…" not in index
+
+
 def test_thirty_short_headers_are_all_listed_on_the_index_at_the_default_cap_c2045(tmp_path: Path) -> None:
     """B13 round 41 C2045: the index's headers cell was cut at 600 characters at any cap, so thirty headers
     of 27 characters (868 with their separators) listed 21. The cut stays (one huge cell must never push
     every sheet off the index) but scales with the room, so at the default cap all 30 are listed; a streamed
-    first-row value of 258 characters stays whole too."""
+    first-row value of 258 characters stays whole too. Round 42 C2255: that value sat on row 2, which the
+    Schema never reads, so the test passed with the old 200-character cut; it is now a second sheet's first
+    row."""
     book = openpyxl.Workbook()
     ws = book.active
     assert ws is not None
     ws.title = "Contoso"
     heads = [f"Contoso column header {c:04d}" for c in range(30)]
     ws.append(heads)
-    ws.append(["Contoso " + "v" * 250] + ["x"] * 29)
+    ws.append(["x"] * 30)
+    ws2 = book.create_sheet("Contoso long")
+    ws2.append(["Contoso " + "v" * 250] + ["x"] * 29)
+    ws2.append(["y"] * 30)
     src = tmp_path / "heads.xlsx"
     book.save(src)
     index = _pages(src, 1_000_000)[0].body
     assert ", ".join(heads) + " |" in index and "…" not in index
-    summary = _pages(src, 1_000_000, xlsx_stream_threshold_bytes=0)[1].body
-    assert "| A | Contoso column header 0000 |" in summary
+    pages = _pages(src, 1_000_000, xlsx_stream_threshold_bytes=0)
+    assert "| A | Contoso column header 0000 |" in pages[1].body
+    assert "| A | Contoso " + "v" * 250 + " |" in pages[2].body
     small = _pages(src, 8192)[0].body
     assert _size(_pages(src, 8192)[0]) <= 8192 and "Contoso column header 0029" in small
 
