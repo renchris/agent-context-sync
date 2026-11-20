@@ -6495,7 +6495,9 @@ def test_the_newer_copy_paragraph_quotes_the_summarys_cause() -> None:
 def test_g8_says_the_two_reports_number_a_deduplicated_id_apart() -> None:
     """B13 round 7 H69: §16.65 G8 said `reports-2` keeps `<source-2>` "as in the Python report", while the
     Python report spends no number on the id its folder pair covers, so `reports-2` is its `<source-1>`; the
-    shell report numbers by table place (`test_the_shell_report_keeps_a_deduplicated_ids_own_number`)."""
+    shell report numbered by table place (`test_the_shell_report_keeps_a_deduplicated_ids_own_number`). B13
+    round 42 C2238: since round 41's C2071 the shell report numbers as the Python report does, so `reports-2`
+    is `<source-1>` in both (lane RB's dated line at §16.73's H69 paragraph says so)."""
     from agentsync.setup_report import Redactor  # noqa: PLC0415
 
     red = Redactor()
