@@ -42786,6 +42786,8 @@ each now names the head's rule from `report_cuts.PATH_HEADS`: the provider rule 
 debug_line writes a debug value raw; install.sh's `debug_path` writes the cwd, source and config paths in `printf
 %q`'s one-line form, the home as `~`, and both say so, as §16.300's `--debug` bullet now does (the report compares a
 path with the cwd in that same form, never decoded). Docs only. Test: `test_the_debug_docs_name_debug_paths_printf_q_form_c2034`.
+Amended 2026-11-20, §16.265 C2311: a `$'...'` form is never compared: bash 3.2 writes a non-ASCII, newline or control
+byte that way, and the dollar-quote cut takes the whole value to `<path>`, under the cwd or not, in both reports.
 
 **The C1833 test holds both reports** (C2056). Its docstring said the agentsync report numbers a refused name's
 configured folder where the shell cuts at the provider folder, so only the shell line was held; since C1882 both print
@@ -43361,6 +43363,33 @@ and `test_both_reports_apply_each_heads_rule_to_any_path_ruling_142`.
 
 **The C2071 test says what it pins** (C2240; ruling 149). The source id `it` cuts the pronoun as well, as
 `<source-N>`, and the test now asserts that line; keeping the pronoun would print the id in clear.
+
+**Other lanes' report halves** (C2222, C2238; lane RB's items, this file's words). The first sync's note
+`-waited-for-an-unrecorded-holder`, with counts and alone, reads `after waiting for the sync lock to be free` in the
+Installer row and the Summary, and `_FIRST_SYNC_NOTE_WORDS` names the bare token (C2222). `_DEBUG_RE`'s docstring cuts a
+config path wherever it lies but the default, and `_unconfigured_ids`' says the shell numbers a vanished id after its
+configured ones on the same counter (C2238). Tests: the first-sync note tests in `test_setup_report.py`.
+
+**Configuration names a [convert] setting** (C2210 with C2221; ruling 154). After the `[network] proxy` line,
+`- [convert]: default`, or `- [convert]: set (<option names>)`, `max_page_bytes` with its number and `pandoc_path` by
+name only; then, from the manifest meta `convert_options`, `; changed in run N: local and inbox pages made under other
+converter options are read again`, which an older manifest leaves out. Lane RA's finding: the pandoc probe line printed
+a configured `pandoc_path` under the home in clear; `_add_pandoc_cut` registers it as a whole-path cut. Test:
+`test_the_configuration_names_a_convert_setting_and_the_run_it_changed_in_c2210_c2221`.
+
+**The Loop line keeps the checkout's install.sh whole** (C2211 with C2216). `loop_next_text` keeps
+`~/.local/bin/agentsync` and `~/src/agent-context-sync/scripts/install.sh` whole, so the recording wait's command runs as
+shown; any other path is cut to its last part. Test: `test_loop_stage_and_next_text`.
+
+**A shared library named with an address keeps its prefix** (C2288 with C2241). `_provider_parts` splits the app and an
+optional `SharedLibraries-` for `_org_of` and the email branch, so the folder reads
+`OneDrive-SharedLibraries-<org-N>`. This report numbers that library `<library-N>` where the shell numbers it
+`<folder-N>`, a separate mismatch, so the C2071 both-reports test holds the shell equal for that provider only on lines
+with no folder or library number. Tests: the C2071 tests in both files.
+
+**A dollar-quoted debug value is cut whole** (C2311; amends §16.260 C2034). Docs and a test only: over real `/bin/bash` debug_path output in
+both locales, each `$'...'` value prints `<path>`, both reports alike. Test:
+`test_both_reports_cut_each_dollar_quoted_debug_value_whole_c2311`.
 
 ### 16.266 Round 42: the installer: an older build's render cuts the config path, a two-character id takes one rule in both reports, and C2060 waits on the operator (2026-11-20, wave B13 round 42 lane RB)
 
