@@ -28616,6 +28616,43 @@ def test_the_free_text_scan_judges_a_tenants_whole_run_ruling_146() -> None:
         assert got == f"saw {head}{want}", (said, got)
 
 
+def test_the_configuration_names_a_convert_setting_and_the_run_it_changed_in_c2210_c2221(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 42 C2210 with C2221 (ruling 154): a [convert] setting showed nowhere in the report, though an
+    edit re-reads every local and inbox page. Configuration says `- [convert]: default`, or `set (...)` with
+    each changed option's name, max_page_bytes's number shown and pandoc_path's value never; and, from the
+    manifest meta an edit leaves, the run it was made in, which an older manifest leaves out."""
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    assert "- [convert]: default\n" in section(text, "Configuration") + "\n"
+    pandoc = Path.home() / "Tools" / "Zephyrine Quarry" / "pandoc"
+    with fake_mac["config"].open("a", encoding="utf-8") as fh:
+        fh.write(f"\n[convert]\nmax_page_bytes = 8192\npandoc_path = {toml_string(str(pandoc))}\n")
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    conf = section(text, "Configuration")
+    [line] = [ln for ln in conf.splitlines() if ln.startswith("- [convert]")]
+    assert line == "- [convert]: set (max_page_bytes 8192, pandoc_path)", line
+    # B13 round 42 (lane RA's finding): the pandoc probe line printed the configured path in clear
+    assert "Zephyrine" not in text and "Tools" not in line, [
+        ln for ln in text.splitlines() if "Zephyrine" in ln
+    ]
+    cfg = load_config(fake_mac["config"])
+    db = Path(str(cfg.state_paths.db)).expanduser()
+    db.parent.mkdir(parents=True, exist_ok=True)
+    m = manifest_mod.Manifest(db)
+    try:
+        m.set_meta(setup_report._CONVERT_OPTIONS_META, "0123abcd 7")
+    finally:
+        m.close()
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    [line] = [ln for ln in section(text, "Configuration").splitlines() if ln.startswith("- [convert]")]
+    assert line == (
+        "- [convert]: set (max_page_bytes 8192, pandoc_path); changed in run 7: local and inbox pages made "
+        "under other converter options are read again"
+    ), line
+    assert setup_report._CONVERT_OPTIONS_META == cycle._CONVERT_OPTIONS_META
+
+
 def test_a_config_cut_runs_to_its_path_tokens_end_c2290() -> None:
     """B13 round 42 C2290 (ruling 147; privacy; makes worse True for a boundary-only match): the whole-config
     cut replaced the literal alone, so `sources.toml-PrivateBackup` printed its suffix after the cut, and a

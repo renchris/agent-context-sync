@@ -153,6 +153,7 @@ from agentsync.config import (
     OS_JUNK_EXCLUDES,
     SOURCE_ID_RE,
     Config,
+    ConvertConfig,
     load_config,
     toml_string,
 )
@@ -6076,10 +6077,23 @@ def _build_redactor(r: _Run) -> Redactor:
     for target in sorted(set(targets), key=len, reverse=True):
         red.add("path", target)
     _add_config_cut(red, r.config_path)
+    if r.config is not None and r.config.convert.pandoc_path is not None:
+        _add_pandoc_cut(red, r.config.convert.pandoc_path)
     return red
 
 
-def _add_config_cut(red: Redactor, path: Path) -> None:
+def _add_pandoc_cut(red: Redactor, path: Path) -> None:
+    """Register a configured ``[convert] pandoc_path`` under this home as one cut, as the config path is
+    (:func:`_add_config_cut`), so the pandoc line and doctor's read ``~/<path>`` (B13 round 42, lane RA's
+    finding while building C2210; privacy): the probe printed the path as configured and nothing registered
+    its folders. A path outside this home (``/opt/homebrew/bin/pandoc``) names no person and stays."""
+    for form in dict.fromkeys((path, expand(path))):
+        _add_config_cut(red, form, kept=None, home_only=True)
+
+
+def _add_config_cut(
+    red: Redactor, path: Path, *, kept: str | None = report_cuts.CONFIG_DEFAULT, home_only: bool = False
+) -> None:
     """Register the config path, but :data:`report_cuts.CONFIG_DEFAULT`, as one cut (B13 round 41 C2063 with
     C2083; privacy): its ~-form cut by :func:`_cut_path`, never its raw absolute form
     (``/<path>``), so ``~/Projects/Zephyr Quarry/cfg/sources.toml`` reads ``~/Projects/<path>``; registered
@@ -6088,7 +6102,8 @@ def _add_config_cut(red: Redactor, path: Path) -> None:
     relative under --cwd or absolute, printed its folders in clear in both reports. B13 round 42 C2231 (ruling
     147): the ~-form is cut unredacted, as install.sh's config_shown cuts it, so a config under a configured
     folder or organization reads ``~/Library/CloudStorage/<path>`` in both reports, where the redacted form
-    kept ``OneDrive-<org-1>/<folder-1>`` here alone."""
+    kept ``OneDrive-<org-1>/<folder-1>`` here alone. ``kept`` is the one form left in clear, ``home_only``
+    cuts only a path under this home (:func:`_add_pandoc_cut`)."""
     home = Path.home()
     homes = {str(home), os.path.realpath(home)}
     forms = {str(path)}
@@ -6101,8 +6116,10 @@ def _add_config_cut(red: Redactor, path: Path) -> None:
                 return "~" + form[len(h.rstrip("/")) :]
         return None
 
+    if home_only and tilde(str(path)) is None:
+        return
     shown_as = tilde(str(path)) or str(path)
-    if shown_as == report_cuts.CONFIG_DEFAULT:
+    if shown_as == kept:
         return
     shown = _cut_path(shown_as)  # unredacted, as install.sh's config_shown cuts it (B13 round 42 C2231)
     for form in [*forms, *filter(None, map(tilde, forms))]:
@@ -8041,6 +8058,7 @@ def _configuration(r: _Run) -> list[str]:
     tenant = c.graph.tenant not in ("", "organizations", "common")
     out.append(f"- [graph] tenant: {'set' if tenant else 'not set'}")
     out.append(f"- [network] proxy: {'set' if c.network.proxy else 'not set'}")
+    out.append(_convert_line(c))
     out.append(_policy_line(c))
     out.append(_excludes_line(c, r.red))
     state_dir = expand(c.state_dir)
@@ -8226,6 +8244,53 @@ def _add_backs(c: Config, meta: Callable[[str], str | None], vanished: list[str]
     except Exception:
         return []
     return list(cycle.vanished_add_backs(c, meta, vanished))
+
+
+_CONVERT_OPTIONS_META = "convert_options"
+"""``cycle._CONVERT_OPTIONS_META``: ``"<fingerprint> <run id>"``, the run in which ``[convert]`` last changed
+(B13 round 41 C2021), read here by name so the report never imports the cycle to read one key."""
+
+
+def _convert_line(c: Config) -> str:
+    """Configuration's ``[convert]`` line (B13 round 42 C2210 with C2221, ruling 154): ``- [convert]:
+    default``, or ``- [convert]: set (<option names>)`` naming each option that differs from
+    :class:`ConvertConfig`'s default, ``max_page_bytes`` with its number and ``pandoc_path`` by its name
+    only, never its value (a path that can name the person); then, from the manifest meta an edit after the
+    first synced run leaves (:data:`_CONVERT_OPTIONS_META`), the run it was made in. An older manifest, or
+    one with no such edit, adds nothing. A page cap someone set showed nowhere, though an edit re-reads
+    local and inbox pages."""
+    default = ConvertConfig()
+    names = [
+        f"max_page_bytes {c.convert.max_page_bytes}" if f.name == "max_page_bytes" else f.name
+        for f in dataclasses.fields(ConvertConfig)
+        if getattr(c.convert, f.name) != getattr(default, f.name)
+    ]
+    line = f"- [convert]: set ({', '.join(names)})" if names else "- [convert]: default"
+    run = _convert_changed_run(c)
+    if run:
+        line += (
+            f"; changed in run {run}: local and inbox pages made under other converter options are read again"
+        )
+    return line
+
+
+def _convert_changed_run(c: Config) -> int:
+    """The run :data:`_CONVERT_OPTIONS_META` names, 0 when there is none to read: no manifest, an older one
+    with no such key, a value this build cannot parse, or any read error (the line must print even then)."""
+    db = expand(c.state_paths.db)
+    try:
+        if not db.is_file():
+            return 0
+        conn = _open_manifest_ro(db, 1.0)
+        if conn is None:
+            return 0
+        try:
+            stored = (_meta_on(conn, _CONVERT_OPTIONS_META) or "").split()
+        finally:
+            conn.close()
+    except (OSError, sqlite3.Error):
+        return 0
+    return int(stored[1]) if len(stored) >= 2 and stored[1].isdigit() else 0
 
 
 def _meta_on(conn: sqlite3.Connection, key: str) -> str | None:
