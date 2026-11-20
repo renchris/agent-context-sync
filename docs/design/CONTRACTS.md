@@ -39115,6 +39115,10 @@ and 0bd4aa961).
 Amended 2026-11-17, §16.263 C2001: the zero-byte branches raise `policy.ZERO_BYTES_REASON`, `empty-output (the file holds 0 bytes)`,
 in place of `EMPTY_OUTPUT_REASON`, which describes text the file never had; the prefix, the class and the stub are as
 before, and a zero-byte or blank `.txt` stays a page.
+Amended 2026-11-20, §16.268 C2219: a zero-byte row an older build settled with a converter's own type mismatch
+is read once more through `stage_if_empty` and ends `empty`, under the source's one-shot `zero-bytes-v1` token
+(ruling 155's one amendment of ruling 132); a label, refused, no-converter, withheld, hydration-refused or
+path-length row never is.
 
 **The engines' `-v` lines take the colon form** (C909; `agentsync.convert`; amends §16.221 C719). `engine()` in
 `convert/ocr.py`, `convert/media.py` and `convert/speech.py` logged `on-device OCR is failed: the OCR helper was
@@ -40636,6 +40640,10 @@ from now on has no cache entry, so a damaged page of one (a text type's page; a 
 rather than rendered again from the cache.
 Amended 2026-11-14, §16.253 C1645: the `Not built here` sentence is built by C1466's skip, not by the key move: only
 a zero-byte file has the canonical hash the older answer sits under, and it never reads the cache.
+Amended 2026-11-20, §16.268 C2219: a zero-byte row an older build settled with a converter's own type mismatch
+is read once more through `stage_if_empty` and ends `empty`, under the source's one-shot `zero-bytes-v1` token
+(ruling 155's one amendment of ruling 132); a label, refused, no-converter, withheld, hydration-refused or
+path-length row never is.
 
 **A test kills its helper through the helper's own Popen, never a bare pid** (C1272; `tests/test_ocr.py`). The C961
 test's `finally` (C1036's red-run cleanup) sent SIGKILL to the helper's bare pid after its green path had asserted
@@ -41445,6 +41453,10 @@ class) and `test_convert_family.py::test_only_an_office_name_or_msg_carries_the_
 Amended 2026-11-14, §16.253 C1645, C1646: the option changes no result; C1466's skip below is what keeps the older
 answer away, and the option is a second guard. The first test turns that skip off around its second sync, so the
 key move alone answers there.
+Amended 2026-11-20, §16.268 C2219: a zero-byte row an older build settled with a converter's own type mismatch
+is read once more through `stage_if_empty` and ends `empty`, under the source's one-shot `zero-bytes-v1` token
+(ruling 155's one amendment of ruling 132); a label, refused, no-converter, withheld, hydration-refused or
+path-length row never is.
 
 **Zero bytes skip the cache both ways** (C1466; `agentsync.convert`; amends §16.243 C1304). Every zero-byte file of
 a suffix shares one canonical hash, so whatever answer a build once cached for zero bytes under a key still in use
@@ -42047,6 +42059,10 @@ of `NOT_IMAGES`),
 `Registry.default` with an OCR and a media engine: `quarantine_class` gives `empty`, and the cache has no entry).
 Amended 2026-11-16, §16.258 C1852: `fourteen typed names` read `eleven`, the count C930's test listed; the Office
 guard's C930 branch held `.pptx`, `.xlsm` and `.vsdm` too.
+Amended 2026-11-20, §16.268 C2219: a zero-byte row an older build settled with a converter's own type mismatch
+is read once more through `stage_if_empty` and ends `empty`, under the source's one-shot `zero-bytes-v1` token
+(ruling 155's one amendment of ruling 132); a label, refused, no-converter, withheld, hydration-refused or
+path-length row never is.
 
 **A table whose header or first row passes the page cap rides in its sidecar** (C1676; `agentsync.convert.text`,
 `agentsync.convert.xlsx`). `ConvertConfig.max_page_bytes` is a hard cap, but `PlainTextConverter._table` kept the
@@ -43974,6 +43990,27 @@ pptx's `_EMITTER_VERSION` stays at its one move this round (C2272's 1.0.3). Test
 `test_convert_formats.py::test_a_potx_whose_type_holds_a_character_reference_is_read_as_a_deck_c2303` (an escaped
 template and an escaped family token, UTF-8 and both UTF-16 orders, the staged file untouched) and
 `test_convert_formats.py::test_a_word_typed_potx_with_an_escaped_family_is_told_as_not_its_type_c2303`.
+
+**A zero-byte row an older build settled with a type mismatch is read once more** (C2219, makes worse True for an
+unbounded re-read; ruling 155's one amendment of ruling 132; `agentsync.cycle`; amends §16.233 C930, §16.243 C1304,
+§16.248 C1450 and §16.253 C1647). C930, C1304, C1450 and C1647 kept a row an older build settled at 0 bytes with
+`not-ooxml`, `not-msg`, `not a WebVTT transcript` or the image or recording type mismatch in that class until its
+bytes changed, so C2001's `empty` reached only new files (the rehearsal's report). Re-reading any zero-byte stub
+whose reason is not `empty` makes things worse: a label refusal, a `no converter` stub (a `.png` with no engine) or
+a withheld one answers the same every time and would be read on every sync (the verifier's measure). The lead's
+ruling 155 allows one bounded read: `_Cycle._reread_zero_byte_stubs`, after the queue and the recording re-plan,
+takes each quarantined row of a local or inbox source listed at 0 bytes this pass, not dataless, in scope, not in
+the queue and not withheld as settling (C2293's skip set), whose reason is one of `_zero_byte_mismatches()` (`policy.NOT_OOXML_REASON`, `msg.NOT_MSG_REASON`,
+`image._NOT_RASTER`, `vtt._NOT_VTT`, `recording._NOT_RECORDING`, exact), stages it through
+`LocalArm.stage_if_empty` (no byte read, never hydrated; a probe that answers None leaves it to the queue) and
+converts it as a re-read with the whole registry, so it ends `empty` (or a label refusal, as a new file would).
+Once every such row was looked at, the source's `zero-bytes-v1:<source>` manifest token is set and no cycle looks
+again, whatever a read answered. A row already `empty-output` and a `.docx` holding bytes that are no ZIP are never
+read; a `.drawio`'s old `conversion failed` stub, whose words vary, is left out. Tests:
+`test_convert_family.py::test_a_zero_byte_stub_an_older_build_settled_is_read_once_and_no_more_c2219` (read once,
+then never, under an answer that stays a mismatch; a `.docx` with bytes and a `no converter` stub never),
+`test_convert_family.py::test_the_zero_byte_reread_reads_no_byte_and_leaves_a_file_that_grew_c2219`, and the c1304,
+c1450 and c1466 tests, whose older rows now end `empty` after one sync.
 
 ### 16.269 Round 42: the prompt goes to v39 (the paths and folder states setup printed), the gate's stop lines, and the guides (2026-11-20, wave B13 round 42 lane D)
 

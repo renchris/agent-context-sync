@@ -350,7 +350,11 @@ def test_a_zero_byte_vtt_after_an_older_builds_cached_result_is_empty_c1304(
     assert row.state is RowState.QUARANTINED and row.state_reason == policy_mod.ZERO_BYTES_REASON
     assert quarantine_class(row.state_reason) == "empty"
     assert _row(config, "Contoso standup.vtt").state is RowState.LIVE, "a transcript still converts"
-    assert _row(config, "Contoso earlier.vtt").state_reason == vtt_mod._NOT_VTT, "settled: kept, no re-read"
+    earlier = _row(config, "Contoso earlier.vtt")  # read once more (B13 round 42 C2219, ruling 155)
+    assert (
+        earlier.state_reason == policy_mod.ZERO_BYTES_REASON
+        and quarantine_class(earlier.state_reason) == "empty"
+    )
 
 
 def _older_zero_byte_answers(old: pytest.MonkeyPatch, *, older_key: bool = True) -> None:
@@ -418,6 +422,7 @@ def test_a_zero_byte_office_file_or_msg_after_an_older_builds_cached_result_is_e
     earlier = _row(config, f"Contoso earlier{suffix}")
     assert earlier.state_reason == older
     assert quarantine_class(older) == "not the type its name says"
+    older_hash = _options_hash(config, f"Contoso earlier{suffix}")
     (src / f"Contoso zero{suffix}").write_bytes(b"")
     if real is not None:
         real(src / f"Contoso real{suffix}")
@@ -427,10 +432,14 @@ def test_a_zero_byte_office_file_or_msg_after_an_older_builds_cached_result_is_e
     row = _row(config, f"Contoso zero{suffix}")
     assert row.state is RowState.QUARANTINED and row.state_reason == policy_mod.ZERO_BYTES_REASON
     assert quarantine_class(row.state_reason) == "empty"
-    assert _options_hash(config, f"Contoso zero{suffix}") != _options_hash(config, f"Contoso earlier{suffix}")
+    assert _options_hash(config, f"Contoso zero{suffix}") != older_hash
     if real is not None:
         assert _row(config, f"Contoso real{suffix}").state is RowState.LIVE, "a real file still converts"
-    assert _row(config, f"Contoso earlier{suffix}").state_reason == older, "settled: kept, no re-read"
+    earlier = _row(config, f"Contoso earlier{suffix}")  # read once more (B13 round 42 C2219, ruling 155)
+    assert (
+        earlier.state_reason == policy_mod.ZERO_BYTES_REASON
+        and quarantine_class(earlier.state_reason) == "empty"
+    )
 
 
 @pytest.mark.parametrize(("suffix", "older"), [(".docx", NOT_OOXML_REASON), (".msg", NOT_MSG_REASON)])
@@ -465,7 +474,61 @@ def test_a_zero_byte_file_is_never_served_a_cached_answer_under_its_own_key_c146
     assert ConverterCache(config.cache_dir).get(out.action_key).reason == older, "the old entry stays"
     if suffix == ".docx":
         assert _row(config, "Contoso real.docx").state is RowState.LIVE, "a real file still converts"
-    assert _row(config, f"Contoso earlier{suffix}").state_reason == older, "settled: kept, no re-read"
+    earlier = _row(config, f"Contoso earlier{suffix}")  # read once more (B13 round 42 C2219, ruling 155)
+    assert (
+        earlier.state_reason == policy_mod.ZERO_BYTES_REASON
+        and quarantine_class(earlier.state_reason) == "empty"
+    )
+
+
+def test_a_zero_byte_stub_an_older_build_settled_is_read_once_and_no_more_c2219(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 42 C2219 (ruling 155 amends ruling 132 once): a zero-byte row an older build settled with a
+    converter's own type mismatch is read once more through `stage_if_empty` (no byte read) and ends `empty`;
+    the source's `zero-bytes-v1` token then holds, so a read whose answer is the same mismatch is never
+    repeated. A `.docx` that holds bytes keeps its `not-ooxml` stub unread, and a `no converter` stub is
+    never one."""
+    config, src = make_env(tmp_path)
+    with monkeypatch.context() as old:
+        _older_zero_byte_answers(old)
+        (src / "Contoso earlier.docx").write_bytes(b"")
+        (src / "Contoso bytes.docx").write_bytes(b"Contoso plain text, no ZIP header\n")
+        (src / "Contoso blank.unknownext").write_bytes(b"")
+        assert run(config).exit_code == 0
+        assert _row(config, "Contoso earlier.docx").state_reason == NOT_OOXML_REASON
+        assert _row(config, "Contoso bytes.docx").state_reason == NOT_OOXML_REASON
+        tries = _tries(old)
+        for _ in range(2):  # the older answer stays, so the re-read's answer is the same mismatch
+            assert run(config).exit_code == 0
+        assert tries.count("Contoso earlier.docx") == 1 and "Contoso bytes.docx" not in tries, tries
+        assert "Contoso blank.unknownext" not in tries
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(cycle_mod._ZERO_BYTES_META + "src") == "done"
+    tries = _tries(monkeypatch)
+    assert run(config).exit_code == 0
+    assert tries == [], "the token holds: no zero-byte re-read again"
+    assert _row(config, "Contoso earlier.docx").state_reason == NOT_OOXML_REASON
+
+
+def test_the_zero_byte_reread_reads_no_byte_and_leaves_a_file_that_grew_c2219(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 42 C2219: the one-shot re-read stages through `stage_if_empty`, never a fetch; a probe that
+    answers None (the file holds bytes now) stages nothing and converts nothing."""
+    config, src = make_env(tmp_path)
+    with monkeypatch.context() as old:
+        _older_zero_byte_answers(old)
+        (src / "Contoso earlier.msg").write_bytes(b"")
+        assert run(config).exit_code == 0
+    probed: list[str] = []
+    monkeypatch.setattr(
+        cycle_mod.LocalArm, "stage_if_empty", lambda self, item, dest: probed.append(item.rel_path) or None
+    )
+    tries = _tries(monkeypatch)
+    assert run(config).exit_code == 0
+    assert probed == ["Contoso earlier.msg"] and tries == []
+    assert _row(config, "Contoso earlier.msg").state_reason == NOT_MSG_REASON
 
 
 def test_convert_file_neither_reads_nor_writes_the_cache_for_zero_bytes_c1466(tmp_path: Path) -> None:

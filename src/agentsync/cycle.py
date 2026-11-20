@@ -248,6 +248,33 @@ they are not read again for the same ``for``, and the second record keeps that t
 comes back.  ``reading``: the file being read when the record was stored, cleared when its read ends; a
 cycle that finds one was killed in that read, and counts it as a failed one.  ``done`` counts in the first
 record only: no file on this Mac was left to read again, so no cycle looks until one leaves such a file."""
+_ZERO_BYTES_META = "zero-bytes-v1:"
+"""``zero-bytes-v1:<source_id>``, a local or inbox source's one-shot zero-byte re-read token: set once
+``_Cycle._reread_zero_byte_stubs`` has looked at every row it names, so each such row is read once and never
+again (B13 round 42 C2219, ruling 155's one amendment of ruling 132 for C930's settled rows)."""
+
+
+def _zero_byte_mismatches() -> frozenset[str]:
+    """The converters' own type-mismatch answers an older build gave a file of no bytes (before C930, C1050,
+    C1647 and C2001 said ``empty`` for it): a zero-byte row settled with one of these is read once more
+    (``_reread_zero_byte_stubs``).  A label refusal, ``refused:``, ``no converter``, a withheld,
+    hydration-refused or path-length stub is never one: their answer is the same however often the file is
+    read.  Imported here, not at the top: msg loads ``convert.pandoc``, which doctor defers (round 23 A67)."""
+    from agentsync.convert import image as image_mod  # noqa: PLC0415 - doctor defers convert.pandoc, msg's
+    from agentsync.convert import msg as msg_mod  # noqa: PLC0415
+    from agentsync.convert import vtt as vtt_mod  # noqa: PLC0415
+
+    return frozenset(
+        {
+            content_policy.NOT_OOXML_REASON,
+            msg_mod.NOT_MSG_REASON,
+            image_mod._NOT_RASTER,
+            vtt_mod._NOT_VTT,
+            recording_mod._NOT_RECORDING,
+        }
+    )
+
+
 _REREAD_BATCH = 20  # files asked for at a time, and read between two lock beats
 _CONVERTER_DISTS = ("olefile", "openpyxl", "pdfminer.six", "pypandoc_binary", "pypdfium2", "python-pptx")
 """The distributions the converters read files with (pyproject.toml's dependencies), whose installed
@@ -4621,6 +4648,7 @@ class _Cycle:
             skip = queued | set(scan.withheld)
             try:
                 self._replan_recording_stubs(src, arm, acc, skip)  # reads no recording byte (C2039)
+                self._reread_zero_byte_stubs(src, arm, acc, skip)  # reads no byte (C2219)
                 self._reread_source(src, arm, acc, skip)
             except Exception as exc:
                 # Reading files again is extra work on a source that has synced: what stops it is reported
@@ -5414,6 +5442,63 @@ class _Cycle:
             key = f"{RECORDING_OCR_DOWN_META}{row.source_id}:{row.stable_id}"
             if row.state_reason == NO_CONVERTER_PREFIX + suffix and self.manifest.get_meta(key) == "1":
                 self._mark_ocr_down_for(src, row, row.state_reason)
+
+    def _reread_zero_byte_stubs(
+        self, src: SourceConfig, arm: LocalArm, acc: _SourceAcc, skip: set[str]
+    ) -> None:
+        """Read once more each row of ``src`` an older build settled at 0 bytes with a converter's own type
+        mismatch (:func:`_zero_byte_mismatches`), so it ends ``empty`` as a new zero-byte file does (B13
+        round 42 C2219, ruling 155's one amendment of ruling 132 for C930's settled rows).  Only a row listed
+        at 0 bytes this pass, not dataless, in scope, not in the queue and not withheld as settling (C2293's
+        skip set), is probed, through ``LocalArm.stage_if_empty``, which reads no byte and never hydrates; a
+        probe that answers None (the
+        file holds bytes now, or moved) stages nothing and leaves the row to the queue.  The empty copy is
+        converted as a re-read (a conversion that gives what the row has moves only its key) with the whole
+        registry, as ``_empty_recording`` does.  Once every such row was looked at, the source's
+        :data:`_ZERO_BYTES_META` token is set and no cycle looks again, whatever a read answered: a re-read
+        is never unbounded.  Never in a dry run."""
+        key = _ZERO_BYTES_META + src.id
+        if self.dry or self.manifest.get_meta(key):
+            return
+        mismatches = _zero_byte_mismatches()
+        named = [
+            row
+            for row in self.manifest.iter_items(src.id, states=(RowState.QUARANTINED,))
+            if not row.is_dir
+            and not row.dataless
+            and row.size == 0
+            and row.state_reason in mismatches
+            and arm.in_scope(row.rel_path)
+        ]
+        rows = [r for r in named if r.last_seen_run == self.run_id and r.stable_id not in skip]
+        for start in range(0, len(rows), _WORK_BATCH):
+            self.lock.beat(f"work:{src.id}")
+            with self.manifest.transaction():
+                for row in rows[start : start + _WORK_BATCH]:
+                    self._zero_byte_reread(src, arm, row, acc)
+                self._flush_changes()
+        if len(rows) == len(named):  # every row looked at: the token holds
+            self.manifest.set_meta(key, "done")
+
+    def _zero_byte_reread(self, src: SourceConfig, arm: LocalArm, row: ItemRow, acc: _SourceAcc) -> None:
+        """One row of :meth:`_reread_zero_byte_stubs`: staged empty or not at all, then converted again."""
+        try:
+            fetched = arm.stage_if_empty(_item_from_row(row), self.staging)
+        except Exception as exc:  # it stays as it is
+            log.info("%s: %s, listed empty, was not staged: %s", row.source_id, row.rel_path, exc)
+            return
+        if fetched is None:
+            return
+        try:
+            if fetched.size != 0:  # a backstop: the probe stages only an empty file
+                return
+            self._whole_registry = True
+            try:
+                self._after_fetch(src, row, fetched, acc, reread=True)
+            finally:
+                self._whole_registry = False
+        finally:
+            _discard_staged(fetched, self.staging)
 
     def _recording_load(self, source_id: str) -> _Recordings:
         """The source's recording record, read once a cycle and kept current here.  A ``reading`` mark in it
