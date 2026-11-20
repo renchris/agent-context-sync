@@ -3059,6 +3059,67 @@ block from `ded96e18` as the old copy), outputs `round42/`. While its slots run,
 `round42/tools/trunk.sh`, never a fetch in the operator checkout (C1470, C1661, C2066). The stop rule names Codex and
 Gemini: a clean round without Gemini goes to the operator before the loop closes.
 
+### B13 round 42: v38 rehearsal, cross-lane review, harvest, Codex beside Claude; Gemini not run (2026-11-20)
+
+Run `wf_0647e720-b68` on `1faa3f3a` (BASE `4041089d`), codex-only, 138 agents with no errors: 121 raw findings, 109
+confirmed (0 turns, 22 wrongs, 87 small, as the verifiers classed them), 12 refuted (C2206, C2223, C2226, C2227, C2228,
+C2276, C2277, C2278, C2281, C2282, C2283, C2289). All six rehearsal scenarios passed on v38 at `1faa3f3a`. No turn, but
+the stop rule is not met (22 wrongs). Four items need prompt words: a NEXT reading `no folder is synced yet` came with
+step 2's exit 0 (C2316), the prompt read `~/agent-context`'s config and docs whatever paths the installer printed
+(C2317), a source of another kind on the inbox folder had no words of its own (C2212, C2309's prompt half), and the
+label and purge sentences needed new words (C2310 with C2319), so the prompt goes to v39. Seventeen items are data
+integrity, 13 of them privacy, and the wrongs share six root causes: a report cut a value short of its end, or for the
+newest writer only (C2285 with C2235 and C2271, C2230 with C2284, C2320, C2286, C2287, and C2263 behind the operator's
+open decision); the inbox was known by spelling and kind, not as the folder (C2318, C2309, C2207); a record split where
+its writer did not end it (C2299, C2302); the options re-read missed pages and the docs promised more (C2243 with
+C2291, C2292, C2256, C2297); a recording's state outlived its cause (C2205, C2244, C2293); and the prompt assumed what
+setup would print (C2316, C2317). Codex gave 22 opinions, none disputed. Gemini did not run (C2280; the allow rule for
+`~/.claude/scripts/agy-review.sh` is the operator's, backlog `8ed9dae0fbc0`). The lead's triage (`round42/triage.md`)
+placed every item once.
+
+Lead rulings for round 42 (in `lanes/COMMON41.md`, mirrored in `docs/lanes/COMMON.md`): (146) the free-text provider
+scan judges the whole run a tenant can hold, the same in both reports, reversing ruling 142's no-`/` residual; (147)
+every spelling of a config path or name a report holds is cut to its end, whichever build wrote or renders it; (148) a
+head's value has one bound in both reports, with a second kept divergence declared beside ruling 138's; (149) a
+two-character source id, and each id's and folder's number, take one rule in both reports, lanes RA and RB landing the
+halves of rulings 146 to 149 in one run; (150) C2263 is built only on the operator's "Allow it" on class C decision
+`1476293d00a3`, and otherwise round 41's strict xfail stays; (151) the inbox is one folder, known by identity through
+one `paths.same_folder`, and every reader says what sits on it; (152) a record ends only at the byte its writer ends it
+with; (153) a capped page shows all the cap leaves room for, completing ruling 143; (154) a [convert] edit re-reads
+every local and inbox page converted under other options after the first recorded sync, and every reader says exactly
+that; (155) a recording's page, mark and saved pieces follow the state it is in now, ruling 132 amended once for
+C2219's one bounded re-read; (156) the prompt reads the paths and folder states its installer printed and goes to v39
+in lane D's one commit, after lanes B and RB land the lines it quotes, as ruling 145 took it to v38. The triage's 22
+calls, each drafted one way so nothing waits (convictions 60 to 90), are filed as one class B packet with their courses
+kept: decision 342ec4f53471. Once every course is on origin/main, the packet is marked with `cc-decide action`, so its
+expiry fires nothing (C2267).
+
+C2263 (round 41's C2060) is gated on the operator's open class C decision `1476293d00a3`: lane RB reads it at start and
+before its last land, builds it only on "Allow it", from `round42/verify-c2060-rebased.diff`, in a commit of its own
+the joint run never waits for, and otherwise leaves round 41's strict xfail in place, §16.266 saying C2263 stays
+unbuilt (ruling 150). Not items, and first on round 43's harvest list: a quote wrapping a whole argument
+(`'--cwd=~/<outside>/<name with a blank>'`, `'--source-local=…'`) leaks a later word in both reports (C2275's
+verifier), and `--cwd=is not a folder this run can enter: <name>` leaves the name in clear in both (C2236's verifier);
+ruling 148 keeps the first out of the passing test. The SharedLibraries `<folder-N>` and `<library-N>` mismatch goes in
+lane RA's note for that harvest (C2288 with C2241).
+
+Convergence: confirmed as before, then 81, then 109; turns as before, then 0, then 0; wrongs as before, then 17, then
+22.
+
+Lanes (`--account auto`, CONTRACTS §16.265 to §16.269, plain `scripts/ship-land.sh`, scratch under `round42/`): RA 23
+(the Python halves and both-reports rows of rulings 146 to 149 first, sent to lane RB; C2210 with C2221's Configuration
+line), RB 11 (C2230 with C2284 alone first, then the shell halves of rulings 146 to 149 landed with RA's in one run,
+and C2263 only on the operator's word), B 17 (ruling 151's `same_folder` and inbox lines, sent to lanes D and RB first,
+ruling 154's re-read and ruling 155's recording states), E 23 (rulings 152 and 153, and ruling 155's probe, piece key
+and C2219's one re-read), D 22 (the v39 prompt commit after lanes B's and RB's printed lines land, then the gate's stop
+lines (C2273 with C2315) and the guides). No lane passes 25, so none splits; if RA or E grows past 25, E splits into E1
+(the page cap) and E2 (pandoc, speech, recording, arm_local and C2219's converters). The lead holds 13: round 43's kit
+(C2203, C2204, C2213 with C2279, C2214, C2224, C2229), the brief (C2217, C2218, C2225, and the halves of C2215 and
+C2279), C2266 (the harvest's scan for a fetch in the operator checkout and the launch read's sha, with
+handoff-fire.sh's cold-worktree fetch fired to claude-infrastructure), C2267 (packet `5cc252cd0e8a`'s row closed with
+`cc-decide action`) and C2280 (Gemini). The specs cite `1faa3f3a`'s line numbers, and the kept lessons in
+`lanes/COMMON41.md` and `docs/lanes/COMMON.md` now say so.
+
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be

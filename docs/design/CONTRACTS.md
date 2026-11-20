@@ -43288,6 +43288,26 @@ lane RA's 48e4c6b78). C2060 (a listed name step 1 spelled with a backslash, regi
 (§16.261, 399b9cb64's strict xfail), so the rows claim nothing about it. Test:
 `test_the_guides_rows_give_each_heads_rule_for_any_path_as_both_legends_do_c2051`.
 
+### 16.265 Round 42: the report: the free-text scan judges a tenant's whole run, every spelling of a config path cut to its end, and one bound for a head's value (2026-11-20, wave B13 round 42 lane RA)
+
+Reserved for round 42 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 42").
+
+### 16.266 Round 42: the installer: an older build's render cuts the config path, a two-character id takes one rule in both reports, and C2060 waits on the operator (2026-11-20, wave B13 round 42 lane RB)
+
+Reserved for round 42 lane RB of B13.
+
+### 16.267 Round 42: the inbox known as a folder, the options re-read dated by the run that converted a page, and a recording's page following its state (2026-11-20, wave B13 round 42 lane B)
+
+Reserved for round 42 lane B of B13.
+
+### 16.268 Round 42: the converters: a record ends where its writer ends it, a capped page shows all the cap leaves room for, and picture pieces keyed on their own revision (2026-11-20, wave B13 round 42 lane E)
+
+Reserved for round 42 lane E of B13.
+
+### 16.269 Round 42: the prompt goes to v39 (the paths and folder states setup printed), the gate's stop lines, and the guides (2026-11-20, wave B13 round 42 lane D)
+
+Reserved for round 42 lane D of B13.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units

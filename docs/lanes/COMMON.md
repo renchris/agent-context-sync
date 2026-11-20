@@ -1,16 +1,16 @@
-## Common brief for every B13 round 41 lane (agent-context-sync)
+## Common brief for every B13 round 42 lane (agent-context-sync)
 
 Read `~/.cache/agentsync-bring-back/b13/lanes/COMMON.md` first: its rules (including the ones on `git stash`
 and the words check-names flags), method, land and finish steps all apply unchanged. This file states only what
-differs in round 41.
+differs in round 42.
 
-Context: plan `docs/plans/bring-back-ocr.md`, sections "B13 round 40 landed" and "B13 round 41" (the v37 rehearsal,
+Context: plan `docs/plans/bring-back-ocr.md`, sections "B13 round 41 landed" and "B13 round 42" (the v38 rehearsal,
 cross-lane review and harvest whose confirmed findings you build). Main is at or after the commit that reserved
-CONTRACTS §16.260 to §16.264.
+CONTRACTS §16.265 to §16.269.
 
-Specs: each item is `~/.cache/agentsync-bring-back/b13/round41/items/<id>.md`. It holds the finder's evidence and
+Specs: each item is `~/.cache/agentsync-bring-back/b13/round42/items/<id>.md`. It holds the finder's evidence and
 fix, then an adversarial verifier's evidence and corrected fix. Build the verifier's corrected fix. The finder's
-full report is the file named under "Source" (`~/.cache/agentsync-bring-back/b13/round41/*.md`): read the part
+full report is the file named under "Source" (`~/.cache/agentsync-bring-back/b13/round42/*.md`): read the part
 about your item. Items that describe one defect from several finders are built once; say so. Round 23's:
 
 THE OWNERSHIP RULE (lead ruling, round 21; every lane builds to it): a state file or folder THIS account owns but
@@ -1578,7 +1578,7 @@ test_convert_image.py's docstring say fourteen typed names (C1852, lane E), and 
 image or recording is `empty` where a converter reads it and `no converter` where none does, from lane B's words
 (C1853, lane D).
 
-ROUND 41 RULINGS (lead; every lane builds to them; all code-only but C2092, which takes the prompt to v38):
+ROUND 41 RULINGS (lead; still binding, as extended below):
 (142) Each head in ruling 137's table carries one rule that both reports apply to any path, wherever it lives,
 completing rulings 133 and 137 (privacy; data integrity: lanes RA and RB, FIRST, one joint run, lane D after it;
 C2062 with C2031 and C2085, C2084, C2060, C2063 with C2083, C2029, C2028, C2050 with C2032, C2030, C2027, C2071,
@@ -1671,92 +1671,276 @@ this commit. No other lane edits the README setup prompt block, its version or i
 words the prompt quotes sends lane D those words first. C2053 stays out of the prompt, as its verifier says. Round
 42 rehearses v38, the prompt the operator will paste, with v37's block as the old copy.
 
-Clusters: the report's other words (three docstrings on each --source-local head's rule, C2052; debug_path's %q form
-in two docstrings and the --debug bullet, C2034; the C1833 test checking both reports, C2056; one list-spelling
-helper, arm_local.list_escaped_char, C2035; the Loop line's own bracket when status did not give its reading, C2013;
-lane RA); the shell report's tests (every empty-head guard reached, C2036; C1836's fail-closed refusal driven end to
-end, C2037; lane RB); the CLI (a clustered -vh or -hv read as help by the pre-parse --fields scan, C2040; lane B);
-conversion (a zero-byte file's own `empty-output (the file holds 0 bytes)` reason, C2001, makes worse True; pandoc's
-crash line from its `pandoc:` lines only, C2048; the csv field limit raised under a lock, C2049; lane E); docs and
-tooling (step 1's timeout tail and `config_err=timeout` in setup-feedback.md, the prompt unchanged, C2053;
-`--version --help --fields` without --json, C2058; §16.259's cross-references, C2059, makes worse True; a gate part
-that stops writing its journal stopped and named, so a hang never holds the land lock, C2065; ruling 138's dated
-line naming packet d24c7a8ee6bc, C2069; round 40's CI times, C2070; the rehearsal form of the no-lock, no-remove
-rule in COMMON.md's kit note, C2077; lane D). Lead: round 42's kit (the operator checkout's start and end reads
-through a kit script with fixed git reads and no command argument, the labels free to differ and the contents
-diffed, run.sh's fresh-restore check unchanged, C2016 with C2010 and C2020, makes worse True for C2010 and C2020;
-crun.sh's helper cut picking Doctor's call by its caller and its C1410 label read from Doctor's lines, C2014;
-crun.sh's C1223 key on the `Cut off:` line and the installed module's own wording, C2015, makes worse True;
-seedstore.sh printing a masked home, C2008; usertmp.sh's guarded stat, its window wording and a play-gitfail step's
-.start, C2009, C2017 and C2019; a swap script recording each stand-in with content pins that kitcheck and helpercmp
-read, C2011; restore, snap and moveback reading psroot.sh's exit code, C2018; fixcheck.sh's saved label, C2024; a
-per-home fixture check right after each step 1, C2025; the kit's umbrella gaps, psroot's pid-chain cut kept, C2072,
-makes worse True), the brief's rules (home, sb and the kit set up before the first command naming the operator
-checkout, C2002; /bin/bash -n and the `(pattern)` form for kit scripts, C2003; ls -ln or stat with relative names
-for typed listings, C2005; a safe count idiom, LC_ALL=C on display seds and a sha256 record before a new kit file's
-first run, C2012; a fresh mktemp -d in place of any removal in the review and verify briefs, C2077's half), every
-lead trunk read through trunk.sh or lane-status.sh with no fetch, stated in the Lead paragraph, C2066, makes worse
-True, the plan's records (b74445af in round 39's section, C2067; lane D's 7686c6eb in round 40's landed count,
-C2068; round 40's residuals and 30,338 bytes, the numbering item dropped, C2075), and Gemini neither run nor
-refused, its allow rule still the operator's (backlog 8ed9dae0fbc0), the lead note's wording corrected, C2078.
-Earlier rounds are in COMMON5.md to COMMON39.md.
+ROUND 42 RULINGS (lead; every lane builds to them; the prompt goes to v39 in lane D's one commit, ruling 156):
+(146) The free-text provider scan judges the whole run a tenant can hold, the same in both reports, completing
+ruling 142's free-text part (privacy; data integrity: lanes RA and RB, one joint run; C2285 with C2235 and C2271).
+The keep test ran on the part up to its first blank, so a tenant whose first word is a kept generic word
+(`OneDrive-Personal Secret/Plans`) printed whole, while a run to the next `/` swallowed a later path. The long
+candidate now runs across blanks from the part's start to the first `/`, FREE_PART_STOP, blank before `~/` or `/`
+(an independent path start, which no tenant name holds) or line end, and never stops at a blank before `-`
+(`Northwind - EMEA`). A part whose first word is not kept is cut whole to that bound, _FREE_MORE_RE following only a
+`/` and FREE_WORD_TRAIL's give-back kept, so `…/OneDrive-Northwind Traders then ~/Documents/x` reads
+`~/Library/CloudStorage/<path> ~/Documents/x` and `OneDrive-Tailspin Toys` at a line end is cut whole: this reverses
+ruling 142's no-`/` residual (C2271) and leaves the head-less tenant the only one of its kind. A kept first word is
+judged on its whole run only when the run reaches its `/`, so `OneDrive-Personal and ~/Documents/x` stays whole and
+`OneDrive-Personal Secret then ~/x` is the second named residual (C2235, makes worse True for bounding the not-kept
+arm at its blank word, which printed `Traders`). setup_report._free_provider_cuts and install.sh's freecut with its
+report_cuts-generated block change in one commit, with parity rows for every example here and C2050's, in both
+locales. Lane RA builds the Python halves and both-reports rows of rulings 146 to 149 first and sends lane RB its
+branch sha; lane RB builds the shell halves on that branch and lands both in one scripts/ship-land.sh run, so trunk
+never carries one half.
+(147) Every spelling of a config path or name a report holds is cut to its end, whichever build wrote or renders it
+(privacy; data integrity: lane RB first and alone for the fallback, lanes RA and RB in the joint run; C2230 with
+C2284, C2290, C2231, C2320 with C2239). An older installed build renders a non-default config path in clear, and
+install.sh kept that render (C2230 with C2284): write_report's fallback gains report_config_lines after
+report_cwd_lines, behind `other -eq 1`, firing when $CONFIG's ~-form is not CUT_CONFIG_DEFAULT and config_shown
+would cut it, or when install.out holds a `debug: config ` head whose value is neither empty nor the default; the
+C2028 'none' control moves to the default config; never a recut port. The whole-config cut runs to the end of its
+path token on every line, Redactor._sub through one compiled regex per literal and the shell's config pairs through
+a new awk flag, keeping a sentence-final `.` and every terminator (C2290, makes worse True for a boundary-only
+match). Python cuts the config's unredacted ~-form, as config_shown does (C2231). _toml_spellings builds the old
+writer's base (json.dumps with ensure_ascii off, DEL in its escaped form) beside the current one, never by reversing
+escapes, and replaces every TOML_BREAKS character in every form, so a pre-af21e6339 add-source echo of a name
+holding a line break and a tab, control byte or DEL is cut as the shell cuts it; the loop C2239 called dead is live
+again and stays, its docstrings corrected, and the legacy rule is one named helper in setup_report.py citing
+config.toml_string (C2320 with C2239).
+(148) A head's value has one bound in both reports: an empty value, a quoted name, the `=` form and the count read
+alike (privacy; data integrity: lanes RA and RB in the joint run; C2286 with C2242, C2234, C2236, C2321 with C2237,
+C2265, C2275). A value is empty only before `| ` and another `debug: ` head, or in the double-space form: Python's
+head regex takes an empty value only there, its cwds list takes non-empty values only, and dbcwd, dbunder and
+dbconfig guard the same way with `v != ""` kept, so an empty cell neither eats the next one nor replaces the carried
+cwd (C2286 with C2242, makes worse True for allowing every empty value); _CWD_NAME_RE and _NOT_A_FOLDER_RE take an
+empty name as written. A name that runs to install.sh's own ` (see --help)` end is taken whole, quotes included,
+slone through nfend, and only an end-of-line name opening with a quote ends at its matching quote, the rest of its
+line kept (C2234, makes worse True for ending every quoted name there). install.sh's --cwd usage words stay whole
+only after a head ending in a blank, never after `--cwd=` (C2236). The --cwd usage-error cut is not counted, as the
+shell counts none, the not-a-folder and refused --source-local names are, and the legend, setup_report's :1194
+docstring and CONTRACTS' C331 passage name exactly those counted cuts (C2321 with C2237, makes worse True for
+uncounting them). install.log's relative --source-local word keeps its `./` or `../` head in the agentsync report
+and is cut whole in the shell report: a second kept divergence beside ruling 138's, declared in both legends,
+report_cuts.py:139, §16.255 and setup-feedback.md:103 and pinned by a both-reports test, with no output changed;
+COMMON41.md's ruling 138 stays as written and this ruling amends it (C2265, makes worse True for converging). The
+property test gains C2275's two `--cwd=` rows outside CloudStorage, never the form whose quote wraps the whole
+argument.
+(149) A two-character source id, and each id's and folder's number, take one rule in both reports at every entry
+point (privacy; data integrity: lane RB with lane RA's half in the joint run, lane D for the words; C2287 with
+C2232, C2233, C2202, C2240, C2261, C2262 with C2312). A 2-character source id is a whole word in any case in both
+reports: Redactor.add sets ignore_case for a 2-character source id not in capitals, the shell's short_pair stays as
+it is, and the vanished-source and hold-scope loops call short_pair after add_pair with the same <source-N>; never a
+flag-w source pair, which C2071 rated worse, and a word id such as `it` keeps the report Private only where its
+placeholder shows (C2287 with C2232). The shell's id loop finds the placeholder that hides an id (an org key, a
+fuzzily registered folder key, a two-letter capitals word exactly) before it counts, skips an id under 2 characters,
+decodes TOML escapes, numbers only on a miss and always registers the pair (C2233). install.sh registers
+install.log-only names after every value the agentsync report numbers, so configured and listed folders share their
+<folder-N> and a product word such as `Copilot` stays unnumbered (C2202, makes worse True for numbering it in both).
+The C2071 test says what it pins (C2240). Lane D writes from both lanes' final words: §16.260 names short_pair's
+flags (w for a two-letter word in capitals, i for any other short id) and fallback_redaction's judgment (C2261), and
+setup-feedback.md:102 keeps its pinned phrase and makes a report Private only where a two-letter word's placeholder
+shows, `HR` and `QX` leaving it public (C2262 with C2312).
+(150) C2060 is gated on the operator, so C2263 is built only on "Allow it" and nothing else writes its change
+(privacy; data integrity: lane RB, GATED; lane D for C2259; C2263, C2259). The auto-mode classifier refused lane
+RB's round 41 C2060 edit, the operator's class C decision 1476293d00a3 is still open, and a refused command is never
+re-run or reworded. Lane RB reads `cc-decide show 1476293d00a3` at start and before its last land. On "Allow it" it
+applies round 41's text as rebased in round42/verify-c2060-rebased.diff (list_decoded before redaction_pairs, the
+decode block after short_pair, short_pair kept), drops the strict xfail on
+test_both_reports_cut_a_folder_step_1_listed_but_not_configured_ruling_142 and rewrites §16.261's C2060 paragraph as
+built, in one commit of its own that the joint run never waits for; a second refusal stops it, and it messages the
+lead. Otherwise round 41's strict xfail stays and §16.266 says C2263 stays unbuilt. No lane writes an equivalent
+install.sh change another way. Lane D's guide says what is true at its land: while C2263 is unbuilt, the folder row
+names the listed-only gap in a caveat pinned to that xfail, with §16.264 C2051's dated line (C2259); if C2263 lands
+after it, lane RB's commit drops the caveat and its pin, the one docs/deploy edit outside lane D.
+(151) The inbox is one folder, known by identity, and every reader says what sits on it (data integrity: lane B
+first, then lanes RB, RA and D; C2318, C2309, C2207, C2258). One paths.same_folder (lexical equality, then the
+collision_key gate, then samefile, OSError False; cli._same_folder kept as an alias) answers "is this the inbox
+folder" for config.ensure_inbox, Publisher.root_guide, add-source's inbox-first branch and the report's overlap
+pairing, so `Inbox` and `inbox` on a case-insensitive Mac are one source (C2318). add-source's inbox-first branch
+asks whether any source is already on the kept folder, never whether an inbox source exists elsewhere, and
+_ensure_inbox prints `inbox: <path> is source '<id>' (<kind>, <state>), not an inbox source` when another kind sits
+there (C2309). _ensure_inbox words a failure by cause, a file or dangling link with the move-aside advice and any
+other OSError with its strerror and no advice, still exit 0; install.sh's config line drops its `(inbox ensured)`
+claim, init's own line saying what happened, and its note logs `inbox=not-added`; the report's Configuration
+`inbox:` line reads sources.toml and the folder from disk through same_folder (`live`, `paused`, `retired` or `not
+added (<reason>)`), never "any live inbox source" (C2207). Lane D writes "Setup keeps an inbox" at README:54 and
+docs/deploy/README.md:127, with the paused, retired, not-added and another-kind cases, and CONTRACTS :5097 and
+:9037; lane RB moves the string pins (test_install_oneshot.py:1313 and :12938, test_launcher.py:690) in its own
+commit (C2258).
+(152) A record ends only at the byte its writer ends it with: a reader splits on that byte, never with
+str.splitlines() or strip(), and a writer escapes or quotes every line break inside a record (data integrity; lane
+E; C2299, C2302, C2301, C2304, C2252). pandoc's _own_lines splits stderr bytes on LF and tests `pandoc:` on bytes,
+so a warning holding CR, VT, FF, 0x1C to 0x1E, U+0085, U+2028 or U+2029 before `pandoc:` copies no warning text into
+an error (C2299, privacy); a conversion run's non-zero exit names its first record that is not `[WARNING]`, `[INFO]`
+or indented, through _plain, `--version` gives _ended its whole stderr through _plain, and the crash branch keeps
+_own_lines (C2252). _csv_bytes writes a row with a CR in a field through a QUOTE_ALL writer, every other row's bytes
+unchanged, tested on 3.11 (C2302). The xlsx comment sidecar escapes backslash, newline, CR and tab and strips
+nothing, one record per line, and §16.263's sentence says so (C2301, makes worse True for raw text).
+speech._git_config reads `git config -z --type=path --get-urlmatch http <url>`, split on NUL bytes, decoded with
+surrogateescape, unstripped, an empty proxy kept (C2304; test_deploy_pack.py:6087's quote in lane E's commit).
+text.py and xlsx.py move _EMITTER_VERSION once each (ruling 153); no _REREAD_BELOW moves, so a sidecar already
+written takes these fixes when its file next changes, and §16.268 says so.
+(153) A capped page shows all the cap leaves room for, keeps whole what a cut drops, and the words say what the cap
+bounds, completing ruling 143 (lane E; data integrity for C2300; C2208, C2272, C2254, C2268, C2300, C2220 with
+C2306, C2269, C2314, C2255, C2201 with C2209). The text cap's head grows line by line while it and its own fence fit
+(C2208, makes worse True for a cut at the run's line start). _line_head cuts mid-line at a word, else a character,
+boundary when the last line end keeps under half the budget, never inside a `\` escape, and a fence longer than half
+the budget gives way to a short one (C2272; CONTRACTS:11040 and the _cap_body docstring). When the keyframe footers
+leave a window no room, _cap_body works the room out again without them, so the window keeps a keyframe-free page's
+text and passes the cap by its footer lines only (C2254, makes worse True for returning the body uncut). xlsx's cut
+row takes the largest length that fits once the later rows that fit uncut keep their bytes, searched on rendered
+bytes, and the streamed path reserves the real bytes of what follows, not a flat 4,096; a recording's index stays a
+named exception (C2268, makes worse True for filling the room). A cut row cuts value and formula apart, never
+splitting the code span, and every formula cut or left out rides whole in `NN-<slug>.formulas.txt`, counted in the
+footer reserve and named by the row-cap note, with no formula column in the CSV (C2300). config.py's comment, the
+ConvertConfig row and §16.258's and §16.263's sentences say the cap bounds the guarded body and the front matter, up
+to about 1 KB, sits outside it, never budgeted (C2220 with C2306, makes worse True each); §16.258's C2055 line names
+the two exceptions with its prefix kept (C2269); the xlsx header formula names the 1,024-byte reserve and the
+200-byte row (C2314); the C2045 test checks its 258-character value (C2255). text.py and xlsx.py each move
+_EMITTER_VERSION once, to 1.0.4 (an empty text file's 0 lines in text.py's move, C2201 with C2209), each other
+_cap_body caller whose bytes change moves one step, and no _REREAD_BELOW moves.
+(154) A [convert] edit re-reads every local and inbox page converted under other options after the first recorded
+sync, and every reader says exactly that, completing ruling 143's re-read (lane B, lanes E, RA and D for the words;
+C2243 with C2291, C2292, C2270, C2246, C2210 with C2221, C2256 with C2253, C2297, C2308, C2257). A page is dated by
+the run that converted it: _REREAD_SQL compares COALESCE(c.created_run, o.built_run), rewrite_frontmatter's
+built_run stays, since the report reads it, and a rename or a repair from cache no longer exempts a page (C2243 with
+C2291, its three tests). A converter that cannot start keeps its drift targets waiting, under a count check, counted
+in reread_waiting and never `sync again` (C2292); only a converter that made a page for the source is asked whether
+it starts (C2246); _REREAD_OPTIONS reads "have pages made under other converter options", its tested prefix kept and
+"[policy]" gone, and the edit's hash set is stored with its fingerprint, so a BANNER_VERSION or
+SIDECAR_DIGEST_VERSION bump re-reads nothing (C2270). No code opens drift for an edit made before the first recorded
+sync, and recordings and cloud files are not re-read for an options edit (C2297, makes worse True for routing
+recordings through drift and for an upgrade-time re-read; C2256's optional code is not built). Lane B sends its
+words first; lane E's config comment and ConvertConfig row and lane D's README [convert] paragraph, §16.262 C2021
+and §16.264 R41-D1 dated lines carry them once, word for word where they quote each other: those two exceptions, a
+recording keeping its cap until it is read again for another reason (C2256 with C2253), and the re-read's note
+starting `sync again:` only while another sync reads more, the options note after it (C2308, C2257); lane B's
+test_cycle.py tests each limit. The report's Configuration shows `- [convert]: default` or `- [convert]: set
+(<option names>)`, max_page_bytes's number shown and pandoc_path's value never (C2210 with C2221, lane RA).
+(155) A recording's page, mark and saved pieces follow the state it is in now, and only a settled row is re-planned,
+completing ruling 144 (lanes B and E, lane D for the words; C2205, C2244, C2245, C2293, C2249, C2294, C2296 with
+C2251, C2219, C2298 with C2307). An outage stub a read replaces becomes a `unit-removed` tombstone with a neutral
+heading and superseded_by naming its first new page, its status, reason and ChangeOp kept and lints.py's heading
+tuple moved in the same commit, and it leaves the `d` count (C2205). The OCR-down mark is re-judged only in a
+non-dry cycle whose registry holds no recording converter, through _mark_ocr_down (C2244, makes worse True for
+clearing it whenever recordings do not wait on OCR). A re-planned stub is rewritten through _plan_stub with the real
+wait's reason, reading no byte and written only when the reason changes, its page naming the recording line, not
+QUARANTINE.tsv (C2245). Withheld ids join the replan's and the re-read's skip set (C2293). Each re-planned row has a
+savepoint inside its batch, so a raising row rolls back alone and the rows before it commit (C2249, makes worse True
+for a plain catch). stage_if_empty opens with O_NONBLOCK (C2294, lane E). Picture pieces key on their own
+_PIECE_REVISION without max_page_bytes or the emitter version, reading a 1.1.0 or 1.1.1 key once and saving it
+again, the emitter not stepped back (C2296 with C2251, lane E). This amends ruling 132 for C930's settled rows,
+once: a zero-byte LocalArm stub whose reason is a converter's own no-bytes type mismatch is re-read one time through
+stage_if_empty under a `zero-bytes-v1` outdated_key token, never a label, refused, no-converter, withheld,
+hydration-refused or path-length row (C2219, makes worse True for an unbounded re-read; lane E). Lane D writes
+README:254's condition in plain words (OCR on, the media helper built, recordings not turned off) with the
+missing-helper case and no internal name, its test tied to Registry.default and _Cycle._process (C2298 with C2307).
+(156) The setup prompt reads the paths and folder states its installer printed, never a default it assumes, so it
+goes to v39 in lane D's one commit, as ruling 145 took it to v38 (lane D, after lanes B's and RB's printed lines
+land; C2316, C2317, C2212, C2310 with C2319). Whatever step 2's exit status, a NEXT reading `no folder is synced
+yet` or `no folder to sync yet` sends the agent to step 1's last sentences and never to step 3, and step 1's trigger
+and the report exception read "step 2, or the first sync of step 3" (C2316; install.sh's exit 0 stays). Step 2 reads
+the inbox source in the config the installer's `config:` line names, on the folder its `inbox:` line names, step 3
+reads and writes under its `docs repo:` line's folder, and the final inventory comes from the report's Configuration
+or a status listing, ~/agent-context the example default only; lane B prints status's resolved `inbox:` line and
+lane RB the config step's `docs repo:` and `inbox:` lines, each sending lane D its words first (C2317). A source of
+another kind on the inbox folder is told as that source, its id, kind and state from C2309's line, its kind the
+person's edit (C2212). The label sentence matches README:61, and a removed file queues a purge by default only
+(C2310 with C2319). The same commit moves the block's version line and digest, `prompt v39` in step 1's --log-start,
+SETUP_PROMPT_COMPAT in install.sh, setup_report.PROMPT_VERSION and its docstring's version list, the issue form's
+placeholder, setup-feedback.md's version lines and the old-copy refusal list (v38 joins the versions an older copy
+reports), a K62 row, every test that pins the block or a version, and §16.269's dated line; CUT_OFF_TOLD names no
+version and stays. No other lane edits the README setup prompt block, its version or its digest; lane RB adds
+C2316's exit-0 case after it lands. Round 43 rehearses v39, the prompt the operator will paste, with v38's block
+(4c1fd00de) as scenario C's first old copy.
+
+Clusters: the report's other words (the Loop line keeping ~/src/agent-context-sync/scripts/install.sh whole beside
+~/.local/bin/agentsync, C2211 with C2216; a OneDrive-SharedLibraries-<address> folder read as
+OneDrive-SharedLibraries-<org-N> through one _provider_parts helper, C2288 with C2241; the debug paths' %q
+docstrings and a two-locale test that each `$'...'` value is cut whole, C2311; lane RA); the shell report (an
+empty-body lock wait noted `waited-for-an-unrecorded-holder` in both reports, C2222; a timed-out checkout reader's
+tail kept whatever the installed build's fallback answers, C2313; the debug: config and <source-N> comments made
+true, C2238; lane RB); the CLI and tests (the OCR-down meta read only for a recording stub, C2247; two comments on
+the H2 cutoff's options hash, C2248; the C2021 test checking the body only, C2250; the help pre-scan asking the
+parser that owns each token, C2295; the queued-interrupt stub's nap started off the pipe before .queued, C2264; lane
+B); conversion (a .potx's content types read decoded when the byte path finds none, under a bounded safe parse,
+C2303; the CSV field-limit lock test proving its race and restoring the saved limit, C2305; lane E); docs and
+tooling (every result note ending with a 'For later lanes and the rehearsal' section, C2215; the help flag named as
+_asks_help defines it, from lane B's C2295 words, C2260, makes worse True; a 3-hour part ceiling and ship-land's two
+stop lines told apart, the stall bound's wording made true, C2273 with C2315; round 41's ten CI attempts, the
+81-minute head and 100-minute limit unchanged, C2274, makes worse True; lane D). Lead: round 43's kit (g-setup.sh
+writing and reading back its literal bytes, C2203; g-helpers.sh's git reads through run.sh, C2204; crun.sh's native
+C1410 key and its Summary credit by the form shown, C2213 with C2279; the hook's docstring, C2214; step2.sh's
+fixcheck first, read-only checks after the holder and the busy proof last, C2224, makes worse True; one Not used
+text per act, C2229), the brief (no report kept by hand, C2217; run.sh's mkdir and grouped expected-failure reads,
+C2218; the post-edit format hook under the sha-after-checks rule, C2225; quoted grep globs, C2279's half; the
+rehearsal brief reading each note's 'For later lanes and the rehearsal' section, falling back to its Items and
+Corrections, C2215's half), the harvest's scan for a fetch in the operator checkout and the launch read's sha, with
+handoff-fire.sh's cold-worktree fetch fired to claude-infrastructure, C2266; packet 5cc252cd0e8a's row closed and
+`cc-decide action` once a class-B course is on origin/main, C2267; and Gemini neither run nor refused, its allow
+rule still the operator's (backlog 8ed9dae0fbc0), C2280, makes worse True. Earlier rounds are in COMMON5.md to
+COMMON40.md.
 
 Some sit in two lanes: the lane that owns the primary file builds it, and the other cites the sha. In
 `scripts/install.sh` and its tests (test_install_oneshot.py, test_install_help.py, test_install_bounds.py,
-test_install_next_line.py, test_install_list.py, test_install_json.py, test_install_signals.py), lane RB owns
-everything this round, the other lanes' install.sh halves included (ruling 142's regenerated block, C2033's shell
-legend clauses, C2050 with C2032's freecut, C2063's config lines, C2030's awk, C2071's short hold path) and C2065's
-shared harness helper with a timeout, except SETUP_PROMPT_COMPAT's line and the version pins, which lane D's v38
-commit moves. In `setup_report.py`, `report_cuts.py`, `tests/test_setup_report.py` and
-`tests/test_report_redaction.py`, lane RA owns everything, the other lanes' report halves included (C2029's
-debug_cwd, C2006's quarantine rows), except ruling 142's property test's shell half and the both-reports rows lane
-RB's items need, in lane RB's ruling 142 commit, and PROMPT_VERSION with its docstring list and version pins, which
-lane D's v38 commit moves. `cli.py`, `cycle.py` and `publish.py` outside lane E's parts, `loop.py`, `manifest.py`,
-`governance.py` and `ops/doctor.py` outside lane E's parts are lane B's, and this round arm_local's
-LocalArm.stage_if_empty too (C2038 with C2086), which lane E leaves alone. `config.py`'s max_page_bytes comment and
-the ConvertConfig row are lane E's (C2055 with C2091), from lane B's re-read words (C2021); `policy.py`'s zero-byte
-reason is lane E's (C2001). `scripts/gate.sh`, ship-land.sh's stall wording and pyproject.toml's
-faulthandler_timeout are lane D's this round (C2065); lane E keeps pyproject's markers. Only lane D touches
-docs/deploy and the README: setup-feedback.md's `<path>` and `<email-N>` rows (C2051, C2033, C2050, C2071, C2063)
-and its C620 sentence (C2013) are written once from lanes RA's and RB's final words, and README:246 from lane B's
-(C2057 with C2089). Only lane D touches the README prompt block, its version and its digest (ruling 145). Who sends
-first: lane RA sends lane RB its branch sha, the table's rows, the Python reader and its legend words, and lane RB
-lands both halves of ruling 142 in one scripts/ship-land.sh run on lane RA's branch (lane RB rides on it), so trunk
-never carries one half; lane RA lands C2006, C2052, C2034, C2056, C2035 and C2013 after that run, and lane RB C2036,
-C2037 and C2065's helper; lane D's v38 commit waits on no lane; lanes B and E wait on no lane, but lane B sends lane
-E C2021's comment words and lane D its zero-byte recording and README words; lanes RA and RB send lane D their final
-`<path>`, `<email-N>` and config words; every lane sends lane D its final words. A CONTRACTS line that quotes words
-a lane changes, and a test that pins them, move in that lane's own commit, and lane D cites the sha:
-CONTRACTS:42141's `debug: config`, the C1862 residual sentences in §16.251, §16.255 and §16.256, the --debug bullet,
-the amendment at :12152, the C620 paragraph and :42267's citation (lane RA); §16.251's and §16.256's shell sentences
-(lane RB); §16.257's probe paragraph, §16.34's C1820 line and CONTRACTS:42336 (lane B); §16.258's residual and C1886
-paragraphs, the ConvertConfig row near :1414, §16.253's xlsx sentence, the note near :42401 and §16.233 with the
-class table (lane E). Lane D writes the rest once, after the lanes land. COMMON.md's rulings 137 to 141 stay as
-written; rulings 142 to 145 amend them, each by its CONTRACTS dated line. The lead reserves §16.260 to §16.264 on
-origin/main before any lane starts: RA §16.260, RB §16.261, B §16.262, E §16.263, D §16.264. Lanes land with plain
-`scripts/ship-land.sh`, the repo's default lock; no lane names a lock of its own. docs/plans and the kit are the
-lead's.
+test_install_next_line.py, test_install_list.py, test_install_json.py, test_install_signals.py) and
+test_launcher.py's install.sh pins, lane RB owns everything this round, the other lanes' install.sh halves included
+(ruling 146's freecut and generated block, C2290's config-pair flag, C2286's and C2234's dbcwd, dbunder, dbconfig
+and slone, C2265's and C2311's legend and awk words, C2258's config line, C2317's config-step lines, C2316's exit-0
+case), except SETUP_PROMPT_COMPAT's line and the version pins, which lane D's v39 commit moves. In
+`setup_report.py`, `report_cuts.py`, `tests/test_setup_report.py` and `tests/test_report_redaction.py`, lane RA owns
+everything, the other lanes' report halves included (C2207's Configuration `inbox:` line, C2222's note words,
+C2318's overlap pairing through paths.same_folder, C2238's two docstrings, C2261's optional comments, C2312's
+single-id cases), except the shell halves and the both-reports rows lane RB's items need, in lane RB's commits, and
+PROMPT_VERSION with its docstring list and version pins, which lane D's v39 commit moves. `cli.py`, `cycle.py` and
+`publish.py` outside lane E's parts, `loop.py`, `manifest.py`, `governance.py`, `lints.py` but lane E's rule,
+`ops/doctor.py` outside lane E's parts and `tests/test_gate_slot_plugin.py` are lane B's, and this round `paths.py`
+and `config.py` too (C2318's same_folder and ensure_inbox), but config.py's max_page_bytes comment; `arm_local.py`
+is lane E's again (C2294), which lane B leaves alone. config.py's max_page_bytes comment and the ConvertConfig row
+near :1414 are lane E's (C2220 with C2306, C2254, and the exceptions C2256 with C2253 and C2297 name), written once
+from lane B's re-read words. `scripts/gate.sh`, ship-land.sh's status-124 wording, `tests/_gate_journal.py` and
+`tests/test_gate_journal.py` are lane D's (C2273 with C2315). Only lane D touches docs/deploy and the README, each
+line written once from the lanes' final words: the [convert] paragraph and README:254 from lanes B's and E's,
+README:54 and docs/deploy/README.md:127 from lanes B's and RB's, setup-feedback.md's folder, two-character, `<path>`
+and timeout sentences from lanes RA's and RB's. The one exception is C2263's commit, which, if it lands after lane
+D's C2259 caveat, drops that caveat and its pin (ruling 150). Only lane D touches the README prompt block, its
+version and its digest (ruling 156). Who sends first: lane RB lands C2230 with C2284 alone, waiting on no lane; lane
+RA sends lane RB its branch sha with the Python halves and both-reports rows of rulings 146 to 149, and lane RB
+lands both halves in one scripts/ship-land.sh run on that branch, so trunk never carries one half, and that run
+never waits on C2263; lane B sends lane D C2309's line and status's `inbox:` line, and lane RB its config-step
+lines, before either lands them, and lane D's v39 commit lands after both; lane RB adds C2316's exit-0 case after
+v39 lands; lane B sends lanes E and D its re-read and note words and lane D its help-flag and recording words; lane
+E sends lane D its cap and recording words; every lane sends lane D its final words. A CONTRACTS line that quotes
+words a lane changes, and a test that pins them, move in that lane's own commit, and lane D cites the sha: the
+free-text scan text, the C331 passage near :33761, §16.255's divergence wording and the clause at :42770 (lane RA);
+§16.261's C2060 paragraph and the C629 amendment (lane RB); the ConvertConfig row near :1414 and its dated line,
+§16.258's C2055 line, §16.263's C2044 residual, C2055 and comment-sidecar sentences, :11040, the piece-key sentence
+near :11073 and its K63 note, the pandoc line near :43135, :42475, :43089 and test_deploy_pack.py:6087's quote (lane
+E). Lane D writes the rest once, after the lanes land. COMMON.md's rulings 137 to 145 stay as written; rulings 146
+to 156 amend them, each by its CONTRACTS dated line. The lead reserves §16.265 to §16.269 on origin/main before any
+lane starts: RA §16.265, RB §16.266, B §16.267, E §16.268, D §16.269. Lanes land with plain `scripts/ship-land.sh`,
+the repo's default lock; no lane names a lock of its own. docs/plans and the kit are the lead's.
 
 Where the item says "a fix makes things worse? True": first look for a fix that does not (the verifier's
 corrected fix often is one). Build it if you find one. Otherwise record the measured reason in your note, and
 that item is done as not-built. "Cosmetic" or "small" is not a reason.
 
 Scope (frozen): every item id your lane lists is built (a test that fails without it) or carries a measured
-reason a build makes things worse; CONTRACTS text in your lane's reserved section (§16.260 to §16.264); gate green;
+reason a build makes things worse; CONTRACTS text in your lane's reserved section (§16.265 to §16.269); gate green;
 landed through `scripts/ship-land.sh`; CI read back green.
 
-Prompt text: C2092 needs prompt words (ruling 145), so the prompt goes to v38 in lane D's one commit and round 42
-rehearses the prompt the operator will paste. No other lane edits the README setup prompt block, its version or its
-digest; a lane whose fix changes words the prompt quotes sends lane D those words first. If another fix seems to
-need new prompt words, message the lead before you build it.
+Prompt text: C2316, C2317, C2212 (C2309's prompt half) and C2310 with C2319 need prompt words (ruling 156), so the
+prompt goes to v39 in lane D's one commit, after lanes B and RB land the lines it quotes (C2309's line, status's
+`inbox:` line and the config step's `docs repo:` and `inbox:` lines), and round 43 rehearses the prompt the operator
+will paste: v39, with v38's block (4c1fd00de) as scenario C's first old copy. C2298 stays out of the prompt: its
+verifier fixes README:254, outside the block. No other lane edits the README setup prompt block, its version or its
+digest; a lane whose fix changes words the prompt quotes sends lane D those words first, and lane D's prompt commit
+lands after them. If another fix seems to need new prompt words, message the lead before you build it.
 
 Bare commands: every runnable command the code prints names `~/.local/bin/agentsync`, never a bare `agentsync`
 (round 4's Q49).
 
-Dated lines: a dated line in any section other than your item's own (§16.260 to §16.264) begins "Amended
+Dated lines: a dated line in any section other than your item's own (§16.265 to §16.269) begins "Amended
 <date>, §16.NN C<n>". A line that records another round's change reads "Amended <date>, §16.NN C<n> (by §16.NN
-<item>)"; never stamp another round's item id as if it were yours (round 5 F85). Round 40's ids are C1801 to C1890; round
-41's are C2001 to C2092. The dated-line scans read a line of any date since round 19's W71.
+<item>)"; never stamp another round's item id as if it were yours (round 5 F85). Round 41's ids are C2001 to C2092; round
+42's are C2201 to C2321. The dated-line scans read a line of any date since round 19's W71.
 
 Field compatibility: install.sh runs Python through the INSTALLED agentsync, which on a field Mac is older than
 the checkout (round 7 H7: a new import broke step 1 on every Mac set up before round 6). A new name that install.sh's
@@ -1769,12 +1953,12 @@ including possessive "§A's X" targets, and fails unless the target paragraph ha
 
 Dated-line completeness (round 12 lane D): every dated line from §16.92 on must be claimed in its section or
 pinned by a test; after a rebase, claim or pin each one you added. The pin tables in tests/test_deploy_pack.py take
-round 41's rows the same way. A quote in a §16 paragraph counts as a dated line only with a real date, a numeric home
+round 42's rows the same way. A quote in a §16 paragraph counts as a dated line only with a real date, a numeric home
 of §16.92 or later and no `C<n>` template, and test_every_dated_line_from_round_11_on_is_held_by_a_test then calls it
 loose unless it is claimed or pinned: quote the form with `C<n>` or `<date>`, as each section's "A dated line this
 round writes reads" sentence does, or pin it (round 35 C982).
 
-Scratch (round 16 U111): write logs, scratch files and probes under `~/.cache/agentsync-bring-back/b13/round41/
+Scratch (round 16 U111): write logs, scratch files and probes under `~/.cache/agentsync-bring-back/b13/round42/
 scratch-<lane>/`, not in /tmp. The land lock is the repo's own, in its git directory. To damage a manifest for a test or probe, write the
 junk with `python3 -I`, not `dd` (`Bash(dd:*)` is denied).
 
@@ -1855,7 +2039,7 @@ it is missing. Run a lint and the commit it guards as one `&&` chain, never `;`,
 check x | tail -3 && git commit` reads tail's exit, not ruff's (round 33). A new def, test or helper, placed before a
 decorated test goes above that test's decorators (round 33, bb9286d52).
 
-Landing (round 41): land with `scripts/ship-land.sh`, typed exactly so (no env prefix,
+Landing (round 42): land with `scripts/ship-land.sh`, typed exactly so (no env prefix,
 no `bash` in front, its own command). It takes the repo's one land lock (`/Users/chrisren/Development/agent-context-sync/.git/land.lock`, shared with the CLI conventions wave's lands), fetches, reads trunk's CI once without waiting (a run
 already ended red stops it there, exit 6, before the gate), rebases onto origin/main, runs `scripts/gate.sh`,
 waits out and checks trunk's CI, pushes `HEAD:main` with no permission prompt (never forced; a refused push is rebased
@@ -1878,66 +2062,82 @@ note and the owner messaged; never for exit 9: a run that lost its hosted runner
 --failed`) and waited for, never landed past (round 31 C569). The lane that landed a test that is red on CI
 owns its fix until main is green, even after other lanes land on top. CI takes 18 to 81 minutes a run (the slowest, 80:33, in round 39), and a run can wait over an hour for a macOS runner first (63:27 in round 31); its limit is 100 (W80, round 21 Y68, round 22 Z67, round 23 A74, round 24 B98, round 25 D83, round 28 I99, round 29 C207, round 30 C372, round 31 C571, round 32 C662, round 35 C985, round 37 C1290, round 38 C1460, round 40 C1866).
 
-Makes things worse: 12 round 41 items carry "a fix makes things worse? True" (C2001, C2010, C2015, C2020, C2031,
-C2045, C2059, C2062, C2066, C2071, C2072, C2085). For each, the verifier's corrected fix is one that does not, and
-the rulings adopt it (C2001: the new reason, `empty-output (the file holds 0 bytes)`, keeps the class prefix, so
-quarantine_class still reads `empty` and an image's `empty stub` stays, and a 0-byte or whitespace-only .txt stays a
-page (C930's pin), where the finder's reason read as `other` and its .txt test turned ten text types into stubs;
-C2010: run.sh's fresh-restore check stays as it is, and the operator checkout's reads go through a kit script with
-fixed git reads and no command argument (built with C2016), never an exemption keyed on a command's text or a
-log-name prefix, which cannot tell a read from the clone that writes into a home; C2015: crun.sh keys a C1223 probe
-on the `Cut off: the status call did not finish` line inside ## Status and on whether the installed module words
-that cut itself, and takes its verdict from the doctor line's unexpected count, never the Loop line's `not read`
-form, with agentsync unchanged; C2020: the start and end reads may carry different labels and are diffed by their
-contents, with no opc- or other fixed-prefix exemption in run.sh, so the fresh-restore guard still covers every
-command (built with C2016); C2031: the guarded slone leaves a bare word with no slash, backslash or quote as prose,
-as _source_local_shown does, so `--source-local is not an existing folder: ...` keeps its head and its name is cut,
-the not-a-folder and refused names stay always cut, and no CloudStorage-only limit is written down as the rule;
-C2045: the 600- and 200-character per-cell cuts stay (scaled with the cap, never removed), so one huge header or
-first-row value never makes _fit drop the whole sheet list or every later column, and only the docs move to say a
-longer cell ends `…`; C2059: §16.259 is corrected in place and its sha tuples pinned as literal phrases, and no test
-runs git show or log on old shas, which CI's depth-1 checkout lacks; C2062: the same guarded cut leaves prose such
-as `add-source again` and `add-source --help` alone and keeps `is not an existing folder: ` from losing its head to
-`--source-local`'s word, so no CloudStorage line cut today gets a name's tail back, and the guarded variant matched
-the agentsync report on all nine probe rows; C2066: no tool code changes and no `gh api compare`, which spends the
-API quota ship-land needs (it once stopped a land with exit 9); every lead trunk read goes through trunk.sh or
-lane-status.sh, stated as a rule in the Lead paragraph; C2071: the shell's cfgonly and its short-value floor stay,
-Python takes the shell's GoogleDrive-<org-N> form, and a 2-letter id goes through the hold-value rule in both
-reports, so `it`, `is`, `on` and `to` stay words instead of the shell taking Python's over-cut; C2072: psroot.sh's
-pid-chain cut stays, as round 40's C1824 ruled, and a lead wait shell stays out by waiting with a command that does
-not name the absolute root, never by dropping the lead's descendants, which would hide real leftovers; C2085: the
-first-unknown rule's prose guard keeps install.sh's own `agentsync add-source failed after adding it` and
-`add-source opened past it` whole, as the agentsync report does, while `add-source ~/Projects/SecretDeal` reads
-`~/Projects/<path>` in both (built with C2062)): read its "Verifier" part before you build.
-Dated lines: every round 41 dated line reads 2026-11-17, its heading's date (lane D's round 25 test).
+Makes things worse: 21 round 42 items carry "a fix makes things worse? True" (C2202, C2208, C2219, C2220, C2224,
+C2234, C2235, C2237, C2244, C2249, C2254, C2260, C2265, C2268, C2274, C2280, C2286, C2290, C2297, C2301, C2306). For
+each, the verifier's corrected fix is one that does not, and the rulings adopt it (C2202: install.sh registers
+install.log-only names after every value the agentsync report numbers, so configured and listed folders get one
+number in both reports and `Copilot` is never numbered, where numbering it in both turned `GitHub Copilot CLI` into
+`GitHub <folder-N> CLI` (the 2026-10-06 field report); C2208: the head grows line by line only while it and its own
+fence fit, so a page never shows less than today and stays within the cap, where the finder's cut at the run's line
+start left a second long run whose fence took the body to 9,104 bytes at 8,192; C2219: the re-read is one-shot,
+under a zero-bytes-v1 token in the cycle's re-read record, and only for a stub whose reason is a converter's own
+no-bytes type mismatch, probed through stage_if_empty, so a label-refused, no-converter or withheld zero-byte row is
+never re-read on every sync and no report reclass hides a stale stub page, built only under ruling 155's amendment
+of ruling 132; C2220: wording only, the cap bounding the guarded body and the front matter named outside it, where
+budgeting the front matter made a body depend on its path, URL and etag and broke the cache on a rename; C2224:
+fixcheck runs first, before the holder starts, and only read-only dirs and sha checks follow the holder, the busy
+proof last, where the finder's fixcheck after the holder touched folders under a live sync and ate the lockf hold;
+C2234: a name running to install.sh's own ` (see --help)` end is taken whole in both reports, quotes included, and
+only an end-of-line prose name ends at its matching quote, where ending every quoted name at its quote copied the
+shell's `'<path>' Bravo Ridge` leak into Python; C2235: a kept first word's run is judged whole only when it reaches
+its `/`, and a not-kept run is cut whole to its bound, so `OneDrive-Northwind Traders then ~/Documents/x` prints no
+`Traders`, where the finder's blank-bounded not-kept arm printed it; C2237: the counted cuts stay counted and the
+legend names them, where uncounting them reversed ruling 49 and C2027 and broke three pinned tests; C2244: the mark
+is re-judged only in a cycle whose registry has no recording converter, so a stub the background pass did not reach
+stays counted, where clearing it whenever recordings did not wait on OCR dropped it from status; C2249: each row
+gets a savepoint inside its batch, so a raising row's partial writes roll back and the rows before it commit, where
+the plain per-row catch committed a half-written row that stuck at its OCR-down stub; C2254: the room is worked out
+again without the keyframe footers only when they leave none, so a large body is still cut with its full text in
+full-text.txt and the page passes the cap by its footer lines only, where returning the body uncut left a
+19,350-byte page; C2260: the help flag is named as _asks_help defines it after C2295, `-hv` in and `-eh` out, where
+"a cluster ending in h" did the opposite; C2265: no output changes, the second divergence declared in both legends
+and pinned, where converging cut `./<folder-1>` to `<path>` against ruling 49 and overrode ruling 142's
+resolve-under-cwd cut; C2268: the byte-fit search first keeps the bytes of the later rows that fit uncut, so the
+four-sheet book still shows its 6 rows, where filling the room showed 1 of 6 and broke the C2022 assertion; C2274:
+CLAUDE.md's 81-minute head and ci.yml's 100-minute limit stay, since no round 41 job passed round 39's 80:33, where
+raising the head stated a range nobody measured; C2280: nothing changes, Gemini's slots staying out and its second
+opinion null until the operator adds the agy-review allow rule (backlog 8ed9dae0fbc0), where wiring them ran slots
+no settings file allows; C2286: a value is empty only before another debug head, and an empty cwd never replaces the
+carried one (the shell's `v != ""` guard), where allowing every empty value dropped the carried cwd and printed the
+next source path uncut; C2290: the whole-config cut runs to its path token's end on every line, so
+`sources.toml-PrivateBackup` keeps no suffix, where a boundary-only match printed the private folder on any line
+without a head; C2297: docs only, with a test for each limit, where sending recordings through drift redid every
+recording's OCR (the piece key held max_page_bytes until C2296) and treating existing outputs as an edit re-read
+every page on every upgrade under a false note; C2301: each comment is escaped (backslash, newline, CR, tab), one
+record per line, so un-escaping gives its text back byte for byte, where writing it raw let a comment fake another
+cell's record; C2306: docs only, the front matter named outside the cap, where budgeting the serialized file in the
+converter fed the body's own hash and summary back into its budget): read its "Verifier" part before you build.
+Dated lines: every round 42 dated line reads 2026-11-20, its heading's date (lane D's round 25 test).
 
-Regressions: round 41 found 0 turns and 17 wrongs. 12 items are data integrity, all of them privacy, and most share
-one root cause ruling 137 left: a head's rule keyed to where a path lives. The shell report applied the provider and
-first-unknown rules only to words under ~/Library/CloudStorage/, so a private folder elsewhere after --source-local,
---source-local=, add-source or the not-a-folder head printed in clear while the agentsync report cut it (C2062 with
-C2031 and C2085); Python's provider-tail test returned before the first-unknown check and kept an earlier private
-directory (C2084); a folder step 1 listed but the config does not name, spelled with escaped bytes, printed in the
-shell report (C2060); both reports printed a non-default config path (C2063); the shell cut only the first debug:
-head of each kind on a line (C2029); another build's render never got C1835's heads (C2028); a quoted refused or
-not-a-folder name lost the rest of its line in the agentsync report, a regression from C1882 (C2027); and an
-unregistered tenant with a blank kept its later words in both reports (C2050). Ruling 142 gives each head one rule
-for any path and a case outside the expected place in its one property test. Pages still passed the cap: a fence
-that outgrew a backtick run on text and _cap_body pages (C2042 with C2087), and xlsx's sheet page, whose comment and
-object lists no budget held and whose floor's removal left fewer rows, or none (C2043, C2088; ruling 143). A
-recording's waiting state read differently by its readers: the zero-byte probe copied and hashed a recording that
-grew after the walk (C2038), a recording first seen during an OCR outage kept its outage page and dropped out of
-status (C2039), and the report listed a waiting recording as `live | other` under a refused-download legend (C2006;
-ruling 144). A fix that runs in an older installed build is not a fix: test the shell's cut over an older render. A
-word another reader greps for is a contract: when you change a printed phrase, grep install.sh, both reports,
-status, doctor and the guides for it, and test the reader against the writer's own constant, never a copy. Before
-you land a new stop, exit code, wait or person-owned fix, follow its words on a Mac in the state it is meant for AND
-test it on one where it must not fire. A test marked timing is skipped above a load of 4 per core: run any one you
-change with AGENTSYNC_TIMING=1 before you land. scripts/gate.sh re-runs a part's 1 to 20 failed tests once alone and
-convicts only on a second failure, so read a red land's log: a test that failed alone is yours or trunk's, never
-load. A background ship-land can end while its lane believes it is queued: while you wait on the lock, check with ps
-that your ship-land still runs. A test that sends SIGHUP or SIGINT to a child makes the child take that signal's
-default first, because a pytest started under nohup passes SIGHUP on ignored and one started with `&` passes SIGINT
-on ignored (C869 for two tests; b781e539 for C956 and C961). A new signal test must do the same, so a detached gate
+Regressions: round 42 found 0 turns and 22 wrongs. 17 items are data integrity, 13 of them privacy, and the wrongs
+share six root causes. A report cut a value short of its end, or for the newest writer only: the free-text keep test
+read a tenant's first word, so `OneDrive-Personal Secret/Plans` printed whole (C2285; ruling 146); an older
+installed build's render kept a non-default config path in clear (C2230 with C2284), and the Python report lost its
+alias for an add-source echo the old TOML writer wrote (C2320; ruling 147); an empty debug cell took the next cell
+as its value (C2286; ruling 148); a 2-character source id was cut in any case by the shell, only as written by
+Python, and in clear on the vanished and hold-scope lines (C2287; ruling 149); and C2060 stays unbuilt behind the
+operator's open decision (C2263; ruling 150). The inbox was known by spelling and kind, not as the folder: `Inbox`
+and `inbox` became two live sources (C2318), add-source let another kind sit on the inbox folder (C2309), and setup
+said `(inbox ensured)` after `inbox: not added` (C2207; ruling 151). A record split where its writer did not end it:
+pandoc's filter split on Unicode line breaks and could copy warning text into an error (C2299), and a CSV sidecar
+split a lone-CR cell into two records on Python 3.11 (C2302; ruling 152). The options re-read missed pages and the
+docs promised more: a rename or a repair restamped built_run (C2243 with C2291), a converter that could not start
+dropped its targets (C2292), and the README and config promised recordings and edits made before the first recorded
+sync (C2256, C2297; ruling 154). A recording's state outlived its cause: a replaced outage stub said its source was
+removed (C2205), the OCR-down mark outlived the media helper (C2244), and the replan read inbox files still settling
+(C2293; ruling 155). The prompt assumed what setup would print: step 2's no-folder NEXT came with exit 0 (C2316),
+and the prompt read ~/agent-context's config and docs whatever the installer used (C2317; ruling 156). A fix that
+runs in an older installed build is not a fix: test the shell's cut over an older render. A word another reader
+greps for is a contract: when you change a printed phrase, grep install.sh, both reports, status, doctor and the
+guides for it, and test the reader against the writer's own constant, never a copy. Before you land a new stop, exit
+code, wait or person-owned fix, follow its words on a Mac in the state it is meant for AND test it on one where it
+must not fire. A test marked timing is skipped above a load of 4 per core: run any one you change with
+AGENTSYNC_TIMING=1 before you land. scripts/gate.sh re-runs a part's 1 to 20 failed tests once alone and convicts
+only on a second failure, so read a red land's log: a test that failed alone is yours or trunk's, never load. A
+background ship-land can end while its lane believes it is queued: while you wait on the lock, check with ps that
+your ship-land still runs. A test that sends SIGHUP or SIGINT to a child makes the child take that signal's default
+first, because a pytest started under nohup passes SIGHUP on ignored and one started with `&` passes SIGINT on
+ignored (C869 for two tests; b781e539 for C956 and C961). A new signal test must do the same, so a detached gate
 passes it (round 36 C1054). Send the words another lane waits on first, pre-gate with --affected and land once; two
 lanes that share a chain may land jointly under one gate, the shared commit with one owner. A whole-tree test one
 lane owns can turn another lane's gate red: ruling 68's phrase scan reads install.sh's literals too, so a lane that
@@ -1947,16 +2147,20 @@ command holding the word "restore" and before `git push --delete`: leave the wor
 a share branch you would have to delete. If the classifier refuses a command, do not reword it: message the lead. A
 trunk run that lost its hosted runner is rerun, never landed past (ship-land exit 9, round 31 C569); pass
 --allow-red-trunk only after reading a red run's log and finding no test failed. A fresh worktree needs `npm ci`
-before ship-land. The line numbers in the specs are 5affe89cf's; the CLI conventions wave has closed (its last land
+before ship-land. The line numbers in the specs are 1faa3f3ae's; the CLI conventions wave has closed (its last land
 63deb83d, its queue empty), so trunk moves only by the lanes' lands: find a function by name and rebase on each
 land. A ruling for both reports lands both halves in one run, proven by one shared table both read: two halves
 ported by hand drift, so generate the second copy from the first, hold it byte for byte to its source, and run one
 property test over both reports. A shared table protects only the values it holds: every argument form a report
 parses (the = form, nested paths, names with blanks, echoes) must be a row in it and a case in its one property
 test. A rule keyed to where a path lives (under CloudStorage or not) leaks every path outside that place: the rule
-of a head applies to any path, and a test case outside the expected place proves it.
+of a head applies to any path, and a test case outside the expected place proves it. A record ends only where its
+writer ends it: a reader of another program's output splits on the byte that program ends a record with (LF, or NUL
+under -z) and tests its prefix on bytes, never with str.splitlines() or strip(), a writer escapes or quotes every
+line break inside a record, and a test puts CR, VT, FF, 0x1C to 0x1E, U+0085, U+2028 and U+2029 inside one record
+and expects one record back.
 
 Lane peers (round 20 Y80): once all five lanes are live, the lead messages every lane the five session ids. Send a
 seam note straight to the lane that owns the file, and copy the lead only when it changes another lane's scope.
 
-Result note: `~/.cache/agentsync-bring-back/b13/lanes/r41-<lane>.md`.
+Result note: `~/.cache/agentsync-bring-back/b13/lanes/r42-<lane>.md`.
