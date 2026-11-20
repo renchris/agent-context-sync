@@ -7816,6 +7816,11 @@ _ROUND_41_E_PARAGRAPH_AMENDS = (
 """Round 41 lane E's dated lines no one claim holds alone: C2055's at the ConvertConfig row in §15's code
 block, C2001's at §16.28's class table and C2048's at §16.42's signal paragraph, which their claims name with
 no item, and C2043's at §16.258's C1848 paragraph, whose claim also reaches the C1886 one, which names it."""
+_ROUND_42_E_PARAGRAPH_AMENDS = (
+    ("16.42", "`subprocess` reports a child a signal stopped as the negative signal", "§16.268 C2252"),
+)
+"""Round 42 lane E's dated lines no one claim holds alone: C2252's at §16.42's signal paragraph, which its
+claim names with no item."""
 _ROUND_32_B_PARAGRAPH_AMENDS = (
     ("16.200", "**C112, C125, C146, C155, C177, C178, C139, C141, C145, C210: status", "§16.215 C624"),
     ("16.205", "C381 (ruling 34): what governance/ keeps survives the folder's loss", "§16.215 C632"),
@@ -8058,6 +8063,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_40_B_PARAGRAPH_AMENDS,
         *_ROUND_40_E_PARAGRAPH_AMENDS,
         *_ROUND_41_E_PARAGRAPH_AMENDS,
+        *_ROUND_42_E_PARAGRAPH_AMENDS,
         *_ROUND_40_RA_PARAGRAPH_AMENDS,
         *_REVIEW_BACKTEST_PARAGRAPH_AMENDS,
     )

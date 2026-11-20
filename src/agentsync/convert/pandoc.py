@@ -379,9 +379,21 @@ def _own_lines(stderr: bytes) -> bytes:
     """pandoc's own lines in ``stderr``, the ones that start ``pandoc:`` (an uncaught exception, the runtime's
     own, ``pandoc: heap overflow``) at the start of a line, never an indented one, joined; b"" when it wrote
     none.  A ``[WARNING]`` and the lines that
-    continue one quote the document, so a crash or exit line is never taken from them (B13 round 41 C2048)."""
-    lines = stderr.decode("utf-8", errors="replace").splitlines()
-    return "\n".join(ln.strip() for ln in lines if ln.startswith("pandoc:")).encode("utf-8")
+    continue one quote the document, so a crash or exit line is never taken from them (B13 round 41 C2048).
+    A line is a record pandoc ends with LF, split and tested on bytes: a document's CR, VT, FF, 0x1C to 0x1E,
+    U+0085, U+2028 or U+2029 inside a warning never opens a line of its own (B13 round 42 C2299)."""
+    return b"\n".join(rec.strip() for rec in stderr.split(b"\n") if rec.startswith(b"pandoc:"))
+
+
+def _first_cause(stderr: bytes) -> bytes:
+    """The first line of a conversion run's ``stderr`` that is not a ``[WARNING]``, an ``[INFO]`` or an
+    indented line continuing one, split at LF and tested on bytes as :func:`_own_lines` does; b"" when there
+    is none.  pandoc's real errors carry no ``pandoc:`` prefix (``couldn't parse docx file: DocxError``,
+    ``Error parsing YAML metadata ...``), so a non-zero exit names this line (B13 round 42 C2252)."""
+    for rec in stderr.split(b"\n"):
+        if rec.strip() and not rec[:1].isspace() and not rec.startswith((b"[WARNING]", b"[INFO]")):
+            return rec.strip()
+    return b""
 
 
 class _PandocRunner:
@@ -406,16 +418,19 @@ class _PandocRunner:
     def version(self) -> str:
         """``pandoc --version`` as run, e.g. ``3.9`` (cached per instance)."""
         if self._version is None:
-            out, _said = self._run(["--version"], None)
+            out, _said = self._run(["--version"], None, whole=True)
             m = _VERSION_RE.search(out)
             if not m:
                 raise ConversionError(f"cannot parse `pandoc --version` output: {out[:80]!r}")
             self._version = m.group(1)
         return self._version
 
-    def _run(self, args: Sequence[str], workdir: Path | None) -> tuple[str, str]:
+    def _run(self, args: Sequence[str], workdir: Path | None, *, whole: bool = False) -> tuple[str, str]:
         """Run pandoc with ``args`` in a scrubbed environment; return (stdout, stderr); raise
-        ConversionError."""
+        ConversionError.  ``whole`` is the ``--version`` run, which reads no document: its crash and exit
+        lines read its whole stderr through :func:`_plain`, so a pandoc that cannot start (dyld's ``Library
+        not loaded``) says why (B13 round 42 C2252).  A conversion run's crash line reads :func:`_own_lines`
+        only, its exit line :func:`_first_cause`."""
         with tempfile.TemporaryDirectory(prefix="agentsync-pandoc-") as tmp:
             home = Path(tmp)
             env = {"PATH": "/usr/bin:/bin", "HOME": str(home), "LANG": "en_US.UTF-8", "LC_ALL": "en_US.UTF-8"}
@@ -433,12 +448,13 @@ class _PandocRunner:
                 raise ConversionError(f"pandoc timed out after {_TIMEOUT_S:.0f}s") from exc
             except OSError as exc:
                 raise ConversionError(f"cannot run pandoc: {exc}") from exc
-        own = _own_lines(proc.stderr)
         if proc.returncode < 0:  # a crash's own line, paths taken out, as the helpers' (B13 round 40 C1872)
+            own = proc.stderr if whole else _own_lines(proc.stderr)
             ended = _ended(proc.returncode, own, room=_REASON_ROOM - len("pandoc was "))
             raise ConversionError(f"pandoc was {ended}")
         if proc.returncode != 0:
-            said = f": {_plain(own)}" if own else ""
+            cause = proc.stderr if whole else _first_cause(proc.stderr)
+            said = f": {_plain(cause)}" if cause.strip() else ""
             raise ConversionError(f"pandoc exited {proc.returncode}{said}")
         said = proc.stderr.decode("utf-8", errors="replace")
         if said:

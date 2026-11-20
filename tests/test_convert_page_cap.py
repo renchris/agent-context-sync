@@ -612,6 +612,117 @@ def test_pandocs_crash_and_exit_lines_come_from_its_own_lines_only_c2048(
     assert "contoso" not in str(caught.value).lower()
 
 
+def _stub_pandoc(tmp_path: Path, stderr: bytes, end: str, *, version_too: bool = False) -> Path:
+    """A pandoc that writes ``stderr``'s exact bytes and then ends with ``end`` (``exit 1``, ``kill -SEGV
+    $$``): on --version as well when ``version_too``, else --version answers 3.1.2."""
+    said = tmp_path / "said.bin"
+    said.write_bytes(stderr)
+    pandoc = tmp_path / "pandoc"
+    head = "" if version_too else '[ "$1" = --version ] && { echo "pandoc 3.1.2"; exit 0; }\n'
+    pandoc.write_text(f"#!/bin/sh\n{head}cat '{said}' >&2\n{end}\n")
+    pandoc.chmod(0o700)
+    return pandoc
+
+
+_SEPARATORS = ["\r", "\x0b", "\x0c", "\x1c", "\x1d", "\x1e", "\x85", chr(0x2028), chr(0x2029)]
+
+
+@pytest.mark.parametrize("sep", _SEPARATORS, ids=[f"U+{ord(c):04X}" for c in _SEPARATORS])
+@pytest.mark.parametrize(
+    ("end", "said"),
+    [("kill -SEGV $$", "pandoc was stopped by SIGSEGV (signal 11)"), ("exit 1", "pandoc exited 1")],
+    ids=["crash", "exit"],
+)
+def test_a_line_break_inside_a_pandoc_warning_opens_no_line_of_its_own_c2299(
+    tmp_path: Path, sep: str, end: str, said: str
+) -> None:
+    """B13 round 42 C2299: _own_lines split pandoc's stderr with str.splitlines(), which also breaks at CR,
+    VT, FF, 0x1C to 0x1E, U+0085, U+2028 and U+2029, so a heading id holding one before `pandoc: <secret>`
+    inside a `[WARNING]` record came back as pandoc's own line and the secret reached the error. Records are
+    split at LF only and tested on bytes: the warning stays one record and nothing of it is quoted."""
+    warning = f"[WARNING] Duplicate identifier 'alpha{sep}pandoc: contoso-secret' at input line 1 column 82\n"
+    pandoc = _stub_pandoc(tmp_path, warning.encode("utf-8"), end)
+    bad = make_zip(tmp_path / "bad.docx", {"word/document.xml": b"<not-closed"})
+    with pytest.raises(ConversionError) as caught:
+        PandocConverter(replace(CFG, pandoc_path=pandoc)).convert(bad, name="bad.docx")
+    assert str(caught.value) == said
+
+
+@pytest.mark.parametrize(
+    ("end", "said"),
+    [
+        ("kill -ABRT $$", "pandoc was stopped by SIGABRT (signal 6): pandoc: heap overflow"),
+        ("exit 1", "pandoc exited 1: pandoc: heap overflow"),
+    ],
+    ids=["crash", "exit"],
+)
+def test_pandocs_own_record_after_a_warning_holding_a_separator_is_still_the_one_named_c2299(
+    tmp_path: Path, end: str, said: str
+) -> None:
+    """B13 round 42 C2299: a real `pandoc:` record after a warning holding U+2028 is still the line named."""
+    sep = chr(0x2028)
+    text = f"[WARNING] Duplicate identifier 'alpha{sep}pandoc: contoso-secret'\r\npandoc: heap overflow\r\n"
+    pandoc = _stub_pandoc(tmp_path, text.encode("utf-8"), end)
+    bad = make_zip(tmp_path / "bad.docx", {"word/document.xml": b"<not-closed"})
+    with pytest.raises(ConversionError) as caught:
+        PandocConverter(replace(CFG, pandoc_path=pandoc)).convert(bad, name="bad.docx")
+    assert str(caught.value) == said
+
+
+@pytest.mark.parametrize(
+    ("stderr", "end", "said"),
+    [
+        (
+            b"couldn't parse docx file: DocxError\n",
+            "exit 63",
+            "pandoc exited 63: couldn't parse docx file: DocxError",
+        ),
+        (
+            b"[INFO] Running filter /Users/ana/f.lua\n  contoso-secret\n"
+            b"Error running filter /Users/ana/f.lua:\n",
+            "exit 83",
+            "pandoc exited 83: Error running filter <path>",
+        ),
+        (
+            b"[WARNING] Duplicate identifier 'contoso-q3'\n  continued contoso\n",
+            "exit 64",
+            "pandoc exited 64",
+        ),
+    ],
+    ids=["docx-error", "info-then-filter", "warning-only"],
+)
+def test_a_pandoc_exit_names_its_first_line_that_is_no_warning_or_info_c2252(
+    tmp_path: Path, stderr: bytes, end: str, said: str
+) -> None:
+    """B13 round 42 C2252: C2048 read only `pandoc:` lines, and pandoc's real errors carry no such prefix, so
+    a broken .docx read `pandoc exited 63` with no cause. A non-zero exit names the first record that is not
+    a `[WARNING]`, an `[INFO]` or an indented line continuing one, paths taken out; none gives the code
+    alone."""
+    pandoc = _stub_pandoc(tmp_path, stderr, end)
+    bad = make_zip(tmp_path / "bad.docx", {"word/document.xml": b"<not-closed"})
+    with pytest.raises(ConversionError) as caught:
+        PandocConverter(replace(CFG, pandoc_path=pandoc)).convert(bad, name="bad.docx")
+    assert str(caught.value) == said
+    assert "contoso" not in str(caught.value).lower()
+
+
+@pytest.mark.parametrize(
+    ("end", "said"),
+    [
+        ("kill -ABRT $$", "pandoc was stopped by SIGABRT (signal 6): dyld[1]: Library not loaded: <path>"),
+        ("exit 1", "pandoc exited 1: dyld[1]: Library not loaded: <path>"),
+    ],
+    ids=["abort", "exit"],
+)
+def test_a_pandoc_that_cannot_start_says_why_c2252(tmp_path: Path, end: str, said: str) -> None:
+    """B13 round 42 C2252: the `--version` run reads no document, so its crash and exit lines read its whole
+    stderr through _plain again: dyld's `Library not loaded` reaches the `converter unavailable:` stub."""
+    pandoc = _stub_pandoc(tmp_path, b"dyld[1]: Library not loaded: /x/libx.dylib\n", end, version_too=True)
+    with pytest.raises(ConversionError) as caught:
+        PandocConverter(replace(CFG, pandoc_path=pandoc))._runner.version()
+    assert str(caught.value) == said
+
+
 # ---------------------------------------------------------------------------------------------------------
 # C2049: the csv field limit's read and raise are one step
 # ---------------------------------------------------------------------------------------------------------

@@ -13050,6 +13050,8 @@ Any other signal still drops it (`pandoc was stopped by SIGKILL (signal 9)`); a 
 stderr's first line.
 Amended 2026-11-17, §16.263 C2048: both read pandoc's own `pandoc:` lines only (`pandoc._own_lines`), never a `[WARNING]` or its
 continuation lines, and a non-zero exit with none reads `pandoc exited N` alone.
+Amended 2026-11-20, §16.268 C2252: a non-zero exit names the first stderr record that is not a `[WARNING]`, an `[INFO]`
+or indented, paths taken out, and the `--version` run, which reads no document, reads its whole stderr again.
 Amended 2026-10-19, §16.138 V68: both build sites name the installer by its path (`skill.INSTALL_SH`), `...;
 ~/src/agent-context-sync/scripts/install.sh tries the build again on its next run`, and `ocr._plain` keeps that one
 path when it reads the `<helper>.failed` marker back, where it takes every other path out.
@@ -43185,6 +43187,9 @@ and the lines that continue one are never quoted. Test:
 `pandoc: heap overflow` and SIGABRT; a two-line warning and SIGSEGV; a warning continued by an indented
 `  pandoc: ...` line and SIGSEGV; a warning and exit 64; a warning and an own line
 with a path, and exit 1).
+Amended 2026-11-20, §16.268 C2299, C2252: `_own_lines` splits stderr's bytes at LF only and tests `pandoc:` on bytes,
+and a conversion run's non-zero exit reads `pandoc exited N: <its first record that is no [WARNING], [INFO] or
+indented line, paths taken out>` (`_first_cause`); the `--version` run's crash and exit lines read its whole stderr.
 
 **The csv field limit's read and raise are one step** (C2049; `agentsync.convert.text`; amends §16.258 C1807).
 `_parse_delimited` read the limit and raised it in two calls, so on two threads a shorter text's raise could land after
@@ -43690,7 +43695,30 @@ always finds the nap to kill and no orphaned `sleep 600` holds the run's pipe (C
 
 ### 16.268 Round 42: the converters: a record ends where its writer ends it, a capped page shows all the cap leaves room for, and picture pieces keyed on their own revision (2026-11-20, wave B13 round 42 lane E)
 
-Reserved for round 42 lane E of B13.
+Round 42's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 42"; specs `round42/items/C<n>.md`, the
+verifier's corrected fix built as the lead's rulings 152, 153 and 155 settle it). A dated line this round writes reads
+`Amended 2026-11-20, §16.268 C<n>`.
+
+**pandoc's stderr records end at LF, and a non-zero exit names its first cause** (C2299 with C2252; ruling 152;
+`agentsync.convert.pandoc`; amends §16.263 C2048; dated line at §16.42). `_own_lines` split stderr with
+`str.splitlines()`, which also breaks at CR, VT, FF, 0x1C to 0x1E, U+0085, U+2028 and U+2029, so a heading id holding
+one before `pandoc: <secret>` inside one LF-ended `[WARNING]` record (real pandoc 3.11 writes it so) came back as
+pandoc's own line and its text reached the crash and exit lines (C2299, privacy; the verifier's runs at 1faa3f3).
+`_own_lines` now splits the bytes at LF only and tests `pandoc:` on bytes, so a separator inside a record never opens
+a line. pandoc's real errors carry no `pandoc:` prefix (`couldn't parse docx file: DocxError`, exit 63; `Error
+parsing YAML metadata ...`; `Error running filter <path>:`), so C2048 left them `pandoc exited N` with no cause
+(C2252): a conversion run's non-zero exit names `_first_cause`, its first record that is not a `[WARNING]`, an
+`[INFO]` or indented (pandoc indents every line continuing a warning), through `_plain` with paths taken out, or
+`pandoc exited N` when there is none; its crash line keeps `_own_lines`, so an unindented line after a warning is
+never a crash line. The `--version` run reads no document, so its crash and exit lines read its whole stderr through
+`_plain` again, and a pandoc that cannot start says why behind `converter unavailable:` (`pandoc was stopped by
+SIGABRT (signal 6): dyld[1]: Library not loaded: <path>`). `_plain` takes the first line holding `error:` of what it
+is given, else its first line, so a conversion run's exit line is that one record. Tests:
+`test_convert_page_cap.py::test_a_line_break_inside_a_pandoc_warning_opens_no_line_of_its_own_c2299` (each separator
+before `pandoc: contoso-secret`, crash and exit),
+`test_convert_page_cap.py::test_pandocs_own_record_after_a_warning_holding_a_separator_is_still_the_one_named_c2299`,
+`test_convert_page_cap.py::test_a_pandoc_exit_names_its_first_line_that_is_no_warning_or_info_c2252` and
+`test_convert_page_cap.py::test_a_pandoc_that_cannot_start_says_why_c2252`.
 
 ### 16.269 Round 42: the prompt goes to v39 (the paths and folder states setup printed), the gate's stop lines, and the guides (2026-11-20, wave B13 round 42 lane D)
 
