@@ -102,6 +102,16 @@ def _formula_text(v: object) -> str | None:
     return None
 
 
+_RECORD_ESCAPES = str.maketrans({"\\": "\\\\", "\n": "\\n", "\r": "\\r", "\t": "\\t"})
+
+
+def _record_escape(text: str) -> str:
+    """``text`` for one line of a list sidecar: backslash, newline, CR and tab escaped as ``\\\\``, ``\\n``,
+    ``\\r`` and ``\\t``, nothing stripped, so a comment never writes a second record (one that reads as
+    another cell's) and un-escaping gives its text back byte for byte (B13 round 42 C2301)."""
+    return text.translate(_RECORD_ESCAPES)
+
+
 def _code(text: str) -> str:
     """Inline code span safe inside a GFM table cell (pipes escaped, backtick fences widened)."""
     longest = max((len(m.group(0)) for m in re.finditer(r"`+", text)), default=0)
@@ -157,8 +167,8 @@ class _Sheet:
     formulas: int = 0
     comments: list[str] = field(default_factory=list)  # page lines
     objects: list[str] = field(default_factory=list)  # page lines, a long chart title or pivot name cut
-    comments_whole: list[str] = field(default_factory=list)  # each comment uncut and unescaped (its sidecar)
-    objects_whole: list[str] = field(default_factory=list)  # each object's label uncut (its sidecar)
+    comments_whole: list[str] = field(default_factory=list)  # each comment uncut, escaped (its sidecar)
+    objects_whole: list[str] = field(default_factory=list)  # each label uncut, escaped (its sidecar)
     labels_cut: bool = False  # a chart title or pivot name on the page was cut (B13 round 41 C2046)
     terms: Counter[str] = field(default_factory=Counter)
 
@@ -225,10 +235,12 @@ def _build_sheet(number: int, ws: Any, wsf: Any) -> _Sheet:
         comment = None if fcell is None else getattr(fcell, "comment", None)
         if comment is not None and str(comment.text or "").strip():  # an empty cell's too (round 41 C2088)
             author = str(comment.author or "").strip()
-            text = _WS_RE.sub(" ", str(comment.text)).strip()
+            raw = str(comment.text)
+            text = _WS_RE.sub(" ", raw).strip()  # the page's line only
             who = f" ({author})" if author else ""
             sheet.comments.append(f"- {_ref(*key)}{who}: {_escape_line(text)}")
-            sheet.comments_whole.append(f"{_ref(*key)}{who}: {text}")
+            whole_who = f" ({_record_escape(author)})" if author else ""
+            sheet.comments_whole.append(f"{_ref(*key)}{whole_who}: {_record_escape(raw)}")
         if not vtext.strip() and formula is None:
             continue
         if formula is not None:
@@ -268,7 +280,7 @@ def _build_sheet(number: int, ws: Any, wsf: Any) -> _Sheet:
         title = _chart_title(chart)
         where = f" at {w}" if (w := _anchor_ref(chart)) else ""
         kind = type(chart).__name__
-        named, whole = (f' "{_label(title)}"', f' "{title}"') if title else ("", "")
+        named, whole = (f' "{_label(title)}"', f' "{_record_escape(title)}"') if title else ("", "")
         sheet.labels_cut |= len(title) > _LABEL_CHARS
         sheet.objects.append(
             f"- [chart {i}: {kind}{named}{where} — no markdown form; open the workbook to view]"
@@ -282,7 +294,7 @@ def _build_sheet(number: int, ws: Any, wsf: Any) -> _Sheet:
         sheet.objects.append(
             f"- [pivot table: {_label(name)}{at} — no markdown form; open the workbook to view]"
         )
-        sheet.objects_whole.append(f"pivot table: {name}{at}")
+        sheet.objects_whole.append(f"pivot table: {_record_escape(name)}{at}")
     for i, image in enumerate(getattr(wsf, "_images", []), start=1):
         where = _anchor_ref(image)
         sheet.objects.append(f"- [image {i}" + (f" at {where}" if where else "") + "]")

@@ -43090,7 +43090,8 @@ no guess per item and no floor. After the table and its notes each list is fitte
 `_listed`) in the room the page has left under the cap, less the guard's banner, the footer lines of the rows' CSV
 and both list sidecars, and the heading and longest note of each list after it, and a list past it ends `[comment list truncated at the page size cap: N of M listed; every
 comment is whole in the sidecar `<NN>-<sheet-slug>.comments.txt`]` (the object list the same: `object`,
-`.objects.txt`). A list sidecar holds one `<ref> (<author>): <text>` or object label a line, uncut and unescaped,
+`.objects.txt`). A list sidecar holds one `<ref> (<author>): <text>` or object label a line, uncut, with backslash, newline,
+carriage return and tab escaped as `\\`, `\n`, `\r` and `\t` and nothing stripped (§16.268 C2301),
 under a `.txt` name, so no reader takes it for a page and it never collides with the rows' `.csv`, and is written only
 when its list was cut. A chart title or pivot name is cut to 200 characters ending `…` and escaped, which it never
 was; when the list fits but a name was cut, `[a chart title or pivot name cut to 200 characters; every object is whole
@@ -43110,6 +43111,9 @@ every guarded page within the cap and every comment whole in its sidecar),
 `test_convert_page_cap.py::test_a_second_list_and_a_long_sheet_title_keep_the_page_within_the_cap_c2043` (400 short
 comments and two charts on a row-capped sheet, which the review measured at 8,218 bytes, and the long title, full
 and streamed) and `test_convert_page_cap.py::test_a_sheet_under_the_cap_keeps_its_lists_whole_with_no_list_sidecar`.
+Amended 2026-11-20, §16.268 C2301: each comment, author, chart title and pivot name in a list sidecar is escaped
+(backslash, newline, CR and tab as `\\`, `\n`, `\r`, `\t`), nothing stripped, one record a line; the page's line stays
+flattened.
 
 **A row too long for the sheet's table is shown with its cells cut** (C2022; `agentsync.convert.xlsx`; amends §16.253
 C1676). C1676 made `_table_lines` leave off a first row past the budget, so at 8,192 four sheets of thirty
@@ -43733,6 +43737,19 @@ sidecar already written takes the fix when its file next changes. Tests:
 the other separators) and
 `test_convert_records.py::test_an_xlsx_cell_holding_a_lone_cr_stays_one_record_in_its_sidecar_c2302` (the row-capped
 and the streamed path).
+
+**Each line of a list sidecar is one escaped record** (C2301, makes worse True for raw text; ruling 152;
+`agentsync.convert.xlsx`; amends §16.263 C2043, C2064). The comment sidecar's text was the page line's, every whitespace
+run flattened to one space and the ends stripped, so a multi-line or tabbed comment lost its shape; writing it raw
+instead would let a comment `injected<LF>A9 (Mallory): fake record` forge another cell's record (the verifier's
+probe). `_record_escape` escapes backslash, newline, CR and tab as `\\`, `\n`, `\r` and `\t` in each comment, its
+author, each chart title and each pivot name the sidecars hold, and strips nothing, so a sidecar is one record per
+LF-ended line and un-escaping a line's text gives the comment back byte for byte; the page's line stays flattened.
+U+0085, U+2028 and U+2029 stay as they are: the records end at LF, and a reader splits on LF only (ruling 152). xlsx's
+`_EMITTER_VERSION` is 1.0.4 (C2302's move); a sidecar already written takes the fix when its file next changes. Tests:
+`test_convert_records.py::test_each_comment_in_the_comment_sidecar_is_one_escaped_record_c2301` (a multi-line,
+tabbed, forged-looking, backslashed and 9,000-character comment) and
+`test_convert_page_cap.py::test_a_sheets_comment_list_stays_within_the_cap_and_rides_whole_in_its_sidecar_c2064`.
 
 ### 16.269 Round 42: the prompt goes to v39 (the paths and folder states setup printed), the gate's stop lines, and the guides (2026-11-20, wave B13 round 42 lane D)
 

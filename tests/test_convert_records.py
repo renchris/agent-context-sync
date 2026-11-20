@@ -76,3 +76,63 @@ def test_an_xlsx_cell_holding_a_lone_cr_stays_one_record_in_its_sidecar_c2302(
     records = _records(data)
     assert len(records) == 1 + 7, records
     assert records[2] == ["2", "alpha\rbeta"], name
+
+
+# ---------------------------------------------------------------------------------------------------------
+# C2301: each comment in the comment sidecar escaped, one record a line
+# ---------------------------------------------------------------------------------------------------------
+
+
+def _unescape(text: str) -> str:
+    out, i = [], 0
+    while i < len(text):
+        if text[i] == "\\" and i + 1 < len(text):
+            out.append({"\\": "\\", "n": "\n", "r": "\r", "t": "\t"}[text[i + 1]])
+            i += 2
+        else:
+            out.append(text[i])
+            i += 1
+    return "".join(out)
+
+
+def test_each_comment_in_the_comment_sidecar_is_one_escaped_record_c2301(tmp_path: Path) -> None:
+    """B13 round 42 C2301: the sidecar flattened every whitespace run and stripped the ends, so a multi-line
+    or tabbed comment lost its shape; writing it raw would let `injected<LF>A9 (Mallory): fake` forge another
+    cell's record. Each comment is escaped (backslash, newline, CR, tab), nothing stripped: one line a
+    comment, and un-escaping a line's text gives the comment back byte for byte. The page's line stays
+    flattened."""
+    from openpyxl.comments import Comment  # noqa: PLC0415
+
+    texts = [
+        "line one\nline two\t\ttab   three  spaces ",
+        "injected\nA9 (Mallory): fake record",
+        "  lead \\n literal\r\nwin",
+        "breaks \x85" + chr(0x2028) + chr(0x2029) + "\r end",  # an XML-legal break of each kind
+        "Contoso long " + "x" * 9000,
+    ]
+    book = openpyxl.Workbook()
+    ws = book.active
+    assert ws is not None
+    ws.title = "Contoso"
+    for i, text in enumerate(texts, start=1):
+        ws.cell(row=i, column=1, value=f"North {i}").comment = Comment(text, "Ana")
+    src = tmp_path / "contoso.xlsx"
+    book.save(src)
+    read = openpyxl.load_workbook(src).active
+    assert read is not None
+    texts = [
+        str(read.cell(row=i, column=1).comment.text) for i in range(1, len(texts) + 1)
+    ]  # as openpyxl reads
+    assert "\n" in texts[0] and "\t" in texts[0] and chr(0x2028) in texts[3]
+    sheet = _pages(src, 8192)[1]
+    whole = [data for name, data in sheet.sidecars if name.endswith(".comments.txt")]
+    assert len(whole) == 1, [n for n, _ in sheet.sidecars]
+    banner, records_text = whole[0].decode("utf-8").split("\n\n", 1)  # the guard's banner line first
+    assert banner.startswith("> [UNTRUSTED CONTENT]") and "\n" not in banner
+    records = records_text.split("\n")
+    assert records[-1] == "" and len(records) == len(texts) + 1, records
+    for i, (record, text) in enumerate(zip(records, texts, strict=False), start=1):
+        head = f"A{i} (Ana): "
+        assert record.startswith(head)
+        assert _unescape(record[len(head) :]) == text
+    assert "- A1 (Ana): line one line two tab three spaces" in sheet.body

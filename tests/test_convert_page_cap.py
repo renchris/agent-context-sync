@@ -24,6 +24,7 @@ from agentsync.convert._common import GUARD_RESERVE, _cap_body, _fence
 from agentsync.convert.base import make_unit
 from agentsync.convert.pandoc import PandocConverter
 from agentsync.convert.registry import Registry, _bannered, _with_sidecar_digests
+from agentsync.convert.xlsx import _record_escape
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import RenderedUnit, UnitKind
 from test_convert_builders import (
@@ -315,8 +316,8 @@ def test_a_sheets_comment_list_stays_within_the_cap_and_rides_whole_in_its_sidec
     whole = _sidecar_text(sheet, ".comments.txt")
     text = kw["text"]
     assert callable(text)
-    for i in range(int(found.group(2))):
-        assert f": {' '.join(str(text(i)).split())}\n" in whole
+    for i in range(int(found.group(2))):  # each comment escaped, nothing stripped (round 42 C2301)
+        assert f": {_record_escape(str(text(i)))}\n" in whole
     assert "01-contoso.csv" not in [n for n, _ in sheet.sidecars] or "[row cap: first" in sheet.body
     if label == "many":
         assert _rows_shown(sheet.body) > 26
