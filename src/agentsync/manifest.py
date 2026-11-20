@@ -2709,10 +2709,11 @@ class Manifest:
 
         The cycle asks this before it reads anything again, so that a source with nothing outdated costs
         one query and decodes no row.  The id and version are those of the cache row of the page's action
-        key: the H2 early cutoff moves that key and leaves the ``outputs`` columns as they were, so the cache
-        row is the one that says which version last converted the file.  Where it is gone the ``outputs``
-        columns stand in.  Online-only files, directories and tombstones are left out, and so is a stub that
-        is not its item's own state (a ``duplicate-of`` stub, a failed conversion), but for the stub of a
+        key: the H2 early cutoff moves that key (and, since B13 round 41 C2021, the options hash) and leaves
+        the ``outputs`` converter columns as they were (B13 round 42 C2248), so the cache row is the one that
+        says which version last converted the file.  Where it is gone the ``outputs`` columns stand in.
+        Online-only files, directories and tombstones are left out, and so is a stub that is not its item's
+        own state (a ``duplicate-of`` stub, a failed conversion), but for the stub of a
         conversion whose converter could not start (version ``unavailable``), which read no byte of the
         file: the cycle reads it again once that converter starts (B13 round 17 U3)."""
         rows = self._db.execute(

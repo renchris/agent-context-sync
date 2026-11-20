@@ -6744,7 +6744,9 @@ class _Cycle:
                     self._tally["rescreened_reader"] += 1
         if rescreen and intact and duplicate is None and self._stub_unchanged(src, fresh, outs, result):
             # A re-screened refusal that gives the stub it has (B13 round 8 J28): settled as the H2 cutoff
-            # settles a page, keeping its old options_hash as an unchanged page does.
+            # settles a page, but its rows keep their old options_hash (``made_by`` takes the converter, not
+            # the options), where an unchanged page's rows take the new one (B13 round 41 C2021; B13 round 42
+            # C2248). Either page keeps the ``options_hash:`` line it shows.
             self._tally["rescreened_unchanged"] += 1
             self._move_key(sid, stable, outs, result.action_key, OutputStatus.REFUSED, made_by=result)
             if self._rewrite_if_moved(src, fresh, outs, acc):

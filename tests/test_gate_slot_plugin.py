@@ -63,8 +63,8 @@ case "${STUB_MODE:-grant}" in
   forever)
     echo "cc-gate-slot: QUEUED ticket=000000000001 (run_in_background)" >&2
     trap 'kill "$nap" 2>/dev/null; : > "$STUB_LOG.term"; exit 143' TERM
+    sleep 600 </dev/null >/dev/null 2>&1 & nap=$!
     : > "$STUB_LOG.queued"
-    sleep 600 & nap=$!
     wait "$nap"
     exit 0 ;;
 esac
@@ -276,6 +276,36 @@ def test_an_interrupt_while_queued_terminates_the_helper(inner: Inner) -> None:
     assert Path(f"{inner.log}.term").exists(), out
     assert proc.returncode != 0, out
     assert not _passed(out), out
+
+
+def test_the_queued_stubs_nap_holds_no_pipe_and_is_named_before_it_says_queued_c2264(tmp_path: Path) -> None:
+    """B13 round 42 C2264: the stub wrote ``.queued`` and then ran ``sleep 600 & nap=$!``, so a TERM sent on
+    ``.queued`` could land before ``nap`` was set: the trap killed nothing and the orphaned sleep held the
+    run's pipe, which read as a 300 s timeout (measured 25 of 60 with no delay). The nap starts off the pipe
+    and ``.queued`` follows ``nap=``. Run alone: TERM on ``.queued``, and the stub's pipe closes at once."""
+    forever = STUB[STUB.index("  forever)") : STUB.index("esac")]
+    nap = forever.index("sleep 600 </dev/null >/dev/null 2>&1 & nap=$!")
+    assert nap < forever.index(': > "$STUB_LOG.queued"'), forever
+    stub = tmp_path / "stub.sh"
+    stub.write_text(STUB, encoding="utf-8")
+    stub.chmod(0o755)
+    log = tmp_path / "stub.log"
+    env = {**os.environ, "STUB_MODE": "forever", "STUB_LOG": str(log)}
+    env.pop("CC_GATE_SLOT_TOKEN", None)
+    for _ in range(10):
+        Path(f"{log}.queued").unlink(missing_ok=True)
+        proc = subprocess.Popen(
+            [str(stub), "acquire", "x", "y", "z", "3"],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        with _reaped(proc):
+            _wait_for(Path(f"{log}.queued"), proc)
+            proc.terminate()
+            proc.communicate(timeout=30)  # a sleep left holding the pipe would hold this for 600 s
+        assert proc.returncode == 143, proc.returncode
 
 
 SLOW_EXEC = """

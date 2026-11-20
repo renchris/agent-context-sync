@@ -5706,18 +5706,67 @@ FIELDS_NEED_JSON = "error: --fields selects fields of the --json document: add -
 """``--fields`` without ``--json``: every command's refusal, and ``--version``'s (B13 round 40 C1845)."""
 
 
-# -v (count) and -y (store_true) take no value, so argparse walks a cluster of them on to its h
-_HELP_CLUSTER = re.compile(r"-(?:v|y)*h")
+class _HelpAskedError(Exception):
+    """Raised by :class:`_ProbeHelp` in :func:`_asks_help`'s probe parse: the parser that owns a token asked
+    for its help page."""
+
+
+class _ProbeHelp(argparse._HelpAction):
+    """The help action of :func:`_asks_help`'s probe parse: the page is asked for, so stop there."""
+
+    def __call__(self, *_args: object, **_kwargs: object) -> None:
+        raise _HelpAskedError
+
+
+class _ProbeVersion(argparse._VersionAction):
+    """The root ``--version`` of :func:`_asks_help`'s probe parse: read and ignored, so a help token after it
+    is still seen, as R086's "--help wins" reads it."""
+
+    def __call__(self, *_args: object, **_kwargs: object) -> None:
+        return None
+
+
+def _probe_parser() -> argparse.ArgumentParser:
+    """:func:`build_parser` with every parser's help action (root, each command, each graph action) made
+    :class:`_ProbeHelp` and the root's version action :class:`_ProbeVersion`."""
+    parser = build_parser()
+    seen: set[int] = set()
+    todo = [parser]
+    while todo:
+        current = todo.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        for action in current._actions:
+            if isinstance(action, argparse._HelpAction):
+                action.__class__ = _ProbeHelp
+            elif isinstance(action, argparse._VersionAction):
+                action.__class__ = _ProbeVersion
+            elif isinstance(action, argparse._SubParsersAction):
+                todo.extend(action.choices.values())
+    return parser
 
 
 def _asks_help(tokens: Sequence[str]) -> bool:
-    """True when a token asks for a help page: ``--help``, ``-h``, or a short-flag cluster argparse walks to
-    its ``h`` (``-vh``, ``-hv``, ``-yvh``, ``-hello``): allow_abbrev turns off long-option prefixes only, and
-    argparse still splits ``-vh`` into ``-v -h`` (B13 round 41 C2040). A cluster with another letter before
-    ``h`` (``-eh``) is argparse's usage error, never a page."""
-    return any(
-        t == "--help" or (not t.startswith("--") and _HELP_CLUSTER.match(t) is not None) for t in tokens
-    )
+    """True when the run asks for a help page, as argparse itself would decide it: the parser that owns each
+    token (the root's options before the command, the command's after it, a graph action's after that) is
+    asked, so a short-flag cluster is help only when every letter in it is a flag of that parser that takes no
+    value and one is ``h`` (``-vh``, ``-hv``; ``purge -yh``, where ``-y`` is purge's, but never ``-yh`` at the
+    root or on status, ``-eh``, or ``--hv``), and ``--help`` anywhere a parser reads it (B13 round 42 C2295,
+    after round 41 C2040's fixed regex, which took ``-y`` at every depth). A parse that ends in a usage error
+    or none asks for no page; nothing is printed."""
+    if not any(t == "--help" or (t.startswith("-") and not t.startswith("--") and "h" in t) for t in tokens):
+        return False
+    try:
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            _probe_parser().parse_known_args(list(tokens))
+    except _HelpAskedError:
+        return True
+    except SystemExit:
+        return False
+    except Exception:  # an argparse error the probe cannot read: no page asked, the real parse says why
+        return False
+    return False
 
 
 def _fields_before_parse(tokens: Sequence[str]) -> int | None:

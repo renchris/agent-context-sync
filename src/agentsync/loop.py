@@ -586,8 +586,10 @@ def _unpublished(manifest: Manifest, sources: Sequence[SourceConfig]) -> _Files:
             key = f"{RECORDING_PROGRESS_META}{src.id}:{row.stable_id}"
             if row.state is RowState.REFUSED:  # counted only while the stub path is part way through it,
                 stub = (row.state_reason or "").startswith(NO_CONVERTER_PREFIX)  # or its page is OCR-down's
+                if not (recording and stub):  # no meta read for any other refused row (B13 round 42 C2247)
+                    continue
                 marked = manifest.get_meta(f"{RECORDING_OCR_DOWN_META}{src.id}:{row.stable_id}") == "1"
-                if not (recording and stub and (marked or _progress(manifest.get_meta(key)))):
+                if not (marked or _progress(manifest.get_meta(key))):
                     continue
             if row.state_reason == RECORDING_WAITS or row.state is RowState.REFUSED:
                 out.recording[src.id] = out.recording.get(src.id, 0) + 1

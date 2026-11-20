@@ -43419,6 +43419,23 @@ STATE's refused count stays the number of REFUSED rows and the TSV is unchanged;
 page with the recording's own. Test: `test_a_recording_first_seen_in_an_ocr_outage_is_counted_and_read_again_once_the_helper_works_c2039`
 (extended: the page's reason, no TSV pointer without its row, no commit on the next interactive sync).
 
+**The CLI and test words** (C2247, C2248, C2250, C2295, C2264; ruling 155's cluster). `loop._unpublished` read
+the OCR-down meta key for every REFUSED row; it reads it only for a `no converter` recording stub, the counted
+set unchanged (C2247; test `test_unpublished_reads_the_ocr_down_mark_only_for_a_recording_stub_c2247`). Two
+comments said the H2 cutoff keeps the old options hash, which C2021 changed: `_Cycle`'s re-screened refusal and
+`Manifest.produced_by`'s docstring now say an unchanged page's rows take the new hash and a re-screened
+refusal's keep theirs (C2248; test `test_the_h2_cutoff_comments_say_which_rows_take_the_new_options_hash_c2248`).
+C2021's test checks the body below the front matter against the cap (`len(body) <= 8192`), the front matter
+outside it, and its comment says so (C2250, a test-only change: the looser check it replaces passed on the same
+page, so no test can fail without it). `cli._asks_help` asks the parser that owns each token, a probe parse of
+`build_parser` whose help actions raise and whose root `--version` is read and ignored, so a short-flag cluster is
+help only where argparse makes it help: `-vh`, `-hv`, `purge -yh` in; root `-yh`, `-yvh`, `-hello`, `-eh`,
+`status -yh`, `status -vhy` out, and `--version --json -yh` prints the version document again (C2295; test
+`test_help_is_asked_of_the_parser_that_owns_each_token_c2295`; lane D words C2260 from it). The gate-slot
+plugin's test stub starts its nap off the pipe and writes `.queued` after `nap=`, so a TERM sent on `.queued`
+always finds the nap to kill and no orphaned `sleep 600` holds the run's pipe (C2264; test
+`test_the_queued_stubs_nap_holds_no_pipe_and_is_named_before_it_says_queued_c2264`).
+
 ### 16.268 Round 42: the converters: a record ends where its writer ends it, a capped page shows all the cap leaves room for, and picture pieces keyed on their own revision (2026-11-20, wave B13 round 42 lane E)
 
 Reserved for round 42 lane E of B13.

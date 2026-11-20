@@ -9,6 +9,7 @@ import contextlib
 import dataclasses
 import errno
 import hashlib
+import inspect
 import io
 import itertools
 import json
@@ -5652,8 +5653,10 @@ def test_a_lower_max_page_bytes_reaches_existing_pages_through_the_re_read_c2021
     report = run(capped)
     assert report.exit_code == 0 and report.commit_sha is not None
     page_bytes = (capped.docs_repo / slug.mirror_rel_path(SID, LONG_CSV)).read_bytes()
-    # row-capped at the new cap (lane E's C2044 holds the guarded page's own bytes to it exactly)
-    assert b"[row cap:" in page_bytes and len(page_bytes) < 8192 + 1024 < len(big), len(page_bytes)
+    # row-capped at the new cap: the CSV table budget (max_page_bytes - 1024, C1886) holds the guarded body,
+    # banner and sidecar footer included, within it; the front matter is outside the cap (B13 round 42 C2250)
+    body = page_bytes[page_bytes.index(b"\n---\n", 4) + 5 :]
+    assert b"[row cap:" in body and len(body) <= 8192 < len(big), (len(page_bytes), len(body))
     changed = git(capped.docs_repo, "diff", "--name-only", head, "HEAD").split()
     pages = [p for p in changed if p.startswith("mirror/")]
     assert pages and all("contoso-long-table.csv" in p for p in pages), changed
@@ -7710,6 +7713,38 @@ def test_a_recording_deferred_before_an_ocr_outage_keeps_its_count_through_it_c2
     assert run(config, mode=None).exit_code == 0
     said = _recording_words(config)
     assert "--confirm-install-agent" in said and loop_mod.RECORDING_OCR_WAIT not in said, said
+
+
+def test_unpublished_reads_the_ocr_down_mark_only_for_a_recording_stub_c2247(
+    tmp_path: Path, meetings: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 42 C2247: ``loop._unpublished`` read the OCR-down meta key of every REFUSED row, recording
+    or not, one query each on every status. It reads it only for a ``no converter`` recording stub; what it
+    counts is unchanged."""
+    (meetings / "Contoso layout.xyz").write_bytes(b"not a format agentsync reads\n")
+    config = config_with(tmp_path, meetings)
+    assert run(config, mode=None).exit_code == 0
+    assert _row(config, "Contoso layout.xyz").state is RowState.REFUSED
+    read: list[str] = []
+    real = Manifest.get_meta
+
+    def get_meta(self: Manifest, key: str) -> str | None:
+        read.append(key)
+        return real(self, key)
+
+    monkeypatch.setattr(Manifest, "get_meta", get_meta)
+    with Manifest(config.state_paths.db) as m:
+        assert loop_mod._unpublished(m, config.sources).recording == {}
+    assert not [k for k in read if k.startswith(cycle_mod.RECORDING_OCR_DOWN_META)], read
+
+
+def test_the_h2_cutoff_comments_say_which_rows_take_the_new_options_hash_c2248() -> None:
+    """B13 round 42 C2248: two comments said the H2 cutoff keeps a page's old options hash, which C2021
+    changed: an unchanged page's rows take the new hash, a re-screened refusal's keep theirs."""
+    assert "since B13 round 41 C2021, the options hash" in (Manifest.produced_by.__doc__ or "")
+    source = inspect.getsource(cycle_mod._Cycle)
+    assert "keeping its old options_hash as an unchanged page does" not in source
+    assert "where an unchanged page's rows take the new one" in source
 
 
 def _ocr_down_stub(

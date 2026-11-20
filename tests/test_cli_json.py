@@ -5,6 +5,8 @@ for every other command, with the inspect command as ``next`` after a mutation (
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import json
 import logging
 import re
@@ -894,8 +896,33 @@ def test_version_json_with_a_help_cluster_prints_the_help_page_c2040(
     wins). argparse splits a short-flag cluster, so ``-vh`` and ``-hv`` are ``-h``; ``-eh`` stays a usage
     error, never a page."""
     assert _help_text(capsys, "--version", "--json", cluster).startswith("usage: agentsync")
-    assert cli._asks_help(["-vh"]) and cli._asks_help(["-yvh"]) and cli._asks_help(["-hello"])
-    assert not cli._asks_help(["-eh"]) and not cli._asks_help(["--hv"]) and not cli._asks_help(["-v"])
+
+
+def test_help_is_asked_of_the_parser_that_owns_each_token_c2295(capsys: pytest.CaptureFixture[str]) -> None:
+    """B13 round 42 C2295: the help scan was one regex, ``-(?:v|y)*h``, at every depth, but ``-y`` is purge's
+    and compact-history's alone: ``--version --json -yh`` dropped ``--version`` and ended in a usage error,
+    and ``status -yh --json --fields x`` gave the help page's fields refusal where argparse refuses ``-y``.
+    The scan asks the parser that owns each token, so a cluster is help only where argparse makes it help,
+    held here to argparse's own answer: a letter before the ``h`` must be a no-value flag of that parser, and
+    argparse takes the ``h`` before it looks at the letters after it, so ``-hello`` and ``status -vhy`` print
+    the page (measured; the spec expected them refused)."""
+    asks = (["-vh"], ["-hv"], ["-h"], ["--help"], ["status", "-vh"], ["purge", "-yh"], ["purge", "-hy"])
+    asks += (["-hello"], ["status", "-vhy"])
+    refuses = (["-yh"], ["-yvh"], ["-eh"], ["--hv"], ["-v"], ["status", "-yh"])
+    for argv in (*asks, *refuses):
+        out = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                cli.build_parser().parse_args(argv)
+            page = False
+        except SystemExit as exc:
+            page = exc.code == 0 and out.getvalue().startswith("usage:")
+        assert cli._asks_help(argv) is page is (argv in asks), argv
+    assert json.loads(_help_text(capsys, "--version", "--json", "-yh")) == {"version": cli.__version__}
+    assert _help_text(capsys, "purge", "-yh").startswith("usage: agentsync purge")
+    assert cli.main(["status", "-yh", "--json", "--fields", "x"]) == cli.EXIT_USAGE
+    err = capsys.readouterr().err
+    assert "-y" in err and cli.HELP_PAGE_FIELDS not in err, err
 
 
 @pytest.mark.parametrize(
