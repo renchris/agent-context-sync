@@ -5323,6 +5323,9 @@ class _Cycle:
         elif self._recording_stub(row):  # a stub from before the recording converter: readable now (C2039)
             state = RowState.DATALESS if row.dataless else RowState.LIVE
             self.manifest.set_state(row.source_id, row.stable_id, state, RECORDING_WAITS)
+            # its page says the wait it is in now, never the OCR-down words or a QUARANTINE.tsv row that is
+            # gone with the REFUSED state; no byte read, written only when its reason changes (C2245)
+            self.changes += self.publisher.replan_waiting_recording(src, row, self.run_id)
         self._recording_queue.setdefault(src.id, []).append(row.stable_id)
 
     def _recording_stub(self, row: ItemRow) -> bool:

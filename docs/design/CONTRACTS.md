@@ -43406,6 +43406,19 @@ run record, so it leaves the `d` count. `lints.py`'s tombstone headings take `# 
 same commit. Tests: `test_a_whole_page_replaced_by_units_names_its_first_new_page_and_counts_no_deletion_c2205`,
 `test_removed_unit_is_tombstoned_and_can_come_back` (the removed sheet's heading, no `superseded_by`, `0d`).
 
+**A re-planned recording stub says the wait it is in now** (C2245; ruling 155). `_recording_defer`'s stub
+branch, which `_replan_recording_stubs` reaches in an interactive sync, moved a recording's `no converter` row
+to `RECORDING_WAITS` (LIVE) and left its refused page saying the OCR helper was not working and pointing at a
+`_sync/QUARANTINE.tsv` row the TSV no longer had, since the TSV lists REFUSED rows. The branch re-plans the
+stub through `Publisher.replan_waiting_recording`, which plans it with `_plan_stub(..., waits=…)`: reason
+`publish.RECORDING_PASS_WAIT_REASON` (`the recording waits to be read by a background sync, or by
+~/.local/bin/agentsync materialise <file> (an interactive sync reads no recording)`), status refused, the
+converter and keys of the page it replaces, no byte read, and a body that points at status's recordings line,
+never the TSV; it is written only when the page's reason changes, so later interactive syncs commit nothing.
+STATE's refused count stays the number of REFUSED rows and the TSV is unchanged; the recording pass replaces the
+page with the recording's own. Test: `test_a_recording_first_seen_in_an_ocr_outage_is_counted_and_read_again_once_the_helper_works_c2039`
+(extended: the page's reason, no TSV pointer without its row, no commit on the next interactive sync).
+
 ### 16.268 Round 42: the converters: a record ends where its writer ends it, a capped page shows all the cap leaves room for, and picture pieces keyed on their own revision (2026-11-20, wave B13 round 42 lane E)
 
 Reserved for round 42 lane E of B13.

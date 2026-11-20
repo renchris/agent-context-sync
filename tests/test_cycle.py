@@ -7661,10 +7661,29 @@ def test_a_recording_first_seen_in_an_ocr_outage_is_counted_and_read_again_once_
         assert f"1 recording in {SID} waits to be read" in said and "--confirm-install-agent" in said, said
         assert loop_mod.RECORDING_OCR_WAIT not in said, said
         assert rec.worked == [], "an interactive sync reads no recording"
+        # B13 round 42 C2245: the page says the wait it is in now, never the OCR-down words or a
+        # QUARANTINE.tsv row that is gone with the REFUSED state
+        fm, body = _recording_page(config, MEETING)
+        assert fm["status"] == "refused" and fm["reason"] == publish_mod.RECORDING_PASS_WAIT_REASON, fm
+        assert "QUARANTINE.tsv" not in body and "agentsync status` counts it" in body, body
+        _every_tsv_pointer_has_its_row(config)
+    assert run(config, mode=None).commit_sha is None, "the page is written only when its reason changes"
     assert run(config).exit_code == 0  # a background sync reads it
     fm, body = _recording_page(config, MEETING)
     assert fm["status"] == "current" and "Contoso review" in body, (fm, body)
     assert _recording_words(config) == ""
+    _every_tsv_pointer_has_its_row(config)
+
+
+def _every_tsv_pointer_has_its_row(config: Config) -> None:
+    """Every mirror page that says "See `_sync/QUARANTINE.tsv`" has a row there (C2245)."""
+    tsv = config.docs_repo / "_sync" / "QUARANTINE.tsv"
+    listed = tsv.read_text(encoding="utf-8") if tsv.is_file() else ""
+    for path in (config.docs_repo / "mirror").rglob("*.md"):
+        text = path.read_text(encoding="utf-8")
+        if "See `_sync/QUARANTINE.tsv`" in text:
+            fm, _body = page(config.docs_repo, str(path.relative_to(config.docs_repo)))
+            assert f"\t{fm['source_path']}\t" in listed or fm["source_path"] in listed, (path, listed)
 
 
 def test_a_recording_deferred_before_an_ocr_outage_keeps_its_count_through_it_c2007(

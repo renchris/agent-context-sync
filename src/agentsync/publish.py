@@ -633,6 +633,17 @@ would not bring. The stored reason, ``none@0`` and the re-read key keep ``no con
 ``_sync/QUARANTINE.tsv`` follows the page, as for an image (B13 round 37 C1268)."""
 
 
+RECORDING_PASS_WAIT_REASON = (
+    "the recording waits to be read by a background sync, or by `~/.local/bin/agentsync materialise <file>` "
+    "(an interactive sync reads no recording)"
+)
+"""The words of a recording's stub that waits for the recording pass: one first seen while it could not be
+read (an OCR outage, no media helper yet, ``[convert] recordings`` off), planned again once it can be
+(``_Cycle._recording_defer``), its row ``RECORDING_WAITS`` (B13 round 42 C2245, ruling 155). Its page points
+at status's recordings line, never at ``_sync/QUARANTINE.tsv``, which lists REFUSED rows only and so never
+lists it; the stored state reason is ``RECORDING_WAITS``."""
+
+
 def ocr_down_reason(suffix: str) -> str:
     """The words of the stub of a file waiting on the OCR helper, by its suffix: a recording's
     (:data:`OCR_DOWN_RECORDING_REASON`) or an image's (:data:`OCR_DOWN_REASON`) (B13 round 37 C1268)."""
@@ -1280,6 +1291,36 @@ class Publisher:
             return True
         return not self._policy.labels_active and suffix in ImageConverter.extensions
 
+    def replan_waiting_recording(
+        self, source: SourceConfig, item: ItemRow, run_id: int
+    ) -> list[MirrorChange]:
+        """Plan ``item``'s refused recording stub again as one that waits for the recording pass
+        (:data:`RECORDING_PASS_WAIT_REASON`), its row already ``RECORDING_WAITS``: no byte is read, the
+        page keeps its status (refused), its converter and keys, and it is written only when the reason it
+        shows changes, so interactive syncs make no page-only commits (B13 round 42 C2245, ruling 155). []
+        when the item has no single refused stub page."""
+        outs = self._manifest.outputs_for(item.source_id, item.stable_id)
+        live = [o for o in outs if o.status is not OutputStatus.TOMBSTONE]
+        if len(live) != 1 or live[0].status is not OutputStatus.REFUSED:
+            return []
+        said = self._stub_says(item.source_id, item.stable_id)
+        if said is not None and said[0] == RECORDING_PASS_WAIT_REASON:
+            return []
+        out = live[0]
+        result = ConversionResult(
+            status=ConversionStatus.REFUSED,
+            converter_id=out.converter_id or NO_CONVERTER_ID,
+            converter_version=out.converter_version or NO_CONVERTER_VERSION,
+            options_hash=out.options_hash or "",
+            action_key=out.action_key or "",
+            content_sha256="",
+            canonical_sha256="",
+            units=(),
+            reason=NO_CONVERTER_PREFIX + Path(item.name).suffix.lower(),
+        )
+        page = self._plan_stub(source, item, result, waits=RECORDING_PASS_WAIT_REASON)
+        return self.write_pages(item, [page], run_id)
+
     def withheld(self, reason: str | None, suffix: str) -> bool:
         """:meth:`_withheld`, for the cycle's count of the stubs this says ``withheld by label rule`` on, so
         the sync line and the page never disagree on why a file was not read (B13 round 8 J29)."""
@@ -1325,8 +1366,17 @@ class Publisher:
         return None
 
     def _plan_stub(
-        self, source: SourceConfig, item: ItemRow, result: ConversionResult, *, withheld: bool | None = None
+        self,
+        source: SourceConfig,
+        item: ItemRow,
+        result: ConversionResult,
+        *,
+        withheld: bool | None = None,
+        waits: str | None = None,
     ) -> PlannedPage:
+        """A stub page for ``result``. ``waits`` (``_Cycle._recording_defer``'s re-planned recording stub,
+        B13 round 42 C2245): the reason the page gives in place of the refusal's, a wait the cycle has
+        already set, which reads no byte and points at status, never at ``_sync/QUARANTINE.tsv``."""
         status = result.status
         refusal = policy.is_refusal_reason(result.reason)
         if status is ConversionStatus.REFUSED or refusal:
@@ -1356,7 +1406,8 @@ class Publisher:
         # G29), never the stored reason. ``withheld`` given (the stub re-render, B13 round 8 J47, J53) is what
         # the published page says, which stands in for this run's OCR state: the run that planned it decides.
         withheld = (
-            status is ConversionStatus.REFUSED
+            waits is None
+            and status is ConversionStatus.REFUSED
             and not refusal
             and (
                 self._withheld(result.reason, suffix)
@@ -1367,7 +1418,8 @@ class Publisher:
         # an image whose OCR helper fails (C1271): the words say so, never "no converter"; the
         # stored reason, the converter and the status stay, so it is read again once the helper works (C1101)
         ocr_waits = (
-            status is ConversionStatus.REFUSED
+            waits is None
+            and status is ConversionStatus.REFUSED
             and not refusal
             and not withheld
             and self.ocr_waits(
@@ -1377,8 +1429,14 @@ class Publisher:
             )
         )
         waits_reason = ocr_down_reason(suffix)  # a recording's words or an image's (C1268)
-        summary_text = waits_reason if ocr_waits else shown
-        if withheld:
+        summary_text = waits or (waits_reason if ocr_waits else shown)
+        if waits is not None:
+            text_lines = (
+                f"agentsync has not converted this source yet: {waits}.\n"
+                "The source exists: it waits to be read, not absent. `~/.local/bin/agentsync status` "
+                "counts it among the recordings that wait to be read.\n"
+            )
+        elif withheld:
             # The summary says it too (B13 round 4 Q27): the mirror's CLAUDE.md has agents read summary: to
             # decide whether to open a page, and "no converter for .msg" there hid the route. The status, and
             # so the "refused: " prefix, stays.
@@ -1451,7 +1509,7 @@ class Publisher:
                 and not withheld
                 else None
             ),
-            reason=_withheld_reason(suffix) if withheld else waits_reason if ocr_waits else reason,
+            reason=waits or (_withheld_reason(suffix) if withheld else waits_reason if ocr_waits else reason),
             source_title=title,
             summary=f"{page_status.value}: {summary_text}",
             tokens_estimate=math.ceil(len(body) / 4),
