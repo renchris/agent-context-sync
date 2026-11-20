@@ -43006,6 +43006,14 @@ Amended 2026-11-20, §16.267 C2270: the note reads `<N> files in <ids> have page
 they are among the files read again`, no cause named; a page is dated by the run that converted it, not `built_run`
 (C2243), and a converter that cannot start keeps its targets waiting rather than making none (C2292).
 
+Amended 2026-11-20, §16.269 C2256, C2253, C2297, C2308, C2257: the options re-read has two limits a reader must be
+told, and the note order is the re-read's own note first: an edit made before the first sync that recorded
+`[convert]` opens nothing (a manifest with no record), so its pages take the new options when their files next change,
+and a recording's pages are not read again for an options edit, keeping the cap they were made under until the
+recording is read again for another reason (its bytes change, a version bump, `materialise <file>`), as a cloud
+file's page waits for its bytes. `loop._reread_notes` adds the options note after the note that counts the files to
+read again, whatever its words: that note starts `sync again:` only while another sync would read more of them.
+
 **A configured name holding a line separator is written escaped** (R41-B1, the lead's grown item from lane RA's
 measurement). `config.toml_string` wrote U+2028, U+2029 and U+0085 raw, which TOML 1.0 takes in a basic string, but
 both reports split a line at each, so a source path holding one printed its pieces in clear. They are written
@@ -43314,6 +43322,11 @@ under the old options, a few per sync, a page that comes out the same committing
 the new options when its bytes next change, and status counts those files in a note after the `sync again:` one
 (`loop._REREAD_OPTIONS`); the README said nothing of it. A paragraph after the one on files converted before OCR now
 says so. Test: `test_the_readme_says_a_convert_edit_reaches_existing_pages_r41_d1`.
+
+Amended 2026-11-20, §16.269 C2308, C2257, C2256, C2253, C2297: the status note above is the one after the re-read's
+own note, which starts `sync again:` only while another sync reads more, and the README paragraph names the two
+limits: an edit made before the first sync that recorded `[convert]` is not looked back on, and a recording's pages
+keep their cap until the recording is read again for another reason.
 
 **The guide's rows give each head's rule for any path, as both legends do** (C2051; docs only; ruling 142, from lanes
 RA's and RB's words: the joint run's Python half 04467ed28 and shell half facd59978, with 18aa99033 and 0b4694286).
@@ -43744,6 +43757,20 @@ docs/deploy/README.md's Manual inbox bullet now open "Setup keeps an inbox" and 
 drops `(inbox ensured)` from install.sh and moves its string pins, and §16.13's KISS K14 paragraph and §16.29's
 no-folder table row, which quote it, get dated lines. Test:
 `test_both_guides_say_setup_keeps_an_inbox_with_each_case_it_meets_c2258`, held to `cli._ensure_inbox`'s own lines.
+
+**The README's `[convert]` paragraph says what an options edit re-reads, and what it does not** (C2256, C2253, C2297,
+C2308, C2257; docs only; ruling 154, from lane B's words; amends §16.262 C2021 and §16.264 R41-D1). The paragraph
+promised that every local and inbox page made under the old options is read again and that `sync` prints the `sync
+again:` note, while no record of `[convert]` exists before the first sync that writes one, so an edit made before it
+opens nothing, the recording converter makes no drift target, so a recording's pages keep their cap until it is read
+again for another reason, and `loop._reread_notes` puts the options note after whichever re-read note comes first,
+`sync again:` only while another sync would read more. The paragraph now says each: the first recorded sync, the
+edit made before it (run one sync after an upgrade, then edit), the recording's pages, the cloud file's, and the
+note order, with no "usually". Neither code route is built: drift for recordings re-ran every recording's OCR while the
+piece key held `max_page_bytes`, and an upgrade-time re-read of every page with existing outputs re-read every page on
+every upgrade under a false note (makes worse True, C2297; C2256's optional code is not built). Lane B's test_cycle.py
+tests each limit, lane E's config comment and ConvertConfig row carry the same exceptions. Test:
+`test_the_readme_says_a_convert_edit_reaches_existing_pages_r41_d1`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

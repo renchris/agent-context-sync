@@ -217,11 +217,16 @@ until it changes or agentsync is upgraded. While files are left, `sync` prints a
 `sync again:` and counts them; it stops saying so once another sync would read none of them.
 
 A `[convert]` edit that changes how pages are made, such as `max_page_bytes`, applies to every file converted after
-it. Files in a synced folder or the inbox that are on this Mac and whose pages were made under the old options are
-read again the same way, a few per sync; a page that comes out the same is left untouched and nothing is committed
-for it. A cloud file's page takes the new options when its bytes next change. While such files are left, `sync`
-prints the `sync again:` note, and a `note:` line after it counts the files whose pages were made under other
-converter options.
+it. Once a sync on this version has recorded the options (the first sync does that), an edit after it makes later
+syncs read again, a few per sync, the files in a synced folder or the inbox that are on this Mac and whose pages were
+made under other options; a page that comes out the same is left untouched and nothing is committed for it. An edit
+made before that first sync is not looked back on: its pages take the new options when their files next change, so
+after an upgrade, run one sync before you edit. A meeting recording's pages are not read again for an options edit:
+they keep the cap they were made under until the recording is read again for another reason (its bytes change, a
+newer agentsync reads recordings differently, or `~/.local/bin/agentsync materialise <file>`). A cloud file's page
+takes the new options when its bytes next change. While such files are left, `sync` prints the re-read's `note:`
+line, which starts `sync again:` only while another sync would read more of them and otherwise says why they wait,
+and a `note:` line after it counts the files whose pages were made under other converter options.
 
 **Comments in PDFs.** A reviewer's comments on a PDF (notes, highlights, strikethroughs, text boxes and the like) are
 listed after the text of the page they are on, under `[comments on this page (PDF annotations):]`: one line per

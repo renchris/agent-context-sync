@@ -13310,23 +13310,42 @@ def test_the_readme_says_a_recording_on_this_mac_with_no_bytes_gets_a_page_c2057
 def test_the_readme_says_a_convert_edit_reaches_existing_pages_r41_d1() -> None:
     """B13 round 41 R41-D1 (lead's grown item, from lane B's C2021 words, c72c736b8): an edit of a
     `[convert]` option re-reads the local and inbox pages built under the old options, a few per sync, and
-    status counts them in a note after the `sync again:` one; the README's convert paragraphs said nothing of
-    it. The paragraph is held to loop's note."""
-    from agentsync import loop  # noqa: PLC0415
+    status counts them in a note after the re-read's own one; the README's convert paragraphs said nothing of
+    it. B13 round 42 C2256, C2253, C2297, C2308, C2257 (ruling 154, from lane B's words): the paragraph
+    promised every page and the `sync again:` note, while an edit made before the first sync that recorded
+    `[convert]` opens nothing, a recording's pages make no drift target and keep their cap until read again
+    for another reason, and the options note follows whichever re-read note comes first. It now names both
+    limits and the note order, held to `_drift_hashes`, `_drift_since` and loop's notes; lane B's
+    test_cycle.py tests each limit."""
+    from agentsync import cycle, loop  # noqa: PLC0415
 
     assert loop._REREAD_OPTIONS.startswith("have pages made under other converter options")
+    assert loop.SYNC_AGAIN == "sync again: "
+    hashes = inspect.getsource(cycle._Cycle._drift_hashes)
+    assert "if conv.converter_id == RecordingConverter.converter_id:\n" in hashes and "continue" in hashes
+    since = inspect.getsource(cycle._Cycle._drift_since)
+    assert "self.run_id if len(stored) == 2 else 0" in since, "a manifest with no record opens nothing"
     readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
     before = readme.index("Files in a synced folder or the inbox that were converted before OCR was there")
     at = readme.index("A `[convert]` edit that changes how pages are made, such as `max_page_bytes`")
     assert before < at
     assert (
         "A `[convert]` edit that changes how pages are made, such as `max_page_bytes`, applies to every file"
-        " converted after it. Files in a synced folder or the inbox that are on this Mac and whose pages were"
-        " made under the old options are read again the same way, a few per sync; a page that comes out the"
-        " same is left untouched and nothing is committed for it. A cloud file's page takes the new options"
-        " when its bytes next change. While such files are left, `sync` prints the `sync again:` note, and a"
-        " `note:` line after it counts the files whose pages were made under other converter options."
+        " converted after it. Once a sync on this version has recorded the options (the first sync does"
+        " that), an edit after it makes later syncs read again, a few per sync, the files in a synced folder"
+        " or the inbox that are on this Mac and whose pages were made under other options; a page that comes"
+        " out the same is left untouched and nothing is committed for it. An edit made before that first sync"
+        " is not looked back on: its pages take the new options when their files next change, so after an"
+        " upgrade, run one sync before you edit. A meeting recording's pages are not read again for an"
+        " options edit: they keep the cap they were made under until the recording is read again for another"
+        " reason (its bytes change, a newer agentsync reads recordings differently, or"
+        " `~/.local/bin/agentsync materialise <file>`). A cloud file's page takes the new options when its"
+        " bytes next change. While such files are left, `sync` prints the re-read's `note:` line, which"
+        " starts `sync again:` only while another sync would read more of them and otherwise says why they"
+        " wait, and a `note:` line after it counts the files whose pages were made under other converter"
+        " options."
     ) in readme
+    assert "prints the `sync again:` note, and" not in readme and "usually" not in readme[at : at + 1600]
 
 
 def test_the_guides_path_and_folder_rows_say_both_reports_cut_every_dollar_quote_word_c1855() -> None:
