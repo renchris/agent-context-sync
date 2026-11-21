@@ -1301,6 +1301,28 @@ def test_a_lock_wait_the_probe_missed_is_booked_from_agentsyncs_stdout_mark(
     assert f'grep -qx "{cli.LOCK_WAITED_MARK}" "$SYNC_OUT"' in INSTALL_SH.read_text(encoding="utf-8")
 
 
+@pytest.mark.parametrize("mark", ["unrecorded", "recorded"])
+def test_a_lock_wait_on_an_unrecorded_holder_the_probe_missed_is_booked_as_one_c2540(
+    env: dict[str, str], folder: Path, wheel: Path, mark: str
+) -> None:
+    """B13 round 43 C2540: a lock whose body named no holder, taken after install.sh's probe found it free,
+    was booked waited-for-the-lock, which the report words as a wait for another sync, from the one mark
+    agentsync printed for every wait. agentsync now prints cli.LOCK_WAITED_UNRECORDED_MARK for that wait,
+    read first and booked waited-for-an-unrecorded-holder; the older mark (an earlier build prints only it)
+    is still read. Each literal install.sh greps for is the CLI's own constant."""
+    out = cli.LOCK_WAITED_UNRECORDED_MARK if mark == "unrecorded" else cli.LOCK_WAITED_MARK
+    cp = install_sh({**env, "STUB_SYNC_OUT": out}, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    note = "waited-for-an-unrecorded-holder" if mark == "unrecorded" else "waited-for-the-lock"
+    assert ("first-sync", "done", "0", note) in steps(install_log(env))
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    new, old = (
+        f'grep -qx "{m}" "$SYNC_OUT"' for m in (cli.LOCK_WAITED_UNRECORDED_MARK, cli.LOCK_WAITED_MARK)
+    )
+    assert script.count(new) == 1 and script.count(old) == 1
+    assert script.index(new) < script.index(old), "the unrecorded mark is read first"
+
+
 @pytest.mark.parametrize("with_folder", [False, True], ids=["init", "add-source"])
 def test_a_file_named_inbox_is_not_called_an_ensured_inbox_c2207(
     real_env: dict[str, str], wheel: Path, folder: Path, with_folder: bool

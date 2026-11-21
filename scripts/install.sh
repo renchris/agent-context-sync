@@ -13458,8 +13458,11 @@ else
 	if [ "$SYNC_RC" -eq 0 ]; then
 		# a wait the probe missed is booked too, from agentsync's stdout mark (cli.LOCK_WAITED_MARK; U68); a lock
 		# whose body named no holder is waited-for-an-unrecorded-holder, the agentsync step's token for that fact,
-		# which setup_report words as a wait for the lock to be free (B13 round 42 C2222)
-		if [ "$SYNC_LOCK_BUSY" -eq 1 ] && [ "$SYNC_LOCK_BARE" -eq 1 ]; then
+		# which setup_report words as a wait for the lock to be free (B13 round 42 C2222); as is a wait the probe
+		# missed on a lock whose body named no holder, which agentsync marks with cli.LOCK_WAITED_UNRECORDED_MARK,
+		# read before the older mark an earlier build prints for every wait (B13 round 43 C2540)
+		if { [ "$SYNC_LOCK_BUSY" -eq 1 ] && [ "$SYNC_LOCK_BARE" -eq 1 ]; } ||
+			grep -qx "lock wait: this sync waited for the sync lock (no holder recorded)" "$SYNC_OUT" 2>/dev/null; then
 			FIRST_SYNC_NOTE="${FIRST_SYNC_NOTE:+$FIRST_SYNC_NOTE-}waited-for-an-unrecorded-holder"
 		elif [ "$SYNC_LOCK_BUSY" -eq 1 ] || grep -qx "lock wait: this sync waited for another sync's lock" "$SYNC_OUT" 2>/dev/null; then
 			FIRST_SYNC_NOTE="${FIRST_SYNC_NOTE:+$FIRST_SYNC_NOTE-}waited-for-the-lock"
