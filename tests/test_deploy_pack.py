@@ -919,6 +919,53 @@ def test_pppc_profile_passes_plutil_lint() -> None:
     assert proc.returncode == 0, proc.stdout + proc.stderr
 
 
+def _mdm_sh_blocks() -> list[str]:
+    """The ```sh blocks of docs/deploy/mdm/README.md, in page order."""
+    page = (DEPLOY / "mdm" / "README.md").read_text(encoding="utf-8")
+    return re.findall(r"^```sh\n(.*?)^```$", page, re.M | re.S)
+
+
+def test_the_mdm_guides_commands_quote_every_placeholder_c2527() -> None:
+    """B13 round 43 C2527: `--keychain-profile <profile>` was a bare placeholder, which the shell reads as
+    input from a file named `profile`. Every `<...>` placeholder in a command block sits inside quotes, and
+    the guide says the blocks run from the checkout root."""
+    page = " ".join((DEPLOY / "mdm" / "README.md").read_text(encoding="utf-8").split())
+    assert "Every command below and in section 2 runs from the checkout root" in page
+    for block in _mdm_sh_blocks():
+        for line in block.splitlines():
+            bare = re.sub(r"\"[^\"]*\"|'[^']*'", "", line)
+            assert not re.search(r"<[A-Za-z]", bare), line
+    assert '--keychain-profile "$PROFILE" --wait' in page
+
+
+@on_macos
+def test_the_mdm_guides_fill_block_runs_from_the_checkout_root_c2527(tmp_path: Path) -> None:
+    """B13 round 43 C2527: section 2 set `P=agentsync-pppc.mobileconfig` while section 1 leaves the reader at
+    the checkout root, where no such file is: every plutil line failed and `ready` never printed. Run from a
+    copy of the checkout's layout (codesign stubbed with a Developer ID requirement), the block fills a
+    working copy, prints `ready`, and leaves the tracked template as it was."""
+    [fill] = [b for b in _mdm_sh_blocks() if "plutil -replace" in b]
+    root = tmp_path / "checkout"
+    (root / "docs" / "deploy" / "mdm").mkdir(parents=True)
+    template = root / "docs" / "deploy" / "mdm" / PPPC.name
+    template.write_bytes(PPPC.read_bytes())
+    stubs = tmp_path / "bin"
+    stubs.mkdir()
+    requirement = (
+        'identifier "com.agentsync.launcher" and anchor apple generic and certificate leaf[subject.OU] ='
+        ' "ABCDE12345"'
+    )
+    exec_stub.write(stubs / "codesign", f"#!/bin/bash\necho 'designated => {requirement}' >&2\n")
+    env = {**os.environ, "PATH": f"{stubs}{os.pathsep}{os.environ['PATH']}"}
+    proc = subprocess.run([BASH, "-c", fill], cwd=root, env=env, capture_output=True, text=True, check=False)
+    assert proc.stdout.strip().splitlines()[-1:] == ["ready"], proc.stdout + proc.stderr
+    assert template.read_bytes() == PPPC.read_bytes()
+    filled = plistlib.loads((root / PPPC.name).read_bytes())
+    assert (
+        filled["PayloadContent"][0]["Services"]["SystemPolicyAllFiles"][0]["CodeRequirement"] == requirement
+    )
+
+
 @pytest.mark.parametrize("script", BASH_SCRIPTS, ids=lambda p: p.name)
 def test_scripts_parse_with_bash_n(script: Path) -> None:
     """Every ``#!/bin/bash`` script parses under the bash it runs under, /bin/bash 3.2 on a Mac: an apostrophe

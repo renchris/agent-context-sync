@@ -44239,6 +44239,17 @@ five past 70; the slowest, 62a72e6c, ran pytest's step 78:19 at 8972 tests, 21:0
 bracket, the wait and the base, as C2274 did for round 41. No job passed round 39's 80:33, so CLAUDE.md's head of 81
 stays, and `timeout-minutes` stays 100. Test: `tests/test_deploy_pack.py::test_claude_md_gives_cis_time_and_its_limit`.
 
+**The MDM guide's commands run from the checkout root, every placeholder quoted** (C2527; `docs/deploy/mdm/README.md`).
+Section 1 leaves the reader at the checkout root, but section 2 set `P=agentsync-pppc.mobileconfig`, a file only under
+`docs/deploy/mdm/`, so every `plutil` line failed and `ready` never printed; and `--keychain-profile <profile>` was a
+bare placeholder the shell reads as a redirect from a file named `profile`. The guide says both sections run from the
+checkout root; section 2 copies the template to a working copy there (`cp docs/deploy/mdm/agentsync-pppc.mobileconfig
+agentsync-pppc.mobileconfig`) before `P=`, so the tracked template stays as it is; section 1 sets
+`PROFILE="<notarytool keychain profile name>"` and passes `--keychain-profile "$PROFILE"`. Tests:
+`tests/test_deploy_pack.py::test_the_mdm_guides_commands_quote_every_placeholder_c2527` and
+`::test_the_mdm_guides_fill_block_runs_from_the_checkout_root_c2527` (the block run in a copy of the layout, codesign
+stubbed, prints `ready`).
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units

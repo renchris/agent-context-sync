@@ -15,13 +15,16 @@ Build on a Mac that has your **Developer ID Application** identity. The launcher
 absolute path, so build once per user. Ask the user for the output of `echo "$(uv tool dir)/agentsync/bin/python"`
 and use it as `ALLOWED_PROGRAM`:
 
+Every command below and in section 2 runs from the checkout root, where the first line leaves you:
+
 ```sh
 git clone https://github.com/renchris/agent-context-sync.git && cd agent-context-sync
+PROFILE="<notarytool keychain profile name>"
 SIGN_IDENTITY="Developer ID Application: <Org> (<TEAMID>)" \
 ALLOWED_PROGRAM="/Users/<user>/.local/share/uv/tools/agentsync/bin/python" launcher/build.sh
 codesign -d -r- launcher/build/AgentSyncLauncher.app          # prints "designated => identifier ..."
 ditto -c -k --keepParent launcher/build/AgentSyncLauncher.app AgentSyncLauncher.zip
-xcrun notarytool submit AgentSyncLauncher.zip --keychain-profile <profile> --wait
+xcrun notarytool submit AgentSyncLauncher.zip --keychain-profile "$PROFILE" --wait
 xcrun stapler staple launcher/build/AgentSyncLauncher.app
 ```
 
@@ -37,10 +40,12 @@ of them**. Hand the `.app` to the user. If they turn on background sync (optiona
   `com.agentsync.launcher`.
 - **`com.apple.servicemanagement`:** keeps the `com.agentsync.*` LaunchAgents enabled (macOS 13+).
 
-Replace the three placeholders. Use `plutil`, not PlistBuddy, which strips the quotes inside a requirement:
+Replace the three placeholders in a working copy at the checkout root, so the tracked template stays as it is. Use
+`plutil`, not PlistBuddy, which strips the quotes inside a requirement:
 
 ```sh
 DR="$(codesign -d -r- launcher/build/AgentSyncLauncher.app 2>&1 | sed -n 's/^designated => //p')"
+cp docs/deploy/mdm/agentsync-pppc.mobileconfig agentsync-pppc.mobileconfig
 P=agentsync-pppc.mobileconfig
 plutil -replace PayloadContent.0.Services.SystemPolicyAllFiles.0.CodeRequirement -string "$DR" "$P"
 plutil -replace PayloadContent.1.Rules.1.TeamIdentifier -string "<TEAMID>" "$P"
