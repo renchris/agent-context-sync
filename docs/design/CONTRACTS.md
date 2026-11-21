@@ -43453,6 +43453,9 @@ kept first word whose run stops before a `/` (`OneDrive-Personal Secret then ~/x
 `test_the_free_text_scan_judges_a_tenants_whole_run_ruling_146`,
 `test_both_reports_judge_a_tenants_whole_run_in_free_text_ruling_146` (both locales).
 
+Amended 2026-11-21, §16.270 C2436: the not-kept arm gives back `report_cuts.FREE_CUT_TRAIL` (`FREE_WORD_TRAIL` with a
+blank and a tab), so `OneDrive-Tailspin Toys "quoted" rest` reads `<path> "quoted" rest`.
+
 **Every spelling of the config path is cut to its end** (C2290, C2231, C2320 with C2239; ruling 147). `Redactor.add_cut`
 compiles each whole-config literal with `_CUT_TOKEN_END`, so the cut runs to the end of its path token
 (`sources.toml-PrivateBackup`, `.bak`, `x/Wombat` keep no suffix), a sentence-final `.` and every terminator kept
@@ -43466,6 +43469,10 @@ the new echo's `<folder-N>` (C2320 with C2239; the loop C2239 called dead is liv
 `test_a_config_cut_runs_to_its_path_tokens_end_c2290`, `test_both_reports_cut_a_config_path_to_its_tokens_end_c2290`,
 the `cloud` arm of `test_both_reports_cut_a_config_path_but_the_default_c2063_c2083`,
 `test_an_older_writers_add_source_echo_gets_the_new_echos_number_c2320_c2239` and `_r142_lines`' older echo.
+
+Amended 2026-11-21, §16.270 C2526, C2435, C2496: `_CUT_TOKEN_END` is built from `report_cuts.CUT_TOKEN_STOP`, the shell
+cf loop's ASCII stop set, plus `\n`, so a no-break or ideographic space sits inside the token in both reports, and so
+does a printf-%q `\x` whose x is not `"`; `\"` or a line-final `\` ends it.
 
 **One bound for a head's value** (C2237, C2265, C2286 with C2242, C2234, C2236, C2321, C2275; ruling 148; amends
 §16.203 C331, §16.251 C1625). A debug value is empty only before `| ` and another `debug: ` head or in the
@@ -43485,6 +43492,10 @@ CloudStorage (C2275) and `_r146_lines`' rows. Tests: `test_an_empty_debug_value_
 `test_the_path_legend_item_names_every_use_of_path`, `test_the_second_kept_divergence_is_pinned_in_both_reports_c2265`
 and `test_both_reports_apply_each_heads_rule_to_any_path_ruling_142`.
 
+Amended 2026-11-21, §16.270 C2466: a one-word head right after a `'` or `"` runs to its closing quote or the line's end,
+split at each later such head after a blank, each piece cut by its own head's rule; `_r142_lines` holds that form,
+ruling 148's "never the form whose quote wraps the whole argument" lifted.
+
 **The C2071 test says what it pins** (C2240; ruling 149). The source id `it` cuts the pronoun as well, as
 `<source-N>`, and the test now asserts that line; keeping the pronoun would print the id in clear.
 
@@ -43500,6 +43511,11 @@ name only; then, from the manifest meta `convert_options`, `; changed in run N: 
 converter options are read again`, which an older manifest leaves out. Lane RA's finding: the pandoc probe line printed
 a configured `pandoc_path` under the home in clear; `_add_pandoc_cut` registers it as a whole-path cut. Test:
 `test_the_configuration_names_a_convert_setting_and_the_run_it_changed_in_c2210_c2221`.
+
+Amended 2026-11-21, §16.270 C2521, C2504, C2522, C2497, C2431: the clause reads `; changed in run N: local and inbox
+pages made under other converter options are read again, but a meeting recording's pages keep the cap they were made
+under until it is read again for another reason`; `convert_options` is read with two fields and ASCII digits, else as
+unrecorded; and `_add_pandoc_cut` also cuts doctor's shell word for the configured path.
 
 **The Loop line keeps the checkout's install.sh whole** (C2211 with C2216). `loop_next_text` keeps
 `~/.local/bin/agentsync` and `~/src/agent-context-sync/scripts/install.sh` whole, so the recording wait's command runs as
@@ -44269,10 +44285,93 @@ rule naming both forms stands.
 
 ### 16.270 Round 43: the report: every path cut in every spelling its printer writes, a cut token ending at the same byte in both reports, and the inbox's state as one helper decides it (2026-11-21, wave B13 round 43 lane RA)
 
-Round 43 lane RA's report_cuts rows for rulings 157 and 158 (lane RB's shell halves read them):
-`report_cuts.CUT_TOKEN_STOP`, the ASCII set that ends a whole-path cut's token in both reports (C2526 with C2435),
-and `report_cuts.FREE_CUT_TRAIL`, what the provider rule's not-kept arm gives back (C2436), which `shell_block()`
-writes as `CUT_FREE_CUT_TRAIL` after `CUT_FREE_TRAIL`. The section's items follow.
+Round 43's lane RA items (`docs/plans/bring-back-ocr.md`, "B13 round 43"; specs `round43/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's rulings 157 to 170 settle it). Rulings 157 and 158's shell halves are
+lane RB's (§16.271), landed with these in one run. A dated line this round writes reads
+`Amended 2026-11-21, §16.270 C<n>`.
+
+**Every path a report prints is cut in every spelling its printer writes** (C2497 with C2431, C2430; ruling 157;
+amends §16.265 C2210). doctor's configured-pandoc fix writes the path as one shell word (`doctor._shell_path`:
+`~/'<rest>'`, `~/"<rest>"` for a name holding a `'`, the `'\''` splice, the `$'...'` form), which no registered
+literal matched, so the Doctor FAIL's fix printed the folder in clear. `_add_pandoc_cut` also registers that word of
+each absolute form (as written, expanded, resolved) under the home, shown as `_add_config_cut`'s own `~/<path>`
+(`_config_cut_shown`, one helper both share); a pandoc outside the home (`/opt/homebrew/...`) stays in clear. The
+native copy's fix names `~/.local/share/agentsync/pandoc`, a fixed agentsync location no person chose: no cut, and
+doctor.py is unchanged (C2497 with C2431). With a docs repo outside the home, `<its parent>/inbox` is registered
+whole after the four own folders, so `- inbox:` and status's `inbox:` lines read a `<folder-N>`; never at the
+default inbox, never under a `/` parent (`/inbox` would cut `~/agent-context/inbox`), never the parent itself. A docs
+path under a `/` parent stays registered whole: skipping it was measured to print a name such as `/Contoso Legal`
+in clear, where registering it only over-cuts `~/agent-context/docs` (C2430). Tests:
+`test_doctors_quoted_pandoc_path_is_cut_through_the_real_doctor_c2497_c2431` (through `cli._report_hooks()`, a
+blank, then a `'`, and an `/opt/homebrew` path kept),
+`test_the_inbox_beside_a_docs_repo_outside_the_home_is_cut_c2430` and
+`test_both_reports_cut_the_inbox_beside_a_docs_repo_outside_the_home_c2430` (`/Volumes` and `/Users/Shared`, both
+locales).
+
+**A cut token ends at the same byte in both reports** (C2526 with C2435, C2496; ruling 158; amends §16.265 C2290).
+`_CUT_TOKEN_END` is built from one named constant, `report_cuts.CUT_TOKEN_STOP` (the shell cf loop's ASCII stop set:
+a blank, a tab, CR, FF, VT, a quote, `)`, `,`, `;`, `:`, `]`, `|`), plus `\n`, which the shell never sees inside a
+line: Python's `\s` ended the token at a no-break or ideographic space, so `<config> PrivateBackup` printed its
+suffix here alone (C2526 with C2435). A printf-%q `\x` whose x is not `"` sits inside the token
+(`sources.toml-Private\ Backup` keeps no `Backup`); `\"` and a line-final `\` end it, and the lookahead takes both,
+so the match never fails, which would print the path in clear (C2496). Tests: the rows added to
+`test_a_config_cut_runs_to_its_path_tokens_end_c2290` (with `{cfg}\nnext` and a line-final `\`, Python-only) and
+`test_both_reports_cut_a_config_path_to_its_tokens_end_c2290` (both locales; a friction cell never ends in a
+line-final `\`).
+
+**A quote that wraps a whole argument belongs to its value** (C2466; ruling 158; amends §16.265 C2275). A one-word
+head of `_SOURCE_LOCAL_RE` (`--cwd=`, `--cwd `, `--source-local=`, `--source-local `, `add-source `) right after a
+`'` or `"` runs to its closing quote (`_closing_quote`, as slone reads one) or the line's end, where the one-word
+read printed the later words of a name with a blank (`args='--cwd=~/<path> Ledger/<folder-1>' x`). The span splits
+at each later such head after a blank, each piece cut by its own head's rule, so a second head's configured folder
+keeps its `<folder-N>`; an empty value, install.sh's own `--cwd` usage words and a non-`--cwd` value with no `/`,
+`\` or quote stay as written. Ruling 148's "never the form whose quote wraps the whole argument" clause is lifted
+from `_r142_lines`, which gains the quoted forms (the `=` and blank forms, single and double, under CloudStorage
+with an unconfigured name holding a blank, left open, and with a second head inside). A quote that wraps a whole
+command before the head (`'~/.local/bin/agentsync add-source ~/x y'`) is outside the ruling and still prints the
+later word: a residual. Test: `test_both_reports_apply_each_heads_rule_to_any_path_ruling_142`.
+
+**A not-kept tenant's cut gives back its trailing blanks** (C2436; ruling 158; amends §16.265 C2285). The provider
+rule's not-kept arm gives back `report_cuts.FREE_CUT_TRAIL` (`FREE_WORD_TRAIL` with a blank and a tab), so
+`OneDrive-Tailspin Toys "quoted" rest` reads `<path> "quoted" rest`, as before ruling 146; `FREE_WORD_TRAIL` and its
+bare `--source-local` reader are unchanged; `shell_block()` writes it as `CUT_FREE_CUT_TRAIL` after
+`CUT_FREE_TRAIL`, and the awk half is lane RB's. Tests: the two
+`R146_FREE_ROWS` rows (a quote and a backtick), in both reports.
+
+**An inbox-only sync reads `inbox synced`** (C2402; ruling 163). `LOOP_STAGES` gains `inbox synced` between
+`installed` and `synced`; `loop_stage` takes `folders`, chosen from sources.toml's live sources by
+`loop.next_step`'s own non-inbox test, never from status's words, so the Loop line and the link's `loop_stage` never
+say `synced` beside rule 2's `no folder is synced yet`; a baseline or topics stage still wins. The KISS K16b
+paragraph, setup-feedback.md's Loop sentence and the issue form's Loop stage text name it. Test:
+`test_an_inbox_only_sync_reads_inbox_synced_never_synced_c2402`.
+
+**The `<path>` legend names a table cell's and a Summary field's end** (C2438 with C2458). The free-text run's stops
+in `_LEGEND['path']` add `" | "` and `" · "` (written `\u00b7`, the source kept ASCII), as `FREE_PART_STOP` holds
+them since round 42; lane D writes the guide row from these words. Test:
+`test_the_legend_names_every_stop_of_the_free_text_run_c2438_c2458`.
+
+**The options meta is read as the cycle writes it, and the clause names the recording exception** (C2504 with
+C2522, C2521; ruling 169; amends §16.265 C2210). `_convert_changed_run` takes two fields and ASCII digits, else 0:
+`0123abcd ²` passed `isdigit` and raised in `int`, blanking the whole Configuration section, and a three-field
+value was read (C2504 with C2522; lane B's `cycle._drift_since` half). An options edit re-reads no meeting recording,
+so the changed-in-run clause ends `, but a meeting recording's pages keep the cap they were made under until it is
+read again for another reason`, README's own words, in both of ruling 68's phrase lists (it holds `record`), with
+its guide row and two test_deploy_pack.py pins (C2521). Tests:
+`test_a_malformed_options_meta_leaves_configuration_whole_c2504_c2522`,
+`test_the_configuration_names_a_convert_setting_and_the_run_it_changed_in_c2210_c2221`.
+
+**A walk with no file to list says so** (C2425). The Empty cloud folders line's walk clause takes a zero case before
+the listed-all one, `its last walk had no file to list: the mirror holds none for it`, never `every one of the 0
+files`; the counts sentence of the plural paragraph names it. Test:
+`test_empty_cloud_folders_says_a_walk_with_no_file_in_words_c2425`.
+
+**Other lanes' report halves** (C2506, C2459, C2460, C2502; this file's words). `_CWD_NAME_RE`'s docstring says the
+--cwd usage error's name is not counted, as C2321 built it (C2506; lane RB drops `folders_seen`). `_convert_line`'s
+docstring names each number option with its number (C2459). A folder above the inbox that refuses a search prints
+`- inbox: not read (<why>)` and the rest of Configuration still renders (C2460, a test of the existing branch). The
+report already renders each first-sync lock note in its own words (`waited for another sync to end`, `waited for
+the sync lock to be free`, round 42 C2222's test), so C2502 needs no report change. Test:
+`test_the_inbox_line_says_not_read_when_a_folder_above_refuses_a_search_c2460`.
 
 ### 16.271 Round 43: the installer: a source id and a folder take Python's number and length rule, another build's render gets every cut, and C2469 waits on the operator (2026-11-21, wave B13 round 43 lane RB)
 
