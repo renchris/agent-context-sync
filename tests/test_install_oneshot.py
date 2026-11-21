@@ -4223,6 +4223,39 @@ def test_a_typed_note_after_punctuation_outside_ascii_is_cut(before: str) -> Non
     assert py + "\n" == shown, (py, shown)
 
 
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+def test_the_shell_free_text_cut_gives_back_the_blank_before_a_quote_c2436(locale: str) -> None:
+    """B13 round 43 C2436 (ruling 158), the shell half: freecut's not-kept arm gave back only CUT_FREE_TRAIL's
+    `)]}.,;:`, so a tenant's run that stopped at a quote or a backtick swallowed the blank before it:
+    `<path>"quoted" rest`. The arm gives back trailing blanks and tabs too (FREE_CUT_TRAIL), the kept arm and
+    ruling 146's pinned rows unchanged. Lane RA's Python half holds the two reports to one line."""
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    block = re.search(r"(?ms)" + _REPORT_CUTS_BLOCK, script)
+    assert block is not None
+    [fn] = re.findall(r"(?ms)^typed_note_cut\(\) \{\n.*?^\}$", script)
+    head = "saw ~/Library/CloudStorage/"
+    rows = {
+        'OneDrive-Tailspin Toys "quoted" rest': '<path> "quoted" rest',
+        "OneDrive-Tailspin Toys `x` rest": "<path> `x` rest",
+        'OneDrive-Tailspin "q"': '<path> "q"',
+        "OneDrive-Tailspin Toys \t 'q' rest": "<path> \t 'q' rest",
+        # ruling 146's rows, unchanged
+        "OneDrive-Tailspin Toys": "<path>",
+        "OneDrive-Tailspin Toys.": "<path>.",
+        "OneDrive-Tailspin Toys: error 5, retry in 30s": "<path>",
+        "OneDrive-Northwind Traders then ~/Documents/x": "<path> ~/Documents/x",
+        "OneDrive-Personal/Plans x": "OneDrive-Personal/Plans x",
+    }
+    cp = _bash_run(
+        [BASH32, "-c", f"{block.group(0)}\n{fn}\ntyped_note_cut"],
+        input="".join(f"{head}{said}\n" for said in rows).encode(),
+        capture_output=True,
+        check=True,
+        env={"PATH": "/usr/bin:/bin", "LC_ALL": locale, "LANG": locale},
+    )
+    assert cp.stdout.decode().splitlines() == [f"{head}{want}" for want in rows.values()], cp.stdout.decode()
+
+
 _EMPTY_ELEMENT_HEADS = (
     "CUT_HEADS_PROVIDER='--source-local ||--source-local=|is not an existing folder: '",
     "CUT_HEADS_FIRST_UNKNOWN='|add-source '",
@@ -4358,7 +4391,7 @@ def test_install_sh_carries_the_report_cuts_block_byte_for_byte_ruling_133() -> 
     # B13 round 40 ruling 137: the argument forms' rows, CUT_ALIAS_FORMS gone; round 41 ruling 142: each
     # head's own list (the cwd's whole-name head, config), the usage and default-config words, the TOML
     # breaks and the part stop; round 42 ruling 146: the free-text path start
-    assert len(names) == 26, names
+    assert len(names) == 27, names
     for name in names:
         assert len(re.findall(rf"(?m)^\s*{name}\+?=", text)) == 1, name
     assert "import report_cuts" not in text and "report_cuts import" not in text, (

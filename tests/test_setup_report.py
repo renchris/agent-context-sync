@@ -5560,6 +5560,7 @@ def test_the_report_cuts_table_is_what_both_reports_read_ruling_133() -> None:
         "CUT_FREE_HEAD",
         "CUT_FREE_END",
         "CUT_FREE_TRAIL",
+        "CUT_FREE_CUT_TRAIL",  # B13 round 43 ruling 158 (C2436)
         "CUT_FREE_PART_STOP",
         "CUT_FREE_PATH_START",  # B13 round 42 ruling 146
         "CUT_CWD_USAGE",

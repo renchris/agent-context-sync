@@ -2702,6 +2702,7 @@ CUT_DEL_ESCAPED='\u007F|\u007f'
 CUT_FREE_HEAD='~/Library/CloudStorage/'
 CUT_FREE_END='[\040\011\042\047\140]'
 CUT_FREE_TRAIL=')]}.,;:'
+CUT_FREE_CUT_TRAIL=')]}.,;: 	'
 CUT_FREE_PART_STOP='[\042\047\140\012]|[)]:|, stored as | [|] | \302\267 '
 CUT_FREE_PATH_START='[\040\011](~/|/)'
 CUT_CWD_USAGE='needs a folder, got the option|needs a folder'
@@ -5121,7 +5122,7 @@ typed_note_cut() {
 		TYPED_CWDNAME="${CUT_HEADS_CWD_NAME:-}" TYPED_CWDUSAGE="${CUT_CWD_USAGE:-}" TYPED_CONFIG="${CUT_HEADS_CONFIG:-}" \
 		TYPED_CFGDEF="${CUT_CONFIG_DEFAULT:-}" TYPED_FREESTOP="${CUT_FREE_PART_STOP:-}" TYPED_FREEPATH="${CUT_FREE_PATH_START:-}" \
 		TYPED_HEADS="$CUT_REFUSED_HEADS" TYPED_APPS="$CUT_APPS" TYPED_FREEHEAD="$CUT_FREE_HEAD" TYPED_FREEEND="$CUT_FREE_END" \
-		TYPED_FREETRAIL="$CUT_FREE_TRAIL" LC_ALL=C awk '
+		TYPED_FREETRAIL="$CUT_FREE_TRAIL" TYPED_FREECUTTRAIL="${CUT_FREE_CUT_TRAIL:-}" LC_ALL=C awk '
 	function norm(v) { v = tolower(v); gsub(ENVIRON["CUT_SEP"], "", v); return v }
 	BEGIN {
 		# the placeholders of configured folders: a pair whose value is a part of a configured CloudStorage path
@@ -5150,6 +5151,9 @@ typed_note_cut() {
 		nh = split(ENVIRON["TYPED_HEADS"], head, "|")
 		appre = "^(" ENVIRON["TYPED_APPS"] ")-"
 		fh = ENVIRON["TYPED_FREEHEAD"]; fe = ENVIRON["TYPED_FREEEND"]; ft = ENVIRON["TYPED_FREETRAIL"]
+		# the not-kept arm\047s trail: FREE_WORD_TRAIL plus a blank and a tab (FREE_CUT_TRAIL; B13 round 43 ruling
+		# 158, C2436); a block without it reads the same set
+		fct = ENVIRON["TYPED_FREECUTTRAIL"]; if (fct == "") fct = ft " \t"
 		dcwd = ""
 		n = split(ENVIRON["TYPED_FIXED"], w, "|"); for (i = 1; i <= n; i++) fixed[w[i]] = 1
 		n = split(ENVIRON["TYPED_DRIVE"], w, "|"); for (i = 1; i <= n; i++) drive[w[i]] = 1
@@ -5281,7 +5285,8 @@ typed_note_cut() {
 	}
 	# a `~/Library/CloudStorage/<App>-<word>` word on any line, after every other cut: one CUT_PROVIDER_KEPT
 	# does not keep reads `~/Library/CloudStorage/<path>`, never numbered, its trailing CUT_FREE_TRAIL signs
-	# kept after (B13 round 40 C1862, as setup_report._free_provider_cuts). B13 round 42 ruling 146 (C2285 with
+	# kept after (B13 round 40 C1862, as setup_report._free_provider_cuts), and since B13 round 43 ruling 158
+	# (C2436) its trailing blanks and tabs too (fct, FREE_CUT_TRAIL), so `Toys "q"` keeps its blank. B13 round 42 ruling 146 (C2285 with
 	# C2235 and C2271; privacy): the keep test read the part\047s first word alone, so `OneDrive-Personal
 	# Secret/Plans` printed whole. The part\047s long run goes across blanks from its start to the first `/`, a
 	# CUT_FREE_PART_STOP, a blank before a CUT_FREE_PATH_START (an independent path start) or the line\047s end,
@@ -5319,7 +5324,7 @@ typed_note_cut() {
 			}
 			w = substr(r, 1, i - 1)
 			t = w
-			while (t != "" && index(ft, substr(t, length(t), 1))) t = substr(t, 1, length(t) - 1)
+			while (t != "" && index(fct, substr(t, length(t), 1))) t = substr(t, 1, length(t) - 1)
 			out = out fh "<path>" substr(w, length(t) + 1); l = substr(r, i)
 		}
 		return out l
