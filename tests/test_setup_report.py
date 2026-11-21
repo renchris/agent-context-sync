@@ -18436,6 +18436,27 @@ def test_the_configuration_says_what_sits_on_the_inbox_folder_c2207(fake_mac: di
     assert _inbox_said(fake_mac) == "- inbox: not added (~/agent-context/inbox is not a folder)"
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads through a mode-000 folder")
+def test_the_inbox_line_says_not_read_when_a_folder_above_refuses_a_search_c2460(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 43 C2460 (lane D's guide words; the report half): a folder above the inbox folder that
+    refuses a search prints `- inbox: not read (<why>)`, and the rest of Configuration still prints."""
+    locked = fake_mac["home"] / "Wombat Locked"
+    (locked / "docs").mkdir(parents=True)
+    cfg = fake_mac["config"]
+    cfg.write_text(f"[agentsync]\ndocs_repo = {toml_string(str(locked / 'docs'))}\n" + cfg.read_text("utf-8"))
+    locked.chmod(0)
+    try:
+        text, _red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+    finally:
+        locked.chmod(0o700)
+    conf = section(text, "Configuration")
+    [line] = [ln for ln in conf.splitlines() if ln.startswith("- inbox: ")]
+    assert line.startswith("- inbox: not read ("), line
+    assert "This section failed" not in conf and any(ln.startswith("- [convert]") for ln in conf.splitlines())
+
+
 @pytest.mark.parametrize("docs", ["/Volumes/Zephyr Drive/Wombat/docs", "/Users/Shared/Zephyr Quarry/docs"])
 def test_the_inbox_beside_a_docs_repo_outside_the_home_is_cut_c2430(
     fake_mac: dict[str, Path], docs: str
