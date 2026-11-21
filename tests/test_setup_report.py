@@ -28830,6 +28830,28 @@ def test_doctors_quoted_pandoc_path_is_cut_through_the_real_doctor_c2497_c2431(
     assert f"pandoc_path ('{kept}')" in fail, fail
 
 
+def test_a_malformed_options_meta_leaves_configuration_whole_c2504_c2522(fake_mac: dict[str, Path]) -> None:
+    """B13 round 43 C2504 with C2522 (ruling 169): `convert_options = "0123abcd ²"` passed `isdigit` and
+    raised in `int`, so the whole Configuration section read `This section failed`, and a three-field value
+    was read though the cycle writes two. Both are read as unrecorded: the `- [convert]:` line prints with no
+    changed-in-run clause and every other Configuration line still renders."""
+    cfg = load_config(fake_mac["config"])
+    db = Path(str(cfg.state_paths.db)).expanduser()
+    db.parent.mkdir(parents=True, exist_ok=True)
+    for value in ("0123abcd \u00b2", "0123abcd 7 extra", "0123abcd \u0667"):
+        m = manifest_mod.Manifest(db)
+        try:
+            m.set_meta(setup_report._CONVERT_OPTIONS_META, value)
+        finally:
+            m.close()
+        text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+        conf = section(text, "Configuration")
+        assert "This section failed" not in conf, (value, conf)
+        [line] = [ln for ln in conf.splitlines() if ln.startswith("- [convert]")]
+        assert line == "- [convert]: default", (value, line)
+        assert any(ln.startswith("- inbox: ") for ln in conf.splitlines()), (value, conf)
+
+
 def test_a_config_cut_runs_to_its_path_tokens_end_c2290() -> None:
     """B13 round 42 C2290 (ruling 147; privacy; makes worse True for a boundary-only match): the whole-config
     cut replaced the literal alone, so `sources.toml-PrivateBackup` printed its suffix after the cut, and a

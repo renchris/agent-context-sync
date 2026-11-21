@@ -8372,7 +8372,10 @@ def _convert_line(c: Config) -> str:
 
 def _convert_changed_run(c: Config) -> int:
     """The run :data:`_CONVERT_OPTIONS_META` names, 0 when there is none to read: no manifest, an older one
-    with no such key, a value this build cannot parse, or any read error (the line must print even then)."""
+    with no such key, a value this build cannot parse, or any read error (the line must print even then).
+    B13 round 43 C2504 with C2522 (ruling 169): read as the cycle writes it, two fields and ASCII digits;
+    ``"0123abcd ²"`` passed ``isdigit`` and raised in ``int``, so the whole Configuration section read
+    ``This section failed``, and a three-field value was taken."""
     db = expand(c.state_paths.db)
     try:
         if not db.is_file():
@@ -8386,7 +8389,7 @@ def _convert_changed_run(c: Config) -> int:
             conn.close()
     except (OSError, sqlite3.Error):
         return 0
-    return int(stored[1]) if len(stored) >= 2 and stored[1].isdigit() else 0
+    return int(stored[1]) if len(stored) == 2 and stored[1].isascii() and stored[1].isdigit() else 0
 
 
 def _meta_on(conn: sqlite3.Connection, key: str) -> str | None:
