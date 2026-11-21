@@ -888,10 +888,10 @@ def test_the_full_path_budgets_the_real_bytes_around_its_table_c2476(
 def test_a_short_list_on_a_sheet_with_no_formula_is_listed_whole_c2476(
     tmp_path: Path, cap: int, what: str
 ) -> None:
-    """B13 round 43 C2476, review of 42c46b52d: the table's budget kept footer room only for the sidecars the
-    page can carry, but the lists' room still took off all four footers, so on a sheet with no formula (and
-    no chart, or no comment) the table took the bytes the lists then lacked, and three short comments, or one
-    short chart, read ``0 of N listed`` with a sidecar. Both now count the same sidecars."""
+    """B13 round 43 C2476, its first build's review: the table's budget kept footer room only for the
+    sidecars the page can carry, but the lists' room still took off all four footers, so on a sheet with no
+    formula (and no chart, or no comment) the table took the bytes the lists then lacked, and three short
+    comments, or one short chart, read ``0 of N listed`` with a sidecar. Both now count the same sidecars."""
     book = openpyxl.Workbook()
     ws = book.active
     assert ws is not None

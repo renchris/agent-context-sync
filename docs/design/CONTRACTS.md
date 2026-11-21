@@ -44462,7 +44462,7 @@ failure's reason moves, never a converted page, so pandoc's emitter stays 1.0.2.
 before `error:` in a clause and inside a path, on the exit and the crash branch, with a warning before and another own
 record after). `_first_cause` tests a record's blankness on its `_one_line` form, since `bytes.strip()` keeps 0x1C to
 0x1E, U+0085 and U+2028, so a line of those alone is skipped and the next names the exit, never `no message`
-(`test_a_record_of_separators_alone_is_no_first_cause_c2528`, review of 95b4ab8db).
+(`test_a_record_of_separators_alone_is_no_first_cause_c2528`, from the review of its first build).
 
 **The zero-byte re-read is counted, rolls back a row at a time, and reads each row once whatever its scope**
 (C2422, C2442, C2512, with C2470 not built; ruling 166, amending ruling 155; `agentsync.cycle`, `agentsync.manifest`;
@@ -44567,7 +44567,7 @@ and C2530 are one defect, built once. Each author, chart title, pivot name and l
 the sidecar, through `_record_escape`, and a flattened value (`_WS_RE` runs to one space, ends stripped) for the
 presence test, the page line, through `_escape_line`, and `labels_cut`; `_label` flattens too. So a blank or
 whitespace-only author or title adds no `( )` or `""` to either (a blank pivot name is `pivot` in both; a
-whitespace-only location is dropped). A review of efda3439a found the same raw insertion at five more page sites, now
+whitespace-only location is dropped). A review of its first build found the same raw insertion at five more page sites, now
 flattened and escaped the same way (`_page_value`, or `_label` where the value is cut): a chartsheet title and a
 defined name on the 00-index, a sheet title in its object list, and a sheet title in each sheet page's `# Sheet:`
 heading, full and streamed, so `CS<LF># Fake chartsheet`, `N1<LF># Fake name` and `Contoso<LF># Fake sheet heading`
@@ -44618,7 +44618,7 @@ and without the lists: within the cap, every list whole, more rows than the flat
 least the streamed path's rows). The lists' room counts the same footers as the table's budget (`_carried`: the CSV,
 the formulas sidecar on a sheet with a formula, a list's sidecar on a sheet with that list), since with all four taken
 off there the table took bytes the lists then lacked, and on a sheet with no formula three short comments or one short
-chart read `0 of N listed` (review of 42c46b52d;
+chart read `0 of N listed` (from the review of its first build;
 `test_convert_page_cap.py::test_a_short_list_on_a_sheet_with_no_formula_is_listed_whole_c2476`, comments and a chart
 at 8,192 and 20,000).
 

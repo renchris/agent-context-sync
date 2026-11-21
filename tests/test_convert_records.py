@@ -257,7 +257,7 @@ def test_a_pivot_name_and_location_holding_a_line_break_stay_one_record_and_one_
 def test_a_sheet_chartsheet_or_defined_name_holding_a_line_break_is_one_page_line_c2519(
     tmp_path: Path, streamed: bool
 ) -> None:
-    """B13 round 43 C2519 (review of efda3439a): a sheet title, a chartsheet title and a defined name went
+    """B13 round 43 C2519 (first build's review): a sheet title, a chartsheet title and a defined name went
     onto the 00-index and the sheet's `# Sheet:` heading raw, so an LF in any of them forged a heading. Each
     page flattens them before escaping."""
     from openpyxl.chart import BarChart, Reference  # noqa: PLC0415
