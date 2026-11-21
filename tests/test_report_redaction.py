@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from agentsync import arm_local, cli, net, report_cuts, setup_report
-from agentsync.config import default_config_text, load_config, local_source_table
+from agentsync.config import default_config_text, load_config, local_source_table, toml_string
 from agentsync.text import safe_text
 from test_install_oneshot import (  # noqa: F401  (fixture)
     _C1253_ROWS,
@@ -2367,6 +2367,41 @@ def test_both_reports_cut_a_config_path_but_the_default_c2063_c2083(
         assert configs[0] == configs[1], configs
         if arm == "cloud":
             assert shell[-1] == python[-1], (shell, python)
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize("docs", ["/Volumes/Zephyr Drive/Wombat/docs", "/Users/Shared/Zephyr Quarry/docs"])
+def test_both_reports_cut_the_inbox_beside_a_docs_repo_outside_the_home_c2430(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+    docs: str,
+) -> None:
+    """B13 round 43 C2430 (ruling 157; privacy): with a docs repo outside the home, both reports printed the
+    inbox beside it whole (`- inbox: not added (no source on /Volumes/Zephyr Drive/Wombat/inbox)`), the docs
+    path's own cut one line above it no use. Both register `<parent>/inbox` whole after the four own folders:
+    the Configuration lines and a friction row quoting the inbox print no part of the parent, and agree."""
+    inbox = str(Path(docs).parent / "inbox")
+    config = Path(env["HOME"]) / "agent-context" / "sources.toml"
+    body = f"[agentsync]\ndocs_repo = {toml_string(docs)}\n" + default_config_text()
+    texts: list[str] = []
+    shell, python, sp, pp = _both_reports(
+        env,
+        [],
+        [f"saw {inbox}", f"docs at {docs} and {inbox}"],
+        locale,
+        shell=_R142_SHELL,
+        config=config,
+        config_body=body,
+        texts_out=texts,
+    )
+    for text in texts[1:] if not _R142_SHELL else texts:
+        leaks = [ln for ln in text.splitlines() if "Zephyr" in ln or "Wombat" in ln]
+        assert not leaks, leaks
+    assert python == ["saw <folder-2>", "docs at <folder-1> and <folder-2>"], python
+    if _R142_SHELL:
+        assert shell == python and sp == pp, (shell, python, sp, pp)
+        conf = [[ln for ln in t.splitlines() if ln.startswith(("- docs repo: ", "- inbox: "))] for t in texts]
+        assert conf[0] == conf[1], conf
 
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])

@@ -5983,6 +5983,21 @@ def _build_redactor(r: _Run) -> Redactor:
             for value in _own_folder_values(expand(own_dir), expand(default)):
                 red.add("folder", value, ignore_case=True)
                 _alias_escaped(red, value)
+        # B13 round 43 C2430 (ruling 157; privacy): with a docs repo outside the home, the inbox setup keeps
+        # beside it printed whole (`inbox: not added (no source on /Volumes/<name>/inbox)`, status's `inbox:`
+        # line), the docs path's own cut one line above it no use. Its path is registered whole after the four
+        # folders, so theirs keep their numbers; never at its default, never under a `/` parent (`/inbox`
+        # would cut `~/agent-context/inbox`), never the parent itself (`/tmp` would cut every temporary path).
+        # Inside the home the parent's own component is registered already.
+        inbox = expand(r.config.docs_repo).parent / "inbox"
+        if (
+            inbox.parent != Path("/")
+            and not _under_home(str(inbox))
+            and not _under_home(os.path.realpath(inbox))
+        ):
+            for value in _own_folder_values(inbox, expand(default_docs_repo()).parent / "inbox"):
+                red.add("folder", value, ignore_case=True)
+                _alias_escaped(red, value)
     # Every configured id: an inbox or project source has one too, and a folder word inside an unregistered
     # id left it half-redacted (``<prefix>-<folder-N>-mail``, field report 2026-10-06).
     cloud_ids = {sid for sid, _provider, _comps in cloud_sources}

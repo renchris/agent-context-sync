@@ -18403,6 +18403,37 @@ def test_the_configuration_says_what_sits_on_the_inbox_folder_c2207(fake_mac: di
     assert _inbox_said(fake_mac) == "- inbox: not added (~/agent-context/inbox is not a folder)"
 
 
+@pytest.mark.parametrize("docs", ["/Volumes/Zephyr Drive/Wombat/docs", "/Users/Shared/Zephyr Quarry/docs"])
+def test_the_inbox_beside_a_docs_repo_outside_the_home_is_cut_c2430(
+    fake_mac: dict[str, Path], docs: str
+) -> None:
+    """B13 round 43 C2430 (ruling 157; privacy): with a docs repo outside the home, the inbox setup keeps
+    beside it printed whole in Configuration
+    (`inbox: not added (no source on /Volumes/Zephyr Drive/Wombat/inbox)`) and in status's `inbox:` line,
+    the docs path's own cut one line above it no use. `<parent>/inbox` is registered whole after the four
+    own folders, so the docs repo keeps its number; the parent itself and a `/` parent's `/inbox` are never
+    registered."""
+    cfg = fake_mac["config"]
+    body = cfg.read_text(encoding="utf-8")
+    cfg.write_text(f"[agentsync]\ndocs_repo = {toml_string(docs)}\n" + body, encoding="utf-8")
+    text, red = setup_report.build_report(cfg, hooks=cli._report_hooks())
+    leaks = [ln for ln in text.splitlines() if "Zephyr" in ln or "Wombat" in ln]
+    assert not leaks, leaks
+    conf = section(text, "Configuration")
+    [docs_line] = [ln for ln in conf.splitlines() if ln.startswith("- docs repo: ")]
+    [inbox_line] = [ln for ln in conf.splitlines() if ln.startswith("- inbox: ")]
+    docs_ph = re.search(r"<folder-\d+>", docs_line)
+    inbox_ph = re.search(r"<folder-\d+>", inbox_line)
+    assert docs_ph and inbox_ph and docs_ph.group() != inbox_ph.group(), (docs_line, inbox_line)
+    assert int(inbox_ph.group()[8:-1]) > int(docs_ph.group()[8:-1]), "after the four own folders"
+    assert any(ln.startswith("inbox: <folder-") for ln in text.splitlines()), "status's inbox: line, cut"
+    # never the parent itself, nor a `/` parent's /inbox
+    assert red.redact(str(Path(docs).parent.parent) + "/elsewhere").endswith("/elsewhere")
+    cfg.write_text('[agentsync]\ndocs_repo = "/zephyr-docs"\n' + body, encoding="utf-8")
+    text, red2 = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+    assert red2.redact("agentsync keeps ~/agent-context/inbox") == "agentsync keeps ~/agent-context/inbox"
+
+
 @pytest.mark.usefixtures("roomy_calls")
 def test_empty_cloud_folders_part_says_its_zeros_in_words(fake_mac: dict[str, Path]) -> None:
     """B13 round 4 Q17: one empty folder that is still there and holds nothing. The line keeps its head (the
