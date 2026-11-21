@@ -527,19 +527,23 @@ def _line_head(raw: bytes, budget: int) -> str:
 def _short_fence(raw: bytes, head: str, budget: int) -> tuple[str, str, int]:
     """``(head, close, shown)`` for a cut ``head`` whose open fence's opener is longer than half ``budget``:
     the text before the opener, a short fence of the opener's character, longer than any run of it in the
-    content it shows (three at least), the opener's info string (dropped past a fourth of the budget), and
-    the content after the opener line cut to the room left; ``shown`` counts the source bytes the head stands
-    for, the long opener line's included (B13 round 42 C2272)."""
+    content it shows (three at least), the opener's info string (what follows the opener line's whole run,
+    which the cut head may hold only part of; dropped past a fourth of the budget; B13 round 43 C2450), and
+    the block's content after the opener line, up to its own closing line (C2451), cut to the room left;
+    ``shown`` counts the source bytes the head stands for, the long opener line's included (B13 round 42
+    C2272)."""
     text = raw.decode("utf-8", errors="ignore")
     start, marker = _fence_opener(head)
     line_end = text.find("\n", start)
     opener_end = line_end if line_end >= 0 else len(text)
     before = text[:start]
-    info = text[start:opener_end].strip()[len(marker) :]
+    line = text[start:opener_end].strip()
+    info = line.lstrip(marker[0])  # the whole run off, not the head's part of it (C2450)
+    run_length = len(line) - len(info)
     if 4 * len(info.encode("utf-8")) > budget:
         info = ""
     opener_bytes = len(text[: opener_end + 1].encode("utf-8"))
-    content = raw[opener_bytes:]
+    content = _until_close(raw[opener_bytes:], marker[0], run_length)
     char = marker[0]
     room = max(0, budget - len(before.encode("utf-8")) - len(info.encode("utf-8")) - 8)  # 3 + 1 + 3 + 1
     shows = _line_head(content, room).rstrip("\n")
@@ -549,6 +553,20 @@ def _short_fence(raw: bytes, head: str, budget: int) -> tuple[str, str, int]:
     short = char * max(3, _longest_run(shows, char) + 1)
     shown = min(len(raw), opener_bytes + len(shows.encode("utf-8")))
     return f"{before}{short}{info}\n{shows}", short, shown
+
+
+def _until_close(content: bytes, char: str, run: int) -> bytes:
+    """``content`` up to the start of its block's own closing line: the first fence of ``char`` at least
+    ``run`` long with nothing after it, :func:`_open_fence`'s rule; all of it when no line closes the block
+    (B13 round 43 C2451: the close inside the room left the short fence no content)."""
+    pos = 0
+    for line in content.split(b"\n"):
+        text = line.decode("utf-8", errors="ignore")
+        m = _FENCE_RE.match(text)
+        if m and m.group(1)[0] == char and len(m.group(1)) >= run and not text.strip()[len(m.group(1)) :]:
+            return content[:pos]
+        pos += len(line) + 1
+    return content
 
 
 def _fence_opener(text: str) -> tuple[int, str]:

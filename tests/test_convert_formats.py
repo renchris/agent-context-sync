@@ -140,7 +140,7 @@ def test_pandoc_uses_bundled_binary_by_absolute_path(monkeypatch: pytest.MonkeyP
     path = runner.path()
     assert path.is_absolute() and path == resolved_pandoc(None)[0]
     assert "pypandoc" in path.parts and path.parent.name == "files"
-    assert re.fullmatch(r"1\.0\.2\+pandoc-\d+(\.\d+)+", PandocConverter(CFG).version())
+    assert re.fullmatch(r"1\.0\.3\+pandoc-\d+(\.\d+)+", PandocConverter(CFG).version())
 
 
 def test_docx_fixture_headings_table_text(fixture_files: dict[str, Path]) -> None:
@@ -981,7 +981,7 @@ def test_a_template_round_4_cached_gets_the_whole_table_rendering_under_a_new_na
     copied.write_bytes(first.read_bytes())
     result = _through_the_cache(copied, Registry.default(CFG), cache)
     assert not result.from_cache and result.units[0].body.count("|---|---|") == 2
-    assert result.converter_version.startswith("1.0.3+")
+    assert result.converter_version.startswith("1.0.4+")
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -1077,7 +1077,7 @@ def test_pdf_is_pypdfium2_and_says_so() -> None:
     assert conv.converter_id == "pdf-pypdfium2"
     assert Registry.default(CFG).for_name("Statement.PDF") is not None
     assert Registry.default(CFG).for_name("Statement.PDF").converter_id == "pdf-pypdfium2"  # type: ignore[union-attr]
-    assert re.fullmatch(r"2\.1\.2\+pypdfium2-[\d.]+\+pdfium-[\d.]+\+pdfminer\.six-\S+", conv.version())
+    assert re.fullmatch(r"2\.1\.3\+pypdfium2-[\d.]+\+pdfium-[\d.]+\+pdfminer\.six-\S+", conv.version())
     opts = conv.options()
     assert opts["engine"] == "pypdfium2:text-range" and opts["fallback"] == "pdfminer.six"
     assert not any("comment" in key for key in opts)  # the emitter version alone moves the action key
@@ -2765,7 +2765,7 @@ def _deck_one(src: Path, engine: ocr.OcrEngine | None, cfg: ConvertConfig = CFG)
 
 def test_pptx_version_and_options_change_only_with_an_engine(tmp_path: Path) -> None:
     plain, reading = PptxConverter(CFG), PptxConverter(CFG, ocr=fake_engine(tmp_path / "bin"))
-    assert re.fullmatch(r"1\.0\.3\+python-pptx-\d+(\.\d+)+", plain.version())
+    assert re.fullmatch(r"1\.0\.4\+python-pptx-\d+(\.\d+)+", plain.version())
     assert plain.options() == {"max_page_bytes": CFG.max_page_bytes, "row_tolerance_emu": 45_720}
     assert reading.version() == f"{plain.version()}+{_OCR_IDENTITY}"
     assert reading.options() == {**plain.options(), **image._OCR_OPTIONS, "ocr_pptx_rules": 2}

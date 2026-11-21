@@ -49,7 +49,7 @@ from agentsync.text import plural
 
 # 1.1.0: a Visio shape without text of its own shows its master's; 1.2.0: draw.io %name% placeholders;
 # 1.3.0: a diagram with no text is a page that says so (B13 round 19 W27)
-_EMITTER_VERSION = "1.3.2"  # B13 round 42 C2272 a cut shows half its room
+_EMITTER_VERSION = "1.3.3"  # B13 round 43 C2450, C2451 a cut fence always closes
 _PAGE_FOR_NO_TEXT = "1.3.0"  # the first emitter that writes a page, not the empty-output stub, for no text
 _MAX_PART_BYTES = 32 * 1024 * 1024
 _MAX_TOTAL_BYTES = 128 * 1024 * 1024

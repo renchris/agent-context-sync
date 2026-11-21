@@ -223,6 +223,46 @@ def test_a_cut_past_a_long_line_or_a_long_fence_shows_half_its_room_c2272(
         assert head.startswith("```json\n") and head.endswith("\n```")
 
 
+@pytest.mark.parametrize("k", [50, 300, 1265])
+def test_a_fence_run_past_the_head_budget_still_closes_c2450(k: int) -> None:
+    """B13 round 43 C2450: `_short_fence` took the info string after the head's part of the opener's run,
+    so a run longer than the head budget left the rest of the run in it, and the page opened a fence of
+    3 + rest characters and closed it with 3 (open fences of 55, 305 and 1,270 backticks at these k). The
+    info string is what follows the whole run: the page opens "```python" and its fence closes."""
+    body = "x\n" + "`" * (_ROOM_8192 + k) + "python\n" + "print('Contoso')\n" * 50
+    capped, size = _guarded(body, 8192)
+    assert _common._open_fence(capped) is None, capped[:200]
+    assert "```python\n" in capped and "print('Contoso')" in capped
+    assert len(capped.encode()) + GUARD_RESERVE <= 8192 and size <= 8192
+
+
+def test_a_page_of_one_fence_run_past_the_budget_ends_closed_c2450(tmp_path: Path) -> None:
+    """B13 round 43 C2450, end to end: a markdown file of 9,000 backticks between two lines ended with a
+    1,282-backtick fence still open and the truncation note inside it."""
+    src = tmp_path / "contoso.md"
+    src.write_text("# Contoso notes\n" + "`" * 9000 + "\nContoso plan words\n", encoding="utf-8")
+    (page,) = _pages(src, 8192)
+    assert _size(page) <= 8192
+    assert _common._open_fence(page.body) is None and "Contoso plan words" in page.body
+    head = page.body.split("\n\n[truncated: first ")[0]
+    assert head.endswith("```\nContoso plan words\n```"), head[-200:]
+
+
+def test_a_short_fence_stops_at_its_blocks_own_close_c2451() -> None:
+    """B13 round 43 C2451: the short fence's content held the block's own 4,000-backtick close, so the
+    recut asked for less than no room and the head was "```python\n```", with no code line. The content
+    stops at that closing line: every code line shows, the short fence closes the block, and no text from
+    after the block follows inside it."""
+    code = [f"print('Contoso {i}')" for i in range(10)]
+    fence = "`" * 4000
+    body = f"{fence}python\n" + "\n".join(code) + f"\n{fence}\n" + "Contoso after words\n" * 300
+    capped, size = _guarded(body, 8192)
+    assert size <= 8192
+    head = capped.split("\n\n[truncated: first ")[0]
+    assert head.startswith("```python\n") and head.endswith("\n```"), head[:200]
+    assert all(line in head for line in code) and "Contoso after words" not in capped
+
+
 def test_a_mid_line_cut_never_ends_inside_an_escape_c2272() -> None:
     """B13 round 42 C2272: a mid-line cut drops a trailing lone backslash, so it never ends inside `\\*`."""
     for pad in range(4):

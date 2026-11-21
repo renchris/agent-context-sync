@@ -82,7 +82,7 @@ from agentsync.text import plural
 log = logging.getLogger(__name__)
 
 # 2.1.0: reviewer comments (annotations) follow each page's text
-_EMITTER_VERSION = "2.1.2"  # B13 round 42 C2272 a cut shows half its room
+_EMITTER_VERSION = "2.1.3"  # B13 round 43 C2450, C2451 a cut fence always closes
 _REREAD_BELOW = "2.1.0"
 """The comments floor.  A PDF whose page an emitter below this wrote is read again once, so that a file
 mirrored before comments were kept gains them without its bytes changing (``PdfConverter.outdated``).  Raise

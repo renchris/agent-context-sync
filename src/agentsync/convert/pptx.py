@@ -52,7 +52,7 @@ from agentsync.text import plural
 
 log = logging.getLogger(__name__)
 
-_EMITTER_VERSION = "1.0.3"  # B13 round 42 C2272 a cut shows half its room
+_EMITTER_VERSION = "1.0.4"  # B13 round 43 C2450, C2451 a cut fence always closes
 """1.0.1: a template's fixed text is de-duplicated a shape at a time (B13 round 5 F77), so the action key of
 bytes 1.0.0 cached moves and a copy is converted again (B13 round 6 G59). Nothing is read again by itself."""
 _ROW_TOLERANCE_EMU = (

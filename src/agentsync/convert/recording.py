@@ -71,7 +71,7 @@ from agentsync.policy import ZERO_BYTES_REASON
 Kind = Literal["share", "camera", "other"]
 Tag = Literal["SCREEN", "TILE"]
 
-_EMITTER_VERSION = "1.1.2"  # B13 round 42 C2272 a cut shows half its room, C2254 a window keeps its text
+_EMITTER_VERSION = "1.1.3"  # B13 round 43 C2450, C2451 a cut fence always closes
 _REREAD_BELOW = "1.0.0"
 """A page or stub an emitter below this wrote is read again once (``RecordingConverter.outdated``).  Raise it
 only for a change worth reading every local recording again for, never above ``_EMITTER_VERSION``."""

@@ -23,7 +23,7 @@ from agentsync.convert.base import OptionValue, make_unit
 from agentsync.errors import ConversionError
 from agentsync.model import RenderedUnit, UnitKind
 
-_EMITTER_VERSION = "1.0.2"  # B13 round 42 C2272 a cut shows half its room
+_EMITTER_VERSION = "1.0.3"  # B13 round 43 C2450, C2451 a cut fence always closes
 _FM_TITLE_RE = re.compile(r"^title:\s*(.+?)\s*$", re.MULTILINE)
 
 

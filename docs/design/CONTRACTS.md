@@ -43965,6 +43965,9 @@ each within 8,192 and showing at least half its room),
 `test_convert_page_cap.py::test_a_mid_line_cut_never_ends_inside_an_escape_c2272` and
 `test_convert_page_cap.py::test_a_window_with_many_keyframes_keeps_its_text_and_passes_only_by_their_footers_c2254`
 (80, 90 and 150 keyframes).
+Amended 2026-11-21, §16.273 C2450 (with C2451): the short fence's info string is what follows the opener line's
+whole run, not the head's part of it, and its content stops at the block's own closing line; each `_cap_body`
+caller's `_EMITTER_VERSION` moves one more step.
 
 **The cap's words say it bounds the guarded body, the front matter outside it, and what an options edit re-reads**
 (C2220 with C2306, makes worse True each for budgeting the front matter; ruling 153 with ruling 154's words;
@@ -44605,6 +44608,27 @@ measurement: without them `_sheet_lists`, which keeps that room for each list, l
 `test_convert_page_cap.py::test_the_full_path_budgets_the_real_bytes_around_its_table_c2476` (8,192 and 20,000, with
 and without the lists: within the cap, every list whole, more rows than the flat reserve gave, and with no list at
 least the streamed path's rows).
+
+**A cut fence always closes, and its short fence shows the block's own content** (C2450 with C2451; ruling 168;
+`agentsync.convert._common`, every `_cap_body` caller; amends §16.268 C2272). C2450: `_short_fence` took the info
+string after the cut head's part of the opener's run, so a run longer than the head budget left the rest of it in
+the info string, and the page opened a fence of 3 + rest characters and closed it with 3: at 8,192, "x" before a run
+of 7,787, 8,037 and 9,002 backticks left open fences of 55, 305 and 1,270, and a markdown file of 9,000 backticks
+between two lines ended with a 1,282-backtick fence open and the truncation note inside it (the verifier's runs at
+bd65e0e1). The info string is now what follows the opener line's whole run (`line.lstrip(marker[0])`), still dropped
+past a fourth of the budget; the markdown page shows "# Contoso notes", a closed three-backtick block and "Contoso
+plan words". C2451: the short fence's content held the block's own closing line, whose run, longer than half the
+budget, made the recut ask for less than no room, so a 4,000-backtick python block of 10 lines gave the 13-byte head
+"```python\n```" (no regression: the base showed backticks only). `_until_close` now cuts the content at the start of
+the first line `_open_fence` would take as the block's close (a run of the opener's character at least the opener's
+whole run long, nothing after it), so every code line shows and nothing after the block follows inside the short
+fence. Each `_cap_body` caller's `_EMITTER_VERSION` moves one step (diagram 1.3.3, eml 1.1.3, image 2.0.3, markdown
+1.0.3, msg 1.0.4, pandoc 1.0.3, pdf 2.1.3, pptx 1.0.4, recording 1.1.3, teams 1.0.3, vtt 1.0.4); no `_REREAD_BELOW`
+moves, so a page takes the new cut when its file next changes. Tests:
+`test_convert_page_cap.py::test_a_fence_run_past_the_head_budget_still_closes_c2450` (runs 50, 300 and 1,265 past
+the head budget at 8,192, derived from `GUARD_RESERVE`),
+`test_convert_page_cap.py::test_a_page_of_one_fence_run_past_the_budget_ends_closed_c2450` (the markdown file through
+`Registry.default`) and `test_convert_page_cap.py::test_a_short_fence_stops_at_its_blocks_own_close_c2451`.
 
 ### 16.274 Round 43: the prompt goes to v40 (only lines setup prints in every branch), CI polled every 60 seconds, and the guides (2026-11-21, wave B13 round 43 lane D)
 
