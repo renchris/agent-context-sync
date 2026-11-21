@@ -5143,6 +5143,12 @@ typed_note_cut() {
 		# head, its word\047s end and its trailing signs (C1862)
 		nhp = split(ENVIRON["TYPED_PROVIDER"], hp, "|"); nhf = split(ENVIRON["TYPED_FIRST"], hf, "|")
 		nhc = split(ENVIRON["TYPED_CWDS"], hc, "|"); nhu = split(ENVIRON["TYPED_UNDER"], hu, "|")
+		# the one-shell-word heads a quote can wrap with its value (C2466): the provider, first-unknown and cwd
+		# rows that open with `--` or `add-source`, each with its rule, as setup_report._WORD_HEADS takes them
+		nwh = 0
+		for (i = 1; i <= nhp; i++) if (hp[i] ~ /^(--|add-source)/) { wh[++nwh] = hp[i]; wr[nwh] = "provider" }
+		for (i = 1; i <= nhf; i++) if (hf[i] ~ /^(--|add-source)/) { wh[++nwh] = hf[i]; wr[nwh] = "first" }
+		for (i = 1; i <= nhc; i++) if (hc[i] ~ /^(--|add-source)/) { wh[++nwh] = hc[i]; wr[nwh] = "cwd" }
 		# B13 round 41 ruling 142: the --cwd usage error\047s whole-name head (C2030), the words install.sh
 		# itself writes after `--cwd `, kept by phrase, and `debug: config `, cut always but the default (C2063)
 		nhn = split(ENVIRON["TYPED_CWDNAME"], hn, "|"); nus = split(ENVIRON["TYPED_CWDUSAGE"], us, "|")
@@ -5189,8 +5195,53 @@ typed_note_cut() {
 	# _cut_path cuts it, the word --cwd kept (C1835); the under-cwd rule\047s `debug: source `, cut only under that
 	# run\047s `debug: cwd ` folder; the config rule\047s `debug: config `, cut always but the default (C2063); then
 	# the free-text pass (C1862; B13 round 42 C2238)
+	# B13 round 43 ruling 158 (C2466; privacy): a one-word head right after a `\047` or `"` (`\047--cwd=`,
+	# `"--source-local `, `\047add-source `) is a quote that wraps the whole argument, so its value runs to the
+	# closing quote (a `"` not taken by a backslash) or the line\047s end, split at each later such head after a
+	# blank or a tab, each piece cut by its own head\047s rule, its trailing blanks and tabs kept, before the
+	# one-word heads run, as setup_report._quoted_heads_cut reads it: the one-word read ended at the first blank
+	# and printed the rest of a name. Kept as written: an empty value, a blank-form `--cwd ` value install.sh\047s
+	# own usage words open, and a value but a cwd one with no `/`, backslash or quote
+	function whead(s, at,    k) { # the word head s holds at offset at, its index in wh, else 0
+		for (k = 1; k <= nwh; k++) if (substr(s, at, length(wh[k])) == wh[k]) return k
+		return 0
+	}
+	function hvcut(k, v,    t) {
+		t = v; sub(/[ \t]+$/, "", t)
+		if (t == "" || (wr[k] == "cwd" && substr(wh[k], length(wh[k])) == " " && cwdusage(t, wh[k]))) return v
+		if (wr[k] != "cwd" && t !~ /[\/\\\047"]/) return v
+		return cut(t, wr[k] == "provider") substr(v, length(t) + 1)
+	}
+	function qheads(l,    out, a, q, k, c, e, sp, st, j, b, kk) {
+		if (nwh == 0) return l
+		out = ""
+		while (1) {
+			k = 0
+			for (a = 1; a < length(l); a++) {
+				q = substr(l, a, 1)
+				if ((q == "\047" || q == "\"") && (k = whead(l, a + 1))) break
+			}
+			if (!k) break
+			e = a + 1 # the closing quote, else past the line\047s end
+			while (e <= length(l) && substr(l, e, 1) != q) e += (q == "\"" && substr(l, e, 1) == "\\") ? 2 : 1
+			if (e > length(l)) e = length(l) + 1
+			b = a + 1 + length(wh[k])
+			sp = substr(l, b, e - b); st = 1
+			out = out substr(l, 1, b - 1)
+			for (j = 2; j <= length(sp); j++) {
+				c = substr(sp, j - 1, 1)
+				if ((c == " " || c == "\t") && (kk = whead(sp, j))) {
+					out = out hvcut(k, substr(sp, st, j - st)) wh[kk]
+					k = kk; st = j + length(wh[kk]); j = st - 1
+				}
+			}
+			out = out hvcut(k, substr(sp, st)); l = substr(l, e)
+		}
+		return out l
+	}
 	function slcut(l,    k) {
 		ncw = 0 # this line\047s `debug: cwd ` values; the last is the cwd the next line compares with (C2029)
+		l = qheads(l)
 		for (k = 1; k <= nhp; k++) l = slone(l, hp[k], "provider")
 		for (k = 1; k <= nhf; k++) l = slone(l, hf[k], "first")
 		for (k = 1; k <= nhn; k++) l = slone(l, hn[k], "cwd_name")
