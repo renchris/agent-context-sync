@@ -1410,6 +1410,63 @@ def test_the_recut_takes_the_not_a_folder_names_edge_as_the_python_report_does_c
     ]
 
 
+_C2500_NAME = "x is not an existing folder: "
+"""The not-a-folder head install.sh writes, as an agent quotes it in prose (B13 round 43 C2500)."""
+
+
+@pytest.mark.parametrize(
+    ("said", "cut", "same"),
+    [
+        ("'~/Projects/<path>' and then I retried", "'~/Projects/<path>' and then I retried", True),
+        ('"~/Projects/<path>" and then I retried', '"~/Projects/<path>" and then I retried', True),
+        (" (see --help)", " (see --help)", True),
+        ("", "", True),
+        ("'Contoso Secret' and then I retried", "'<path>' and then I retried", True),
+        ('"Contoso \\"Secret\\"" and then I retried', '"<path>" and then I retried', True),
+        # unchanged branches, where the recut cuts more than _cut_path by design (ruling 126; makes worse True
+        # for a faithful port): a name to install.sh's own end is taken whole, its quote with it (the
+        # agentsync report prints `'<path> (see --help)`), and a bare one is cut whole (`~/Projects/<path>`)
+        ("'Alpha' Bravo Ridge (see --help)", "<path> (see --help)", False),
+        ("~/Projects/Contoso Secret", "<path>", False),
+    ],
+    ids=[
+        "quoted-cut",
+        "double-quoted-cut",
+        "empty-help",
+        "empty-eol",
+        "quoted",
+        "escaped",
+        "help-whole",
+        "bare",
+    ],
+)
+def test_the_recut_ends_a_quoted_name_at_its_quote_only_at_its_lines_end_c2500(
+    tmp_path: Path, said: str, cut: str, same: bool
+) -> None:
+    """B13 round 43 ruling 160, C2500: report_words_cut took a not-a-folder name with no ` (see --help)` end
+    to the line's end, so another build's render lost the prose after a quoted name (`'~/Projects/<path>'
+    and then I retried` read `<path>`) and an empty value read `<path>`, each counted as a cut. It ports
+    setup_report._quoted_cut's end-of-line branch through closeq: a quoted name that runs to its line's end
+    ends at its matching quote, its opening quote and the rest of the line kept, and only a non-empty unknown
+    name is cut; a name to install.sh's own ` (see --help)` end is taken whole, as before. Each line the
+    port touches reads as setup_report._redact_lines reads it, and this checkout's own render (other=0) stays
+    byte for byte."""
+    line = f"{_C2500_NAME}{said}"
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    python = setup_report._redact_lines(red, [line])
+    report = tmp_path / "setup-report.md"
+    report.write_text(f"{line}\n", encoding="utf-8")
+    before = report.read_bytes()
+    assert _report_recut_harness(tmp_path, report, other=0).returncode == 0
+    assert report.read_bytes() == before, "this checkout's own render stays byte for byte"
+    cp = _report_recut_harness(tmp_path, report)
+    assert cp.returncode == 0, cp.stderr
+    shell = report.read_text(encoding="utf-8").removesuffix("\n")
+    assert shell == f"{_C2500_NAME}{cut}", shell
+    assert (shell == python) is same, (shell, python)
+
+
 def _provider_lines_harness(tmp_path: Path, report: Path) -> subprocess.CompletedProcess[bytes]:
     """install.sh's report_provider_lines over ``report`` (REPORT_PATH), with FREECUT_AWK and the generated
     block beside it: rc 0 and its SPLIT_WHY on stdout where another build's render gives way to the shell

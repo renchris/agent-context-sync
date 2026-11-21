@@ -7943,7 +7943,9 @@ report_config_lines() {
 # in another home by foreign_home_cut recut, always, which leaves a current render byte for byte. OTHER=1, a render
 # by another build (report_build_other, which fails closed), also takes the fixed-word cuts of install.sh's own
 # words: the folder after `is not an existing folder: ` (up to its last ` (see --help)` before the line's end,
-# `;,.:`, ` | ` or ` · `, else the line's end; C1299 with C1250, C1436) and the name in a `--source-local <name>:
+# `;,.:`, ` | ` or ` · `, else the line's end, a quoted one there to its matching quote and an empty one kept, as
+# ruling 148's C2234 and C2242 read it, B13 round 43 ruling 160, C2500; C1299 with C1250, C1436) and the name
+# in a `--source-local <name>:
 # <head>` refusal, up to the last `: ` before one of the block's CUT_REFUSED_HEADS (C1432, C1833). Each name becomes <path> unless _cut_path
 # could have printed it: its last part `<path>` and every earlier part empty, `~`, `.`, `..`, placeholders only, a
 # CUT_FIXED, CUT_DRIVE or CUT_HOME word, or a known app's folder after CloudStorage, bare or `<App>-<placeholder>`
@@ -8029,12 +8031,28 @@ report_words_cut() {
 		}
 		return e
 	}
+	# where the quote s opens with (q) closes, as setup_report._closing_quote reads it: a \047 at the next \047, a
+	# " at the next " no backslash before it takes; 0 for none
+	function closeq(s, q,    x) {
+		for (x = 2; x <= length(s); x++) {
+			if (substr(s, x, 1) == q) return x
+			if (q == "\"" && substr(s, x, 1) == "\\") x++
+		}
+		return 0
+	}
 	(i = index($0, m)) > 0 {
 		r = substr($0, i + length(m)); j = name_end(r)
 		# a bare <path> before a table cell or end-of-name punctuation is already cut: the rest is not its name
 		if (index(r, "<path>") == 1 && (length(r) == 6 || substr(r, 7, 2) == " |" || index(";,.:", substr(r, 7, 1)))) j = 7
 		name = j ? substr(r, 1, j - 1) : r; tail = j ? substr(r, j) : ""
-		if (!known(name)) { $0 = substr($0, 1, i + length(m) - 1) "<path>" tail; ncut++ }
+		# a quoted name that runs to its line\047s end, prose, ends at its matching quote, its opening quote and the
+		# rest of the line kept, and only a non-empty name is cut, as setup_report._quoted_cut\047s eol branch and
+		# the shell report read it (B13 round 42 ruling 148, C2234 with C2242; round 43 ruling 160, C2500: the
+		# name ran to the line\047s end and its prose and an empty value read <path>); a name to install.sh\047s own
+		# ` (see --help)` end is taken whole, as before
+		q = substr(r, 1, 1); pre = ""
+		if (!j && (q == "\047" || q == "\"") && (k = closeq(r, q)) > 0) { pre = q; name = substr(r, 2, k - 2); tail = substr(r, k) }
+		if (name != "" && !known(name)) { $0 = substr($0, 1, i + length(m) - 1) pre "<path>" tail; ncut++ }
 	}
 	(i = index($0, sl)) > 0 {
 		r = substr($0, i + length(sl)); e = 0
