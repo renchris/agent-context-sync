@@ -82,9 +82,12 @@ _PIECE_REVISION = "1.1.0"
 shape, a picture constant ``_piece_options`` does not name), never for a change to the page, so a render-only
 emitter move or a ``max_page_bytes`` edit keeps a recording's part-read pieces (B13 round 42 C2296 with C2251;
 round 9 K63 kept the emitter still for this reason, and round 41 C2044's move broke it)."""
-_LEGACY_PIECE_EMITTERS = ("1.1.0", "1.1.1")
-"""The emitters whose pieces were keyed by ``_EMITTER_VERSION`` and the whole picture options, cap included: a
-piece saved under such a key is read once and saved again under the new one (B13 round 42 C2296)."""
+_LEGACY_PIECE_EMITTERS: dict[str, tuple[str, ...]] = {"1.1.0": ("1.1.0", "1.1.1")}
+"""The emitters whose pieces were keyed by ``_EMITTER_VERSION`` and the whole picture options, cap included,
+by the ``_PIECE_REVISION`` their pieces hold the same as: a piece saved under such a key is read once and
+saved again under the new one (B13 round 42 C2296), only while the running revision is that one, so a raised
+``_PIECE_REVISION`` reads a legacy piece again, never saves its old picture under the new key (round 43
+C2515)."""
 _INDEX_REVISION = 2
 """The fixed wording of the index page (``recording_page``'s ``_HOW_TO_READ``, ``_NOT_DETECTED``,
 ``_TIMES_FACT``, a NOTE): raise it whenever one changes, as
@@ -1619,10 +1622,13 @@ class RecordingConverter:
         return f"{_PIECE_TICKS}|{made}|{options_hash(self._piece_options())}"
 
     def _legacy_keys(self) -> tuple[str, ...]:
-        """The keys a 1.1.0 or 1.1.1 emitter saved a picture piece under, at the running cap."""
+        """The keys a 1.1.0 or 1.1.1 emitter saved a picture piece under, at the running cap; none once
+        ``_PIECE_REVISION`` is past the one those pieces hold (:data:`_LEGACY_PIECE_EMITTERS`, read at call
+        time, B13 round 43 C2515)."""
         made = f"+{self._ocr.identity}+{self._media.identity}-s{_SELECTION_REVISION}"
         hashed = options_hash(self._picture_options())
-        return tuple(f"{_PIECE_TICKS}|{v}{made}|{hashed}" for v in _LEGACY_PIECE_EMITTERS)
+        emitters = _LEGACY_PIECE_EMITTERS.get(_PIECE_REVISION, ())
+        return tuple(f"{_PIECE_TICKS}|{v}{made}|{hashed}" for v in emitters)
 
     def _piece_options(self) -> dict[str, OptionValue]:
         """:meth:`_picture_options` less ``max_page_bytes``, which no picture stage reads."""

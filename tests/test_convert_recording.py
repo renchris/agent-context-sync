@@ -847,6 +847,41 @@ def test_a_picture_piece_outlives_a_page_change_and_a_legacy_key_is_read_once_c2
         assert store.load(sha, 0, key) is not None, "saved again under the new key"
 
 
+@pytest.mark.parametrize("emitter", ["1.1.0", "1.1.1"])
+def test_a_legacy_piece_is_read_again_once_the_piece_revision_is_raised_c2515(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, emitter: str
+) -> None:
+    """B13 round 43 C2515: `_stored_piece` tried the 1.1.0 and 1.1.1 keys whenever the running key missed,
+    whatever `_PIECE_REVISION` was, so after a raise a legacy piece still on disk was taken as is and saved
+    under the new key, its old picture kept. The legacy keys hold only while the revision is 1.1.0, the one
+    those pieces hold the same as: a raise reads the frames again and saves the fresh piece, never the old."""
+    store = PieceStore(tmp_path / "recordings")
+    src = staged(tmp_path, teams(share(3, FIRST)))
+    conv = converter(tmp_path, pieces=store)
+    helper = tmp_path / "helpers" / "fake-media"
+    sha = hashlib.sha256(src.read_bytes()).hexdigest()
+    old = conv._legacy_keys()[("1.1.0", "1.1.1").index(emitter)]
+    with monkeypatch.context() as m:  # an older build saved the pieces under its own key
+        m.setattr(rec.RecordingConverter, "_key", lambda self: old)
+        conv.convert(src, name="meeting.mp4")
+    first, scanned = _scans(helper, 0)
+    assert scanned
+    saved = store.load(sha, 0, old)
+    assert saved is not None
+    doc = json.loads(saved)
+    doc["contoso_legacy_mark"] = True  # still a valid piece, but one no fresh read writes
+    legacy = json.dumps(doc).encode("utf-8")
+    store.save(sha, 0, old, legacy)
+    monkeypatch.setattr(rec, "_PIECE_REVISION", "1.2.0")
+    assert conv._legacy_keys() == ()
+    conv.convert(src, name="meeting copy.mp4")
+    _count, rescanned = _scans(helper, first)
+    assert rescanned, "a raised piece revision reads the frames again"
+    fresh = store.load(sha, 0, conv._key())
+    assert fresh is not None and "1.2.0" in conv._key()
+    assert fresh != legacy and b"contoso_legacy_mark" not in fresh
+
+
 INDEX_WORDINGS = {
     1: "c8d0a650d9f965e0e3f1c56a2f8ef09a031f3ae83c87af1ed5ade7232111bf7a",  # before round 9 K63
     2: "80a737f227a271778b2dcc64e8e738500be8a8674e64ecdc72fa01c28de60357",  # K63's SAID vN and SPEAKING

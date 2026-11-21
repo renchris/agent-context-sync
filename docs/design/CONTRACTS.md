@@ -44000,6 +44000,9 @@ read again only below `_REREAD_BELOW`, still 1.0.0. The piece-key sentence in §
 Test: `test_convert_recording.py::test_a_picture_piece_outlives_a_page_change_and_a_legacy_key_is_read_once_c2296`
 (an emitter move and a cap edit run no `scan` and keep the key, a 1.1.0 and a 1.1.1 key are read and saved again,
 and a raised `_PIECE_REVISION` reads it all).
+Amended 2026-11-21, §16.273 C2515: a 1.1.0 or 1.1.1 key is tried only while `_PIECE_REVISION` is 1.1.0
+(`_LEGACY_PIECE_EMITTERS` maps that revision to those emitters); once it is raised, a legacy piece is read again,
+never saved under the new key.
 
 **The CSV field-limit lock test proves its race** (C2305; ruling 155's cluster; `tests/test_convert_page_cap.py`;
 amends §16.263 C2049). `test_two_parses_on_two_threads_never_lower_the_csv_field_limit_c2049` slept 0.3 s before A's
@@ -44461,6 +44464,19 @@ field install holds while adding a second token and mark set to every source. Te
 `test_convert_family.py::test_a_zero_byte_reread_counts_as_read_again_and_never_as_converted_c2422`,
 `test_convert_family.py::test_a_zero_byte_reread_that_fails_rolls_back_its_own_row_alone_c2442` and
 `test_convert_family.py::test_a_zero_byte_row_out_of_scope_keeps_the_token_unset_and_is_read_when_it_returns_c2512`.
+
+**A legacy picture piece is migrated only into the revision it holds** (C2515; `agentsync.convert.recording`; amends
+§16.268 C2296). `_stored_piece` tried every `_legacy_keys()` key whenever the running key
+missed, and `_legacy_keys` built them from a flat `_LEGACY_PIECE_EMITTERS` that never looked at `_PIECE_REVISION`, so
+the first raise the revision's docstring asks for would have taken a 1.1.0 or 1.1.1 piece still on disk as is and
+saved its old picture under the new key, where §16.268 promises a raised revision reads it all (the verifier's probe
+at bd65e0e1: no `scan`, the legacy bytes saved under a 1.2.0 key). `_LEGACY_PIECE_EMITTERS` is now
+`{"1.1.0": ("1.1.0", "1.1.1")}`, keyed by the piece revision those pieces hold the same as, and `_legacy_keys` reads
+it at call time with `.get(_PIECE_REVISION, ())`, so after a raise it returns none and the frames are read again.
+While the revision is 1.1.0 nothing changes; no page's bytes move, so recording's emitter stays 1.1.2. Test:
+`test_convert_recording.py::test_a_legacy_piece_is_read_again_once_the_piece_revision_is_raised_c2515` (each legacy
+emitter: a marked piece under its key, the revision raised to 1.2.0, `scan` runs again and the piece under the new
+key is the fresh read, not the marked bytes).
 
 ### 16.274 Round 43: the prompt goes to v40 (only lines setup prints in every branch), CI polled every 60 seconds, and the guides (2026-11-21, wave B13 round 43 lane D)
 
