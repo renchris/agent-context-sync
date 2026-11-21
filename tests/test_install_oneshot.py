@@ -26262,7 +26262,7 @@ def test_the_reinstall_waits_for_a_running_background_sync_and_holds_its_lock(
             "agentsync: another sync is running (or install.sh, a status or doctor check, or a cycle "
             "starting holds the lock); the reinstall waits for it to be free (at most 60s)"
         )
-        tick = r"agentsync: reinstalling after the lock is free, still running, \d+s"
+        tick = r"agentsync: reinstalling once the lock is free, still running, \d+s"
     if bare:  # held with no body, as lockf holds it
         fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o600)
         fcntl.flock(fd, fcntl.LOCK_EX)
@@ -26349,7 +26349,7 @@ def test_a_sigterm_to_install_sh_alone_in_the_reinstall_wait_stops_it_after_the_
         e["STUB_UV_INSTALL_RC"] = "2"
     fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o600)
     fcntl.flock(fd, fcntl.LOCK_EX)  # held with no body, as lockf holds it
-    tick = r"agentsync: reinstalling after the lock is free, still running, \d+s"
+    tick = r"agentsync: reinstalling once the lock is free, still running, \d+s"
     early: list[str] = []
     proc: subprocess.Popen[str] | None = None
     try:

@@ -11888,7 +11888,7 @@ uv_tool_install_pinned() {
 		fi
 		if [ "$busy" -eq 75 ] && [ "$bare" -eq 1 ]; then
 			say "agentsync: another sync is running (or install.sh, a status or doctor check, or a cycle starting holds the lock); the reinstall waits for it to be free (at most ${REINSTALL_WAIT}s)"
-			ticker "agentsync: reinstalling after the lock is free" &
+			ticker "agentsync: reinstalling once the lock is free" &
 		elif [ "$busy" -eq 75 ]; then
 			# Who started the holder, of the lock that is busy, when its sidecar says (holder_words; B13 round 7
 			# H33, round 11 M43, M60). AGENTSYNC_NOTE keeps its machine word below.
