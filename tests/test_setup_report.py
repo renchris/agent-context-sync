@@ -18468,6 +18468,27 @@ def test_the_inbox_beside_a_docs_repo_outside_the_home_is_cut_c2430(
 
 
 @pytest.mark.usefixtures("roomy_calls")
+def test_empty_cloud_folders_says_a_walk_with_no_file_in_words_c2425(fake_mac: dict[str, Path]) -> None:
+    """B13 round 43 C2425: a clean recorded walk of a source whose mirror holds no file read `its last walk
+    listed every one of the 0 files the mirror holds for it`. A zero case comes before the listed-all one."""
+    (fake_mac["one"] / "Wingtip merger").mkdir()
+    seed = Seed(fake_mac["config"])
+    one = seed.ids()[0]
+    seed.m.set_meta("empty_cloud_dirs:" + one, json.dumps(["Wingtip merger"]))
+    seed.run(2, {})
+    seed.m._db.execute(
+        "INSERT INTO run_sources (run_id, source_id, pass_kind, enumeration_complete, cursor_reset, "
+        "counts_json) VALUES (2, ?, 'full_enumeration', 1, 0, '{}')",
+        (one,),
+    )
+    seed.close()
+    part = status_parts(fake_mac)[1]["Empty cloud folders"]
+    line = next(ln for ln in part.splitlines() if ln.startswith("- <"))
+    assert line.endswith("; its last walk had no file to list: the mirror holds none for it"), line
+    assert "every one of the 0" not in part and " 0 files" not in part, part
+
+
+@pytest.mark.usefixtures("roomy_calls")
 def test_empty_cloud_folders_part_says_its_zeros_in_words(fake_mac: dict[str, Path]) -> None:
     """B13 round 4 Q17: one empty folder that is still there and holds nothing. The line keeps its head (the
     dataless count is the measured answer to the open question) and "1 of 1 checked", drops the kinds with

@@ -22327,7 +22327,8 @@ conversion was used again`; `the 1 line read before the first run header is not 
 `the last line of install.out`, `of the last run, ...`, `The last run does not say what its re-read looked for`,
 `finished in its one local or inbox source with a record`, and the Empty cloud folders line's `its last walk listed
 the one file the mirror holds for it` / `did not list the one file` (S30; never `all 1 file` or `1 of the 1 file`),
-with `every one of the N files` for more and `of the checked folder` by the checked count. `(s)` stays only where no
+with `every one of the N files` for more, `its last walk had no file to list: the mirror holds none for it` for
+none (B13 round 43 C2425, never `every one of the 0 files`), and `of the checked folder` by the checked count. `(s)` stays only where no
 count stands before the noun (`- local-work branch(es) in the checkout: N with commits ...`). Beyond the report:
 cycle.py's `[policy] changed: N label-capable files ...` (log and STATE.md, `its mirror page reflects` for one) and
 governance's `no commit older than N days` (doctor's governance line, which the report shows). install.sh's own
