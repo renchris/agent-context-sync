@@ -3996,16 +3996,44 @@ def test_step2_tells_of_the_inbox_only_when_its_source_is_live_c2092(
     assert "is source 'dropbox' (local, live), not an inbox source" in said, said
 
 
+def test_the_exit_0_no_folder_next_is_named_as_status_s_c2457_c2464() -> None:
+    """B13 round 43 C2457 with C2464: K63 and §16.269 said step 2 ended with exit 0 and a `no folder to sync
+    yet` NEXT, and §16.266 read the C2316 test's stub rc 2 as status's. install.sh prints that NEXT only on a
+    config the run created, with exit 2; a re-run's exit-0 NEXT is status's `no folder is synced yet`."""
+    install = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    branch = install.split('elif [ "$CONFIG_STATE" = "created" ] && [ "$HAVE_SOURCES" -eq 0 ]; then\n', 1)[1]
+    assert branch.split("\n", 2)[0].lstrip().startswith("EXIT_RC=2")
+    assert branch.split("\n", 2)[1].lstrip().startswith('next="no folder to sync yet: ')
+    assert "no folder is synced yet: " in (ROOT / "src" / "agentsync" / "loop.py").read_text(encoding="utf-8")
+    guide = (ROOT / "docs" / "deploy" / "setup-feedback.md").read_text(encoding="utf-8")
+    [k63] = [ln for ln in guide.splitlines() if ln.startswith("| K63 |")]
+    assert (
+        "step 2 sent the agent to step 3 after status's `no folder is synced yet` NEXT that came with exit 0"
+        " (install.sh's own `no folder to sync yet` comes only with exit 2, on a config the run created)"
+    ) in k63
+    assert "after a `no folder to sync yet` NEXT that came with exit 0" not in k63
+    contracts = " ".join((ROOT / "docs" / "design" / "CONTRACTS.md").read_text(encoding="utf-8").split())
+    assert (
+        "Amended 2026-11-21, §16.274 C2457: the exit-0 NEXT of a re-run over an inbox-only config is status's"
+        " `no folder is synced yet`; install.sh's own `no folder to sync yet` comes only with exit 2"
+    ) in contracts
+    assert (
+        "Amended 2026-11-21, §16.274 C2464: the rc 2 above is the test's stub status (`STUB_STATUS_RC`); the"
+        " real status exits 0 with that NEXT"
+    ) in contracts
+
+
 def test_the_v39_prompt_reads_the_paths_and_folder_states_setup_printed_c2316_c2317_c2212_c2310() -> None:
-    """B13 round 42 ruling 156 (prompt v39). C2316: step 2 sent the agent to step 3 after a `no folder to sync
-    yet` NEXT that came with exit 0 (an inbox-only config, install.sh's exit 0 kept), and only step 2's words
-    asked the folder question; now, whatever the exit status, that NEXT or `no folder is synced yet` sends the
-    agent to step 1's last sentences and never to step 3, and step 1's trigger and the report exception read
-    "step 2, or the first sync of step 3". C2317: step 2 and step 3 read ~/agent-context's config and docs
-    whatever the installer used; they now read the config, docs repo and inbox lines it printed (status's
-    three lines, lane B; the config step's two, lane RB), ~/agent-context the example default only. C2212: a
-    source of another kind on the inbox folder is told as that source (lane B's C2309 line). C2310 with
-    C2319: the label sentence matches the README's, and a removed file queues a purge by default only."""
+    """B13 round 42 ruling 156 (prompt v39). C2316: step 2 sent the agent to step 3 after status's `no folder
+    is synced yet` NEXT that came with exit 0 (an inbox-only config, install.sh's exit 0 kept), and only step
+    2's words asked the folder question; now, whatever the exit status, that NEXT or install.sh's `no folder
+    to sync yet` sends the agent to step 1's last sentences and never to step 3, and step 1's trigger and the
+    report exception read "step 2, or the first sync of step 3". C2317: step 2 and step 3 read
+    ~/agent-context's config and docs whatever the installer used; they now read the config, docs repo and
+    inbox lines it printed (status's three lines, lane B; the config step's two, lane RB), ~/agent-context the
+    example default only. C2212: a source of another kind on the inbox folder is told as that source (lane B's
+    C2309 line). C2310 with C2319: the label sentence matches the README's, and a removed file queues a purge
+    by default only."""
     from agentsync import cli, cycle, loop  # noqa: PLC0415
 
     block = _one_prompt_block()

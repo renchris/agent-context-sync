@@ -43606,6 +43606,10 @@ step 2 reads a `no folder is synced yet` NEXT whatever the exit status. Test:
 `test_install_oneshot.py::test_a_no_folder_next_with_exit_0_is_one_step_2_says_to_ask_for_folders_c2316` (status's
 no-folder NEXT under rc 2, install.sh's exit 0, and the README sentence that reads it).
 
+Amended 2026-11-21, §16.274 C2464: the rc 2 above is the test's stub status (`STUB_STATUS_RC`); the real status exits 0
+with that NEXT (the 2 in loop.py's `done(..., 2)` is the rule number), and install.sh, which reads the closing
+status's rc only at its time limit or a signal, ends at exit 0 either way.
+
 **C2060 stays unbuilt** (C2263; ruling 150; privacy). The operator's class C decision 1476293d00a3 on round 41's
 C2060 edit (decode a step 1 list spelling back to the folder name's bytes so the shell report cuts it) was still
 open when this section's last commit landed, so round 41's strict xfail on
@@ -44191,6 +44195,10 @@ exit-0 install case after this lands; round 43 rehearses v39 with v38's block (4
 `test_step2_tells_of_the_inbox_only_when_its_source_is_live_c2092` (a kind = "local" source on the kept folder and
 cli's own line), `test_the_prompt_text_changes_only_with_its_version`, `test_readme_prompt_compat_matches_the_installer`.
 
+Amended 2026-11-21, §16.274 C2457: the exit-0 NEXT of a re-run over an inbox-only config is status's `no folder is
+synced yet`; install.sh's own `no folder to sync yet` comes only with exit 2, on a config the run created. The v39
+rule naming both forms stands.
+
 ### 16.270 Round 43: the report: every path cut in every spelling its printer writes, a cut token ending at the same byte in both reports, and the inbox's state as one helper decides it (2026-11-21, wave B13 round 43 lane RA)
 
 Reserved for round 43 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 43").
@@ -44269,6 +44277,16 @@ update anywhere, ship-land's fetches are the only ones, trunk is read with the r
 harvest's transcript scan is the lead's. Tests: `tests/test_deploy_pack.py`
 `::test_every_result_note_ends_with_a_section_for_later_lanes_and_the_rehearsal_c2215` and
 `::test_the_lane_brief_says_a_lane_never_fetches_c2486`.
+
+**The exit-0 no-folder NEXT is status's** (C2457, C2464; `docs/deploy/setup-feedback.md`; amends §16.269 C2316,
+§16.266 C2316). K63's problem column and §16.269's v39 paragraph said step 2 ended with exit 0 and a `no folder to sync
+yet` NEXT, but install.sh prints that NEXT only with exit 2, on a config the run created (`CONFIG_STATE = created`
+and no source); a re-run over an inbox-only config exits 0 with status's `no folder is synced yet` (loop.py). §16.266
+read the C2316 test's `STUB_STATUS_RC=2` as status's rc, where the real status exits 0 and the 2 in loop.py's
+`done(..., 2)` is the rule number. K63's row says status's NEXT, the two paragraphs take dated lines, and the C2316
+test's docstring follows; the v39 rule sentence naming both forms, which README.md's step 2 keeps, stays. Test:
+`tests/test_deploy_pack.py::test_the_exit_0_no_folder_next_is_named_as_status_s_c2457_c2464`, held to install.sh's
+exit-2 branch and loop.py's words.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
