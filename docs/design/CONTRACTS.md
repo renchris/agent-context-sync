@@ -44430,7 +44430,9 @@ on its line selection; C2518's split of `_plain` is not built, since this change
 failure's reason moves, never a converted page, so pandoc's emitter stays 1.0.2. Test:
 `test_convert_page_cap.py::test_a_line_break_inside_the_named_pandoc_record_is_a_space_c2528` (CR, VT and U+2028, each
 before `error:` in a clause and inside a path, on the exit and the crash branch, with a warning before and another own
-record after).
+record after). `_first_cause` tests a record's blankness on its `_one_line` form, since `bytes.strip()` keeps 0x1C to
+0x1E, U+0085 and U+2028, so a line of those alone is skipped and the next names the exit, never `no message`
+(`test_a_record_of_separators_alone_is_no_first_cause_c2528`, review of 95b4ab8db).
 
 **The zero-byte re-read is counted, rolls back a row at a time, and reads each row once whatever its scope**
 (C2422, C2442, C2512, with C2470 not built; ruling 166, amending ruling 155; `agentsync.cycle`, `agentsync.manifest`;

@@ -405,9 +405,11 @@ def _first_cause(stderr: bytes) -> bytes:
     """The first line of a conversion run's ``stderr`` that is not a ``[WARNING]``, an ``[INFO]`` or an
     indented line continuing one, split at LF and tested on bytes as :func:`_own_lines` does; b"" when there
     is none.  pandoc's real errors carry no ``pandoc:`` prefix (``couldn't parse docx file: DocxError``,
-    ``Error parsing YAML metadata ...``), so a non-zero exit names this line (B13 round 42 C2252)."""
+    ``Error parsing YAML metadata ...``), so a non-zero exit names this line (B13 round 42 C2252).  A record
+    of separators alone (0x1C, U+0085, U+2028, which bytes.strip() keeps) is blank once :func:`_one_line`
+    spaces them, so it is skipped, never named (B13 round 43 C2528)."""
     for rec in stderr.split(b"\n"):
-        if rec.strip() and not rec[:1].isspace() and not rec.startswith((b"[WARNING]", b"[INFO]")):
+        if _one_line(rec).strip() and not rec[:1].isspace() and not rec.startswith((b"[WARNING]", b"[INFO]")):
             return rec.strip()
     return b""
 

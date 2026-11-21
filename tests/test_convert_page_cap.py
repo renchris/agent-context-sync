@@ -1160,6 +1160,23 @@ def test_a_line_break_inside_the_named_pandoc_record_is_a_space_c2528(
     assert "contoso" not in str(caught.value).lower()
 
 
+_LONE_SEPARATORS = ["\x1c", "\x85", chr(0x2028)]
+
+
+@pytest.mark.parametrize("sep", _LONE_SEPARATORS, ids=[f"U+{ord(c):04X}" for c in _LONE_SEPARATORS])
+def test_a_record_of_separators_alone_is_no_first_cause_c2528(tmp_path: Path, sep: str) -> None:
+    """B13 round 43 C2528: _first_cause tested blankness with bytes.strip(), which keeps 0x1C to 0x1E and the
+    UTF-8 bytes of U+0085 and U+2028, so a first line holding one of them alone was named, _one_line made it
+    blank, and the reason read `no message`. A record that is blank once spaced out is skipped, and the real
+    error on the next line is named."""
+    text = f"{sep}\ncouldn't parse docx file: DocxError\n"
+    pandoc = _stub_pandoc(tmp_path, text.encode("utf-8"), "exit 1")
+    bad = make_zip(tmp_path / "bad.docx", {"word/document.xml": b"<not-closed"})
+    with pytest.raises(ConversionError) as caught:
+        PandocConverter(replace(CFG, pandoc_path=pandoc)).convert(bad, name="bad.docx")
+    assert str(caught.value) == "pandoc exited 1: couldn't parse docx file: DocxError"
+
+
 # ---------------------------------------------------------------------------------------------------------
 # C2049: the csv field limit's read and raise are one step
 # ---------------------------------------------------------------------------------------------------------
