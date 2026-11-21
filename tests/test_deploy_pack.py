@@ -25,7 +25,7 @@ import pytest
 
 import exec_stub
 from agentsync import publish, report_cuts
-from agentsync.config import ConvertConfig
+from agentsync.config import ConvertConfig, inbox_state
 from agentsync.convert import NO_CONVERTER_PREFIX, ConversionStatus, convert_file, speech
 from agentsync.convert.cache import ConverterCache
 from agentsync.convert.registry import Registry
@@ -4064,8 +4064,12 @@ def test_the_v39_prompt_reads_the_paths_and_folder_states_setup_printed_c2316_c2
     assert 'next="no folder to sync yet: ' in script
     # C2317: the paths setup printed, never ~/agent-context assumed
     status = inspect.getsource(cli._status_lines)
-    for head in ('f"config: {config.config_path}"', 'f"docs repo: {config.docs_repo}"', 'f"inbox: {expand('):
+    # the inbox folder is config.inbox_state's, ``expand(docs_repo).parent / "inbox"`` as before (B13 round 43
+    # C2410: its state goes on a line of its own, the ``inbox:`` line's bytes unchanged)
+    heads = ('f"config: {config.config_path}"', 'f"docs repo: {config.docs_repo}"')
+    for head in (*heads, 'f"inbox: {inbox_folder}"', "inbox_folder, inbox_words = inbox_state(config)"):
         assert head in status, head
+    assert 'folder = expand(config.docs_repo).parent / "inbox"' in inspect.getsource(inbox_state)
     assert 'say "docs repo: $(list_name "$repo")"\n\tsay "inbox: $(list_name "$inbox")"' in script
     assert "~/agent-context/docs/AGENTS.md" not in flat and "under ~/agent-context/docs." not in flat
     assert "~/agent-context/sources.toml unless AGENTSYNC_CONFIG is set" in step2
@@ -7935,6 +7939,12 @@ _ROUND_41_E_PARAGRAPH_AMENDS = (
 """Round 41 lane E's dated lines no one claim holds alone: C2055's at the ConvertConfig row in §15's code
 block, C2001's at §16.28's class table and C2048's at §16.42's signal paragraph, which their claims name with
 no item, and C2043's at §16.258's C1848 paragraph, whose claim also reaches the C1886 one, which names it."""
+_ROUND_43_B_PARAGRAPH_AMENDS = (
+    ("16.300", '`add-source --json` prints `{"source": {"id", "path"}, "outcome":', "§16.272 C2441"),
+)
+"""Round 43 lane B's dated lines no claim of §16.272 holds alone: C2441's at §16.300.6's add-source --json
+bullet (the inbox source add-source appends is ``created``)."""
+
 _ROUND_42_E_PARAGRAPH_AMENDS = (
     ("16.42", "`subprocess` reports a child a signal stopped as the negative signal", "§16.268 C2252"),
     ("15", "max_page_bytes: int = 1_000_000 # hard cap before a unit is split", "§16.268 C2220, C2306"),
@@ -8186,6 +8196,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_42_E_PARAGRAPH_AMENDS,
         *_ROUND_40_RA_PARAGRAPH_AMENDS,
         *_REVIEW_BACKTEST_PARAGRAPH_AMENDS,
+        *_ROUND_43_B_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")
