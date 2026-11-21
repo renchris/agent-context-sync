@@ -44228,6 +44228,37 @@ recordings. A file that settles is listed on the next pass and read there. Test:
 `test_a_poll_reads_no_inbox_recording_inside_its_window_c2509` (a settled stub and a pending row, each under a poll
 with `quiescence_s = 600` and a fake-clock inbox: no fetch and no piece read inside the window, both read after it).
 
+**The inbox's state, decided once** (C2410, C2411, C2441; ruling 162). Status printed `inbox: <path>` whatever
+sat on the folder, so a paused or retired inbox source, another kind's source, a file on the name or no source at
+all read as a working drop folder; loop's `inbox` word matched the kept folder by spelling; and add-source that
+appended the inbox source on the kept folder said `already configured` and `unchanged` beside its own `added
+inbox source` line. `config.inbox_state(config)` returns `(folder, words)`: the folder `inbox` beside the docs
+repo as typed, and, when an entry on that name is not a folder (a file, a link to one, a dangling link), `not
+added (<folder> is not a folder)` whatever sources.toml lists; otherwise the sources are matched against
+`canonical_source_root(folder)` through `paths.same_folder`: an inbox source there reads `live <folder>` (a live
+one first), `paused <folder>` or `retired <folder>`, another kind's reads `not added (<folder> is source '<id>'
+(<kind>, <state>), not an inbox source)`, and none `not added (no source on <folder>)`. Status keeps `inbox:
+<path>` byte for byte and, only when the words do not start `config.INBOX_LIVE` (`live `), prints
+`config.INBOX_STATE_LINE` (`inbox state: `) and the words on the next line, which never starts `inbox: not
+added`, install.sh's grep. The setup report's `inbox:` line and step 2's `inbox state:` line print the same words
+(lanes RA and RB). loop's `inbox()` matches the kept folder through `same_folder`, as `Publisher.root_guide`
+does (C2411), and add-source's inbox-first branch notes the source ids before `_ensure_inbox` and reports a new
+source on PATH as `created` with that one line (C2441). Tests:
+`test_status_says_the_inbox_state_on_a_line_of_its_own_c2410` (a home through a link, paused, retired, another
+kind, a file, a dangling link, no source), `test_status_line_matches_the_kept_inbox_by_identity_c2411`, and the
+three add-source inbox-first tests, each now asserting one line and `--json`'s `created`.
+
+**A lock that named no holder has its own mark** (C2540 with C2502). Under install.sh's quiet wait, a wait its
+probe missed marked stdout with `cli.LOCK_WAITED_MARK` (`lock wait: this sync waited for another sync's lock`)
+whatever held the lock, so a lock with an empty body (install.sh's lockf, a status or doctor probe, a cycle
+starting) was booked `waited-for-the-lock` and the report said the sync waited for another sync to end.
+`cli.LOCK_WAITED_UNRECORDED_MARK` reads `lock wait: this sync waited for the sync lock (no holder recorded)`;
+`_lock_say` prints it when the beat's line starts `cycle.UNRECORDED_LOCK_WAIT_QUIET`, else the old mark, whose
+words stay (an older build prints only that one), one mark a run. install.sh's grep of the new mark books
+`waited-for-an-unrecorded-holder` (lane RB). Test:
+`test_a_lock_held_with_no_body_is_waited_for_in_one_bracket_never_as_another_sync` (the new mark once, the old
+one absent) and the recorded-holder test (the old mark once, the new one absent).
+
 ### 16.273 Round 43: the converters: the zero-byte re-read counted a row at a time, a record flattened before it is escaped, and a capped page showing the largest cut that fits (2026-11-21, wave B13 round 43 lane E)
 
 Reserved for round 43 lane E of B13.
@@ -44560,7 +44591,8 @@ command that shows what it changed, with `--config` when the run had one (`cli._
   "errors", "manualSteps", "outcome": "planned" | "removed"}`; a `--confirm` that does not match is a
   `confirmation_required` error line (`status: action_required`, exit 1) whose `next` is the matching command.
 - `add-source --json` prints `{"source": {"id", "path"}, "outcome": "created" | "unchanged"}` with a `next` of
-  `status`; `accept-deletions --json` prints `{"source": {"id"}, "run", "outcome", "next"}`, the run as sync's
+  `status` (Amended 2026-11-21, §16.272 C2441: add-source on the kept inbox folder that appends its inbox source
+  reports that source `created`, with the one `added inbox source` line, never `unchanged`); `accept-deletions --json` prints `{"source": {"id"}, "run", "outcome", "next"}`, the run as sync's
   (`cli._run_doc`), with sync's `findings` when the land gate blocked it (C1638); `adopt --json` prints `{"pages": [...], "outcome": "created" | "unchanged"}` with a `next` of
   `curate`.
 - `whoami --json` prints `{"account": {"signedIn", "username", "tenantId", "method", "cache", "scopes"}}`; signed out

@@ -49,10 +49,13 @@ from agentsync import (
 from agentsync import cycle as cycle_mod
 from agentsync import manifest as manifest_mod
 from agentsync.config import (
+    INBOX_LIVE,
+    INBOX_STATE_LINE,
     RETIRE_ADVICE,
     Config,
     canonical_source_root,
     inbox_source_table,
+    inbox_state,
     load_config,
     local_source_table,
     set_source_exclude,
@@ -1355,6 +1358,7 @@ def test_the_clis_lock_wait_says_plain_lines_and_marks_a_wait_install_sh_did_not
         assert [ln.split(" (", 1)[0] for ln in said] == ["another sync is still running"], err
         assert [ln.split("); ", 1)[1] for ln in said] == ["waiting for it to end, at most 10 minutes"], err
         assert out.count(cli.LOCK_WAITED_MARK) == 1, out
+        assert cli.LOCK_WAITED_UNRECORDED_MARK not in out, out  # a recorded holder: the old mark alone
 
 
 @pytest.mark.parametrize("env", ["plain", "quiet-unannounced"])
@@ -1392,7 +1396,8 @@ def test_a_lock_held_with_no_body_is_waited_for_in_one_bracket_never_as_another_
     finally:
         timer.join()
         os.close(fd)
-    err = capsys.readouterr().err.splitlines()
+    cap = capsys.readouterr()
+    err, out = cap.err.splitlines(), cap.out.splitlines()
     said = [ln for ln in err if "waiting for it" in ln]
     assert said, err
     for ln in said:
@@ -1400,11 +1405,19 @@ def test_a_lock_held_with_no_body_is_waited_for_in_one_bracket_never_as_another_
     if env == "plain":
         assert all(ln.startswith(f"{cycle_mod.UNRECORDED_LOCK_WAIT} (") for ln in said), said
         assert not [ln for ln in said if ln.startswith("another sync")], said
+        assert cli.LOCK_WAITED_UNRECORDED_MARK not in out and cli.LOCK_WAITED_MARK not in out, out
     else:
         assert said == [
             "another sync is still running (or install.sh or a check holds the lock); waiting for it to end, "
             "at most 10 minutes"
         ], said
+        # B13 round 43 C2540 with C2502: the empty body's own mark, once, so install.sh books an unrecorded
+        # holder, never "another sync's lock"
+        assert out.count(cli.LOCK_WAITED_UNRECORDED_MARK) == 1 and cli.LOCK_WAITED_MARK not in out, out
+        assert (
+            cli.LOCK_WAITED_UNRECORDED_MARK
+            == "lock wait: this sync waited for the sync lock (no holder recorded)"
+        )
 
 
 def test_a_missing_bundled_pandocs_error_keeps_its_action_whatever_the_home_folders_length(
@@ -3833,6 +3846,63 @@ def test_status_names_the_inbox_folder_this_config_keeps_beside_the_config_and_d
     lines = capsys.readouterr().out.splitlines()
     at = lines.index(f"config: {cfg}")
     assert lines[at : at + 3] == [f"config: {cfg}", f"docs repo: {alt / 'docs'}", f"inbox: {alt / 'inbox'}"]
+    assert not lines[at + 3].startswith(INBOX_STATE_LINE), lines[at + 3]  # a live inbox: no state line
+
+
+@pytest.mark.parametrize(
+    "case", ["linked-home", "paused", "retired", "other-kind", "file", "dangling", "none"]
+)
+def test_status_says_the_inbox_state_on_a_line_of_its_own_c2410(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], case: str
+) -> None:
+    """B13 round 43 C2410 (ruling 162): status's ``inbox:`` line named the folder whatever sat on it, so a
+    paused or retired inbox source, another kind's source, a file on the name or no source at all read as a
+    working drop folder. ``inbox:`` stays the bare path byte for byte, and only when no live inbox source sits
+    there ``inbox state: <words>`` follows with config.inbox_state's words: the one answer, by folder identity
+    against the stored form and the disk, the setup report and step 2 print too. Under a home reached
+    through a link the stored path differs from the typed one and the inbox is still live."""
+    real = tmp_path / "real"
+    real.mkdir()
+    home = real
+    if case == "linked-home":
+        home = tmp_path / "home-link"
+        home.symlink_to(real)
+    cfg = home / "sources.toml"
+    cfg.write_text(f"[agentsync]\ndocs_repo = {toml_string(str(home / 'docs'))}\n", encoding="utf-8")
+    monkeypatch.setenv(paths.CONFIG_ENV, str(cfg))
+    assert cli.main(["init"]) == cli.EXIT_OK
+    folder = home / "inbox"
+    text = cfg.read_text(encoding="utf-8")
+    want: str | None = None
+    if case in ("paused", "retired"):
+        extra = '\nretired_reason = "moved"' if case == "retired" else ""
+        text = text.replace('kind = "inbox"', f'kind = "inbox"\nstate = "{case}"{extra}')
+        want = f"{case} {folder}"
+    elif case == "other-kind":
+        text = text.replace('id = "inbox"\nkind = "inbox"', 'id = "contoso-drop"\nkind = "local"')
+        want = f"not added ({folder} is source 'contoso-drop' (local, live), not an inbox source)"
+    elif case in ("file", "dangling"):
+        (real / "inbox").rmdir()
+        if case == "file":
+            folder.write_text("x", encoding="utf-8")
+        else:
+            folder.symlink_to(tmp_path / "missing")
+        want = f"not added ({folder} is not a folder)"  # whatever sources.toml lists
+    elif case == "none":
+        text = text[: text.index("\n[[source]]")] + "\n"
+        want = f"not added (no source on {folder})"
+    cfg.write_text(text, encoding="utf-8")
+    config = load_config(cfg)
+    assert inbox_state(config) == (folder, want or f"{INBOX_LIVE}{folder}")
+    capsys.readouterr()
+    cli.main(["status"])
+    lines = capsys.readouterr().out.splitlines()
+    at = lines.index(f"inbox: {folder}")
+    if want is None:
+        assert not any(line.startswith(INBOX_STATE_LINE) for line in lines), lines
+    else:
+        assert lines[at + 1] == f"{INBOX_STATE_LINE}{want}", lines[at : at + 2]
+        assert not lines[at + 1].startswith("inbox: not added")  # install.sh's INBOX_NOT_ADDED grep
 
 
 def test_status_shows_the_policy_and_a_broken_policy_fails(
@@ -10513,6 +10583,23 @@ def test_the_added_source_line_names_the_stored_path_beside_the_typed_one(
     assert f"added source 'plain' to {cfg}:\n" in out and "stored as" not in out.split("added source")[1], out
 
 
+def _one_created_inbox_line(out: str) -> None:
+    """B13 round 43 C2441 (ruling 162): add-source that adds the inbox source on the kept folder says so in
+    one line, _ensure_inbox's, never "already configured" beside it."""
+    assert "already configured" not in out, out
+    assert [line for line in out.splitlines() if "inbox source 'inbox'" in line] == [
+        next(line for line in out.splitlines() if line.startswith("added inbox source 'inbox' ("))
+    ], out
+
+
+def _created_inbox_json(argv: list[str], capsys: pytest.CaptureFixture[str]) -> None:
+    """The same run under --json reports the inbox source it appended as ``created`` (CONTRACTS' add-source
+    --json outcome), where it said ``unchanged`` (B13 round 43 C2441)."""
+    assert cli.main([*argv, "--json"]) == cli.EXIT_OK
+    doc = json.loads(capsys.readouterr().out)
+    assert (doc["outcome"], doc["source"]["id"]) == ("created", "inbox"), doc
+
+
 def test_add_source_on_the_inbox_folder_of_an_inbox_less_config_keeps_it_the_inbox(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -10521,12 +10608,15 @@ def test_add_source_on_the_inbox_folder_of_an_inbox_less_config_keeps_it_the_inb
     box = initialised.source("inbox")
     assert box.path is not None and box.path.is_dir()
     cfg = initialised.config_path
-    cfg.write_text(cfg.read_text(encoding="utf-8").removesuffix(inbox_source_table("inbox", box.path)))
+    before = cfg.read_text(encoding="utf-8").removesuffix(inbox_source_table("inbox", box.path))
+    cfg.write_text(before)
     assert cli.main(["add-source", str(box.path), "--config", str(cfg)]) == cli.EXIT_OK
     out = capsys.readouterr().out
-    assert "added inbox source 'inbox'" in out and "already configured: source 'inbox' (inbox, live)" in out
+    _one_created_inbox_line(out)  # B13 round 43 C2441
     on_box = [s for s in load_config(cfg).sources if s.path == box.path]
     assert [s.kind for s in on_box] == [SourceKind.INBOX]
+    cfg.write_text(before)
+    _created_inbox_json(["add-source", str(box.path), "--config", str(cfg)], capsys)
     fresh = initialised.config_path.parent.parent / "fresh" / "sources.toml"  # no sources.toml yet
     assert cli.main(["add-source", str(box.path), "--config", str(fresh)]) == cli.EXIT_OK
     assert [(s.kind, s.path) for s in load_config(fresh).sources] == [(SourceKind.INBOX, box.path)]
@@ -10546,10 +10636,13 @@ def test_add_source_on_the_inbox_folder_typed_in_another_case_keeps_it_the_inbox
         pytest.skip("the tmp volume is case-sensitive: Inbox and inbox are two folders there")
     assert cli._same_folder is paths.same_folder  # the old name stays for its callers
     cfg = initialised.config_path
-    cfg.write_text(cfg.read_text(encoding="utf-8").removesuffix(inbox_source_table("inbox", box.path)))
+    before = cfg.read_text(encoding="utf-8").removesuffix(inbox_source_table("inbox", box.path))
+    cfg.write_text(before)
     assert cli.main(["add-source", str(upper), "--config", str(cfg)]) == cli.EXIT_OK
     out = capsys.readouterr().out
-    assert "added inbox source 'inbox'" in out and "already configured: source 'inbox' (inbox, live)" in out
+    _one_created_inbox_line(out)  # B13 round 43 C2441
+    cfg.write_text(before)
+    _created_inbox_json(["add-source", str(upper), "--config", str(cfg)], capsys)
     assert [s.kind for s in load_config(cfg).sources if s.id != "source"] == [SourceKind.INBOX]
 
 
@@ -10625,8 +10718,11 @@ def test_add_source_on_the_kept_folder_beside_an_inbox_elsewhere_keeps_it_the_in
     assert cli.main(["add-source", str(box.path), "--config", str(cfg)]) == cli.EXIT_OK
     cap = capsys.readouterr()
     assert "added inbox source 'inbox'" in cap.out and "not an inbox source" not in cap.err, cap
+    _one_created_inbox_line(cap.out)  # B13 round 43 C2441
     on_box = [s.kind for s in load_config(cfg).sources if s.path == box.path]
     assert on_box == [SourceKind.INBOX]
+    cfg.write_text(text + inbox_source_table("contoso-bridge", bridge), encoding="utf-8")
+    _created_inbox_json(["add-source", str(box.path), "--config", str(cfg)], capsys)
 
 
 def test_ensure_inbox_says_a_source_of_another_kind_sits_on_the_inbox_folder(

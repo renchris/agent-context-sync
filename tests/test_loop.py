@@ -30,11 +30,13 @@ from agentsync import cycle as cycle_module
 from agentsync.arm_local import exclude_globs
 from agentsync.config import (
     Config,
+    canonical_source_root,
     ensure_inbox,
     inbox_source_table,
     load_config,
     local_source_table,
     set_source_exclude,
+    toml_string,
 )
 from agentsync.cycle import HYDRATION_REFUSED, LISTING_HELD, NETWORK_POLICY_FAILED, RECORDING_WAITS, run_cycle
 from agentsync.errors import DatalessRefusedError
@@ -2573,6 +2575,32 @@ def test_status_line_inbox_is_the_kept_inbox_not_every_inbox_source(tmp_path: Pa
     assert " · inbox on · " in loop.status_line(load_config(cfg))  # paused: the live one is the inbox
     shutil.rmtree(gone)
     assert " · inbox missing · " in loop.status_line(load_config(cfg))
+
+
+def test_status_line_matches_the_kept_inbox_by_identity_c2411(tmp_path: Path, folder: Path) -> None:
+    """B13 round 43 C2411 (ruling 162): inbox() matched the kept folder by spelling (``kept in boxes``), so a
+    live inbox source stored as ``INBOX`` on a case-insensitive Mac, the folder ensure_inbox keeps, missed it,
+    and the word covered every live inbox source: a gone hand-added one read "inbox missing". It matches by
+    identity (paths.same_folder), as publish's root_guide does, so the kept folder alone decides "on"."""
+    gone = tmp_path / "Contoso" / "old drop"
+    config = _synced(tmp_path, folder, inbox_source_table("old-drop", gone))
+    kept = canonical_source_root(config.docs_repo.parent / "inbox")
+    kept.mkdir(mode=0o700, exist_ok=True)
+    upper = kept.with_name("INBOX")
+    if not upper.exists() or not upper.samefile(kept):
+        pytest.skip("a case-sensitive volume: INBOX is another folder")
+    cfg = config.config_path
+    text = cfg.read_text(encoding="utf-8")
+    stored = [s for s in config.sources if s.path is not None and s.path == kept]
+    if stored:  # the kept source, stored as INBOX
+        text = text.replace(f"path = {toml_string(str(kept))}", f"path = {toml_string(str(upper))}")
+    else:
+        text += inbox_source_table("contoso-inbox", upper)
+    cfg.write_text(text, encoding="utf-8")
+    config, added = ensure_inbox(cfg)
+    assert [s.path for s in config.sources if s.path is not None and s.path == kept] == []
+    assert added is None  # INBOX is the kept folder: no second source
+    assert " · inbox on · " in loop.status_line(config)
 
 
 # ---- the one-time re-read: a note that says "sync again" while a sync reads more --------------------------

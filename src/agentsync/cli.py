@@ -73,6 +73,8 @@ from agentsync import (
 from agentsync import policy as content_policy
 from agentsync.arm_local import ECHOED_ALARM, PROGRESS, exclude_advice, exclude_globs
 from agentsync.config import (
+    INBOX_LIVE,
+    INBOX_STATE_LINE,
     Config,
     SourceConfig,
     append_to_config,
@@ -80,6 +82,7 @@ from agentsync.config import (
     default_config_text,
     derive_source_id,
     ensure_inbox,
+    inbox_state,
     load_config,
     local_source_table,
     parse_config,
@@ -94,6 +97,7 @@ from agentsync.cycle import (
     INTERACTIVE_LOCK_WAIT_S,
     NEW_START_UNSAID_META,
     UNRECORDED_LOCK_HOLDER,
+    UNRECORDED_LOCK_WAIT_QUIET,
     _acquire_waiting,
     _holds_home,
     _kept_by_source,
@@ -1448,15 +1452,21 @@ def _state_readable(config: Config) -> Iterator[None]:
 LOCK_WAITED_MARK = "lock wait: this sync waited for another sync's lock"
 """The stdout line a quiet lock wait (install.sh's first sync) prints when install.sh's probe did not see the
 lock busy, so its install.log note books the wait, not conversion (B13 round 17 U68; round 4 Q29)."""
+LOCK_WAITED_UNRECORDED_MARK = "lock wait: this sync waited for the sync lock (no holder recorded)"
+""":data:`LOCK_WAITED_MARK`'s twin for a lock whose body was empty at the wait's first beat
+(``ops.lock.EMPTY_BODY_HOLDER``: install.sh's lockf, a status or doctor probe, or a cycle starting), so
+install.sh books ``waited-for-an-unrecorded-holder`` and the report never says it waited for another sync
+there (B13 round 43 C2540 with C2502). LOCK_WAITED_MARK's words stay: an older build prints only that one."""
 
 
 def _lock_say(line: str) -> None:
     """The lock wait's plain line, on stderr with no logger header (B13 round 17 U105); under the quiet
     wait (said only when install.sh did not announce it, U68) it also marks stdout with
-    :data:`LOCK_WAITED_MARK`."""
+    :data:`LOCK_WAITED_UNRECORDED_MARK` when the line is the empty body's
+    (``cycle.UNRECORDED_LOCK_WAIT_QUIET``), else :data:`LOCK_WAITED_MARK` (B13 round 43 C2540)."""
     _err(line)
     if quiet_lock_wait():
-        _out(LOCK_WAITED_MARK)
+        _out(LOCK_WAITED_UNRECORDED_MARK if line.startswith(UNRECORDED_LOCK_WAIT_QUIET) else LOCK_WAITED_MARK)
 
 
 def _run(config: Config, **kwargs: object) -> int:
@@ -1712,17 +1722,32 @@ def _cmd_add_source(args: argparse.Namespace) -> int:
     # somewhere, as ensure_inbox asks it (B13 round 42 C2309), and by identity, so `Inbox` is that folder on a
     # case-insensitive Mac (C2318).
     kept_inbox = canonical_source_root(docs.parent / "inbox")
+    added_inbox: SourceConfig | None = None
     if same_folder(kept_inbox, path) and not any(
         s.path is not None and same_folder(s.path, path) for s in config.sources
     ):
         if fresh:
             _write_config(cfg_path, template)
             fresh = False
+        before = {s.id for s in config.sources}
         config = _ensure_inbox(config)
+        # the source this branch added, reported as created with _ensure_inbox's one line, never as
+        # "already configured" and "unchanged" beside it (B13 round 43 C2441, ruling 162); an inbox that
+        # could not be added falls through to the branches below
+        added_inbox = next(
+            (
+                s
+                for s in config.sources
+                if s.id not in before and s.path is not None and same_folder(s.path, path)
+            ),
+            None,
+        )
     known = next((s for s in config.sources if s.path is not None and _same_folder(s.path, path)), None)
     typed = expand(raw)
     typed = typed if typed.is_absolute() else Path.cwd() / typed
-    if known is not None:
+    if added_inbox is not None:
+        source, outcome = {"id": added_inbox.id, "path": str(added_inbox.path)}, "created"
+    elif known is not None:
         # The folder as typed when it is not the stored path (a provider link, another case or Unicode form,
         # /tmp as /private/tmp), so the line says why two paths are one folder; after the config path, which
         # "has path <stored> in " ends with, and naming no cause, since several reach here (B13 round 8 J35).
@@ -2173,12 +2198,17 @@ def _status_lines(config: Config, *, checks_beside: bool = True) -> list[str]:
     False (the setup report's Status, whose Doctor prints only the lines that are not ok): a line that points
     at an [ok] check line beside it gives that line's words itself (B13 round 28 I18)."""
     # The inbox folder ensure_inbox keeps, resolved as the other two lines are, so a reader takes all three
-    # from what this config uses, never from ~/agent-context assumed (B13 round 42 C2317).
+    # from what this config uses, never from ~/agent-context assumed (B13 round 42 C2317).  Its state is
+    # config.inbox_state's answer, on a line of its own only when no live inbox source sits there, so the
+    # ``inbox:`` line stays the bare path (B13 round 43 C2410, ruling 162).
+    inbox_folder, inbox_words = inbox_state(config)
     out: list[str] = [
         f"config: {config.config_path}",
         f"docs repo: {config.docs_repo}",
-        f"inbox: {expand(config.docs_repo).parent / 'inbox'}",
+        f"inbox: {inbox_folder}",
     ]
+    if not inbox_words.startswith(INBOX_LIVE):
+        out.append(f"{INBOX_STATE_LINE}{inbox_words}")
     lock_path = config.state_paths.lock
     odd = doctor.own_kind(lock_path)  # never "free" over a folder, fifo, socket or link (E38)
     held = odd is None and lock_path.exists() and SingleWriterLock.is_held(lock_path)

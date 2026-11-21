@@ -91,7 +91,7 @@ from agentsync.errors import AgentSyncError, ConfigError
 from agentsync.manifest import Manifest, ManifestBusyError, ManifestNotCurrentError
 from agentsync.model import LintFinding, PassKind, RowState, SourceKind, Verdict
 from agentsync.ops import launchd
-from agentsync.paths import expand
+from agentsync.paths import expand, same_folder
 from agentsync.text import plural
 
 _log = logging.getLogger(__name__)
@@ -1875,12 +1875,15 @@ def status_line(config: Config) -> str:
 
     def inbox() -> str:
         # The inbox the guides name (publish's root_guide): the live inbox source on the folder
-        # config.ensure_inbox keeps, else every live inbox source. doctor checks each source's folder.
+        # config.ensure_inbox keeps, else every live inbox source. doctor checks each source's folder. The
+        # kept folder is matched by identity (paths.same_folder, as root_guide matches it, C2318), so a
+        # source stored as ``Inbox`` on a case-insensitive Mac is the kept one (B13 round 43 C2411,
+        # ruling 162).
         boxes = [s.path for s in config.live_sources() if s.kind is SourceKind.INBOX and s.path is not None]
         if not boxes:
             return "off"
         kept = canonical_source_root(docs.parent / "inbox")
-        named = [kept] if kept in boxes else boxes
+        named = [path for path in boxes if same_folder(path, kept)] or boxes
         return "on" if all(expand(path).is_dir() for path in named) else "missing"
 
     def checkpoint() -> str:

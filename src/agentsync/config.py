@@ -760,6 +760,40 @@ def ensure_inbox(config_path: Path) -> tuple[Config, SourceConfig | None]:
     return config, next(s for s in config.sources if s.id == sid)
 
 
+# status's line after ``inbox:``, printed only when no live inbox source sits there
+INBOX_STATE_LINE = "inbox state: "
+INBOX_LIVE = "live "  # inbox_state's words for a live inbox source on the kept folder: ``live <folder>``
+
+
+def inbox_state(config: Config) -> tuple[Path, str]:
+    """The kept inbox folder and what sits on it, decided once for every reader (B13 round 43 C2410, ruling
+    162): ``(folder, words)``, the folder ``inbox`` beside the docs repo as typed (``expand``, never resolved)
+    and the words status's ``inbox state:`` line and the setup report's ``inbox:`` line print.
+
+    An entry on that name that is not a folder (a file, a link to one, a dangling link) reads
+    ``not added (<folder> is not a folder)`` whatever sources.toml lists: it is what ensure_inbox's mkdir
+    stops on.  Otherwise the sources are matched against the form ensure_inbox stores
+    (:func:`canonical_source_root`) by identity (:func:`paths.same_folder`): an inbox source there reads its
+    state and the folder (``live <folder>``, ``paused <folder>``, ``retired <folder>``; a live one first),
+    another kind's source reads ``not added (<folder> is source '<id>' (<kind>, <state>), not an inbox
+    source)``, and none reads ``not added (no source on <folder>)``.  Reads the disk only through lexists,
+    is_dir and the readlinks canonical_source_root and same_folder already make."""
+    folder = expand(config.docs_repo).parent / "inbox"
+    if os.path.lexists(folder) and not folder.is_dir():  # a file, a link to one, or a dangling link
+        return folder, f"not added ({folder} is not a folder)"
+    kept = canonical_source_root(folder)
+    on = [s for s in config.sources if s.path is not None and same_folder(expand(s.path), kept)]
+    inbox = sorted((s for s in on if s.kind == SourceKind.INBOX), key=lambda s: s.state != SourceState.LIVE)
+    if inbox:
+        state = inbox[0].state.value
+        return folder, f"{INBOX_LIVE}{folder}" if state == SourceState.LIVE else f"{state} {folder}"
+    if on:
+        other = on[0]
+        kind, state = other.kind.value, other.state.value
+        return folder, f"not added ({folder} is source '{other.id}' ({kind}, {state}), not an inbox source)"
+    return folder, f"not added (no source on {folder})"
+
+
 def append_to_config(config_path: Path, table: str) -> Config:
     """Append ``table`` (TOML text) to the sources.toml at ``config_path``, keeping every existing byte and
     comment; the result is validated with :func:`parse_config` BEFORE anything is written, then replaces the
