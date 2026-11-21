@@ -858,6 +858,88 @@ def test_a_row_cap_with_no_formula_writes_no_formulas_sidecar_c2300(tmp_path: Pa
     assert not [n for n, _ in page.sidecars if n.endswith(".formulas.txt")] and "formula" not in page.body
 
 
+_BREAK_IDS = {"\n": "lf", "\r": "cr"}
+
+
+def _lossy_book(tmp_path: Path, brk: str, rows: int = 1) -> Path:
+    """Row 1: `1` beside `=IF(A1=1,7,"line one<brk>line two")` with a cached 7, then ``rows - 1`` short rows.
+    A CR is written as `&#13;`, as Excel does: XML reads a raw CR back as LF."""
+    import zipfile  # noqa: PLC0415
+
+    book = openpyxl.Workbook()
+    ws = book.active
+    assert ws is not None
+    ws.title = "Contoso"
+    ws.append([1, '=IF(A1=1,7,"line oneBRKMARKline two")'])
+    for n in range(2, rows + 1):
+        ws.append([n, f"Contoso {n}"])
+    plain = tmp_path / "plain.xlsx"
+    book.save(plain)
+    marked = tmp_path / "marked.xlsx"
+    with zipfile.ZipFile(plain) as zin, zipfile.ZipFile(marked, "w", zipfile.ZIP_DEFLATED) as zout:
+        for info in zin.infolist():
+            data = zin.read(info)
+            if info.filename == "xl/worksheets/sheet1.xml":
+                data = data.replace(b"BRKMARK", b"&#13;" if brk == "\r" else brk.encode())
+            zout.writestr(info, data)
+    return with_cached_values(marked, tmp_path / "contoso.xlsx", "xl/worksheets/sheet1.xml", {"B1": "7"})
+
+
+@pytest.mark.parametrize("streamed", [False, True], ids=["full", "streamed"])
+@pytest.mark.parametrize("brk", list(_BREAK_IDS), ids=list(_BREAK_IDS.values()))
+def test_a_formula_the_page_flattens_rides_whole_in_the_formulas_sidecar_c2531(
+    tmp_path: Path, brk: str, streamed: bool
+) -> None:
+    """B13 round 43 C2531: `_code` flattened a formula's LF on the page and left a CR raw, which split the
+    table row, and `_formulas_left` skipped every row shown uncut, so a short formula holding a line break
+    was nowhere whole. The page shows it on one line, and the sheet's `.formulas.txt` holds it escaped, with
+    a note of its own on a sheet that fits."""
+    src = _lossy_book(tmp_path, brk)
+    kw: dict[str, object] = {"xlsx_stream_threshold_bytes": 0} if streamed else {}
+    _index, page = _pages(src, 8192, **kw)
+    assert _size(page) <= 8192
+    assert '| 1 | 1 | 7 `=IF(A1=1,7,"line one line two")` |' in page.body, page.body
+    assert not [line for line in page.body.splitlines() if line.startswith('line two")')]
+    formulas = _sidecar_text(page, ".formulas.txt").split("\n\n", 1)[-1].split("\n")
+    assert formulas == [f'B1: =IF(A1=1,7,"line one{_record_escape(brk)}line two")', ""]
+    assert "[every formula not shown whole is in the sidecar `01-contoso.formulas.txt`]" in page.body
+
+
+@pytest.mark.parametrize("streamed", [False, True], ids=["full", "streamed"])
+@pytest.mark.parametrize("brk", list(_BREAK_IDS), ids=list(_BREAK_IDS.values()))
+def test_a_capped_sheet_lists_a_flattened_formula_on_a_row_shown_uncut_c2531(
+    tmp_path: Path, brk: str, streamed: bool
+) -> None:
+    """B13 round 43 C2531: under a row cap, the formula on a shown, uncut row was left out of
+    `.formulas.txt` though the page flattened it. It is listed, and the row-cap note names the sidecar."""
+    src = _lossy_book(tmp_path, brk, rows=3)
+    kw: dict[str, object] = {"max_rows_per_sheet": 1}
+    if streamed:
+        kw["xlsx_stream_threshold_bytes"] = 0
+    _index, page = _pages(src, 8192, **kw)
+    assert _size(page) <= 8192
+    assert '| 1 | 1 | 7 `=IF(A1=1,7,"line one line two")` |' in page.body, page.body
+    formulas = _sidecar_text(page, ".formulas.txt").split("\n\n", 1)[-1].split("\n")
+    assert formulas == [f'B1: =IF(A1=1,7,"line one{_record_escape(brk)}line two")', ""]
+    assert "every formula not shown whole is in the sidecar `01-contoso.formulas.txt`" in page.body
+    if not streamed:
+        assert "[row cap: first 1 of 3 non-empty rows shown; every row is in the sidecar" in page.body
+
+
+@pytest.mark.parametrize("streamed", [False, True], ids=["full", "streamed"])
+def test_a_sheet_with_no_flattened_formula_writes_no_formulas_sidecar_c2531(
+    tmp_path: Path, streamed: bool
+) -> None:
+    """B13 round 43 C2531: a formula the page shows whole on a sheet that fits still writes no
+    `.formulas.txt` and no note."""
+    src = _lossy_book(tmp_path, " ")
+    kw: dict[str, object] = {"xlsx_stream_threshold_bytes": 0} if streamed else {}
+    _index, page = _pages(src, 8192, **kw)
+    assert '| 1 | 1 | 7 `=IF(A1=1,7,"line one line two")` |' in page.body, page.body
+    assert not [n for n, _ in page.sidecars if n.endswith(".formulas.txt")]
+    assert "every formula not shown whole" not in page.body
+
+
 def test_the_index_header_formula_says_what_the_code_computes_c2314(tmp_path: Path) -> None:
     """B13 round 42 C2314: the contract said a headers cell gets "a fourth of each sheet's share of the room
     past 2,048 bytes", which reads as the cap and gives 1,486 characters at 8,192 with one sheet; the code

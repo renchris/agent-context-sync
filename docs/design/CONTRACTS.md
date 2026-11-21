@@ -43184,6 +43184,8 @@ length whose rendered row fits the rest, and a streamed summary's rows get the r
 four-sheet book's streamed pages show all six rows.
 Amended 2026-11-21, §16.273 C2516 (with C2529): the largest length is searched allowing for the width dropping where
 a cut marker disappears, and the floor the later rows are reserved against is the row's cheapest cut.
+Amended 2026-11-21, §16.273 C2531: a formula holding a line break, which the page shows flattened, is not shown whole
+either, so it rides in `NN-<slug>.formulas.txt` on any row, and a sheet with no row cap says so in a note of its own.
 
 **The per-cell cuts stay, scaled with the cap** (C2045, makes worse True; `agentsync.convert.xlsx`; amends §16.258
 C1848). C1848's 600-character headers cell and 200-character first-row value applied at any cap, so thirty headers of
@@ -43870,6 +43872,9 @@ value-only contract and its bytes stay. Tests:
 cell beside a short and a 6,000-character formula, full and streamed, every row shown and a one-row cap),
 `test_convert_page_cap.py::test_a_row_cap_with_no_formula_writes_no_formulas_sidecar_c2300` and
 `test_convert_formats.py::test_xlsx_row_cap_emits_csv_sidecar` (rows 6 to 31's formulas).
+Amended 2026-11-21, §16.273 C2531: "not shown whole" includes a formula holding a line break the page flattens, on a
+row shown uncut too; the full path writes `.formulas.txt` whenever one is left, and with no row cap adds `[every
+formula not shown whole is in the sidecar ...]` as a line of its own.
 
 **A cut row takes the room the later rows leave, and a streamed summary's rows the real room left** (C2268, makes
 worse True for filling the room; ruling 153; `agentsync.convert.xlsx`; amends §16.263 C2022). Of the four
@@ -44560,6 +44565,23 @@ whitespace-only author or title adds no `( )` or `""` to either, and a blank piv
 `test_convert_records.py::test_a_multi_line_author_never_forges_a_page_line_c2519`,
 `test_convert_records.py::test_a_whitespace_only_author_or_title_adds_nothing_c2519` and
 `test_convert_records.py::test_a_pivot_name_and_location_holding_a_line_break_stay_one_record_and_one_line_c2452`.
+
+**A formula holding a line break stays one table row, and rides whole in the formulas sidecar** (C2531; ruling 167,
+data integrity; `agentsync.convert.xlsx`; amends §16.263 C2022 and §16.268 C2300). `_code` turned a formula's LF into
+a space but left a CR (`&#13;` in the sheet's XML) raw, which split the GFM table row in two, and `_formulas_left`
+skipped every row shown uncut, so `=IF(A1=1,7,"line one<LF>line two")` with a cached 7 showed flattened, a different
+string literal, and was in neither sidecar; on the full path a sheet that fits never wrote `.formulas.txt` at all
+(the verifier's runs at bd65e0e1, full and streamed). `_code` now turns CRLF, CR and LF each into one space;
+`_lossy` says a formula holds one, and `_formulas_left` lists such a formula on any row, shown or not, cut or not.
+The full path's `_sheet_body` computes the list outside the row-cap branch and writes `.formulas.txt` whenever it is
+not empty; with a row cap the note stays the row-cap note's clause, and with none `[every formula not shown whole is
+in the sidecar `NN-<slug>.formulas.txt`]` follows the table as a line of its own, shorter than the row-cap note it
+stands in for, so the sheet reserve still holds it. The streamed path already reserved and wrote that note, and
+lists its sample through the same `_formulas_left`. A sheet with no such formula writes the same bytes as before.
+Tests: `test_convert_page_cap.py::test_a_formula_the_page_flattens_rides_whole_in_the_formulas_sidecar_c2531`,
+`test_convert_page_cap.py::test_a_capped_sheet_lists_a_flattened_formula_on_a_row_shown_uncut_c2531` (each LF and
+CR, full and streamed) and
+`test_convert_page_cap.py::test_a_sheet_with_no_flattened_formula_writes_no_formulas_sidecar_c2531`.
 
 ### 16.274 Round 43: the prompt goes to v40 (only lines setup prints in every branch), CI polled every 60 seconds, and the guides (2026-11-21, wave B13 round 43 lane D)
 

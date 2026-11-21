@@ -33,7 +33,7 @@ from agentsync.errors import ConversionError
 from agentsync.model import RenderedUnit, UnitKind
 from agentsync.text import plural
 
-_EMITTER_VERSION = "1.0.5"  # B13 round 43 rulings 167 and 168: C2516, C2529, C2519, C2530, C2452
+_EMITTER_VERSION = "1.0.5"  # B13 round 43 rulings 167 and 168: C2516, C2529, C2519, C2530, C2452, C2531
 _INDEX_TERM_LIMIT = 400  # distinct terms kept on 00-index (most frequent first, then listed sorted)
 _TERM_MAX_CHARS = 80  # a text cell up to this long is one term; longer text contributes its words
 _HEADER_LIMIT = 30  # column headers listed per sheet on 00-index
@@ -114,10 +114,11 @@ def _record_escape(text: str) -> str:
 
 
 def _code(text: str) -> str:
-    """Inline code span safe inside a GFM table cell (pipes escaped, backtick fences widened)."""
+    """Inline code span safe inside a GFM table cell (pipes escaped, backtick fences widened, CRLF, CR and LF
+    each one space, so no formula splits the row; B13 round 43 C2531)."""
     longest = max((len(m.group(0)) for m in re.finditer(r"`+", text)), default=0)
     ticks = "`" * (longest + 1)
-    inner = text.replace("|", "\\|").replace("\n", " ")
+    inner = text.replace("|", "\\|").replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
     pad = " " if longest else ""
     return f"{ticks}{pad}{inner}{pad}{ticks}"
 
@@ -557,21 +558,28 @@ def _cut_row(
     return None
 
 
+def _lossy(formula: str) -> bool:
+    """Whether :func:`_code` flattens a line break in ``formula``, so the page does not show it whole (B13
+    round 43 C2531)."""
+    return "\n" in formula or "\r" in formula
+
+
 def _formulas_left(sheet: _Sheet, rows: list[int], shown: int, cut: list[tuple[int, int]]) -> list[str]:
     """One ``<ref>: <formula>`` line, escaped as a list sidecar's (:func:`_record_escape`), for every formula
-    the page does not show whole: each formula of a row past the rows shown, and each one a cut row cut, in
-    row order; the rows' CSV holds values only, so these are the only whole copy (B13 round 42 C2300)."""
+    the page does not show whole: each formula of a row past the rows shown, each one a cut row cut, and
+    each one holding a line break the page flattens, on any row (B13 round 43 C2531), in row order; the
+    rows' CSV holds values only, so these are the only whole copy (B13 round 42 C2300)."""
     if sheet.bounds is None or not sheet.formula:
         return []
     _r0, c0, _r1, c1 = sheet.bounds
     limits = dict(cut)
     out: list[str] = []
     for i, r in enumerate(rows):
-        if i < shown and r not in limits:
-            continue
         for c in range(c0, c1 + 1):
             formula = sheet.formula.get((r, c))
-            if formula is not None and (i >= shown or len(formula) > limits[r]):
+            if formula is None:
+                continue
+            if i >= shown or (r in limits and len(formula) > limits[r]) or _lossy(formula):
                 out.append(f"{_ref(r, c)}: {_record_escape(formula)}")
     return out
 
@@ -707,8 +715,9 @@ def _sheet_body(
     sheet: _Sheet, *, total: int, width: int, cfg: ConvertConfig
 ) -> tuple[str, tuple[tuple[str, bytes], ...]]:
     """Markdown for one sheet unit plus its sidecars: the rows' CSV when rows were capped or cut, the
-    ``.formulas.txt`` when formulas were cut, and a list's ``.comments.txt`` or ``.objects.txt`` when that
-    list was cut.
+    ``.formulas.txt`` when a formula is not shown whole (a line break flattened on a sheet that fits
+    included, its note then a line of its own; B13 round 43 C2531), and a list's ``.comments.txt`` or
+    ``.objects.txt`` when that list was cut.
 
     The comment and object sections are measured first: the table's budget is the cap less
     :data:`_SHEET_RESERVE` less their real bytes, up to a quarter of the cap, with no guess per item and no
@@ -738,15 +747,13 @@ def _sheet_body(
         lines, shown, cut = _table_lines(sheet, rows, sheet.shown, budget, cfg.max_rows_per_sheet)
         out += lines
         out.append("")
+        left = _formulas_left(sheet, rows, shown, cut)  # a flattened formula on a sheet that fits too (C2531)
         if shown < len(rows) or cut:
             assert sheet.bounds is not None
             _r0, c0, _r1, c1 = sheet.bounds
             header = ["Row", *(_col_letter(c) for c in range(c0, c1 + 1))]
             data = [[str(r), *(sheet.plain.get((r, c), "") for c in range(c0, c1 + 1))] for r in rows]
             sidecars.append((sc, _csv_bytes([header, *data])))
-            left = _formulas_left(sheet, rows, shown, cut)
-            if left:  # the CSV holds values only (B13 round 42 C2300)
-                sidecars.append((fsc, _formulas_sidecar(left)))
             out += [
                 f"[row cap: first {shown} of {plural(len(rows), 'non-empty row')} shown"
                 + (f", {_cut_rows_note(cut)}; " if cut else "; ")
@@ -755,6 +762,10 @@ def _sheet_body(
                 + "]",
                 "",
             ]
+        elif left:  # no row cap: the note stands alone, shorter than the row-cap note it replaces (C2531)
+            out += [f"[{_formulas_note(fsc)}]", ""]
+        if left:  # the CSV holds values only (B13 round 42 C2300)
+            sidecars.append((fsc, _formulas_sidecar(left)))
     if sheet.missing_cache:
         out += [
             f"[no cached values: {_uncached(sheet)} no stored "
