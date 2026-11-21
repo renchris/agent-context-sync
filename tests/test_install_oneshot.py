@@ -61,6 +61,7 @@ from agentsync.config import (
     default_config_text,
     derive_source_id,
     inbox_source_table,
+    inbox_state,
     load_config,
     local_source_table,
 )
@@ -1374,6 +1375,96 @@ def test_a_refused_step_2_names_its_docs_repo_and_inbox_when_the_config_loads_c2
     at = lines.index(f"docs repo: {docs}")
     assert lines[at + 1] == f"inbox: {ctx / 'inbox'}" and at < error, cp.stdout
     assert (ctx / "inbox").is_dir()
+
+
+@pytest.mark.parametrize("build", ["current", "older", "failing", "no agentsync"])
+@pytest.mark.parametrize("case", ["live", "paused", "other kind", "not a folder", "no source", "firmlink"])
+def test_step_2_prints_the_inbox_state_after_the_inbox_line_c2410(
+    env: dict[str, str], build: str, case: str
+) -> None:
+    """B13 round 43 ruling 162, C2410: step 2's `inbox: <path>` line named the kept folder with no state, a
+    paused inbox, another kind's source or a file there read as a kept inbox. The line stays byte for byte
+    and, only when no live inbox source sits there, `inbox state: <words>` follows it: config.inbox_state's
+    words, which an installed build older than inbox_state gets from the snippet itself; any failure
+    reading the state prints the two lines alone, and an interpreter that fails prints none.
+    config_folder_lines run under /bin/bash 3.2. An inbox source typed through the /System/Volumes/Data
+    firmlink is the same folder on disk but not paths.same_folder's, so no source sits there: the older
+    build's words matched it by samefile alone and read it live."""
+    home = Path(env["HOME"])
+    ctx = home / "agent-context"
+    inbox = ctx / "inbox"
+    (ctx / "docs").mkdir(parents=True)
+    if case == "not a folder":
+        inbox.write_text("not a folder\n", encoding="utf-8")
+    else:
+        inbox.mkdir()
+    tables = {
+        "live": inbox_source_table("inbox", inbox),
+        "paused": inbox_source_table("inbox", inbox).replace(
+            'kind = "inbox"\n', 'kind = "inbox"\nstate = "paused"\n'
+        ),
+        "other kind": local_source_table("contoso-drop", inbox),
+        "not a folder": inbox_source_table("inbox", inbox),
+        "no source": "",
+        "firmlink": inbox_source_table("inbox", Path(f"/System/Volumes/Data{inbox.resolve()}")),
+    }
+    if case == "firmlink":
+        assert Path(f"/System/Volumes/Data{inbox.resolve()}").samefile(inbox)
+    cfg = ctx / "sources.toml"  # the docs repo typed whole: this process's HOME is not the run's
+    cfg.write_text(f'[agentsync]\ndocs_repo = "{ctx / "docs"}"\n{tables[case]}', encoding="utf-8")
+    if build == "current":
+        py = _tool_python(env)
+    elif build == "older":
+        py = _tool_python_without(env, "agentsync.config", "inbox_state")
+    elif build == "no agentsync":  # an interpreter that prints lines and fails: no path in them, no line
+        py = _tool_python(env)
+        _write_exe(py, "#!/bin/bash\nprintf 'OCR helper: stub\\nsecond line\\nthird line\\n'\nexit 1\n")
+    else:  # an inbox_state that raises: the bare lines
+        py = _tool_python(env)
+        shim = "import sys, agentsync.config as _m\n_m.inbox_state = lambda c: 1 / 0\ndel _m\n"
+        shim += 'exec(compile(sys.argv.pop(1), "<string>", "exec"))\n'
+        _write_exe(
+            py,
+            "#!/bin/bash\n"
+            '[ "$1" = -I ] && [ "$2" = -c ] || exec "' + sys.executable + '" "$@"\n'
+            'code="$3"\nshift 3\n'
+            f'exec "{sys.executable}" -I -c \'{shim}\' "$code" "$@"\n',
+        )
+    script = "\n".join(
+        [
+            "set -uo pipefail",
+            "say() { printf '%s\\n' \"$*\"; }",
+            "list_name() { printf '%s\\n' \"$1\"; }",
+            'with_timeout() { shift; "$@"; }',
+            _shell_function("config_folder_lines"),
+            "config_folder_lines",
+        ]
+    )
+    cp = _bash_run(
+        [BASH32, "-c", script],
+        capture_output=True,
+        text=True,
+        env={**env, "DRY_RUN": "0", "TOOL_PY": str(py), "CONFIG": str(cfg)},
+    )
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    bare = [f"docs repo: {ctx / 'docs'}", f"inbox: {inbox}"]
+    folder, words = inbox_state(load_config(cfg))
+    assert folder == inbox
+    want = {
+        "live": f"live {inbox}",
+        "paused": f"paused {inbox}",
+        "other kind": f"not added ({inbox} is source 'contoso-drop' (local, live), not an inbox source)",
+        "not a folder": f"not added ({inbox} is not a folder)",
+        "no source": f"not added (no source on {inbox})",
+        "firmlink": f"not added (no source on {inbox})",
+    }[case]
+    assert words == want, words
+    if build == "no agentsync":
+        assert cp.stdout == "", cp.stdout + cp.stderr
+    elif build == "failing" or case == "live":
+        assert cp.stdout.splitlines() == bare, cp.stdout + cp.stderr
+    else:
+        assert cp.stdout.splitlines() == [*bare, f"inbox state: {want}"], cp.stdout + cp.stderr
 
 
 def test_confirm_install_agent_without_any_source_exits_1(env: dict[str, str], wheel: Path) -> None:

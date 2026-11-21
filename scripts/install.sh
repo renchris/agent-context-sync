@@ -313,9 +313,11 @@
 #      from the first call, printed beside "sources: ..." from the last, with the inbox line ("added inbox
 #      source ...") the first call prints. After the folders line, the step prints `docs repo: <path>` and then
 #      `inbox: <path>`, the config's own docs repo and its inbox folder in list_name's spelling; the setup
-#      prompt's step 2 reads these two lines. Neither is printed in a dry run or when the installed agentsync
-#      cannot load the config within 10 s (config_folder_lines). These colon-form lines are apart from
-#      add-source's own `docs repo <path> (...)` line (B13 round 43 C2439)
+#      prompt's step 2 reads these two lines. Only when no live inbox source sits on that folder, an
+#      `inbox state: <words>` line follows, the words agentsync status prints (B13 round 43 C2410). None of
+#      them is printed in a dry run or when the installed agentsync cannot load the config within 10 s
+#      (config_folder_lines). These colon-form lines are apart from add-source's own `docs repo <path> (...)`
+#      line (B13 round 43 C2439)
 #   5. status: first the pandoc that status checks ([convert] pandoc_path, else the operator's native
 #      arm64 copy when there is one, else the one bundled with the tool: the one the converters run) is
 #      started once, as "pandoc --version", outside that check's 60 s. The bundled one is an Intel
@@ -12182,10 +12184,17 @@ synced_count() {
 # never ~/agent-context's (B13 round 42 ruling 156, C2317). Both reports cut each as they cut a moved docs repo:
 # inside the home by the parent's own part, outside it the docs path and the inbox each whole, the inbox after
 # the four own folders, never under a / parent nor at its default (B13 round 43 ruling 157, C2430).
+# Then, only when no live inbox source sits on that folder, `inbox state: <words>`, config.inbox_state's words
+# (`paused <folder>`, `not added (no source on <folder>)`, ...), the `inbox:` line kept byte for byte (B13 round
+# 43 ruling 162, C2410). An installed build older than inbox_state gets the same words from the snippet itself:
+# the folder matched by paths.same_folder where that build has it, as inbox_state matches it (B13 round 43
+# C2410: samefile alone matched a firmlink spelling the helper does not), else by os.path.samefile, else by
+# its spelling. Any failure there (an exception, the 10 s limit) prints the two lines alone: they are written
+# and flushed before the state is read.
 # Nothing in a dry run, or when that agentsync cannot load the config within 10 s. -I: nothing from the folder
 # this runs in is imported.
 config_folder_lines() {
-	local out="" repo inbox nl=$'\n'
+	local out="" rc=0 repo inbox rest state="" nl=$'\n'
 	if [ "$DRY_RUN" -eq 0 ] && [ -x "$TOOL_PY" ] && [ -f "$CONFIG" ]; then
 		# a newline in a path travels as RS, 0x1e, as list_name shows it (B13 round 35 C932)
 		out="$(with_timeout 10 "$TOOL_PY" -I -c '
@@ -12194,17 +12203,76 @@ from pathlib import Path
 from agentsync.config import load_config
 from agentsync.paths import expand
 
-repo = expand(load_config(Path(sys.argv[1])).docs_repo)
-for p in (repo, repo.parent / "inbox"):
-    sys.stdout.buffer.write(os.fsencode(str(p)).replace(b"\n", b"\x1e") + b"\n")
-' "$CONFIG" 2>/dev/null)" || out=""
+
+def rec(text):
+    return os.fsencode(str(text)).replace(b"\n", b"\x1e") + b"\n"
+
+
+config = load_config(Path(sys.argv[1]))
+repo = expand(config.docs_repo)
+sys.stdout.buffer.write(rec(repo) + rec(repo.parent / "inbox"))
+sys.stdout.buffer.flush()
+try:
+    from agentsync.config import inbox_state
+except ImportError:  # an installed build older than B13 round 43: the same words, read here
+
+    def inbox_state(config):
+        from agentsync.config import canonical_source_root
+
+        folder = expand(config.docs_repo).parent / "inbox"
+        if os.path.lexists(folder) and not folder.is_dir():
+            return folder, f"not added ({folder} is not a folder)"
+        kept = canonical_source_root(folder)
+        try:  # the collision key first, as config.inbox_state matches: a firmlink spelling is no match
+            from agentsync.paths import same_folder
+        except ImportError:  # older still: by identity, else by spelling
+            same_folder = None
+
+        def same(path):
+            if same_folder is not None:
+                return same_folder(path, kept)
+            try:
+                return os.path.samefile(path, kept)
+            except OSError:
+                return os.path.normpath(path) in (os.path.normpath(kept), os.path.normpath(folder))
+
+        def word(v):
+            return str(getattr(v, "value", v))
+
+        def state(s):  # an older build may have no state field: every source was live then
+            return word(getattr(s, "state", "live"))
+
+        on = [s for s in config.sources if s.path is not None and same(expand(s.path))]
+        mail = [s for s in on if word(s.kind) == "inbox"]
+        mail.sort(key=lambda s: state(s) != "live")
+        if mail:
+            return folder, f"{state(mail[0])} {folder}"
+        if on:
+            o, q = on[0], chr(39)
+            how = f"{word(o.kind)}, {state(o)}"
+            return folder, f"not added ({folder} is source {q}{o.id}{q} ({how}), not an inbox source)"
+        return folder, f"not added (no source on {folder})"
+
+
+try:
+    sys.stdout.buffer.write(rec(inbox_state(config)[1]))
+except Exception:
+    pass
+' "$CONFIG" 2>/dev/null)" || rc=$?
 	fi
+	# only a run that ended well, or one stopped at its limit after the two lines: any other exit is a config
+	# that does not load, or an interpreter that is no agentsync, whose output is no path
+	case "$rc" in 0 | 143) ;; *) out="" ;; esac
 	repo="${out%%"$nl"*}"
-	inbox="${out#*"$nl"}"
-	case "$inbox" in "" | *"$nl"* | "$out") return 0 ;; esac
+	rest="${out#*"$nl"}"
+	inbox="${rest%%"$nl"*}"
+	[ "$rc" -ne 0 ] || [ "$rest" = "$inbox" ] || state="${rest#*"$nl"}"
+	case "$inbox" in "" | "$out") return 0 ;; esac
+	case "$state" in *"$nl"*) state="" ;; esac
 	[ -n "$repo" ] || return 0
 	say "docs repo: $(list_name "$repo")"
 	say "inbox: $(list_name "$inbox")"
+	case "$state" in "" | "live "*) ;; *) say "inbox state: $(list_name "$state")" ;; esac
 }
 # How many remotes of the docs repo [governance] refuses, as init and add-source read them (cli._refuse_remotes):
 # a number only when the agentsync step 2 installed loads the config and its [governance] table and reads the
