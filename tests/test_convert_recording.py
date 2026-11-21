@@ -26,6 +26,7 @@ from agentsync.convert import convert_file
 from agentsync.convert import naming as naming_mod
 from agentsync.convert import recording as rec
 from agentsync.convert import recording_page as rec_page
+from agentsync.convert.base import options_hash
 from agentsync.convert.cache import ConverterCache
 from agentsync.convert.media import MediaEngine, MediaError
 from agentsync.convert.ocr import OcrLine
@@ -814,14 +815,18 @@ def test_a_picture_piece_outlives_a_page_change_and_a_legacy_key_is_read_once_c2
     no picture stage reads, so round 41's render-only emitter move and any cap edit started every part-read
     recording again from its first frame. The key holds `_PIECE_REVISION` and the picture options less the
     cap: a new emitter or cap reads no frame again (no `scan`), a piece saved under a 1.1.0 or 1.1.1 key is
-    read and saved again under the new one, and raising `_PIECE_REVISION` still reads it all."""
+    read and saved again under the new one, and raising `_PIECE_REVISION` still reads it all. Round 43 C2453:
+    the legacy key the first conversion saves under is built from the pre-C2296 formula, not `_legacy_keys()`,
+    so a wrong legacy format fails here instead of agreeing with itself."""
     store = PieceStore(tmp_path / "recordings")
     src = staged(tmp_path, teams(share(3, FIRST)))
     conv = converter(tmp_path, pieces=store)
     helper = tmp_path / "helpers" / "fake-media"
     key = conv._key()
     if change.startswith("legacy"):  # an older build saved the pieces under its own key
-        old = conv._legacy_keys()[0 if change.endswith("1.1.0") else 1]
+        with monkeypatch.context() as m:  # the pre-C2296 _key formula (60835dd), not the code under test
+            m.setattr(rec, "_EMITTER_VERSION", change.removeprefix("legacy-"))
+            old = f"{rec._PIECE_TICKS}|{conv._picture_version()}|{options_hash(conv._picture_options())}"
         with monkeypatch.context() as m:
             m.setattr(rec.RecordingConverter, "_key", lambda self: old)
             conv.convert(src, name="meeting.mp4")

@@ -44478,6 +44478,16 @@ While the revision is 1.1.0 nothing changes; no page's bytes move, so recording'
 emitter: a marked piece under its key, the revision raised to 1.2.0, `scan` runs again and the piece under the new
 key is the fresh read, not the marked bytes).
 
+**The legacy-key test builds the old key from the old formula** (C2453; `tests/test_convert_recording.py`).
+`test_a_picture_piece_outlives_a_page_change_and_a_legacy_key_is_read_once_c2296` saved its legacy pieces under
+`conv._legacy_keys()[i]` and then found them through `_stored_piece`, which reads the same `_legacy_keys()`, so it
+checked the code against itself: a wrong legacy format still passed 5 of 5 (the verifier's run at bd65e0e1). The
+legacy cases build the key from the pre-C2296 `_key` formula of 60835dd, `<piece ticks>|<_picture_version()>|<hash of
+_picture_options()>` with `_EMITTER_VERSION` set to 1.1.0 or 1.1.1 in a monkeypatch context of its own; with
+`_legacy_keys` given a wrong separator order, the old test passes and the new one fails both legacy cases. No literal
+key is pinned: its hash covers every picture option and the fake helpers' identities, so it would move with any of
+them while the formula stays right.
+
 ### 16.274 Round 43: the prompt goes to v40 (only lines setup prints in every branch), CI polled every 60 seconds, and the guides (2026-11-21, wave B13 round 43 lane D)
 
 Round 43's lane D items (`docs/plans/bring-back-ocr.md`, "B13 round 43"; specs `round43/items/C<n>.md`, the verifier's
