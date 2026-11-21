@@ -14527,6 +14527,9 @@ as they are (never the inbox or another kind = "inbox" folder), saying which of 
 which a run of step 2 this session printed an "added source" line": step 1's `[synced]` marks no longer decide it, so
 a list that marked nothing gives no false "none" (§16.72 calls this paragraph §16.36's and §16.43's finish).
 Amended 2026-10-15, §16.94 M28: since v20 a sources.toml that does not load is "unknown", not "none".
+Amended 2026-11-21, §16.274 C2408, C2419: since v40 the finish reads the config the report's Configuration `config:`
+line names (step 2's, if step 2 ran), with no status pointer, and leaves out kind = "inbox" sources only: a kind =
+"local" source on the inbox folder is listed like any other folder, as step 2's `folders:` line counts it.
 
 **Step 1's exception** (R41): "say in your final message that I gave no answer, so no folder was added" (§16.29's
 block carries a dated line).
@@ -25700,6 +25703,8 @@ to copy back` (`N patch files ... them`). The path is the one `write_bring_back`
 as it is, where "sent" reads as "carried in this file". Test:
 `test_step_2_says_a_patch_this_account_cannot_read_is_the_persons` (one patch at the default path, and two under a
 report path of their own).
+Amended 2026-11-21, §16.274 C2541: the setup prompt reads `$out` too: since v40 its final message names the
+bring-back.md the report run's NEXT: line names (`~/agent-context/bring-back.md` by default), never another.
 
 **A signal inside add-source keeps its held error** (W39; amends §16.136 V26). V26 holds add-source's stderr in
 `ERRF` and prints it once the pipeline ends. Bash runs a trap only when the foreground pipeline ends, and
@@ -44860,6 +44865,37 @@ note comes while a converter that can run has such files left, and that the othe
 note; the code and `reread_options`' meaning stay. Test:
 `tests/test_deploy_pack.py::test_the_readme_says_the_options_note_comes_only_while_a_converter_that_can_run_has_files_c2461`,
 held to `_reread_notes` with a waiting-only and a live tally.
+
+**Setup prompt v40: only lines setup prints in every branch** (C2406, C2408, C2419, C2524, C2420, C2523, C2538,
+C2535, C2536, C2541; ruling 170; amends §16.49 R11, §16.142 W12). v39's step 2 told the person "I have no drop
+folder" when another kind's source sat on the inbox folder, while another live kind = "inbox" source still converted
+dropped files and AGENTS.md named it (C2406); the Finish left out the inbox folder even where a kind = "local" source
+sat on it, which step 2's `folders:` line counts (C2408); the Finish read step 2's `config:` line, which a run that
+stopped before step 2 never printed, and pointed at a status run after the report, the last command (C2419, C2524);
+step 2 prints the header's `config:` line and, on a Mac that has a config, the config step's own, while the prompt
+read "its config: line" (C2420, makes worse True for relabelling the header: a first setup and every
+`--source-local` run would print none); the no-folder recovery sat in the second exception, keyed on "that config
+held none", so a no-folder NEXT after any other step 1 branch or from a sync of step 3 after the first had nothing to
+land on, and a person who answered none was asked again (C2523, C2538); step 1 asked for folders from a list printed
+while macOS still waited for an Allow click (C2535); step 2 spoke of the inbox when it stopped before printing an
+`inbox:` line (C2536); and the final message named `~/agent-context/bring-back.md` whatever the report wrote, though
+`AGENTSYNC_SETUP_REPORT` moves it (C2541). v40: another kind's source on the inbox folder keeps no inbox there, each
+other kind = "inbox" source that is not paused or retired (`is_live`, as AGENTS.md's inbox line reads) is named as a
+folder the person added, and only with none is there no drop folder; the Finish leaves out kind = "inbox" sources
+only and reads the config the report's Configuration `config:` line names (step 2's, if it ran), with no status
+pointer; step 2 reads "its config: lines name (each names the same file", the header kept, and says nothing of the
+inbox when it printed no `inbox:` line, lane RB's `config_failed` printing `docs repo:` and `inbox:` whenever the
+config loads (C2463, b13ca8f01); one recovery paragraph after step 1's exceptions takes a no-folder NEXT from step 2 or any sync
+of step 3, step 3 says so before "do what its NEXT: line says", and a none is not asked again; an Allow click or a
+denial the list's NEXT: names is relayed, waited for and the list run again first, unattended going on as before;
+and the final message names the bring-back.md this report run's NEXT: line names, `~/agent-context/bring-back.md` by
+default once, never another. §16.49's finish and §16.142's W12 paragraph take dated lines. No step moves, so v40 is
+read with v7's layout. Version 40 everywhere the bump list names it (the block and its digest in `PROMPT`, `prompt
+v40` in step 1's `--log-start`, `SETUP_PROMPT_COMPAT`, `setup_report.PROMPT_VERSION` and its docstring's list, the
+form's placeholder, the version pins, setup-feedback.md's version lines and its old-copy list, which v39 joins, and a
+K64 row); `CUT_OFF_TOLD` names no version and is unchanged. Round 44 rehearses v40 with v39's block (1433dd16d) as
+scenario C's first old copy. Tests: `test_the_v40_prompt_reads_only_lines_setup_prints_in_every_branch_c2406_c2408_c2419_c2523`,
+`test_the_prompt_text_changes_only_with_its_version`, `test_readme_prompt_compat_matches_the_installer`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

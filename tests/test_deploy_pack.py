@@ -1565,7 +1565,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (39, "b3b0307dd1c167485655578c51eab78e22f4bb6efee70fe4607a489b69de0271")
+PROMPT = (40, "495b548f37f6bf61bdd2bef9d783ef679514e3d6ce7579ddba2985cbce7c87e3")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -2201,7 +2201,10 @@ def test_prompt_routes_changes_to_the_source_not_the_checkout() -> None:
     assert "still in `~/agent-context/setup/local-work`" in private
     assert "}not repeated: a patch file last written $at," in SCRIPTS[0].read_text(encoding="utf-8")
     finish = _prompt_steps()[3].rsplit("Finish with:", 1)[1]
-    assert "~/agent-context/bring-back.md, the one file I review and copy back" in finish
+    assert (
+        "the bring-back.md this report run's NEXT: line names (~/agent-context/bring-back.md by default), the"
+        " one file I review and copy back"
+    ) in " ".join(finish.split())
     # B13 round 4 Q24: only --report-only writes bring-back.md, so a failed clone left none, and the stop for
     # a copy that is not the installer's could leave an earlier session's. The clause follows whether a report
     # ran.
@@ -2209,11 +2212,11 @@ def test_prompt_routes_changes_to_the_source_not_the_checkout() -> None:
         "step 1 kept, or a note of the commits it could not carry; a patch an earlier report carried is not "
         "repeated, only listed there, by its hash when "
         "it can be read); if the "
-        "report's run printed that bring-back.md could not be written, say so, do not name "
-        "~/agent-context/bring-back.md, and name the files the NEXT: line says to copy back instead; "
+        "report's run printed that bring-back.md could not be written, say so, name no bring-back.md, and "
+        "name the files the NEXT: line says to copy back instead; "
         f"{UNREAD_PATCH_TOLD} {LOCAL_WORK_TOLD} {CUT_OFF_TOLD} if no "
-        'report ran this session, or you are waiting for my folder answer, say "none" for that file instead, '
-        "and do not point me to an older bring-back.md."
+        'report ran this session, or you are waiting for my folder answer, say "none" for that file instead; '
+        "never name a bring-back.md this report run's NEXT: line does not name, such as an older one."
     )
     # B13 round 17 U29: the report's NEXT for a kept patch it could not read asks for a chmod and the report
     # again, but the report is the last command and the finish relayed only the NEXT before it; the person is
@@ -3547,11 +3550,13 @@ def test_readme_step3_runs_the_loop_then_the_report() -> None:
     # B13 round 8 J6: at that wait, and at any stop before step 2, sources.toml does not exist yet (step 1's
     # --list-folders installs nothing), so "read sources.toml" named a missing file; the "none" form says so.
     assert (
-        'the folders this Mac syncs, as full paths: the kind = "local" sources in the config step 2\'s'
-        " config: line named (~/agent-context/sources.toml by default; ~/.local/bin/agentsync status prints"
-        " the same config: line) that are not paused or retired, read after step 2 or, if setup stopped"
-        " before step 2, as they are"
-        ' (never the inbox or another kind = "inbox" folder), saying which of them this session added: those'
+        'the folders this Mac syncs, as full paths: the kind = "local" sources in the config the report\'s'
+        " Configuration section names on its config: line (the same file step 2's config: lines named, if"
+        " step 2 ran; with no report, that file, or ~/agent-context/sources.toml unless AGENTSYNC_CONFIG is"
+        " set) that are not paused or retired, read after step 2 or, if setup stopped before step 2, as they"
+        ' are (never a kind = "inbox" source; a kind = "local" source on the folder step 2\'s inbox: line'
+        " names is listed like any other folder, as step 2's folders: line counts it), saying which of them"
+        " this session added: those"
         ' for which a run of step 2 this session printed an "added source" line; or, if'
         ' that config does not exist yet or has no such kind = "local" source, "none: this'
         ' Mac syncs no folder" (if setup stopped before step 2, say'
@@ -3734,15 +3739,15 @@ def test_readme_report_step_after_any_failure() -> None:
     # after a parenthesis that ruled out a report when the checkout is missing, so the two contradicted each
     # other at a failed clone. The missing checkout is the third case, stated once, in the list.
     assert (
-        '--report-only` Four cases have no report and no "## Not used" section: while you wait for my '
-        "folder answer in step 1 (also when step 2, or the first sync of step 3, says no folder is synced"
-        " yet, as step 1 says); when step 1 stops (after at most that one rerun) because this prompt is not"
-        " the installer's (either check: the --version line does not end with this prompt's number, or the"
-        " command says so); at step 1's not-a-checkout, worktree and ownership stops, and at its Xcode and"
-        " other-git-failure stops when the installer there is not this prompt's version (step 1 says what to"
-        " tell me); and when ~/src/agent-context-sync/scripts/install.sh does not exist (tell me instead that"
-        " setup stopped before the code was downloaded). Every other stop still ends with the report. The"
-        " report works out"
+        '--report-only` Four cases have no report and no "## Not used" section: while you wait for my folder'
+        " answer in step 1 (also when step 2, or a sync of step 3, says no folder is synced yet or no folder"
+        " to sync yet and you wait for my folder answer, as step 1 says); when step 1 stops (after at most"
+        " that one rerun) because this prompt is not the installer's (either check: the --version line does"
+        " not end with this prompt's number, or the command says so); at step 1's not-a-checkout, worktree"
+        " and ownership stops, and at its Xcode and other-git-failure stops when the installer there is not"
+        " this prompt's version (step 1 says what to tell me); and when"
+        " ~/src/agent-context-sync/scripts/install.sh does not exist (tell me instead that setup stopped"
+        " before the code was downloaded). Every other stop still ends with the report. The report works out"
     ) in flat
     assert "Two cases have no report" not in flat
     # B13 round 11 M74: "as step 1's last sentence says" pointed at the add-source sentence; the rule is
@@ -3824,7 +3829,8 @@ def test_readme_prompt_carries_the_field_lines() -> None:
     assert 'If a sync stops on "click Allow", a macOS prompt is waiting for me' in _prompt_steps()[3]
     # The bring-back report (2026-10-06). S2: an unanswered folder question is never the agent's to answer.
     # S4: a Mac that already runs agentsync keeps what it has, and its older warnings are not this session's.
-    step1 = _prompt_steps()[1]
+    # v40 (C2535): an Allow click or a denial is dealt with first, with its own unattended clause
+    step1 = _prompt_steps()[1].split("Otherwise show me the folders", 1)[1]
     assert step1.index("ask which to sync") < step1.index("If you cannot ask me")
     assert (
         "If you cannot ask me (your tool runs unattended, or the question comes back unanswered), do not "
@@ -3875,11 +3881,10 @@ INBOX_SENTENCE = (
 :data:`INBOX_WHEN` finds, B13 round 41 C2092)."""
 
 INBOX_WHEN = (
-    "When it ends, whether or not it exited non-zero, unless its NEXT: line says the config does not load,"
-    ' find the kind = "inbox" source in the config its config: line names (~/agent-context/sources.toml'
-    " unless AGENTSYNC_CONFIG is set) on the folder its inbox: line names, the line right after its docs"
-    " repo: line (the folder named inbox beside the docs repo), matched as that folder, never by how its path"
-    " is spelled"
+    'Otherwise, when it ends, whether or not it exited non-zero, find the kind = "inbox" source in the config'
+    " its config: lines name (each names the same file; ~/agent-context/sources.toml unless AGENTSYNC_CONFIG"
+    " is set) on the folder its inbox: line names, the line right after its docs repo: line (the folder named"
+    " inbox beside the docs repo), matched as that folder, never by how its path is spelled"
 )
 """When step 2 tells the agent to explain the inbox, since v23 (B13 round 14 Q8): before the non-zero clause,
 whose "go to step 3's report" v22's "Then tell me about my inbox" came after, and only once the install wrote
@@ -3904,11 +3909,26 @@ retired one is retired, so a dropped file never syncs (C2092)."""
 INBOX_OTHER_KIND = (
     "If a source of another kind is on that folder (step 2 printed \"inbox: <path> is source '<id>' (<kind>,"
     ' <state>), not an inbox source"), tell me that agentsync kept no inbox there: that folder is that'
-    " source, shown by its id, kind and state, synced as an ordinary folder while it is live, not as my drop"
-    " folder, so I have no drop folder; changing its kind is an edit of that config that is mine, not yours."
+    " source, shown by its id, kind and state, synced as an ordinary folder while it is live, not as my"
+    " inbox, so agentsync keeps no inbox for me there; changing its kind is an edit of that config that is"
+    ' mine, not yours. If another kind = "inbox" source in that config is not paused or retired, name each by'
+    " its path and say it is a folder I added myself, where files I drop are still converted by the next sync"
+    " (the inbox line of AGENTS.md in that docs repo names them); if none is, tell me I have no drop folder."
 )
 """Step 2's v39 words for a source of another kind on the kept folder, which ``ensure_inbox`` leaves as it is
-and ``cli._ensure_inbox`` names (B13 round 42 C2212, from lane B's C2309 line; ruling 156)."""
+and ``cli._ensure_inbox`` names (B13 round 42 C2212, from lane B's C2309 line; ruling 156). v40 (B13 round 43
+C2406, ruling 170): "no drop folder" only when no other kind = "inbox" source is live
+(``SourceConfig.is_live``, the test AGENTS.md's inbox line reads), each that is named as a folder the person
+added."""
+
+INBOX_NONE = (
+    "If step 2 printed no inbox: line (it stopped before its config step, as a usage error or a failed"
+    " install does, or its config does not load), say nothing of the inbox now: go by its NEXT: line as"
+    " below, and the inbox comes from the run that later prints one."
+)
+"""Step 2's v40 words for a run that printed no inbox: line (B13 round 43 C2536, ruling 170): lane RB's
+config_failed prints ``docs repo:`` and ``inbox:`` whenever the config loads (C2463), so only a run that
+stopped earlier, or a config that does not load, has none."""
 
 INBOX_NOT_ADDED = (
     'If no source is on that folder and step 2 printed "inbox: not added", tell me my inbox could not be'
@@ -3997,6 +4017,89 @@ def test_step2_tells_of_the_inbox_only_when_its_source_is_live_c2092(
     assert "is source 'dropbox' (local, live), not an inbox source" in said, said
 
 
+def test_the_v40_prompt_reads_only_lines_setup_prints_in_every_branch_c2406_c2408_c2419_c2523() -> None:
+    """B13 round 43 ruling 170 (prompt v40). C2406: another kind's source on the inbox folder said "I have no
+    drop folder" while another live kind = "inbox" source converted dropped files; each such source is named,
+    and only with none is there no drop folder. C2408: the Finish left out the inbox folder even where a kind
+    = "local" source sat on it; it leaves out kind = "inbox" sources only. C2419 with C2524: the Finish read
+    step 2's config: line, which a run that stopped before step 2 never printed, and pointed at a status run
+    after the report; it reads the report's Configuration `config:` line. C2420: step 2 prints a header
+    config: line and, on a Mac that has a config, the config step's; the prompt reads its config: lines. C2523
+    with C2538: one no-folder recovery after step 1's exceptions takes step 2's or any sync of step 3's NEXT,
+    step 3 says so first, and a none is not asked again. C2535: an Allow click or a denial is dealt with, and
+    the list run again, before any folder question. C2536: step 2 says nothing of the inbox when it printed no
+    inbox: line. C2541: the final message names the bring-back.md the report run's NEXT: line names. Each is
+    held to the words setup prints."""
+    from agentsync import loop, setup_report  # noqa: PLC0415
+
+    block = _one_prompt_block()
+    flat_block = " ".join(block.split())
+    steps = _prompt_steps()
+    step1, step2, step3 = steps[1], steps[2], steps[3]
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    # C2406
+    assert INBOX_OTHER_KIND in step2 and "so I have no drop folder;" not in flat_block
+    # C2408, C2419 with C2524, C2420
+    finish = step3.rsplit("Finish with:", 1)[1]
+    assert (
+        'the kind = "local" sources in the config the report\'s Configuration section names on its config:'
+        " line (the same file step 2's config: lines named, if step 2 ran;"
+    ) in finish
+    assert (
+        '(never a kind = "inbox" source; a kind = "local" source on the folder step 2\'s inbox: line names is'
+        " listed like any other folder, as step 2's folders: line counts it)"
+    ) in finish
+    assert 'never the inbox or another kind = "inbox" folder' not in flat_block
+    assert "~/.local/bin/agentsync status prints the same config: line" not in flat_block
+    assert 'out = [f"- config: {r.config_path}' in Path(setup_report.__file__).read_text(encoding="utf-8")
+    assert "its config: lines name (each names the same file;" in step2
+    assert 'say "config: $CONFIG"\n' in script and 'say "config: $CONFIG exists"' in script
+    # C2523 with C2538: the recovery is its own paragraph after the second exception, and step 3 says it first
+    assert (
+        "so no folder was added.\n   Whatever happened above, if step 2, or a sync of step 3, says" in block
+    )
+    assert (
+        step1.endswith(NO_FOLDER_RECOVERY)
+        and "(my answer to the exceptions' question whether to add a folder does not count)" in step1
+    )
+    first = (
+        "Whenever a sync of this step prints a NEXT: line saying no folder is synced yet, whatever happened"
+        " in step 1, do as step 1's last sentences say, not its add-source, and run no more of this loop"
+        " until step 2 has run again (after a none, they send you to the report)."
+    )
+    assert step3.startswith(f"Sync loop and report. {first} Run `~/.local/bin/agentsync sync` and do what")
+    assert "first sync of step 3" not in flat_block and "that config held none" not in flat_block
+    assert 'f"no folder is synced yet: ' in Path(loop.__file__).read_text(encoding="utf-8")
+    # C2535: held to the list's own two NEXTs
+    assert ALLOW_FIRST in step1
+    assert (
+        step1.index(ALLOW_FIRST) < step1.index(NEW_MAC_SIGN_IN) < step1.index("Otherwise show me the folders")
+    )
+    assert (
+        'NEXT_MSG="macOS is asking whether $term may access files managed by $asking: click Allow' in script
+    )
+    assert (
+        'NEXT_MSG="$term was denied access to files managed by $denied: allow it in System Settings' in script
+    )
+    # C2536, on lane RB's C2463 (b13ca8f01): a refused step 2 prints the inbox: line whenever the config
+    # loads, so only an earlier stop or a config that does not load prints none
+    assert INBOX_NONE in step2 and step2.index(INBOX_NONE) < step2.index(INBOX_WHEN)
+    failed = script.split("\nconfig_failed() {", 1)[1].split("\n}\n", 1)[0]
+    assert failed.rstrip().endswith('config_folder_lines\n\t(exit "$rc") || fail "$@"'), failed[-200:]
+    # C2523 on lane RB's C2401 (f02dcc209): the exit-0 re-run over an inbox-only config now ends on
+    # install.sh's own `no folder is synced yet` NEXT, which v40's no-folder recovery reads
+    assert 'next="no folder is synced yet: list them with $SELF --list-folders' in script
+    # C2541
+    assert flat_block.count("~/agent-context/bring-back.md") == 1
+    assert (
+        "the bring-back.md this report run's NEXT: line names (~/agent-context/bring-back.md by default)"
+        in (finish)
+    )
+    assert (
+        "never name a bring-back.md this report run's NEXT: line does not name, such as an older one."
+    ) in finish
+
+
 def test_the_exit_0_no_folder_next_is_named_as_status_s_c2457_c2464() -> None:
     """B13 round 43 C2457 with C2464: K63 and §16.269 said step 2 ended with exit 0 and a `no folder to sync
     yet` NEXT, and §16.266 read the C2316 test's stub rc 2 as status's. install.sh prints that NEXT only on a
@@ -4045,21 +4148,21 @@ def test_the_v39_prompt_reads_the_paths_and_folder_states_setup_printed_c2316_c2
     whatever = (
         "Whatever step 2's exit status, if its NEXT: line says no folder is synced yet or no folder to sync"
         " yet, do as step 1's last sentences say (ask me which folders, then run step 2 again with one"
-        " --source-local per folder), not its add-source or --list-folders re-run, and do not start step 3."
+        " --source-local per folder; after a none, go to step 3's report as they say), not its add-source or"
+        " --list-folders re-run, and do not start step 3's sync loop."
     )
     assert whatever in step2
     assert step2.index(whatever) < step2.index(
         "If it exits non-zero and its NEXT: line says it is not a step"
     )
     assert '(but after "no folder is synced yet"' not in flat
-    assert (
-        "If step 2, or the first sync of step 3, then says no folder is synced yet (that config held none)"
-        in (" ".join(steps[1].split()))
+    assert "Whatever happened above, if step 2, or a sync of step 3, says no folder is synced yet" in (
+        " ".join(steps[1].split())
     )
     assert (
-        "(also when step 2, or the first sync of step 3, says no folder is synced yet, as step 1 says)"
-        in flat
-    )
+        "(also when step 2, or a sync of step 3, says no folder is synced yet or no folder to sync yet and"
+        " you wait for my folder answer, as step 1 says)"
+    ) in flat
     assert 'f"no folder is synced yet: ' in inspect.getsource(loop)
     script = SCRIPTS[0].read_text(encoding="utf-8")
     assert 'next="no folder to sync yet: ' in script
@@ -4079,10 +4182,11 @@ def test_the_v39_prompt_reads_the_paths_and_folder_states_setup_printed_c2316_c2
         " names (~/agent-context/docs by default): read it, and write every page and question file under that"
         " folder."
     ) in " ".join(steps[3].split())
+    # v40 (C2419 with C2524): the report's config: line, step 2's if it ran, and no status pointer
     assert (
-        'the kind = "local" sources in the config step 2\'s config: line named (~/agent-context/sources.toml'
-        " by default; ~/.local/bin/agentsync status prints the same config: line) that are not paused or"
-        " retired"
+        'the kind = "local" sources in the config the report\'s Configuration section names on its config:'
+        " line (the same file step 2's config: lines named, if step 2 ran; with no report, that file, or"
+        " ~/agent-context/sources.toml unless AGENTSYNC_CONFIG is set) that are not paused or retired"
     ) in flat
     assert 'say "unknown: <that config\'s path> was not checked"' in flat
     assert 'say "unknown: <that config\'s path> does not load"' in flat
@@ -4144,15 +4248,29 @@ no-report stop leaves the person no bring-back.md; and it is what a Mac that syn
 same sign-in (N7). Nothing is logged for it: the report reads the stop from install.log."""
 
 NEW_MAC_SIGN_IN = (
-    "If --list-folders printed no folder paths (only a NEXT: line), do what that line says if it is a click"
-    " for me (a sign-in is not one: only the first exception below waits for a sign-in), otherwise show it to"
-    " me and go to step 3's report."
+    "If --list-folders printed no folder paths (only a NEXT: line), show me that line and go to step 3's"
+    " report (a sign-in is not a click: only the first exception below waits for a sign-in)."
 )
 """Step 1's rule for a list with no folder path, since v21 (B13 round 12 N7). v20 waited for a sign-in "as
 for a click" on a Mac that already syncs folders, and left open whether the same sign-in NEXT: on a Mac that
 syncs none is "a click for me": read as one, the agent waited, logged a click and the report said "worked
 with help". The report (``_LIST_STOPS``) and the guide already send that stop to the report; the prompt now
-says so."""
+says so. v40 (B13 round 43 C2535): a click is dealt with first, by :data:`ALLOW_FIRST`, so this rule keeps
+only the stop."""
+
+ALLOW_FIRST = (
+    "If the list's NEXT: line says macOS is asking (click Allow) or that this terminal app was denied"
+    " access (allow it in System Settings), deal with that first, whether or not folder paths were"
+    " printed: tell me to click Allow (the prompt may sit behind other windows), or, when it was denied,"
+    " where in System Settings to turn it on, a change that is mine; wait for me as for a click, and once"
+    " I say so, run ~/src/agent-context-sync/scripts/install.sh --list-folders again (not step 1's whole"
+    " command) and go by what it prints. If you cannot ask me, do not wait and log nothing for it: if the"
+    ' list printed an "already synced on this Mac:" line, add no folder and go on to step 2, as the first'
+    " exception below does when you cannot ask me whether to add one; otherwise go to step 3's report."
+)
+"""Step 1's v40 rule for a list whose NEXT: is an Allow click or a denial (B13 round 43 C2535, ruling 170):
+v39 asked for folders from a list printed while macOS still waited for the click, so the folders the click
+hides were never offered. The list is run again after the click, before any folder question."""
 
 
 GONE_FOLDER = (
@@ -4187,7 +4305,7 @@ verifier)."""
 
 UNREAD_PATCH_TOLD = (
     "if the report's NEXT: line says bring-back.md does not hold a kept patch, name"
-    " ~/agent-context/bring-back.md and then tell me, in that line's words, how many kept patch files in"
+    " that bring-back.md and then tell me, in that line's words, how many kept patch files in"
     " ~/agent-context/setup/local-work this account cannot read, that I should make them readable (chmod"
     " u+r) and run ~/src/agent-context-sync/scripts/install.sh --report-only again before I copy the file"
     " back; name no patch file (a patch's file name carries its commit's subject); do not change those files"
@@ -4330,7 +4448,7 @@ STEP3_PERSONS_FAIL = (
 
 LOCAL_WORK_TOLD = (
     "if the report's NEXT: line says bring-back.md does not carry the commits of some local-work branches,"
-    " name ~/agent-context/bring-back.md and then tell me, in that line's words, how many local-work branches"
+    " name that bring-back.md and then tell me, in that line's words, how many local-work branches"
     " it does not carry, that its section 3 says how I may add them as patches and run"
     " ~/src/agent-context-sync/scripts/install.sh --report-only again, and that either way I review the file"
     " and copy it back; name no branch; do not add the patches or run the report again yourself;"
@@ -4678,7 +4796,9 @@ def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
         f"{GONE_FOLDER} {KEPT_UNASKED} That is not a deviation: do not log it or stop, and say in your final "
         "message that I gave no answer, so no folder was added."
     )
-    assert step1.endswith(f"{kept} {UNREAD_CONFIG}"), "the rule for a new Mac, then its exceptions, last"
+    assert step1.endswith(f"{kept} {UNREAD_CONFIG} {NO_FOLDER_RECOVERY}"), (
+        "the rule for a new Mac, then its exceptions, then the no-folder recovery, last"
+    )
     # B13 round 16 T6, T30: the mirrored-folder tail's words, which say neither "on disk" nor "not signed in"
     # (the keys of the gone-folder sentence and the sign-in wait), on both of the list's NEXTs; one folder
     # has a third, for a name step 1 cannot show apart from another, naming the rename (B13 round 36 C1001)
@@ -4754,7 +4874,10 @@ def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
     # B13 round 12 N32, N6: the sign-in wait has a rule for nobody to ask, and it is the report, so step 3's
     # no-report cases do not name it; N7: on a Mac that syncs no folder yet a sign-in is no click to wait for
     assert NEW_MAC_SIGN_IN in step1 and step1.index(NEW_MAC_SIGN_IN) < step1.index("Two exceptions.")
-    assert step1.count("as for a click") == 1, "only the first exception waits for a sign-in"
+    # v40 (C2535): the Allow click's own wait is the other "as for a click"
+    assert step1.replace(ALLOW_FIRST, "").count("as for a click") == 1, (
+        "only the first exception waits for a sign-in"
+    )
     no_report = " ".join(_prompt_steps()[3].split()).split("Four cases have no report", 1)[1]
     no_report = no_report.split("Every other stop still ends with the report.", 1)[0]
     assert "sign" not in no_report, "an unanswered sign-in wait goes to the report"
@@ -4856,15 +4979,7 @@ UNREAD_CONFIG = (
     " --source-local. Otherwise ask only whether to add a folder from the list (none is needed)."
     " If you cannot ask me then, add none and go on to step 2 with no --source-local: as in the first"
     " exception, that is not a deviation, and your final message says I gave no answer, so no folder was"
-    " added. If step 2, or the first sync of step 3, then says no folder is synced yet (that config held"
-    " none), this Mac syncs no folder"
-    " after all, so the folder question above applies as on a new Mac: ask me which folders from the list"
-    " to sync. If you cannot ask me, do not choose them for me: log a deviation at step 1, stop and wait for"
-    ' my answer exactly as in step 1. Run no --report-only and add no "## Not used" section. Your final'
-    ' message says "none: waiting for your folder answer" for the NEXT: line and "none" for bring-back.md,'
-    " because the one step 2 just wrote holds a provisional report. Once I answer, run step 2 again with one"
-    " --source-local per folder I chose. Do not use the add-source that its NEXT: line names: no step 2 line"
-    " reports those folders as added."
+    " added."
 )
 """Step 1's second exception (setup prompt v18). Where the list could not read an existing config (no
 agentsync installed, a reader that timed out, an older or failing build), v17 marked nothing, printed no
@@ -4884,6 +4999,25 @@ while
 reading the config, step 2 stops at its config step unless its reinstall can load it, so the words claim no
 keep
 there and show the person the list's own line."""
+
+NO_FOLDER_RECOVERY = (
+    "Whatever happened above, if step 2, or a sync of step 3, says no folder is synced yet or no folder"
+    " to sync yet, this Mac syncs no folder, so the folder question above applies as on a new Mac: ask me"
+    " which folders from the list to sync. If earlier this session I answered this question, which"
+    " folders to sync, with none (my answer to the exceptions' question whether to add a folder does not"
+    " count), do not ask again: tell me this Mac syncs no folder and go to step 3's report. If you cannot"
+    " ask me, do not choose them for me: log a deviation at step 1, stop and wait for my answer exactly"
+    ' as in step 1. Run no --report-only and add no "## Not used" section. Your final message says "none:'
+    ' waiting for your folder answer" for the NEXT: line and "none" for bring-back.md, because the one'
+    " step 2 wrote holds a provisional report. Once I answer, run step 2 again with one --source-local"
+    " per folder I chose. Do not use the add-source that its NEXT: line names: no step 2 line reports"
+    " those folders as added."
+)
+"""Step 1's no-folder recovery (setup prompt v40; B13 round 43 C2523 with C2538, ruling 170). v18 to v39 put
+it at the end of the second exception, keyed on "that config held none", so a no-folder NEXT after the first
+exception, after a new Mac's list or from a later sync of step 3 had nothing step 2's and step 3's pointers to
+"step 1's last sentences" could land on, and a person who answered none was asked again. It is a paragraph of
+its own after the exceptions, for step 2 or any sync of step 3, and asks no one twice."""
 
 
 def test_a_folder_list_that_could_not_read_the_config_goes_on_unattended(tmp_path: Path) -> None:
@@ -5642,7 +5776,9 @@ def test_readme_setup_report_steps_match_the_code() -> None:
     steps = _prompt_steps()
     assert _commands(_one_prompt_block())[-1] == f"{INSTALL_SH} --report-only"
     assert "append a section" not in block and setup_report.FRICTION_HEADING not in block
-    assert "~/agent-context/bring-back.md, the one file I review and copy back" in steps[len(steps)]
+    assert "(~/agent-context/bring-back.md by default), the one file I review and copy back" in " ".join(
+        steps[len(steps)].split()
+    )
     assert "~/agent-context/setup-report.md" in SCRIPTS[0].read_text(encoding="utf-8"), (
         "--report-only's default"
     )
@@ -8779,7 +8915,9 @@ def test_the_guides_give_the_speech_helpers_swift_floor() -> None:
     assert f"Where developer tools with Swift {floor} or later are installed" in it_request
     assert "this Mac's Swift {installed} is older than the Swift {needed}" in speech.TOOLS_TOO_OLD
     prompt = readme[readme.index("Set up agentsync on this Mac (setup prompt") :]
-    assert "Swift" not in prompt[: prompt.index("prompt v39, <agent> and a colon")], "no Swift in the prompt"
+    assert "Swift" not in prompt[: prompt.index(f"prompt v{PROMPT[0]}, <agent> and a colon")], (
+        "no Swift in the prompt"
+    )
 
 
 def test_the_records_page_says_purge_stops_over_a_lost_manifest() -> None:
@@ -12481,7 +12619,10 @@ def test_a_first_sync_refusal_is_no_config_that_does_not_load() -> None:
     assert "not a step for the agent, so show them the error and go on to the report" in loads, loads
     step2 = " ".join(_prompt_steps()[2].split())
     assert INBOX_WHEN in step2 and "unless it printed a configuration error" not in step2
-    assert "unless its NEXT: line says the config does not load" in step2 and "does not load" in unloaded
+    # v40 (C2536): a config that does not load prints no inbox: line, and the no-inbox-line sentence names it
+    assert (
+        INBOX_NONE in step2 and "or its config does not load)" in INBOX_NONE and "does not load" in unloaded
+    )
     # the person-owned stop clause still routes both exit-78 stops (log, show, report, no re-run)
     assert (
         PERSONS_NEXT in step2
