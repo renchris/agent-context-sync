@@ -43539,6 +43539,9 @@ read decides the same fact. Tests: `test_overlapping_sources_part_finds_one_fold
 
 Amended 2026-11-21, §16.274 C2460: an error from that disk read prints `- inbox: not read (<why>)` and the section
 goes on.
+Amended 2026-11-21, §16.270 C2525, C2503, C2513, C2537: the line prints `config.inbox_state`'s answer, the folder
+matched in the form setup stores (`canonical_source_root`, then `same_folder`) and printed as typed, and a file or a
+dangling link on the name reads `is not a folder` whatever sources.toml lists.
 
 **A dollar-quoted debug value is cut whole** (C2311; amends §16.260 C2034). Docs and a test only: over real `/bin/bash` debug_path output in
 both locales, each `$'...'` value prints `<path>`, both reports alike. Test:
@@ -44365,13 +44368,24 @@ the listed-all one, `its last walk had no file to list: the mirror holds none fo
 files`; the counts sentence of the plural paragraph names it. Test:
 `test_empty_cloud_folders_says_a_walk_with_no_file_in_words_c2425`.
 
+**The inbox line prints the one answer** (C2525 with C2503, C2513, C2537; ruling 162; amends §16.265 C2207).
+`_inbox_line` prints `config.inbox_state`'s words (lane B's helper, which status's `inbox state:` line prints too):
+the typed folder was matched against the canonical one sources.toml stores, so a HOME reached through a link and an
+inbox linked to a sibling folder read `no source` while setup said live (C2525, C2513, C2537), and a configured source
+outranked a file or a dangling link on the name, which ensure_inbox's mkdir stops on (C2503). The folder prints as
+typed. A folder above the inbox that refuses a search no longer raises into `- inbox: not read (<why>)`: the
+helper's lexists reads the entry as absent, so the line says `no source on <folder>`, or `live <folder>` when a
+source is stored there; the `not read` branch stays for an error the helper raises. Tests:
+`test_the_inbox_line_matches_the_folder_setup_stores_and_the_disk_first_c2525` (a file and a dangling link with the
+entry kept, in a home whose stored path equals the typed one; an inbox linked to a sibling folder; a HOME reached
+through a link) and `test_the_inbox_line_prints_the_helpers_answer_under_a_folder_that_refuses_a_search_c2460_c2525`.
+
 **Other lanes' report halves** (C2506, C2459, C2460, C2502; this file's words). `_CWD_NAME_RE`'s docstring says the
 --cwd usage error's name is not counted, as C2321 built it (C2506; lane RB drops `folders_seen`). `_convert_line`'s
 docstring names each number option with its number (C2459). A folder above the inbox that refuses a search prints
-`- inbox: not read (<why>)` and the rest of Configuration still renders (C2460, a test of the existing branch). The
-report already renders each first-sync lock note in its own words (`waited for another sync to end`, `waited for
-the sync lock to be free`, round 42 C2222's test), so C2502 needs no report change. Test:
-`test_the_inbox_line_says_not_read_when_a_folder_above_refuses_a_search_c2460`.
+the helper's answer and the rest of Configuration still renders (C2460 with C2525, above). The report already
+renders each first-sync lock note in its own words (`waited for another sync to end`, `waited for
+the sync lock to be free`, round 42 C2222's test), so C2502 needs no report change.
 
 ### 16.271 Round 43: the installer: a source id and a folder take Python's number and length rule, another build's render gets every cut, and C2469 waits on the operator (2026-11-21, wave B13 round 43 lane RB)
 

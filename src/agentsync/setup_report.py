@@ -154,6 +154,7 @@ from agentsync.config import (
     SOURCE_ID_RE,
     Config,
     ConvertConfig,
+    inbox_state,
     load_config,
     toml_string,
 )
@@ -11481,26 +11482,14 @@ def _same_folder(configured: Path, path: Path) -> bool:
 
 def _inbox_line(c: Config) -> str:
     """Configuration's ``inbox:`` line (B13 round 42 C2207, ruling 151): what sits on the folder setup keeps
-    for the inbox, ``inbox`` beside the docs repo, read from sources.toml and the disk and matched by identity
-    (:func:`_same_folder`), never "any live inbox source": ``live``, ``paused`` or ``retired`` with the
-    folder, or ``not added`` with its reason (another kind's source there, a file or dangling link in its
-    place, or no source on it). Setup said ``(inbox ensured)`` after ``inbox: not added``, and the report
-    said nothing."""
-    folder = expand(c.docs_repo).parent / "inbox"
-    on = [s for s in c.sources if s.path is not None and _same_folder(expand(s.path), folder)]
-    inbox = [s for s in on if s.kind == SourceKind.INBOX]
-    if inbox:
-        return f"- inbox: {inbox[0].state.value} {folder}"
-    if on:
-        other = on[0]
-        why = (
-            f"{folder} is source '{other.id}' ({other.kind.value}, {other.state.value}), not an inbox source"
-        )
-    elif (folder.is_symlink() and not folder.exists()) or (folder.exists() and not folder.is_dir()):
-        why = f"{folder} is not a folder"
-    else:
-        why = f"no source on {folder}"
-    return f"- inbox: not added ({why})"
+    for the inbox, ``inbox`` beside the docs repo: ``live``, ``paused`` or ``retired`` with the folder, or
+    ``not added`` with its reason. Setup said ``(inbox ensured)`` after ``inbox: not added``, and the report
+    said nothing. B13 round 43 C2525 with C2503, C2513, C2537 (ruling 162): the line prints
+    :func:`config.inbox_state`'s answer, the one status's ``inbox state:`` line prints: the typed folder was
+    matched against the canonical one sources.toml stores (a symlinked HOME, an inbox linked to a sibling
+    folder read ``no source``), and a configured source outranked a file or a dangling link on the name, which
+    ensure_inbox's mkdir stops on. The folder prints as typed."""
+    return f"- inbox: {inbox_state(c)[1]}"
 
 
 def _overlap_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:

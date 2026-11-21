@@ -61,6 +61,7 @@ from agentsync.config import (
     Config,
     ConvertConfig,
     default_config_text,
+    inbox_state,
     load_config,
     set_source_exclude,
     toml_string,
@@ -18437,11 +18438,13 @@ def test_the_configuration_says_what_sits_on_the_inbox_folder_c2207(fake_mac: di
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root reads through a mode-000 folder")
-def test_the_inbox_line_says_not_read_when_a_folder_above_refuses_a_search_c2460(
+def test_the_inbox_line_prints_the_helpers_answer_under_a_folder_that_refuses_a_search_c2460_c2525(
     fake_mac: dict[str, Path],
 ) -> None:
-    """B13 round 43 C2460 (lane D's guide words; the report half): a folder above the inbox folder that
-    refuses a search prints `- inbox: not read (<why>)`, and the rest of Configuration still prints."""
+    """B13 round 43 C2460 with C2525 (ruling 162): a folder above the inbox folder that refuses a search no
+    longer raises into `- inbox: not read (<why>)`: the line prints config.inbox_state's answer, as status's
+    `inbox state:` does (its lexists reads such an entry as absent), and the rest of Configuration still
+    prints."""
     locked = fake_mac["home"] / "Wombat Locked"
     (locked / "docs").mkdir(parents=True)
     cfg = fake_mac["config"]
@@ -18449,11 +18452,13 @@ def test_the_inbox_line_says_not_read_when_a_folder_above_refuses_a_search_c2460
     locked.chmod(0)
     try:
         text, _red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+        want = f"- inbox: {inbox_state(load_config(cfg))[1]}"
     finally:
         locked.chmod(0o700)
     conf = section(text, "Configuration")
     [line] = [ln for ln in conf.splitlines() if ln.startswith("- inbox: ")]
-    assert line.startswith("- inbox: not read ("), line
+    assert line == "- inbox: not added (no source on ~/Wombat Locked/inbox)", line
+    assert want.endswith("Wombat Locked/inbox)") and "not read" not in line
     assert "This section failed" not in conf and any(ln.startswith("- [convert]") for ln in conf.splitlines())
 
 
@@ -18486,6 +18491,53 @@ def test_the_inbox_beside_a_docs_repo_outside_the_home_is_cut_c2430(
     cfg.write_text('[agentsync]\ndocs_repo = "/zephyr-docs"\n' + body, encoding="utf-8")
     text, red2 = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
     assert red2.redact("agentsync keeps ~/agent-context/inbox") == "agentsync keeps ~/agent-context/inbox"
+
+
+def test_the_inbox_line_matches_the_folder_setup_stores_and_the_disk_first_c2525(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 43 C2525 with C2503, C2513, C2537 (ruling 162): the report matched the typed inbox folder
+    against the canonical one sources.toml stores, so a HOME reached through a link and an inbox linked to a
+    sibling folder read `no source`, while setup said live; and a configured source outranked a file or a
+    dangling link on the name, which ensure_inbox's mkdir stops on. The line prints config.inbox_state's
+    answer: live with the typed folder, and `is not a folder` with the inbox entry kept, in a home whose
+    stored path equals the typed one, so the lexical match cannot pass for the wrong reason."""
+    cfg = fake_mac["config"]
+    folder = cfg.parent / "inbox"
+    stored = load_config(cfg)
+    [entry] = [s for s in stored.sources if s.kind is SourceKind.INBOX]
+    assert entry.path == folder, (entry.path, folder)  # stored as typed: the old match fires here
+    assert _inbox_said(fake_mac) == "- inbox: live ~/agent-context/inbox"
+    kept = cfg.read_text(encoding="utf-8")
+    folder.rmdir()
+    folder.write_text("x", encoding="utf-8")
+    assert _inbox_said(fake_mac) == "- inbox: not added (~/agent-context/inbox is not a folder)"
+    folder.unlink()
+    folder.symlink_to(cfg.parent / "gone")
+    assert cfg.read_text(encoding="utf-8") == kept, "the inbox entry is kept"
+    assert _inbox_said(fake_mac) == "- inbox: not added (~/agent-context/inbox is not a folder)"
+    # an inbox linked to a sibling folder with another name: ensure_inbox stores the link's target
+    folder.unlink()
+    (cfg.parent.parent / "maildrop").mkdir()
+    folder.symlink_to(cfg.parent.parent / "maildrop", target_is_directory=True)
+    cfg.write_text(re.sub(r'\n\[\[source\]\]\nid = "inbox"\n[^[]*', "\n", kept), encoding="utf-8")
+    assert cli.main(["init", "--config", str(cfg)]) == cli.EXIT_OK
+    [entry] = [s for s in load_config(cfg).sources if s.kind is SourceKind.INBOX]
+    assert entry.path != folder, entry.path
+    assert setup_report._inbox_line(load_config(cfg)) == f"- inbox: live {folder}"
+    # a HOME reached through a link: the stored form is the real one, the typed one the link's
+    real = tmp_path / "real-home"
+    real.mkdir()
+    link = tmp_path / "home-link"
+    link.symlink_to(real, target_is_directory=True)
+    monkeypatch.setenv("HOME", str(link))
+    home_cfg = link / "agent-context" / "sources.toml"
+    assert cli.main(["init", "--config", str(home_cfg)]) == cli.EXIT_OK
+    loaded = load_config(home_cfg)
+    [entry] = [s for s in loaded.sources if s.kind is SourceKind.INBOX]
+    typed = link / "agent-context" / "inbox"
+    assert entry.path != typed, entry.path
+    assert setup_report._inbox_line(loaded) == f"- inbox: live {typed}"
 
 
 @pytest.mark.usefixtures("roomy_calls")

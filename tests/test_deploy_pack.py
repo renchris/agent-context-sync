@@ -13916,13 +13916,20 @@ def test_the_guide_reads_the_configurations_inbox_and_convert_lines_c2207_c2210(
         " meeting recording's pages keep the cap they were made under until it is read again for another"
         " reason`" in convert
     )
-    source = inspect.getsource(setup_report._inbox_line) + inspect.getsource(setup_report._convert_line)
+    from agentsync import config  # noqa: PLC0415
+
+    # B13 round 43 C2525 (ruling 162): the inbox line prints config.inbox_state's answer
+    source = (
+        inspect.getsource(setup_report._inbox_line)
+        + inspect.getsource(config.inbox_state)
+        + inspect.getsource(setup_report._convert_line)
+    )
     for code in (
-        'f"- inbox: {inbox[0].state.value} {folder}"',
-        "is source '{other.id}' ({other.kind.value}, {other.state.value}), not an inbox source",
-        'f"{folder} is not a folder"',
-        'f"no source on {folder}"',
-        'f"- inbox: not added ({why})"',
+        'f"- inbox: {inbox_state(c)[1]}"',
+        'f"{INBOX_LIVE}{folder}" if state == SourceState.LIVE else f"{state} {folder}"',
+        "is source '{other.id}' ({kind}, {state}), not an inbox source",
+        'f"not added ({folder} is not a folder)"',
+        'f"not added (no source on {folder})"',
         '"- [convert]: default"',
         "f\"- [convert]: set ({', '.join(names)})\"",
         "; changed in run {run}: local and inbox pages made under other converter options are read again",
