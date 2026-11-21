@@ -5321,6 +5321,7 @@ _LEGEND_KINDS = (
     "<org-N>",
     "<mdmhost>",
     "<proxy-N>",
+    "<library-N>",
     "<folder-N>",
     "<source-N>",
 )

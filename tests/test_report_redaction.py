@@ -2951,10 +2951,8 @@ def test_both_reports_read_a_googledrive_address_tenant_and_a_short_id_alike_c20
     (ruling 149): the source id `it` cuts the pronoun as well, as <source-N>, which the last line pins; only a
     folder `IT` with no such id keeps it (test_install_oneshot.py's case). Keeping the pronoun here would
     print the id in clear. B13 round 42 C2288 with C2241: a shared library named with an address reads
-    `OneDrive-SharedLibraries-<org-N>` in both; this report numbers the library `<library-N>` where the shell
-    numbers it `<folder-N>`, which shifts every later folder number, a mismatch of its own (lane RA's round
-    42 note), so for that provider the shell line is held equal only on lines with no folder or library
-    number."""
+    `OneDrive-SharedLibraries-<org-N>` in both. B13 round 43 ruling 159, C2471: the shell numbers the library
+    `<library-N>` too, so for both providers the two reports print each line alike."""
     head = provider.removesuffix("dana@example.com")
     cs = f"~/Library/CloudStorage/{provider}"
     said = [
@@ -2981,19 +2979,163 @@ def test_both_reports_read_a_googledrive_address_tenant_and_a_short_id_alike_c20
     assert f"{head}<org-1>/" in python[1] and python[1].endswith("<path>"), python[1]
     assert not [ln for ln in python[3:] for w in (".qx.", ".hr.", " HR ", " IT ") if w in ln], python
     assert python_private, "a 2-letter id or folder that is a word makes the report private only where cut"
-    if not head.endswith("SharedLibraries-"):
+    if head.endswith("SharedLibraries-"):  # My Drive is the library, so HR and IT are folders 2 and 3
+        assert python[-1] == "the <folder-2> folder and the <folder-3> folder, and <source-2> is ok", python[
+            -1
+        ]
+    else:
         assert python[-1] == "the <folder-3> folder and the <folder-4> folder, and <source-2> is ok", python[
             -1
         ]
     if _R142_SHELL:
-        held = [
-            (a, b)
-            for a, b in zip(shell, python, strict=True)
-            if not any(n in a or n in b for n in ("<library-", "<folder-"))
-        ]
-        assert any("<org-1>" in a for a, _b in held) and all(a == b for a, b in held), held
-        if not head.endswith("SharedLibraries-"):
-            assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
+        assert any("<org-1>" in a for a in shell), shell
+        assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize("arm", ["configured", "listed", "vanished"])
+def test_both_reports_number_a_sharepoint_library_and_a_same_name_folder_alike_c2471(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+    arm: str,
+) -> None:
+    """B13 round 43 ruling 159, C2471: the first folder under a OneDrive-SharedLibraries-<org> folder is a
+    SharePoint library, `<library-N>` in the agentsync report, and the shell numbered it `<folder-N>` from the
+    folders' counter, so the two reports read it, and every later folder, apart. The shell now numbers it from
+    a counter of its own where the agentsync report does: a configured library, one step 1's list gives at
+    depth 2, and a vanished source's, whose add-back folder only the sync's refusal names to the shell. A
+    library and a folder of one name read the placeholder the first registration gave, in both reports:
+    `Cedar Hub` and `Alder Notes` are each a library under one provider and a folder under the other."""
+    home = Path(env["HOME"])
+    plain, shared = (_cloud(env) / p for p in ("OneDrive-Contoso", "OneDrive-SharedLibraries-Contoso"))
+    run = {**env, "LC_ALL": locale, "LANG": locale, "AGENTSYNC_OCR": "0", "AGENTSYNC_TM_EXCLUDE": "0"}
+    first = [("s0", plain / "Alder Notes")]
+    if arm == "configured":  # the library first, then a folder of its name; a folder first, then a library
+        first += [("s1", shared / "Cedar Hub" / "Birch Plans"), ("s2", shared / "Alder Notes" / "Dune Files")]
+    last = [("s3", plain / "Cedar Hub")]
+    gone = shared / "Elm Yard" / "Fern Docs"
+    for _sid, path in [*first, *last, ("fern-docs", gone)]:
+        path.mkdir(parents=True, exist_ok=True)
+        (path / "notes.txt").write_text("notes\n", encoding="utf-8")
+    cfg = home / "agent-context" / "sources.toml"
+    body = default_config_text() + "".join(local_source_table(sid, path) for sid, path in [*first, *last])
+    if arm == "vanished":  # synced, then its [[source]] block removed: the manifest keeps its folder
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        cfg.write_text(body + local_source_table("fern-docs", gone), encoding="utf-8")
+        sync = [sys.executable, "-m", "agentsync", "sync", "--config", str(cfg)]
+        done = subprocess.run(sync, capture_output=True, text=True, check=False, timeout=300, env=run)
+        assert done.returncode == 0, done.stdout + done.stderr
+        cfg.write_text(body, encoding="utf-8")
+        refused = subprocess.run(sync, capture_output=True, text=True, check=False, timeout=300, env=run)
+        assert refused.returncode == 78, refused.stdout + refused.stderr
+        [line] = [ln for ln in refused.stderr.splitlines() if ln.startswith("configuration error: ")]
+        assert "'fern-docs'" in line and "Fern Docs" in line, line
+        out = home / "agent-context" / "setup" / "install.out"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with out.open("a", encoding="utf-8") as f:
+            f.write(f"{line}\n")
+    rels = ["Cedar Hub/Birch Plans", "Alder Notes/Dune Files"] if arm == "configured" else []
+    lead = "picked ~/Library/CloudStorage/OneDrive-SharedLibraries-"
+    said = [f"{lead}Contoso/{r}" for r in [*rels, "Elm Yard/Fern Docs"]]
+    said += ["the Cedar Hub library, the Alder Notes folder and Elm Yard"]
+    shell, python, shell_private, python_private = _both_reports(
+        env,
+        [],
+        said,
+        locale,
+        provider="OneDrive-SharedLibraries-Contoso",
+        listed=None if arm == "vanished" else ["Elm Yard/Fern Docs"],
+        config=cfg,
+        config_body=body,
+    )
+    assert len(python) == len(said), python
+    assert not [ln for ln in python for w in ("Cedar", "Alder", "Elm", "Fern", "Birch", "Dune") if w in ln], (
+        python
+    )
+    assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
+    lead += "<org-1>/"
+    words = "the {} library, the <folder-1> folder and {}"
+    if arm == "configured":
+        assert python[0] == f"{lead}<library-1>/<folder-2>", python[0]
+        assert python[1] == f"{lead}<folder-1>/<folder-3>", python[1]
+        assert python[2] == f"{lead}<library-2>/<folder-4>", python[2]
+        assert python[3] == words.format("<library-1>", "<library-2>"), python[3]
+    else:  # Cedar Hub configured as a folder before the library is seen
+        assert python[0] == f"{lead}<library-1>/<folder-3>", python[0]
+        assert python[1] == words.format("<folder-2>", "<library-1>"), python[1]
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+def test_both_reports_cut_a_two_letter_sharepoint_library_in_any_case_c2471(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+) -> None:
+    """B13 round 43 C2471: the agentsync report applies the two-letter-word rule (C2071) to a folder and a
+    source id, never a library, which it registers fuzzily, so in any case: a library `IT` is cut where the
+    pronoun `it` stands too. The shell sent a library through short_pair, as a folder: it kept the pronoun."""
+    lead = "picked ~/Library/CloudStorage/OneDrive-SharedLibraries-Contoso/"
+    said = [f"{lead}IT/Birch Plans", "it is the IT library, and Qx and qx"]
+    shell, python, shell_private, python_private = _both_reports(
+        env, ["IT/Birch Plans", "Qx/Dune Files"], said, locale, provider="OneDrive-SharedLibraries-Contoso"
+    )
+    assert python == [
+        f"{lead.replace('Contoso', '<org-1>')}<library-1>/<folder-1>",
+        "<library-1> is the <library-1> library, and <library-2> and <library-2>",
+    ], python
+    assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize(("library", "private"), [("Status", True), ("Documents", False), ("IT", False)])
+def test_a_sharepoint_library_named_like_a_report_word_makes_both_reports_private_c2471(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+    library: str,
+    private: bool,
+) -> None:
+    """B13 round 43 C2471: a library named like a word the report prints (`Status`) reads back where its
+    `<library-N>` stands, so the agentsync report is private only, as for a folder; a generic one
+    (`Documents`) is not, nor a two-letter one (`IT`), which the two-letter-word rule never covers for a
+    library. The shell judged only `<folder-N>` and `<org-N>` placeholders, so its library left it public."""
+    lead = "picked ~/Library/CloudStorage/OneDrive-SharedLibraries-Contoso/"
+    said = [f"{lead}{library}/Birch Plans", f"the {library} library"]
+    shell, python, shell_private, python_private = _both_reports(
+        env, [f"{library}/Birch Plans"], said, locale, provider="OneDrive-SharedLibraries-Contoso"
+    )
+    assert python_private is private, python
+    assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+def test_both_reports_number_a_library_only_install_log_names_alike_c2471(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+) -> None:
+    """B13 round 43 C2471: a library on disk under OneDrive-SharedLibraries-<org>, never configured or listed,
+    that only install.log's --source-local words name is `<library-N>` in the agentsync report, whose
+    CloudStorage listing registers it at depth 2, and the shell, which numbered a late path's parts as folders
+    only, read it `<folder-N>`."""
+    home = Path(env["HOME"])
+    (_cloud(env) / "OneDrive-SharedLibraries-Contoso" / "Elm Yard" / "Fern Docs").mkdir(parents=True)
+    log = home / "agent-context" / "setup" / "install.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text(
+        "run=20261010T010000Z-1 start install.sh compat=10 commit=- kind=- source=- args=--source-local "
+        "~/Library/CloudStorage/OneDrive-SharedLibraries-Contoso/Elm\\ Yard/Fern\\ Docs\n",
+        encoding="utf-8",
+    )
+    lead = "picked ~/Library/CloudStorage/OneDrive-SharedLibraries-Contoso/"
+    said = [f"{lead}Cedar Hub/Birch Plans", f"{lead}Elm Yard/Fern Docs", "the Elm Yard library and Fern Docs"]
+    shell, python, shell_private, python_private = _both_reports(
+        env, ["Cedar Hub/Birch Plans"], said, locale, provider="OneDrive-SharedLibraries-Contoso"
+    )
+    lead = lead.replace("Contoso", "<org-1>")
+    assert python == [
+        f"{lead}<library-1>/<folder-1>",
+        f"{lead}<library-2>/<folder-2>",
+        "the <library-2> library and <folder-2>",
+    ], python
+    assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
 
 
 def _hold(env: dict[str, str], *scopes: str) -> None:  # noqa: F811

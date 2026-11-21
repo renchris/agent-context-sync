@@ -3247,7 +3247,7 @@ config_shown() { # PATH
 }
 redaction_pairs() {
 	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x links walked lk
-	local cfg_cut tilde port k ph b auth sep tail rw keys key m sp top raw folder_keys=$'\n' FUZZY
+	local cfg_cut tilde port k ph b auth sep tail rw keys key m sp top raw folder_keys=$'\n' FUZZY lib_n=0
 	local tables=0 ids=" " hp beside own_state own_docs own_cache own_logs fl fuzzy_keys=$'\n' folded_vals=$'\n'
 	local -a known=() logged_late=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=() listed=() rooted=() placed=() cfgpaths=()
 	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
@@ -3691,37 +3691,63 @@ redaction_pairs() {
 	# folder (B13 round 9 K4): a name found in two places (configured and listed), a parent counted again by a
 	# nested listed path, or another spelling of it (id_key, setup_report._norm's sharing) takes the number it
 	# has; each spelling still gets its own pair, all matched in any case and with any separator (flag f, B13
-	# round 10 L66). A listed name skipped takes no number.
-	folder_parts() { # LISTED PATH...: LISTED non-empty for step 1's list
-		local only="$1" f rel part whole k
+	# round 10 L66). A listed name skipped takes no number. folder_keys maps each key to the placeholder it took.
+	# The first part under a OneDrive-SharedLibraries-<org> folder is a SharePoint library, <library-N> from a
+	# counter of its own, as setup_report numbers a configured, a listed (depth 2) and a vanished source's
+	# library; the first registration of a name wins whichever kind it took, as Redactor._known finds it, so a
+	# library and a folder of one name read one placeholder in both reports (B13 round 43 ruling 159, C2471). A
+	# LATE path (install.log's --source-local words, which Python never numbers) numbers no library unless it is
+	# a folder on disk, whose library the agentsync report's CloudStorage listing gives at depth 2 (C2471)
+	folder_parts() { # listed|late|"" PATH...: listed for step 1's list, late for install.log's words
+		local only="$1" f rel part whole k lib first new
 		shift
 		for f in "$@"; do
 			case "$f" in
 			"$cs"/*/*) rel="${f#"$cs"/*/}" ;;
 			*) continue ;;
 			esac
+			lib=""
+			case "$only:${f#"$cs"/}" in
+			late:OneDrive-SharedLibraries-*/*) [ ! -d "$f" ] || lib=1 ;;
+			late:*) ;;
+			*:OneDrive-SharedLibraries-*/*) lib=1 ;;
+			esac
 			while [ -n "$rel" ]; do
 				part="${rel%%/*}"
 				[ "$part" = "$rel" ] && rel="" || rel="${rel#*/}"
-				[ -z "$only" ] || ! { generic_folder "$part" || agent_words_name "$part"; } || continue
-				k="$(id_key "$part")"
+				first="$lib" lib=""
+				[ "$only" != listed ] || ! { generic_folder "$part" || agent_words_name "$part"; } || continue
+				k="$(id_key "$part")" new=""
 				case "$folder_keys" in
 				*$'\n'"$k"$'\t'*)
 					m="${folder_keys#*$'\n'"$k"$'\t'}"
 					m="${m%%$'\n'*}"
 					;;
 				*)
-					n=$((n + 1))
-					m="$n"
+					new=1
+					if [ -n "$first" ]; then
+						lib_n=$((lib_n + 1))
+						m="<library-$lib_n>"
+					else
+						n=$((n + 1))
+						m="<folder-$n>"
+					fi
 					folder_keys+="$k"$'\t'"$m"$'\n'
 					;;
 				esac
 				fuzzy_flag "$part"
 				whole="$FUZZY"
 				if generic_folder "$part"; then whole=w; fi # "Documents" is kept inside "MyDocuments", byte for byte
-				add_pair "$part" "<folder-$m>" "$whole"
-				short_pair "$part" "<folder-$m>"
-				hidden_by "$part" "<folder-$m>" fuzzy
+				add_pair "$part" "$m" "$whole"
+				# a library new here is registered fuzzily, so in any case, a two-letter one too: setup_report
+				# applies the two-letter-word rule to a folder, never a library, so a library `IT` is cut in any
+				# case where a folder `IT` keeps the pronoun `it` (B13 round 43 C2471)
+				if [ -n "$first" ] && [ -n "$new" ]; then
+					[ "${#part}" -ne 2 ] || add_forms "$part" "$m" i
+				else
+					short_pair "$part" "$m"
+				fi
+				hidden_by "$part" "$m" fuzzy
 			done
 		done
 	}
@@ -3753,7 +3779,7 @@ redaction_pairs() {
 		case "$1" in "$beside" | "$beside/"*) return 0 ;; esac
 		return 1
 	}
-	folder_value() { # VALUE [fuzzy]: its <folder-N>, the number another spelling has (folder_keys), in any case
+	folder_value() { # VALUE [fuzzy]: its <folder-N>, the placeholder another spelling has (folder_keys), in any case
 		k="$(id_key "$1")"
 		case "$folder_keys" in
 		*$'\n'"$k"$'\t'*)
@@ -3762,23 +3788,23 @@ redaction_pairs() {
 			;;
 		*)
 			n=$((n + 1))
-			m="$n"
+			m="<folder-$n>"
 			folder_keys+="$k"$'\t'"$m"$'\n'
 			;;
 		esac
-		add_pair "$1" "<folder-$m>" i
-		hidden_by "$1" "<folder-$m>" "${2:-}"
+		add_pair "$1" "$m" i
+		hidden_by "$1" "$m" "${2:-}"
 		# and as a double-quoted word shows it, \ " $ and ` escaped (shown_arg, cycle._shown_arg), and as
 		# shlex.quote's single-quoted one does, each ' written '"'"' (a name holding !): a vanished source's
 		# re-add folder is printed so, which the Python report cuts by structure (B13 round 19 W34)
 		case "$1" in
 		*[\\\"\$\`]*)
 			fe="$1" fe="${fe//\\/\\\\}" fe="${fe//\"/\\\"}" fe="${fe//\$/\\\$}" fe="${fe//\`/\\\`}"
-			add_pair "$fe" "<folder-$m>" i
+			add_pair "$fe" "$m" i
 			;;
 		esac
 		fe="'\"'\"'" # in a variable: bash 3.2 keeps a replacement's backslashes
-		case "$1" in *\'*) add_pair "${1//\'/$fe}" "<folder-$m>" i ;; esac
+		case "$1" in *\'*) add_pair "${1//\'/$fe}" "$m" i ;; esac
 	}
 	project_values() { # PATH
 		local rel first rest
@@ -4041,7 +4067,7 @@ redaction_pairs() {
 	# then read one <folder-N> in both reports, and a product word such as Copilot stays unnumbered (B13 round 42
 	# ruling 149, C2202; makes worse True for numbering it in both, which turned `GitHub Copilot CLI` into
 	# `GitHub <folder-N> CLI`)
-	folder_parts "" ${logged_late[@]+"${logged_late[@]}"}
+	folder_parts late ${logged_late[@]+"${logged_late[@]}"}
 	# A ~/ or absolute --source-local argument in install.log outside CloudStorage that is no folder placed
 	# above (configured, or a removed source's add-back folder): a failed run's, or a source whose [[source]]
 	# block is gone (B13 round 22 Z2, Z13, Z29, Z42, Z77: the shell printed it in clear beside the public
@@ -4077,12 +4103,12 @@ redaction_pairs() {
 				case "$folder_keys" in
 				*$'\n'"$k"$'\t'*)
 					m="${folder_keys#*$'\n'"$k"$'\t'}"
-					top="<folder-${m%%$'\n'*}>"
+					top="${m%%$'\n'*}"
 					;;
 				esac
 			fi
 			case "$top" in
-			"" | \~ | . | .. | Users | Library | Application | Support | CloudStorage | Volumes | Applications | "<folder-"*">") ;;
+			"" | \~ | . | .. | Users | Library | Application | Support | CloudStorage | Volumes | Applications | "<folder-"*">" | "<library-"*">") ;;
 			*) generic_folder "$part" || generic_home_dir "$(recase lower "$part")" || {
 				u="$u<path>"
 				break
@@ -6866,7 +6892,7 @@ PRIVATE_ONLY="" # 1 once fallback_redaction says the shell report is for a priva
 # its own words never count.
 legend_kinds() { # BODY
 	local used=" ~ " k
-	for k in '<tmp>' '<user>' '<name>' '<org-[0-9]' '<link-[0-9]' '<mdmhost>' '<proxy-[0-9]' '<folder-[0-9]' '<source-[0-9]' '<path>' '<label>' '<remote>' '<value>'; do
+	for k in '<tmp>' '<user>' '<name>' '<org-[0-9]' '<link-[0-9]' '<mdmhost>' '<proxy-[0-9]' '<library-[0-9]' '<folder-[0-9]' '<source-[0-9]' '<path>' '<label>' '<remote>' '<value>'; do
 		! LC_ALL=C grep -q -- "$k" "$1" 2>/dev/null || used+="$k "
 	done
 	printf '%s' "$used"
@@ -6885,7 +6911,7 @@ say_item() { # TEXT
 fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it line names them] [USED: legend_kinds] [BODY]
 	local used="${2:-}" folder_item in_list="" whole="" skip_generic="" skip_agent="" proj="" v p fl
 	local low org_item apps="" heads e email="" inword="" inword_ex="" ag="one made of coding-agent product words (Copilot, GitHub Copilot)"
-	[ -n "$used" ] || used=" ~ <tmp> <user> <name> <org-[0-9] <link-[0-9] <mdmhost> <proxy-[0-9] <folder-[0-9] <source-[0-9] <path> <label> <remote> <value> "
+	[ -n "$used" ] || used=" ~ <tmp> <user> <name> <org-[0-9] <link-[0-9] <mdmhost> <proxy-[0-9] <library-[0-9] <folder-[0-9] <source-[0-9] <path> <label> <remote> <value> "
 	local pairs generic=" " shown
 	pairs="$(redaction_pairs 2>/dev/null)" || {
 		redact_failed
@@ -7036,6 +7062,11 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 		say "  be a proxy)"
 		;;
 	esac
+	# a SharePoint library, numbered apart from the folders as setup_report._LEGEND["library"] (B13 round 43 C2471)
+	case "$used" in *" <library-[0-9] "*)
+		say_item "- <library-N>: a SharePoint library, the folder right under a OneDrive-SharedLibraries-<org-N> folder in CloudStorage; numbered apart from the folders, as agentsync's own report numbers it"
+		;;
+	esac
 	case "$used" in *" <folder-[0-9] "*) say_item "$folder_item" ;; esac
 	case "$used" in *" <source-[0-9] "*)
 		say "- <source-N>: a configured source id, or its folder's <folder-N> where it is that name in slug form; one of"
@@ -7107,7 +7138,7 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	# by rule, as setup_report's word_named_shown reads it, not by a word this script happens not to print (B13
 	# round 21 Y7, Y72: the two reports disagreed on a configured Copilot folder).
 	while IFS=$'\t' read -r v p _; do
-		case "$p" in "<folder-"*) if generic_folder "$v" || agent_words_name "$v"; then generic+="$p "; fi ;; esac
+		case "$p" in "<folder-"* | "<library-"*) if generic_folder "$v" || agent_words_name "$v"; then generic+="$p "; fi ;; esac
 	done <<<"$pairs"
 	# A folder's name that safe_text prints as one other word, 2 letters or more (a zero-width space before Status):
 	# add_forms registers no pair for that spelling, so where the CLI prints it, it reads as the word; a generic
@@ -7116,12 +7147,14 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	# this loop over the pairs, since a flag set in the redaction_pairs subshell never reaches it (B13 round 39
 	# C1627 with C1671 and C1681, C1635).
 	while IFS=$'\t' read -r v p _; do
-		# a source id by its key without `-`, the one separator an id holds, as id_pairs reads it (C2434)
-		case "$p" in "<folder-"* | "<org-"*) ;; "<source-"*) v="${v//-/}" && [ "${#v}" -eq 2 ] || continue ;; *) continue ;; esac
+		# a source id by its key without `-`, the one separator an id holds, as id_pairs reads it (C2434); a
+		# SharePoint library as a folder, but for the two-letter-word rule, which setup_report never applies to
+		# a library (B13 round 43 C2471: a library named like a report word left the shell report public)
+		case "$p" in "<folder-"* | "<library-"* | "<org-"*) ;; "<source-"*) v="${v//-/}" && [ "${#v}" -eq 2 ] || continue ;; *) continue ;; esac
 		case "$v" in
 		"") continue ;;
 		*[!A-Za-z]*)
-			case "$p" in "<folder-"*) ;; *) continue ;; esac
+			case "$p" in "<folder-"* | "<library-"*) ;; *) continue ;; esac
 			shown="$(safe_shown "$v")"
 			[ "$shown" != "$v" ] && [ "${#shown}" -ge 2 ] || continue
 			case "$shown" in *[!A-Za-z]*) continue ;; esac
@@ -7135,7 +7168,7 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 		esac
 		# a two-letter folder part or source id that is a two-letter word, where its placeholder is shown (C2071)
 		report_word "$low" || output_word "$low" || {
-			[ "${#low}" -eq 2 ] && case "$p" in "<org-"*) false ;; esac && two_letter_word "$low" &&
+			[ "${#low}" -eq 2 ] && case "$p" in "<org-"* | "<library-"*) false ;; esac && two_letter_word "$low" &&
 				[ -n "${3:-}" ] && LC_ALL=C grep -qF -- "$p" "$3" 2>/dev/null
 		} || continue
 		say "Private only: one of your folder or organization names is also a word this report prints, so where its"
