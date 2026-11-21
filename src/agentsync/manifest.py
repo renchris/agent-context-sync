@@ -1704,6 +1704,12 @@ class Manifest:
         """Upsert a meta value."""
         _write_meta(self._db, key, value)
 
+    def delete_meta_prefix(self, prefix: str) -> None:
+        """Delete every meta value whose key starts with ``prefix`` (a non-empty one)."""
+        if not prefix:
+            raise ValueError("delete_meta_prefix needs a non-empty prefix")
+        self._db.execute("DELETE FROM meta WHERE substr(key, 1, ?) = ?", (len(prefix), prefix))
+
     def written_at_ns(self) -> int:
         """Return meta.written_at_ns (0 if unset): the racily-clean guard's reference time."""
         raw = self.get_meta("written_at_ns")

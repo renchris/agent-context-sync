@@ -4,6 +4,7 @@ error names the staged path or the home folder."""
 from __future__ import annotations
 
 import dataclasses
+import json
 import re
 import xml.etree.ElementTree as ET
 import zipfile
@@ -33,7 +34,7 @@ from agentsync.model import ConversionStatus, RowState
 from agentsync.policy import NOT_OOXML_REASON
 from agentsync.setup_report import quarantine_class
 from test_convert_builders import build_potx, build_pptx_rich, make_zip
-from test_review_fixes import all_objects, git, item_id, make_env, page_fm, run
+from test_review_fixes import all_objects, cfg_text, git, item_id, make_env, page_fm, run, write_config
 
 CFG = ConvertConfig()
 _TYPES = "http://schemas.openxmlformats.org/package/2006/content-types"
@@ -529,6 +530,129 @@ def test_the_zero_byte_reread_reads_no_byte_and_leaves_a_file_that_grew_c2219(
     assert run(config).exit_code == 0
     assert probed == ["Contoso earlier.msg"] and tries == []
     assert _row(config, "Contoso earlier.msg").state_reason == NOT_MSG_REASON
+
+
+def _run_counts(config) -> dict[str, int]:  # type: ignore[no-untyped-def]
+    """The newest run's ``runs.counts_json``: what ``_Cycle._run_tally`` adds to its change counts."""
+    with Manifest(config.state_paths.db) as m:
+        (raw,) = m._db.execute("SELECT counts_json FROM runs ORDER BY run_id DESC LIMIT 1").fetchone()
+    counts: dict[str, int] = json.loads(raw)
+    return counts
+
+
+def test_a_zero_byte_reread_counts_as_read_again_and_never_as_converted_c2422(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 43 C2422 (ruling 166): the zero-byte re-read added nothing to ``_reread_n``, so a sync that
+    rewrote an older build's stub said neither ``read again`` nor ``converted`` for it, and install.sh's note
+    and the run record left it out. It counts as a re-read now, in the report (the sync line's ``read
+    again``), the run record's ``reread`` and never ``converted``; the next sync, with the token set, reads
+    nothing and counts nothing."""
+    config, src = make_env(tmp_path)
+    with monkeypatch.context() as old:
+        _older_zero_byte_answers(old)
+        (src / "Contoso earlier.docx").write_bytes(b"")
+        assert run(config).exit_code == 0
+    assert _row(config, "Contoso earlier.docx").state_reason == NOT_OOXML_REASON
+    report = run(config)
+    assert report.exit_code == 0
+    assert _row(config, "Contoso earlier.docx").state_reason == policy_mod.ZERO_BYTES_REASON
+    assert report.read_again == 1 and sum(s.converted for s in report.sources) == 0
+    counts = _run_counts(config)
+    assert (counts["reread"], counts["converted"]) == (1, 0), counts
+    again = run(config)
+    assert again.read_again == 0 and "reread" not in _run_counts(config)
+
+
+def test_a_zero_byte_reread_that_fails_rolls_back_its_own_row_alone_c2442(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 43 C2442 (ruling 166): the zero-byte pass ran a batch in one transaction with no per-row
+    savepoint, so a row that raised rolled back the rows before it, whose pages were committed anyway. Each
+    row is read under its own savepoint now (C2249's shape): the row read first keeps its ``empty`` row and
+    its probe mark (C2512) in the manifest and in the committed ``_manifest`` and QUARANTINE.tsv, the failing
+    row rolls back, the error is reported, and the token stays unset, so the next sync reads that row, sets
+    the token and takes the marks away. The failing row's page, written before the raise, can still be
+    committed one sync ahead of its manifest row, the leftover C2249 left too; the next sync converges."""
+    config, src = make_env(tmp_path)
+    with monkeypatch.context() as old:
+        _older_zero_byte_answers(old)
+        (src / "Contoso a.docx").write_bytes(b"")
+        (src / "Contoso b.docx").write_bytes(b"")
+        assert run(config).exit_code == 0
+    real = cycle_mod._Cycle._zero_byte_reread
+    called: list[str] = []
+
+    def second_raises(self, src_cfg, arm, row, acc):  # type: ignore[no-untyped-def]
+        called.append(row.name)
+        real(self, src_cfg, arm, row, acc)
+        if len(called) == 2:
+            raise OSError("Contoso disk full")
+
+    with monkeypatch.context() as failing:
+        failing.setattr(cycle_mod._Cycle, "_zero_byte_reread", second_raises)
+        report = run(config)
+    assert report.exit_code == 0 and len(called) == 2
+    assert "reading files again stopped: OSError" in report.sources[0].errors
+    first, second = called
+    assert _row(config, first).state_reason == policy_mod.ZERO_BYTES_REASON, "the row before it commits"
+    assert _row(config, second).state_reason == NOT_OOXML_REASON, "the failing row rolls back"
+    key = cycle_mod._ZERO_BYTES_META + "src"
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(key) is None, "the token stays unset: the next sync reads the row again"
+        assert m.get_meta(f"{key}:{item_id(config, first)}") == "1"
+        assert m.get_meta(f"{key}:{item_id(config, second)}") is None
+    committed = git(config.docs_repo, "show", "HEAD:_sync/QUARANTINE.tsv")
+    (line,) = [ln for ln in committed.splitlines() if first in ln]
+    assert policy_mod.ZERO_BYTES_REASON in line, committed
+    assert policy_mod.ZERO_BYTES_REASON in git(config.docs_repo, "show", "HEAD:_manifest/src.jsonl")
+    tries = _tries(monkeypatch)
+    assert run(config).exit_code == 0
+    assert tries == [second], tries
+    assert _row(config, second).state_reason == policy_mod.ZERO_BYTES_REASON
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(key) == "done"
+        assert m.get_meta(f"{key}:{item_id(config, first)}") is None, "the marks go with the token"
+
+
+def test_a_zero_byte_row_out_of_scope_keeps_the_token_unset_and_is_read_when_it_returns_c2512(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 43 C2512 (ruling 166): the source-wide token was set once every row in scope was read, so a
+    row out of scope and not retired (the root moved to a folder walked incompletely, ``*.docx`` excluded)
+    let it be set, and when the row came back unchanged it kept the older build's ``not-ooxml`` for good.
+    The token is set only when no such row is left unmarked, out of scope included: the row is read once
+    when it returns, and then the token holds."""
+    config, src = make_env(tmp_path)
+    with monkeypatch.context() as old:
+        _older_zero_byte_answers(old)
+        (src / "Contoso earlier.docx").write_bytes(b"")
+        assert run(config).exit_code == 0
+    assert _row(config, "Contoso earlier.docx").state_reason == NOT_OOXML_REASON
+    other = tmp_path / "other"
+    (other / "locked").mkdir(parents=True)
+    (other / "README.txt").write_text("sentinel\n", encoding="utf-8")
+    moved = write_config(tmp_path, cfg_text(tmp_path, other, source_extra='exclude = ["*.docx"]'))
+    key = cycle_mod._ZERO_BYTES_META + "src"
+    (other / "locked").chmod(0)
+    try:
+        tries = _tries(monkeypatch)
+        run(moved)
+    finally:
+        (other / "locked").chmod(0o755)
+    assert tries == []
+    assert _row(config, "Contoso earlier.docx").state_reason == NOT_OOXML_REASON, "out of scope, not retired"
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(key) is None, "a row out of scope is left unmarked: the token waits"
+    config = write_config(tmp_path, cfg_text(tmp_path, src))
+    assert run(config).exit_code == 0
+    assert tries == ["Contoso earlier.docx"], "read once, when it is back in scope"
+    assert _row(config, "Contoso earlier.docx").state_reason == policy_mod.ZERO_BYTES_REASON
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(key) == "done"
+        assert m.get_meta(f"{key}:{item_id(config, 'Contoso earlier.docx')}") is None
+    assert run(config).exit_code == 0
+    assert tries == ["Contoso earlier.docx"], "the token holds"
 
 
 def test_convert_file_neither_reads_nor_writes_the_cache_for_zero_bytes_c1466(tmp_path: Path) -> None:

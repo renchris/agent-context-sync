@@ -251,7 +251,9 @@ record only: no file on this Mac was left to read again, so no cycle looks until
 _ZERO_BYTES_META = "zero-bytes-v1:"
 """``zero-bytes-v1:<source_id>``, a local or inbox source's one-shot zero-byte re-read token: set once
 ``_Cycle._reread_zero_byte_stubs`` has looked at every row it names, so each such row is read once and never
-again (B13 round 42 C2219, ruling 155's one amendment of ruling 132 for C930's settled rows)."""
+again (B13 round 42 C2219, ruling 155's one amendment of ruling 132 for C930's settled rows).  Until then,
+``zero-bytes-v1:<source_id>:<stable_id>`` marks each row it probed, whatever the answer, and the token, once
+set, takes those marks away (B13 round 43 C2512, ruling 166)."""
 
 
 def _zero_byte_mismatches() -> frozenset[str]:
@@ -273,6 +275,11 @@ def _zero_byte_mismatches() -> frozenset[str]:
             recording_mod._NOT_RECORDING,
         }
     )
+
+
+def _zero_byte_mark(row: ItemRow) -> str:
+    """The meta key that marks ``row`` probed by the zero-byte re-read (:data:`_ZERO_BYTES_META`, C2512)."""
+    return f"{_ZERO_BYTES_META}{row.source_id}:{row.stable_id}"
 
 
 _REREAD_BATCH = 20  # files asked for at a time, and read between two lock beats
@@ -5592,9 +5599,15 @@ class _Cycle:
         probe that answers None (the
         file holds bytes now, or moved) stages nothing and leaves the row to the queue.  The empty copy is
         converted as a re-read (a conversion that gives what the row has moves only its key) with the whole
-        registry, as ``_empty_recording`` does.  Once every such row was looked at, the source's
-        :data:`_ZERO_BYTES_META` token is set and no cycle looks again, whatever a read answered: a re-read
-        is never unbounded.  Never in a dry run."""
+        registry, as ``_empty_recording`` does.  Each row probed gets its own mark, whatever the answer, and
+        is never probed again (B13 round 43 C2512, ruling 166).  Once no such row of the source is left
+        unmarked, out of scope or not listed this pass included, the source's :data:`_ZERO_BYTES_META` token
+        is set, the marks go, and no cycle looks again: a re-read is never unbounded, and a row out of scope
+        when its source's other rows were read is read when it comes back (a source-wide token set while it
+        was out kept its old stub for good).  Each row is read under a savepoint of its batch's
+        transaction, so a row that raises rolls back its own writes and mark alone, the rows before it
+        commit, and the error goes on to the caller with the token unset (C2442, C2249's shape).  Never in
+        a dry run."""
         key = _ZERO_BYTES_META + src.id
         if self.dry or self.manifest.get_meta(key):
             return
@@ -5602,24 +5615,42 @@ class _Cycle:
         named = [
             row
             for row in self.manifest.iter_items(src.id, states=(RowState.QUARANTINED,))
-            if not row.is_dir
-            and not row.dataless
-            and row.size == 0
-            and row.state_reason in mismatches
-            and arm.in_scope(row.rel_path)
+            if not row.is_dir and not row.dataless and row.size == 0 and row.state_reason in mismatches
         ]
-        rows = [r for r in named if r.last_seen_run == self.run_id and r.stable_id not in skip]
+        unmarked = [r for r in named if not self.manifest.get_meta(_zero_byte_mark(r))]
+        rows = [
+            r
+            for r in unmarked
+            if r.last_seen_run == self.run_id and r.stable_id not in skip and arm.in_scope(r.rel_path)
+        ]
         for start in range(0, len(rows), _WORK_BATCH):
             self.lock.beat(f"work:{src.id}")
+            failure: BaseException | None = None
             with self.manifest.transaction():
                 for row in rows[start : start + _WORK_BATCH]:
-                    self._zero_byte_reread(src, arm, row, acc)
+                    mark = len(self.changes)
+                    try:
+                        with self.manifest.savepoint():
+                            self._zero_byte_reread(src, arm, row, acc)
+                    except BaseException as exc:
+                        # the rows before it commit; this row's own writes and mark roll back, and the
+                        # token stays unset, so the next cycle reads it (B13 round 43 C2442, ruling 166)
+                        del self.changes[mark:]
+                        failure = exc
+                        break
                 self._flush_changes()
-        if len(rows) == len(named):  # every row looked at: the token holds
-            self.manifest.set_meta(key, "done")
+            if failure is not None:
+                raise failure
+        if len(rows) == len(unmarked):  # no row left unmarked: the token holds, and the marks go
+            with self.manifest.savepoint():
+                self.manifest.set_meta(key, "done")
+                self.manifest.delete_meta_prefix(key + ":")
 
     def _zero_byte_reread(self, src: SourceConfig, arm: LocalArm, row: ItemRow, acc: _SourceAcc) -> None:
-        """One row of :meth:`_reread_zero_byte_stubs`: staged empty or not at all, then converted again."""
+        """One row of :meth:`_reread_zero_byte_stubs`: marked probed, staged empty or not at all, then
+        converted again, a re-read counted in ``read again`` and never in ``converted`` (B13 round 43 C2422,
+        ruling 166: uncounted, a sync that rewrote three such stubs said ``converted 1`` and no re-read)."""
+        self.manifest.set_meta(_zero_byte_mark(row), "1")
         try:
             fetched = arm.stage_if_empty(_item_from_row(row), self.staging)
         except Exception as exc:  # it stays as it is
@@ -5630,11 +5661,14 @@ class _Cycle:
         try:
             if fetched.size != 0:  # a backstop: the probe stages only an empty file
                 return
+            started = _reread_clock()
+            self._reread_n += 1
             self._whole_registry = True
             try:
                 self._after_fetch(src, row, fetched, acc, reread=True)
             finally:
                 self._whole_registry = False
+                self._reread_s += _reread_clock() - started
         finally:
             _discard_staged(fetched, self.staging)
 

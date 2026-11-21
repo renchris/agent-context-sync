@@ -44049,6 +44049,14 @@ then never, under an answer that stays a mismatch; a `.docx` with bytes and a `n
 `test_convert_family.py::test_the_zero_byte_reread_reads_no_byte_and_leaves_a_file_that_grew_c2219`, and the c1304,
 c1450 and c1466 tests, whose older rows now end `empty` after one sync.
 
+Amended 2026-11-21, §16.273 C2422, C2442, C2512, C2470: each such row probed gets its own
+`zero-bytes-v1:<source>:<stable_id>` mark, whatever the answer, and is never probed again; the token is set only
+once no such row of the source is left unmarked, a row out of scope or not listed this pass included, and the
+marks then go, so a row out of scope while the others were read is read when it comes back. Each row is read
+under its own savepoint and counted in `read again`, never `converted`; a row that raises rolls back alone and
+leaves the token unset. The `.drawio` `conversion failed` stub stays out because the field install cannot hold
+one, not because its words vary.
+
 ### 16.269 Round 42: the prompt goes to v39 (the paths and folder states setup printed), the gate's stop lines, and the guides (2026-11-20, wave B13 round 42 lane D)
 
 Round 42's lane D items (`docs/plans/bring-back-ocr.md`, "B13 round 42"; specs `round42/items/C<n>.md`, the verifier's
@@ -44417,6 +44425,33 @@ failure's reason moves, never a converted page, so pandoc's emitter stays 1.0.2.
 `test_convert_page_cap.py::test_a_line_break_inside_the_named_pandoc_record_is_a_space_c2528` (CR, VT and U+2028, each
 before `error:` in a clause and inside a path, on the exit and the crash branch, with a warning before and another own
 record after).
+
+**The zero-byte re-read is counted, rolls back a row at a time, and reads each row once whatever its scope**
+(C2422, C2442, C2512, with C2470 not built; ruling 166, amending ruling 155; `agentsync.cycle`, `agentsync.manifest`;
+amends §16.268 C2219). `_Cycle._zero_byte_reread` added nothing to `_reread_n`, so a sync that rewrote an older
+build's zero-byte stubs said neither `read again` nor `converted` for them, and the run record and install.sh's
+note left them out (C2422): it now adds one, timed into the re-read clock, once a file is staged empty and before
+`_after_fetch`, so the sync line's `read again`, the run record's `reread` and install.sh's `-reread-R` note count
+it, and `converted` never does. `_reread_zero_byte_stubs` ran each batch in one transaction with no per-row
+savepoint, so a row that raised rolled back the rows before it while their pages were committed (C2442): each row
+now runs under `Manifest.savepoint()`, its recorded changes cut on a raise, as `_replan_recording_stubs` does
+(C2249), and the error goes on to the caller's `reading files again stopped` with the token unset, so the next
+sync reads the row; the failing row's page, written before the raise, can still be committed one sync ahead of
+its manifest row, the leftover C2249 left too. The source-wide `zero-bytes-v1:<source>` token was set once every
+row in scope was looked at, so a row out of scope and not retired (a root moved to a folder walked incompletely,
+`*.docx` excluded) let it be set, and the row kept `not-ooxml` for good when it came back unchanged (C2512): each
+probed row gets a `zero-bytes-v1:<source>:<stable_id>` mark, whatever the answer, a marked row is never probed
+again, the token is set only when no qualifying row (quarantined, not a folder, not dataless, 0 bytes, a
+`_zero_byte_mismatches()` reason) is left unmarked, out of scope and unlisted rows included, and the marks then
+go (`Manifest.delete_meta_prefix`). C2470's one-shot `zero-bytes-v2:<source>` pass for a zero-byte `.drawio`
+whose stub says `conversion failed` is not built, by the lead's ruling, with this measure: only a build from the
+diagram converter's arrival (f94ee8693, 2026-10-11) to C930 (18ba64ffa, 2026-11-04) stored that stub, the field
+build (4a42af937, 2026-10-08) has no diagram converter and stored `refused: no converter for .drawio`, and today's
+build reads that refusal once and ends it `empty-output` (`read again 1`), so the pass would read no row the
+field install holds while adding a second token and mark set to every source. Tests:
+`test_convert_family.py::test_a_zero_byte_reread_counts_as_read_again_and_never_as_converted_c2422`,
+`test_convert_family.py::test_a_zero_byte_reread_that_fails_rolls_back_its_own_row_alone_c2442` and
+`test_convert_family.py::test_a_zero_byte_row_out_of_scope_keeps_the_token_unset_and_is_read_when_it_returns_c2512`.
 
 ### 16.274 Round 43: the prompt goes to v40 (only lines setup prints in every branch), CI polled every 60 seconds, and the guides (2026-11-21, wave B13 round 43 lane D)
 
