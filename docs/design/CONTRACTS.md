@@ -43600,6 +43600,12 @@ not added`, the config step's log line ends `inbox=not-added`. The pins at `test
 `test_install_oneshot.py::test_a_file_named_inbox_is_not_called_an_ensured_inbox_c2207` (the real agentsync, a file
 named inbox, with and without `--source-local`, then the folder back).
 
+**A no-folder NEXT with exit 0 is pinned to the prompt's step 2** (C2316's exit-0 case; ruling 156; tests only).
+install.sh's exit 0 over a config holding the inbox alone stays (an inbox-only Mac is a valid setup); lane D's v39
+step 2 reads a `no folder is synced yet` NEXT whatever the exit status. Test:
+`test_install_oneshot.py::test_a_no_folder_next_with_exit_0_is_one_step_2_says_to_ask_for_folders_c2316` (status's
+no-folder NEXT under rc 2, install.sh's exit 0, and the README sentence that reads it).
+
 **C2060 stays unbuilt** (C2263; ruling 150; privacy). The operator's class C decision 1476293d00a3 on round 41's
 C2060 edit (decode a step 1 list spelling back to the folder name's bytes so the shell report cuts it) was still
 open when this section's last commit landed, so round 41's strict xfail on

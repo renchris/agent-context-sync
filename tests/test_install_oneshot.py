@@ -1406,6 +1406,31 @@ def test_a_sourceless_first_run_exits_2_and_a_rerun_exits_0(env: dict[str, str],
     assert not any(c.startswith("agentsync sync") for c in calls(env))
 
 
+def test_a_no_folder_next_with_exit_0_is_one_step_2_says_to_ask_for_folders_c2316(
+    env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 42 ruling 156, C2316: a re-run over a config holding the inbox alone exits 0 with status's
+    `no folder is synced yet` NEXT (install.sh's exit 0 stays: an inbox-only Mac is a valid setup), and the
+    prompt's step 2 read that NEXT only under "if it exits non-zero", so an agent went on to step 3. The v39
+    prompt reads it whatever the exit status; this pins that the installer's exit-0 form is the one it
+    reads."""
+    assert install_sh(env, str(wheel)).returncode == 2, "a first run makes an inbox-only config"
+    status_next = (
+        "NEXT: no folder is synced yet: ask the operator which folders to sync "
+        f"(`{INSTALL_SH} --list-folders` lists them), then run "
+        f'`{env["HOME"]}/.local/bin/agentsync add-source "<folder>"` for each, '
+        "then `~/.local/bin/agentsync sync`"
+    )
+    cp = install_sh({**env, "STUB_STATUS_OUT": status_next, "STUB_STATUS_RC": "2"}, str(wheel))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert last_line(cp).startswith("NEXT: no folder is synced yet: "), last_line(cp)
+    readme = " ".join((REPO / "README.md").read_text(encoding="utf-8").split())
+    assert (
+        "Whatever step 2's exit status, if its NEXT: line says no folder is synced yet or no folder to sync"
+        " yet, do as step 1's last sentences say"
+    ) in readme
+
+
 def test_the_loops_next_falls_back_when_status_prints_none(
     env: dict[str, str], folder: Path, wheel: Path
 ) -> None:
