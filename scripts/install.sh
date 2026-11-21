@@ -3245,7 +3245,7 @@ config_shown() { # PATH
 }
 redaction_pairs() {
 	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x links walked lk
-	local cfg_cut tilde port k folders_seen=$'\n' ph b auth sep tail rw keys key m sp top raw folder_keys=$'\n' FUZZY
+	local cfg_cut tilde port k ph b auth sep tail rw keys key m sp top raw folder_keys=$'\n' FUZZY
 	local tables=0 ids=" " hp beside own_state own_docs own_cache own_logs fl fuzzy_keys=$'\n' folded_vals=$'\n'
 	local -a known=() logged_late=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=() listed=() rooted=() placed=() cfgpaths=()
 	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
@@ -3720,8 +3720,6 @@ redaction_pairs() {
 				add_pair "$part" "<folder-$m>" "$whole"
 				short_pair "$part" "<folder-$m>"
 				hidden_by "$part" "<folder-$m>" fuzzy
-				# the number its pair has: a later part of the same bytes loses to the first (add_pair)
-				case "$folders_seen" in *$'\n'"$part"$'\t'*) ;; *) folders_seen+="$part"$'\t'"$m"$'\n' ;; esac
 			done
 		done
 	}

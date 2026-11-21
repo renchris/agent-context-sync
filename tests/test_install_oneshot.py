@@ -4432,6 +4432,29 @@ def test_freecuts_comment_names_ruling_146s_two_residuals_as_report_cuts_does_c2
         assert words in " ".join(docstring.replace("``", "").split()), docstring
 
 
+def test_every_local_of_redaction_pairs_is_read_apart_from_its_own_write_c2506() -> None:
+    """B13 round 43 C2506: 8cb6579a6 dropped the only reader of redaction_pairs' folders_seen, which still
+    grew on every configured folder part, read only by the guard of its own append. Each name the function
+    declares local is read on some line that does not also append to it."""
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    [body] = re.findall(r"(?ms)^redaction_pairs\(\) \{\n.*?^\}\n", script)
+    names = {
+        w.split("=", 1)[0]
+        for decl in re.findall(r"^\s*local (.*)$", body, re.M)
+        for w in decl.split()
+        if re.fullmatch(r"[A-Za-z_]\w*(=.*)?", w)
+    }
+    assert {"cfg_cut", "folder_keys"} <= names, names
+    unread = sorted(
+        n
+        for n in names
+        if not any(
+            re.search(rf"\$\{{?{n}\b", ln) and not re.search(rf"\b{n}\+=", ln) for ln in body.splitlines()
+        )
+    )
+    assert unread == [], unread
+
+
 def test_the_header_names_each_field_and_line_the_config_step_prints_c2439() -> None:
     """B13 round 43 C2439: the header said the config line ends with kept=N added=M, while C2207 appends
     inbox=not-added, and step 4's paragraph left out the `docs repo: <path>` and `inbox: <path>` lines C2317
