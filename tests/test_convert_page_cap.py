@@ -1048,6 +1048,56 @@ def test_a_pandoc_that_cannot_start_says_why_c2252(tmp_path: Path, end: str, sai
     assert str(caught.value) == said
 
 
+_RECORD_SEPARATORS = ["\r", "\x0b", chr(0x2028)]
+
+
+@pytest.mark.parametrize("sep", _RECORD_SEPARATORS, ids=[f"U+{ord(c):04X}" for c in _RECORD_SEPARATORS])
+@pytest.mark.parametrize(
+    ("record", "end", "said"),
+    [
+        (
+            'Error parsing YAML metadata at "source" (line 2, column 1):{sep}mapping values are not allowed'
+            " error: here",
+            "exit 1",
+            'pandoc exited 1: Error parsing YAML metadata at "source" (line 2, column 1): mapping values are'
+            " not allowed error: here",
+        ),
+        (
+            "pandoc: /Users/contoso/Q3{sep}Plans/Contoso Secret.docx: error: openBinaryFile: does not exist",
+            "exit 1",
+            "pandoc exited 1: pandoc: <path>",
+        ),
+        (
+            "pandoc: heap overflow{sep}error: stack exhausted",
+            "kill -ABRT $$",
+            "pandoc was stopped by SIGABRT (signal 6): pandoc: heap overflow error: stack exhausted",
+        ),
+        (
+            "pandoc: /Users/contoso/Q3{sep}Plans/Contoso Secret.docx: error: openBinaryFile: does not exist",
+            "kill -ABRT $$",
+            "pandoc was stopped by SIGABRT (signal 6): pandoc: <path>",
+        ),
+    ],
+    ids=["exit-clause", "exit-path", "crash-clause", "crash-path"],
+)
+def test_a_line_break_inside_the_named_pandoc_record_is_a_space_c2528(
+    tmp_path: Path, sep: str, record: str, end: str, said: str
+) -> None:
+    """B13 round 43 C2528 with C2518: _first_cause and _own_lines split stderr at LF only, then _plain split
+    the chosen record again with str.splitlines() and kept its first fragment holding `error:`. A CR, VT or
+    U+2028 before `error:` dropped the record's leading clause, and one inside a path left the folder and
+    file name after it unscrubbed. Each chosen record, the exit's first cause and each own record before the
+    crash join, has those separators spaced out first, so _plain sees it as one line."""
+    text = f"[WARNING] Duplicate identifier 'contoso-q3'\n{record.format(sep=sep)}\npandoc: contoso-later\n"
+    pandoc = _stub_pandoc(tmp_path, text.encode("utf-8"), end)
+    bad = make_zip(tmp_path / "bad.docx", {"word/document.xml": b"<not-closed"})
+    with pytest.raises(ConversionError) as caught:
+        PandocConverter(replace(CFG, pandoc_path=pandoc)).convert(bad, name="bad.docx")
+    assert str(caught.value) == said
+    assert len(str(caught.value).splitlines()) == 1
+    assert "contoso" not in str(caught.value).lower()
+
+
 # ---------------------------------------------------------------------------------------------------------
 # C2049: the csv field limit's read and raise are one step
 # ---------------------------------------------------------------------------------------------------------

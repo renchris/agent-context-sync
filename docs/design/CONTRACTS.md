@@ -13058,6 +13058,9 @@ Amended 2026-11-17, §16.263 C2048: both read pandoc's own `pandoc:` lines only 
 continuation lines, and a non-zero exit with none reads `pandoc exited N` alone.
 Amended 2026-11-20, §16.268 C2252: a non-zero exit names the first stderr record that is not a `[WARNING]`, an `[INFO]`
 or indented, paths taken out, and the `--version` run, which reads no document, reads its whole stderr again.
+Amended 2026-11-21, §16.273 C2528: that record, and each own line before a crash line joins them, is one LF-ended
+record with every other line separator in it (CR, VT, FF, 0x1C to 0x1E, U+0085, U+2028, U+2029) made a space, so
+`_plain` reads it as one line and takes a path in it out to the line's end.
 Amended 2026-10-19, §16.138 V68: both build sites name the installer by its path (`skill.INSTALL_SH`), `...;
 ~/src/agent-context-sync/scripts/install.sh tries the build again on its next run`, and `ocr._plain` keeps that one
 path when it reads the `<helper>.failed` marker back, where it takes every other path out.
@@ -43242,6 +43245,9 @@ with a path, and exit 1).
 Amended 2026-11-20, §16.268 C2299, C2252: `_own_lines` splits stderr's bytes at LF only and tests `pandoc:` on bytes,
 and a conversion run's non-zero exit reads `pandoc exited N: <its first record that is no [WARNING], [INFO] or
 indented line, paths taken out>` (`_first_cause`); the `--version` run's crash and exit lines read its whole stderr.
+Amended 2026-11-21, §16.273 C2528: the exit's first record and each own record before the crash join are one LF
+record each, every other line separator in it made a space (`_one_line`), paths taken out, so `_plain` never splits
+one again.
 
 **The csv field limit's read and raise are one step** (C2049; `agentsync.convert.text`; amends §16.258 C1807).
 `_parse_delimited` read the limit and raised it in two calls, so on two threads a shorter text's raise could land after
@@ -43792,6 +43798,10 @@ before `pandoc: contoso-secret`, crash and exit),
 `test_convert_page_cap.py::test_pandocs_own_record_after_a_warning_holding_a_separator_is_still_the_one_named_c2299`,
 `test_convert_page_cap.py::test_a_pandoc_exit_names_its_first_line_that_is_no_warning_or_info_c2252` and
 `test_convert_page_cap.py::test_a_pandoc_that_cannot_start_says_why_c2252`.
+Amended 2026-11-21, §16.273 C2528: `_plain` splits what it is given with `str.splitlines()`, so a record holding a
+CR, VT, FF, 0x1C to 0x1E, U+0085, U+2028 or U+2029 was split again and its first fragment holding `error:` named; each
+chosen record, the exit's first cause and each own record before the crash join, has them made spaces first, so the
+exit line is that one record.
 
 **A CSV sidecar row holding a CR is one record** (C2302; ruling 152; `agentsync.convert._common`, read by
 `agentsync.convert.xlsx` and `agentsync.convert.text`). `_csv_bytes` wrote every row through one QUOTE_MINIMAL writer,
@@ -44390,6 +44400,23 @@ rendered and seen to fit is kept. The emitter moves to 1.0.5 (rulings 167 and 16
 cut alone and row 1 cut with row 2 after it) and
 `test_convert_page_cap.py::test_a_wide_row_is_cut_without_rendering_each_length_c2516` (2,000 cells beside a
 30,000-character cell render the whole line once).
+
+**A record pandoc's runner names is one line before `_plain` reads it** (C2528 with C2518; ruling 167;
+`agentsync.convert.pandoc`; amends §16.268 C2299, C2252, §16.263 C2048; dated line at §16.42). `_first_cause` and
+`_own_lines` split stderr at LF only (C2299), but `_run` then passed the chosen record to `ocr._plain`, which splits
+with `str.splitlines()` and keeps the first fragment holding `error:`, else the first. A CR, VT, FF, 0x1C to 0x1E,
+U+0085, U+2028 or U+2029 inside the record split it again: `Error parsing YAML metadata at "source" (line 2, column
+1):<VT>mapping values are not allowed error: here` lost its cause clause, and `pandoc: /Users/contoso/Q3<CR>Plans/...:
+error: ...` named `Plans/...` with its folder and file name unscrubbed (the verifiers' runs at bd65e0e1). `_one_line`
+decodes a record and makes each of those separators a space; the exit branch passes its first cause through it, and
+`_own_lines` each own record before the LF join that feeds `_ended`, so `_plain` picks only among whole records and
+its path cut runs from a path's start to the record's end (`pandoc exited 1: pandoc: <path>`). The `--version` run's
+whole-stderr read and `ocr._plain` itself are unchanged, as the OCR and speech helpers, doctor and the dyld case rely
+on its line selection; C2518's split of `_plain` is not built, since this change settles it (ruling 167). Only a
+failure's reason moves, never a converted page, so pandoc's emitter stays 1.0.2. Test:
+`test_convert_page_cap.py::test_a_line_break_inside_the_named_pandoc_record_is_a_space_c2528` (CR, VT and U+2028, each
+before `error:` in a clause and inside a path, on the exit and the crash branch, with a warning before and another own
+record after).
 
 ### 16.274 Round 43: the prompt goes to v40 (only lines setup prints in every branch), CI polled every 60 seconds, and the guides (2026-11-21, wave B13 round 43 lane D)
 

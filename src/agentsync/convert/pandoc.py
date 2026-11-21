@@ -375,14 +375,30 @@ def _decode_html(data: bytes) -> str:
     return _decode_text(data.replace(b"\x00", b""))
 
 
+# Every boundary str.splitlines() breaks at but LF, the one a record ends with (B13 round 43 C2528)
+_RECORD_BREAKS = str.maketrans(dict.fromkeys("\r\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029", " "))
+
+
+def _one_line(rec: bytes) -> str:
+    """One stderr record, decoded, each CR, VT, FF, 0x1C to 0x1E, U+0085, U+2028 and U+2029 in it a space, so
+    :func:`_plain`, which splits with str.splitlines(), sees the whole record as one line: its leading clause
+    stays the reason, and a path holding one of them is taken out to the line's end, never cut at it and its
+    rest quoted (B13 round 43 C2528 with C2518)."""
+    return rec.decode("utf-8", errors="replace").translate(_RECORD_BREAKS).strip()
+
+
 def _own_lines(stderr: bytes) -> bytes:
     """pandoc's own lines in ``stderr``, the ones that start ``pandoc:`` (an uncaught exception, the runtime's
     own, ``pandoc: heap overflow``) at the start of a line, never an indented one, joined; b"" when it wrote
     none.  A ``[WARNING]`` and the lines that
     continue one quote the document, so a crash or exit line is never taken from them (B13 round 41 C2048).
     A line is a record pandoc ends with LF, split and tested on bytes: a document's CR, VT, FF, 0x1C to 0x1E,
-    U+0085, U+2028 or U+2029 inside a warning never opens a line of its own (B13 round 42 C2299)."""
-    return b"\n".join(rec.strip() for rec in stderr.split(b"\n") if rec.startswith(b"pandoc:"))
+    U+0085, U+2028 or U+2029 inside a warning never opens a line of its own (B13 round 42 C2299).  Each
+    record kept is :func:`_one_line` before the join, so :func:`_plain` picks among whole records and never
+    splits one again (B13 round 43 C2528)."""
+    return b"\n".join(
+        _one_line(rec).encode("utf-8") for rec in stderr.split(b"\n") if rec.startswith(b"pandoc:")
+    )
 
 
 def _first_cause(stderr: bytes) -> bytes:
@@ -430,7 +446,7 @@ class _PandocRunner:
         ConversionError.  ``whole`` is the ``--version`` run, which reads no document: its crash and exit
         lines read its whole stderr through :func:`_plain`, so a pandoc that cannot start (dyld's ``Library
         not loaded``) says why (B13 round 42 C2252).  A conversion run's crash line reads :func:`_own_lines`
-        only, its exit line :func:`_first_cause`."""
+        only, its exit line :func:`_first_cause`, each record :func:`_one_line` (B13 round 43 C2528)."""
         with tempfile.TemporaryDirectory(prefix="agentsync-pandoc-") as tmp:
             home = Path(tmp)
             env = {"PATH": "/usr/bin:/bin", "HOME": str(home), "LANG": "en_US.UTF-8", "LC_ALL": "en_US.UTF-8"}
@@ -454,7 +470,7 @@ class _PandocRunner:
             raise ConversionError(f"pandoc was {ended}")
         if proc.returncode != 0:
             cause = proc.stderr if whole else _first_cause(proc.stderr)
-            said = f": {_plain(cause)}" if cause.strip() else ""
+            said = f": {_plain(cause if whole else _one_line(cause))}" if cause.strip() else ""
             raise ConversionError(f"pandoc exited {proc.returncode}{said}")
         said = proc.stderr.decode("utf-8", errors="replace")
         if said:
