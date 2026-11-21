@@ -44053,8 +44053,8 @@ Amended 2026-11-21, §16.273 C2422, C2442, C2512, C2470: each such row probed ge
 `zero-bytes-v1:<source>:<stable_id>` mark, whatever the answer, and is never probed again; the token is set only
 once no such row of the source is left unmarked, a row out of scope or not listed this pass included, and the
 marks then go, so a row out of scope while the others were read is read when it comes back. Each row is read
-under its own savepoint and counted in `read again`, never `converted`; a row that raises rolls back alone and
-leaves the token unset. The `.drawio` `conversion failed` stub stays out because the field install cannot hold
+under its own savepoint and counted in `read again`, never `converted` unless its old page is gone, when it is a
+first read in `converted` and `read again` alike; a row that raises rolls back alone and leaves the token unset. The `.drawio` `conversion failed` stub stays out because the field install cannot hold
 one, not because its words vary.
 
 ### 16.269 Round 42: the prompt goes to v39 (the paths and folder states setup printed), the gate's stop lines, and the guides (2026-11-20, wave B13 round 42 lane D)
@@ -44432,7 +44432,8 @@ amends §16.268 C2219). `_Cycle._zero_byte_reread` added nothing to `_reread_n`,
 build's zero-byte stubs said neither `read again` nor `converted` for them, and the run record and install.sh's
 note left them out (C2422): it now adds one, timed into the re-read clock, once a file is staged empty and before
 `_after_fetch`, so the sync line's `read again`, the run record's `reread` and install.sh's `-reread-R` note count
-it, and `converted` never does. `_reread_zero_byte_stubs` ran each batch in one transaction with no per-row
+it, and `converted` does not, unless the old stub's page is gone (the mirror page deleted): `_after_fetch` then
+counts it as a first read, in `converted` and `read again` alike, its existing rule. `_reread_zero_byte_stubs` ran each batch in one transaction with no per-row
 savepoint, so a row that raised rolled back the rows before it while their pages were committed (C2442): each row
 now runs under `Manifest.savepoint()`, its recorded changes cut on a raise, as `_replan_recording_stubs` does
 (C2249), and the error goes on to the caller's `reading files again stopped` with the token unset, so the next

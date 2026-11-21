@@ -5649,7 +5649,9 @@ class _Cycle:
     def _zero_byte_reread(self, src: SourceConfig, arm: LocalArm, row: ItemRow, acc: _SourceAcc) -> None:
         """One row of :meth:`_reread_zero_byte_stubs`: marked probed, staged empty or not at all, then
         converted again, a re-read counted in ``read again`` and never in ``converted`` (B13 round 43 C2422,
-        ruling 166: uncounted, a sync that rewrote three such stubs said ``converted 1`` and no re-read)."""
+        ruling 166: uncounted, a sync that rewrote three such stubs said ``converted 1`` and no re-read),
+        unless the old stub's page is gone (the mirror page deleted): :meth:`_after_fetch` then counts it as a
+        first read, in ``converted`` and ``read again`` alike, its rule for a page not intact."""
         self.manifest.set_meta(_zero_byte_mark(row), "1")
         try:
             fetched = arm.stage_if_empty(_item_from_row(row), self.staging)

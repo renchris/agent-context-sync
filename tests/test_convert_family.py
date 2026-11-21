@@ -655,6 +655,54 @@ def test_a_zero_byte_row_out_of_scope_keeps_the_token_unset_and_is_read_when_it_
     assert tries == ["Contoso earlier.docx"], "the token holds"
 
 
+def test_a_marked_zero_byte_row_is_never_probed_again_while_the_token_waits_c2512(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 43 C2512 (ruling 166): a row probed once keeps its mark, whatever the answer, and is never
+    probed again while another row keeps the source's token unset. Here one row is not listed (its folder
+    cannot be read, so the walk stops short and keeps it), and the listed row's probe answers None: that row
+    stays a mismatch and is marked, the next sync probes nothing, and once the other row is listed again it
+    alone is read, the token is set and the marks go."""
+    config, src = make_env(tmp_path)
+    with monkeypatch.context() as old:
+        _older_zero_byte_answers(old)
+        (src / "Contoso x.docx").write_bytes(b"")
+        (src / "locked").mkdir()
+        (src / "locked" / "Contoso y.docx").write_bytes(b"")
+        assert run(config).exit_code == 0
+    assert _row(config, "Contoso y.docx").state_reason == NOT_OOXML_REASON
+    key = cycle_mod._ZERO_BYTES_META + "src"
+    mark_x = f"{key}:{item_id(config, 'Contoso x.docx')}"
+    probed: list[str] = []
+    (src / "locked").chmod(0)
+    try:
+        with monkeypatch.context() as probe:
+            probe.setattr(
+                cycle_mod.LocalArm,
+                "stage_if_empty",
+                lambda self, item, dest: probed.append(item.name) or None,
+            )
+            for _ in range(2):
+                run(config)
+    finally:
+        (src / "locked").chmod(0o755)
+    assert probed == ["Contoso x.docx"], "a marked row is never probed again while the token waits"
+    assert _row(config, "Contoso x.docx").state_reason == NOT_OOXML_REASON
+    assert _row(config, "Contoso y.docx").state_reason == NOT_OOXML_REASON, "not listed, not retired"
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(key) is None, "the unlisted row is unmarked: the token waits"
+        assert m.get_meta(mark_x) == "1"
+    tries = _tries(monkeypatch)
+    assert run(config).exit_code == 0
+    assert tries == ["Contoso y.docx"], (
+        "the unlisted row is read when it is listed again, the marked one never"
+    )
+    assert _row(config, "Contoso y.docx").state_reason == policy_mod.ZERO_BYTES_REASON
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(key) == "done"
+        assert m.get_meta(mark_x) is None, "the marks go with the token"
+
+
 def test_convert_file_neither_reads_nor_writes_the_cache_for_zero_bytes_c1466(tmp_path: Path) -> None:
     """B13 round 38 C1466: a zero-byte staged file is converted every time and never cached, while the same
     name over real bytes is cached as before."""
