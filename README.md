@@ -1054,8 +1054,9 @@ by this account (a manifest a `sudo` run left owned by root, say; since B13 roun
 §16.157 Y76). Work rows still exit 0, so the work list is still the rows, not the exit code.
 
 The refresh queue is one awk pass over a generated `DEPENDS.tsv`: 0.08–0.12 s over 1,600 rows
-([C11 §3](docs/design/receipts/verify/C11-local-walk.md)). It reports `STALE`, `SOURCE-DELETED` and `SOURCE-UNREADABLE`
-separately because each needs a different action ([design §4.5](docs/design/agent-context-sync.md#45-l4--curation-incrementally)).
+([C11 §3](docs/design/receipts/verify/C11-local-walk.md)). It reports `STALE`, `SOURCE-DELETED`, `SOURCE-SUPERSEDED`
+(the cited page was replaced by other pages of the same file, which is still there: the row names the page to cite
+now; B13 round 43) and `SOURCE-UNREADABLE` separately because each needs a different action ([design §4.5](docs/design/agent-context-sync.md#45-l4--curation-incrementally)).
 Freshness never rides on file times: `git clone` resets every mtime, and Claude Code's Glob orders its results by mtime
 ([G §4](docs/design/receipts/G-agent-docs-conventions.md) measures the clone reset;
 [C7 (a)](docs/design/receipts/verify/C7.md) the mtime ordering). **CORRECTED (2026-09-29):** this cited the

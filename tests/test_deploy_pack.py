@@ -4100,6 +4100,20 @@ def test_the_v40_prompt_reads_only_lines_setup_prints_in_every_branch_c2406_c240
     ) in finish
 
 
+def test_the_readme_lists_every_refresh_verdict_curate_reports_ruling_164() -> None:
+    """B13 round 43 ruling 164 (lane B's c8e54894d): curate reports a page a unit-removed tombstone names a
+    successor for as SOURCE-SUPERSEDED, and README's refresh-queue paragraph listed only STALE, SOURCE-DELETED
+    and SOURCE-UNREADABLE. It lists every source verdict, each held to curate's own list."""
+    from agentsync import curate  # noqa: PLC0415
+
+    readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
+    [listed] = re.findall(r"The refresh queue is one awk pass .*? separately because each needs", readme)
+    verdicts = set(re.findall(r"`([A-Z-]+)`", listed))
+    assert curate.SOURCE_SUPERSEDED == "SOURCE-SUPERSEDED" and set(curate.VERDICTS) >= verdicts
+    assert verdicts == {"STALE", "SOURCE-DELETED", "SOURCE-SUPERSEDED", "SOURCE-UNREADABLE"}, verdicts
+    assert "the row names the page to cite now" in listed
+
+
 def test_the_exit_0_no_folder_next_is_named_as_status_s_c2457_c2464() -> None:
     """B13 round 43 C2457 with C2464: K63 and §16.269 said step 2 ended with exit 0 and a `no folder to sync
     yet` NEXT, and §16.266 read the C2316 test's stub rc 2 as status's. install.sh prints that NEXT only on a

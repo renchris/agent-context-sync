@@ -44897,6 +44897,11 @@ K64 row); `CUT_OFF_TOLD` names no version and is unchanged. Round 44 rehearses v
 scenario C's first old copy. Tests: `test_the_v40_prompt_reads_only_lines_setup_prints_in_every_branch_c2406_c2408_c2419_c2523`,
 `test_the_prompt_text_changes_only_with_its_version`, `test_readme_prompt_compat_matches_the_installer`.
 
+**README lists the superseded verdict** (ruling 164's words, lane B's c8e54894d; `README.md`). Lane B's curate reports a
+page that a unit-removed tombstone names a successor for as `SOURCE-SUPERSEDED`, naming the page to cite now; README's
+refresh-queue paragraph listed `STALE`, `SOURCE-DELETED` and `SOURCE-UNREADABLE` only. It lists the fourth with one
+clause on what it asks. Test: `tests/test_deploy_pack.py::test_the_readme_lists_every_refresh_verdict_curate_reports_ruling_164`.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units
