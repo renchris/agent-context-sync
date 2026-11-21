@@ -348,7 +348,8 @@ def shell_block() -> str:
     ``CUT_REFUSED_HEADS`` (:data:`REFUSED_HEADS`, written in double quotes, since one holds an apostrophe),
     ``CUT_DEL_ESCAPED`` (:data:`DEL_ESCAPED`), ``CUT_FREE_HEAD`` (:data:`FREE_PROVIDER_HEAD`) and
     ``CUT_FREE_END`` (:data:`FREE_WORD_END` as an awk bracket class of octal bytes) and ``CUT_FREE_TRAIL``
-    (:data:`FREE_WORD_TRAIL`); since B13 round 41 ruling 142, ``CUT_FREE_PART_STOP`` (:data:`FREE_PART_STOP`
+    (:data:`FREE_WORD_TRAIL`), then, since B13 round 43 C2436, ``CUT_FREE_CUT_TRAIL``
+    (:data:`FREE_CUT_TRAIL`); since B13 round 41 ruling 142, ``CUT_FREE_PART_STOP`` (:data:`FREE_PART_STOP`
     as an awk ERE: a bracket class of octal bytes, then each phrase, ``)`` and ``|`` bracketed, a non-ASCII
     character in octal); since B13 round 42
     ruling 146, ``CUT_FREE_PATH_START`` (a blank, space or tab in octal, then :data:`FREE_PATH_START` as
@@ -379,6 +380,7 @@ def shell_block() -> str:
         "CUT_FREE_HEAD": FREE_PROVIDER_HEAD,
         "CUT_FREE_END": "[" + "".join(f"\\{c:03o}" for c in FREE_WORD_END) + "]",
         "CUT_FREE_TRAIL": FREE_WORD_TRAIL,
+        "CUT_FREE_CUT_TRAIL": FREE_CUT_TRAIL,  # B13 round 43 C2436 (ruling 158)
         "CUT_FREE_PART_STOP": "|".join(
             [
                 "[" + "".join(f"\\{ord(c):03o}" for c in FREE_PART_STOP if len(c) == 1) + "]",

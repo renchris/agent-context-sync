@@ -44266,7 +44266,10 @@ rule naming both forms stands.
 
 ### 16.270 Round 43: the report: every path cut in every spelling its printer writes, a cut token ending at the same byte in both reports, and the inbox's state as one helper decides it (2026-11-21, wave B13 round 43 lane RA)
 
-Reserved for round 43 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 43").
+Round 43 lane RA's report_cuts rows for rulings 157 and 158 (lane RB's shell halves read them):
+`report_cuts.CUT_TOKEN_STOP`, the ASCII set that ends a whole-path cut's token in both reports (C2526 with C2435),
+and `report_cuts.FREE_CUT_TRAIL`, what the provider rule's not-kept arm gives back (C2436), which `shell_block()`
+writes as `CUT_FREE_CUT_TRAIL` after `CUT_FREE_TRAIL`. The section's items follow.
 
 ### 16.271 Round 43: the installer: a source id and a folder take Python's number and length rule, another build's render gets every cut, and C2469 waits on the operator (2026-11-21, wave B13 round 43 lane RB)
 
