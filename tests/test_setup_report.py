@@ -28698,6 +28698,9 @@ R146_FREE_ROWS = (
     ("OneDrive-Tailspin Toys today", "<path>"),
     ("OneDrive-Tailspin Toys.", "<path>."),
     ("OneDrive-Tailspin Toys: error 5, retry in 30s", "<path>"),
+    # B13 round 43 C2436 (ruling 158): the not-kept arm gives back the blank before a quote or a backtick
+    ('OneDrive-Tailspin Toys "quoted" rest', '<path> "quoted" rest'),
+    ("OneDrive-Tailspin Toys `x` rest", "<path> `x` rest"),
 )
 """B13 round 42 ruling 146's free-text rows, each after ``~/Library/CloudStorage/`` in a friction row, and
 what both reports print for it there, ``OneDrive-Contoso`` configured (``<org-1>``)."""

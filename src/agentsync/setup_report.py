@@ -19270,7 +19270,7 @@ def _free_provider_cuts(line: str) -> str:
         if to_slash:
             end = _FREE_MORE_RE.match(line, _FREE_REST_RE.match(line, end).end()).end()  # type: ignore[union-attr]
         word = line[start:end]
-        trail = len(word) - len(word.rstrip(report_cuts.FREE_WORD_TRAIL))
+        trail = len(word) - len(word.rstrip(report_cuts.FREE_CUT_TRAIL))  # B13 round 43 C2436
         out.append(line[pos:at] + head + "<path>" + (word[-trail:] if trail else ""))
         pos = end
     out.append(line[pos:])

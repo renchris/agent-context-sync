@@ -241,6 +241,12 @@ FREE_WORD_TRAIL = ")]}.,;:"
 """What a free-text word's end gives back after the cut, so prose keeps its punctuation, as a bare
 ``--source-local`` word keeps it."""
 
+FREE_CUT_TRAIL = FREE_WORD_TRAIL + " \t"
+"""What the provider rule's not-kept arm gives back after its cut (B13 round 43 C2436, ruling 158): the
+trail punctuation and trailing blanks and tabs, so ``OneDrive-Tailspin Toys "quoted" rest`` keeps its blank
+before the quote (``<path> "quoted" rest``), as it did before ruling 146. :data:`FREE_WORD_TRAIL` and its bare
+``--source-local`` reader are unchanged."""
+
 
 @functools.cache
 def agentsync_verbs() -> tuple[str, ...]:
