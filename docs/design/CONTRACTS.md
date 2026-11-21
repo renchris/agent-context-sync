@@ -44280,6 +44280,21 @@ True); repair still titles the page with the item's name, as before (C2510). Tes
 `test_a_cited_page_a_sync_replaced_is_superseded_not_deleted_c2409`,
 `test_a_superseded_tombstone_names_the_items_live_page_in_both_paths_c2510`.
 
+**Nothing to draft from, nothing asked** (C2424; ruling 163). Rule 4 counted curated topic pages, never converted
+mirror pages, so a synced folder holding only an empty subfolder was asked for a baseline draft, and the honest
+empty draft became a wait to keep about 10 questions and confirm them. With no converted page in the mirror
+(`loop._has_converted_page`: a page of any source, the inbox's included, whose front matter says `status:
+current`; the scaffold's `mirror/CLAUDE.md` and stubs do not count; a mirror that cannot be walked counts as
+holding one) `next_step`'s rule 4, and rule 5 for an empty draft (`questions.md` a draft with no numbered
+question), say `loop.NOTHING_TO_DRAFT` (`nothing to draft yet`), why (`<N> online-only file(s) wait(s) for a later
+sync to download it/them` from what next_step holds, else `the synced folders hold no converted document yet (no
+file, only empty subfolders, or files not read)`) and the move (`add a folder that holds documents
+(`~/.local/bin/agentsync add-source "<folder>"`), or put files in a synced folder or the inbox (<inbox>), then run
+`~/.local/bin/agentsync sync`; session done`), under rule 4's stage; `docs_waits` gives no draft wait for that
+empty draft. A draft that holds a question is the operator's to confirm, as before. Tests:
+`test_an_empty_mirror_asks_for_no_draft_c2424`, `test_only_online_files_say_they_wait_for_a_download_c2424`,
+`test_a_file_in_the_inbox_is_enough_to_draft_c2424`.
+
 **A lock that named no holder has its own mark** (C2540 with C2502). Under install.sh's quiet wait, a wait its
 probe missed marked stdout with `cli.LOCK_WAITED_MARK` (`lock wait: this sync waited for another sync's lock`)
 whatever held the lock, so a lock with an empty body (install.sh's lockf, a status or doctor probe, a cycle

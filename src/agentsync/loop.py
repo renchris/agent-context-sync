@@ -91,7 +91,7 @@ from agentsync.errors import AgentSyncError, ConfigError
 from agentsync.manifest import Manifest, ManifestBusyError, ManifestNotCurrentError
 from agentsync.model import LintFinding, PassKind, RowState, SourceKind, Verdict
 from agentsync.ops import launchd
-from agentsync.paths import expand, same_folder
+from agentsync.paths import DocsLayout, expand, same_folder
 from agentsync.text import plural
 
 _log = logging.getLogger(__name__)
@@ -1755,7 +1755,11 @@ def next_step(
         )
 
     pages = curate.iter_topic_pages(config.layout)
-    # Rules 4-6: the baseline comes before the first curated page.
+    # Rules 4-6: the baseline comes before the first curated page. With no converted page in the mirror (the
+    # synced folders hold no file, only empty subfolders, or files not read yet) there is nothing to draft
+    # from, and an empty draft is not one to confirm (B13 round 43 C2424, ruling 163).
+    if not pages and (questions is None or _empty_draft(eval_dir)) and not _has_converted_page(config.layout):
+        return done(_nothing_to_draft(docs, online=sum(files.online.values())), 4)
     if not pages and questions is None:
         return done(
             f"draft the baseline questions: follow step 1 (Draft) of {_baseline(docs)}, "
@@ -1811,6 +1815,78 @@ def next_step(
     return done("nothing to do: session done", 10)
 
 
+NOTHING_TO_DRAFT = "nothing to draft yet"
+"""The head of rule 4's step while the mirror holds no converted page (B13 round 43 C2424, ruling 163)."""
+_NUMBERED = re.compile(r"^\s*\d+[.)]\s")
+_FRONTMATTER_LINES = 80
+
+
+def _empty_draft(eval_dir: Path) -> bool:
+    """True when ``questions.md`` is a draft (not confirmed) that holds no numbered question: the honest
+    draft of an empty mirror, which is nothing to confirm (B13 round 43 C2424)."""
+    if _eval_status(eval_dir / "questions.md") == "confirmed":
+        return False
+    try:
+        text = (eval_dir / "questions.md").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return not any(_NUMBERED.match(line) for line in text.splitlines())
+
+
+def _has_converted_page(layout: DocsLayout) -> bool:
+    """True once the mirror holds a converted page (``status: current``) of any source, the inbox's
+    included; the scaffold's ``mirror/CLAUDE.md`` and stubs do not count. Stops at the first one, so a
+    mirror with content costs one page read (B13 round 43 C2424)."""
+    try:
+        for path in layout.mirror.rglob("*.md"):  # lazy: the first converted page ends it
+            if path.parent == layout.mirror and path.name == "CLAUDE.md":
+                continue
+            if _page_status(path) == "current":
+                return True
+    except OSError:
+        return True  # a mirror this account cannot walk is no proof it is empty: the draft rule stands
+    return False
+
+
+def _page_status(path: Path) -> str | None:
+    """The ``status:`` of a mirror page's frontmatter, None when it has none in its first lines."""
+    try:
+        with path.open(encoding="utf-8", errors="replace") as fh:
+            if fh.readline().rstrip("\n") != "---":
+                return None
+            for _ in range(_FRONTMATTER_LINES):
+                line = fh.readline()
+                if not line or line.rstrip("\n") == "---":
+                    return None
+                m = _STATUS_LINE.match(line)
+                if m:
+                    return m.group(1).strip("'\"").lower()
+    except OSError:
+        return None
+    return None
+
+
+def _nothing_to_draft(docs: Path, *, online: int) -> str:
+    """Rule 4's step while the mirror holds no converted page: why, from what next_step holds, and the move
+    (B13 round 43 C2424, ruling 163)."""
+    if online:
+        one = online == 1
+        why = (
+            f"{plural(online, 'online-only file')} {'waits' if one else 'wait'} for a later sync to download "
+            f"{'it' if one else 'them'}"
+        )
+    else:
+        why = (
+            "the synced folders hold no converted document yet (no file, only empty subfolders, or files not "
+            "read)"
+        )
+    inbox = _shown(docs.parent / "inbox")
+    return (
+        f'{NOTHING_TO_DRAFT}: {why}: add a folder that holds documents (`{BIN} add-source "<folder>"`), or '
+        f"put files in a synced folder or the inbox ({inbox}), then run `{BIN} sync`; session done"
+    )
+
+
 def docs_waits(config: Config) -> list[str]:
     """The WAITING ON YOU lines that read the docs repo alone, never the state: the baseline questions'
     draft. :func:`next_step` gives them in its order, and status gives them after the NEXT of a FAIL when the
@@ -1822,6 +1898,8 @@ def docs_waits(config: Config) -> list[str]:
     confirmed = questions == "confirmed" and answers == "confirmed"
     if questions is None or confirmed:
         return []
+    if _empty_draft(eval_dir) and not _has_converted_page(config.layout):
+        return []  # nothing to draft from yet: next_step says so in place of a wait (B13 round 43 C2424)
     # Where the two files are, not only their names: whoever confirms them did not write them (v9 rehearsal,
     # 2026-10-07). "up to", "all of them if there are fewer": the skill drafts fewer than 10 for a small
     # mirror, and the file holds what is left after the operator's cuts, not what was drafted (B13 round 5

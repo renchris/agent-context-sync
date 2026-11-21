@@ -2603,6 +2603,73 @@ def test_status_line_matches_the_kept_inbox_by_identity_c2411(tmp_path: Path, fo
     assert " · inbox on · " in loop.status_line(config)
 
 
+def _nothing_to_draft(config: Config, why: str) -> str:
+    inbox = loop._shown(config.docs_repo.parent / "inbox")
+    return (
+        f"NEXT: {loop.NOTHING_TO_DRAFT}: {why}: add a folder that holds documents (`{BIN} add-source "
+        f'"<folder>"`), or put files in a synced folder or the inbox ({inbox}), then run `{BIN} sync`; '
+        "session done"
+    )
+
+
+def test_an_empty_mirror_asks_for_no_draft_c2424(tmp_path: Path) -> None:
+    """B13 round 43 C2424 (ruling 163): rule 4 counted curated topic pages, never converted mirror pages, so a
+    synced folder holding only an empty subfolder was asked for a baseline draft, and the honest empty draft
+    was then a wait to keep about 10 questions and confirm them. With no converted page in the mirror the
+    step says ``nothing to draft yet``, why and the move, under rule 4; an empty draft is no wait either."""
+    root = tmp_path / "Contoso Gamma"
+    (root / "Gamma Empty").mkdir(parents=True)
+    config = _synced(tmp_path, root)
+    why = (
+        "the synced folders hold no converted document yet (no file, only empty subfolders, or files not "
+        "read)"
+    )
+    step = loop.next_step(config)
+    assert step.rule == 4 and _lines(config)[0] == _nothing_to_draft(config, why), step
+    root_eval = config.docs_repo / "_eval"
+    _write(root_eval / "questions.md", "status: draft\n")
+    _write(root_eval / "answers.md", "status: draft\n")
+    assert loop.docs_waits(config) == []
+    step = loop.next_step(config)
+    assert step.rule == 4 and _lines(config) == [_nothing_to_draft(config, why)], _lines(config)
+    _eval(config, "draft", "draft")  # a draft that holds a question is the operator's to confirm
+    assert loop.next_step(config).rule == 5
+
+
+def test_only_online_files_say_they_wait_for_a_download_c2424(
+    tmp_path: Path, folder: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C2424's second case: every file online-only and deferred, the step says they wait for a download."""
+    online = {(folder / NOTE_NAME).stat().st_ino}
+    real_dataless = materialise.is_dataless
+
+    def fake(st: os.stat_result) -> bool:  # mocked SF_DATALESS: no File Provider in a test
+        return st.st_ino in online or real_dataless(st)
+
+    monkeypatch.setattr(materialise, "is_dataless", fake)
+    monkeypatch.setattr(arm_local, "is_dataless", fake)
+    config = _setup(tmp_path, local_source_table("work", folder))
+    assert run_cycle(config, mode=None, budget_bytes=0).exit_code == 0
+    step = loop.next_step(config)
+    why = "1 online-only file waits for a later sync to download it"
+    assert step.rule == 4 and _lines(config)[0] == _nothing_to_draft(config, why), _lines(config)
+
+
+def test_a_file_in_the_inbox_is_enough_to_draft_c2424(tmp_path: Path) -> None:
+    """C2424's control: an empty synced folder and one file saved by hand to the inbox is a mirror to draft
+    from, so rule 4 asks for the draft."""
+    root = tmp_path / "Contoso Gamma"
+    (root / "Gamma Empty").mkdir(parents=True)
+    config = _synced(tmp_path, root)
+    config, box = ensure_inbox(config.config_path)
+    assert box is not None and box.path is not None
+    (box.path / NOTE_NAME).write_text("The purchase order is approved.\n", encoding="utf-8")
+    assert run_cycle(config, mode=None).exit_code == 0
+    assert _lines(config)[0] == (
+        f"NEXT: draft the baseline questions: follow step 1 (Draft) of {BASELINE}, then run `{BIN} sync`"
+    )
+
+
 # ---- the one-time re-read: a note that says "sync again" while a sync reads more --------------------------
 
 REREAD_TAIL = (
