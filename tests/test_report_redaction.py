@@ -2913,6 +2913,108 @@ def test_both_reports_number_an_id_another_value_hides_alike_c2233(
     assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
 
 
+def _hold(env: dict[str, str], *scopes: str) -> None:  # noqa: F811
+    """``scopes`` held, as status's HOLD: line reads them from the heartbeat."""
+    state = Path(env["HOME"]) / "Library" / "Application Support" / "agentsync"
+    state.mkdir(parents=True, exist_ok=True)
+    (state / "heartbeat.json").write_text(json.dumps({"holds": list(scopes)}), encoding="utf-8")
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize(
+    "holds",
+    [
+        ["b", "quillon"],
+        ["contoso", "quillon", "wombat-matter"],
+        ["juniper-notes", "quillon", "wombat-matter"],
+        ["a", "quillon", "wombat-matter"],
+    ],
+    ids=["one-character-first", "org", "another-folders-slug", "one-character"],
+)
+def test_both_reports_number_a_hold_scope_another_value_hides_alike_c2433_c2501(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+    holds: list[str],
+) -> None:
+    """B13 round 43 ruling 159, C2501 with C2433: the shell's hold-scope loop numbered every scope, a
+    1-character one and one an organisation or a folder's slug already holds, so each later scope read one
+    <source-N> apart from the agentsync report's (and a folder's slug read <source-N>, not its <folder-N>).
+    It now skips a scope under 2 characters and keeps the placeholder id_known finds, as the configured ids
+    do: one line each in both reports."""
+    _hold(env, *holds)
+    said = [f"waiting on {scope} now" for scope in holds]
+    shell, python, shell_private, python_private = _both_reports(env, ["Juniper Notes"], said, locale)
+    assert len(python) == len(said), python
+    assert not [ln for ln in python for scope in holds if len(scope) > 1 and f" {scope} " in ln], python
+    assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+def test_both_reports_number_a_vanished_id_and_its_folder_before_a_hold_scope_c2433_c2501(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+) -> None:
+    """B13 round 43 ruling 159, C2501 with C2433: three sources synced, then their [[source]] blocks removed,
+    so the manifest holds their ids (the agentsync report reads it) and the sync's refusal quotes them, with
+    the add-back folder of the one whose id is its folder's slug, on install.out (the shell report reads it).
+    The shell numbered the 1-character id `b`, so every later id read one <source-N> apart, and registered the
+    add-back folder after the hold scopes, so a scope spelling it (`betaplan`) read <source-N> where the
+    agentsync report reads its <folder-N>. The add-back folder lies below step 1's list (depth 4), which both
+    reports read, so only the add-back registers it."""
+    home = Path(env["HOME"])
+    lib = _cloud(env) / "OneDrive-Contoso"
+    run = {**env, "LC_ALL": locale, "LANG": locale, "AGENTSYNC_OCR": "0", "AGENTSYNC_TM_EXCLUDE": "0"}
+    tables = []
+    for sid, name in (
+        ("s0", "Juniper Notes"),
+        ("b", "Alpha Plan"),
+        ("beta-plan", "Deep/Er/Beta Plan"),
+        ("quillon", "Gamma"),
+    ):
+        (lib / name).mkdir(parents=True)
+        (lib / name / "notes.txt").write_text("notes\n", encoding="utf-8")
+        tables.append(local_source_table(sid, lib / name))
+    cfg = _write_config(env, *tables)
+
+    def sync() -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, "-m", "agentsync", "sync", "--config", str(cfg)],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=300,
+            env=run,
+            stdin=subprocess.DEVNULL,
+        )
+
+    first = sync()
+    assert first.returncode == 0, first.stdout + first.stderr
+    _write_config(env, tables[0])
+    refused = sync()
+    assert refused.returncode == 78, refused.stdout + refused.stderr
+    [line] = [ln for ln in refused.stderr.splitlines() if ln.startswith("configuration error: ")]
+    assert "'b'" in line and "'quillon'" in line and "Beta Plan" in line, line
+    assert install_sh(run, "--list-folders", "-a").returncode in (0, 3)
+    out = home / "agent-context" / "setup" / "install.out"
+    with out.open("a", encoding="utf-8") as f:
+        f.write(f"{line}\n")
+    # the heartbeat's list, read only while no hold record is there (the sync wrote one)
+    (home / "Library" / "Application Support" / "agentsync" / "hold-record.json").unlink(missing_ok=True)
+    _hold(env, "betaplan", "wombat-matter")
+    said = [
+        "waiting on quillon now",
+        "waiting on beta-plan now",
+        "waiting on betaplan now",
+        "Beta Plan moved",
+        "waiting on wombat-matter now",
+    ]
+    shell, python, shell_private, python_private = _both_reports(env, ["Juniper Notes"], said, locale)
+    assert len(python) == len(said), python
+    assert not [ln for ln in python for w in ("quillon", "beta", "Beta", "wombat") if w in ln], python
+    assert python[2] == python[3].replace(" moved", "").replace("<", "waiting on <", 1) + " now", python
+    assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
+
+
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
 def test_both_reports_number_a_folder_install_log_alone_names_after_the_rest_c2202(
     env: dict[str, str],  # noqa: F811

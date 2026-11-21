@@ -3874,6 +3874,24 @@ redaction_pairs() {
 	# blanks, "_", "\" or "-") shares that folder's <folder-N>, as in the Python report, so the wait an agent
 	# quotes reads as the folder it is about (B13 round 6 G8). Matched by the id's spelling, not its path: of
 	# two folders "Reports" under two organisations, "reports-2" keeps its own <source-N>.
+	# ID: sets ph to the placeholder a value registered before it holds, as setup_report.Redactor._known finds it
+	# (an organisation's or a fuzzily registered folder's key of 3 or more, else a folded folder value, a
+	# two-letter word in capitals only as written), else to nothing, and k to the id's fuzzy key. One lookup for
+	# all three source-id loops: configured, vanished and hold scopes (B13 round 42 ruling 149, C2233; round 43
+	# ruling 159, C2501 with C2433: the other two numbered a hidden id, so later ids read one apart from Python)
+	id_known() {
+		ph="" k="$(fuzzy_key "$1")"
+		case "$orgs_seen" in
+		*$'\n'"~$k"$'\t'*) x="${orgs_seen#*$'\n'"~$k"$'\t'}" ph="<org-${x%%$'\n'*}>" ;;
+		esac
+		if [ -z "$ph" ] && [ "${#k}" -ge 3 ]; then
+			case "$fuzzy_keys" in *$'\n'"$k"$'\t'*) x="${fuzzy_keys#*$'\n'"$k"$'\t'}" ph="${x%%$'\n'*}" ;; esac
+		fi
+		if [ -z "$ph" ]; then
+			x="$(recase lower "$1")"
+			case "$folded_vals" in *$'\n'"$x"$'\t'*) x="${folded_vals#*$'\n'"$x"$'\t'}" ph="${x%%$'\n'*}" ;; esac
+		fi
+	}
 	if [ -f "$CONFIG" ]; then
 		while IFS=$'\t' read -r i v f; do
 			ids="$ids$v "
@@ -3881,22 +3899,10 @@ redaction_pairs() {
 			*" $v "*) case "$f" in "$cs"/* | \~/Library/CloudStorage/*) ;; *) continue ;; esac ;;
 			esac
 			# an id under 2 characters takes no number and no pair, as setup_report.Redactor.add ignores it; any
-			# other is first looked up as Redactor._known looks it up, an organisation's or a fuzzily registered
-			# folder's key, else a folded folder value (a two-letter word in capitals only as written), and keeps
-			# that placeholder; only a miss takes the next <source-N>, and its pair is always registered (B13
-			# round 42 ruling 149, C2233: a hidden id used up a number, so later ids read one apart from Python)
+			# other keeps the placeholder id_known finds; only a miss takes the next <source-N>, and its pair is
+			# always registered (B13 round 42 ruling 149, C2233)
 			[ "${#v}" -ge 2 ] || continue
-			ph="" k="$(fuzzy_key "$v")"
-			case "$orgs_seen" in
-			*$'\n'"~$k"$'\t'*) x="${orgs_seen#*$'\n'"~$k"$'\t'}" ph="<org-${x%%$'\n'*}>" ;;
-			esac
-			if [ -z "$ph" ] && [ "${#k}" -ge 3 ]; then
-				case "$fuzzy_keys" in *$'\n'"$k"$'\t'*) x="${fuzzy_keys#*$'\n'"$k"$'\t'}" ph="${x%%$'\n'*}" ;; esac
-			fi
-			if [ -z "$ph" ]; then
-				x="$(recase lower "$v")"
-				case "$folded_vals" in *$'\n'"$x"$'\t'*) x="${folded_vals#*$'\n'"$x"$'\t'}" ph="${x%%$'\n'*}" ;; esac
-			fi
+			id_known "$v"
 			# numbered in config order among the ids that take a number of their own, as the Python report
 			# numbers them: one that shares its folder's <folder-N> takes none (C2071)
 			[ -n "$ph" ] || { tables=$((tables + 1)) && ph="<source-$tables>"; }
@@ -3918,32 +3924,23 @@ redaction_pairs() {
 	# config.vanished_sources [FAIL] and the sync's refusal quote its id ("source 'x' (3 files) is mirrored but
 	# no longer in sources.toml"): the ids those lines quote, registered after the configured ones (B13 round
 	# 16 T42), numbered after the configured ones on the same counter (B13 round 42 C2238),
-	# so a number is this report's own (round 18 V51).
+	# so a number is this report's own (round 18 V51). As the configured ones: an id under 2 characters is skipped
+	# before it counts, and one id_known finds keeps that placeholder (B13 round 43 ruling 159, C2501 with C2433).
 	while IFS= read -r v; do
 		case "$ids" in *" $v "*) continue ;; esac
 		case " $GENERIC_SOURCE_IDS " in *" $v "*) continue ;; esac
-		tables=$((tables + 1)) ids="$ids$v "
-		add_pair "$v" "<source-$tables>" w
-		short_pair "$v" "<source-$tables>" # a 2-character id, as the configured ones (B13 round 42 ruling 149, C2287)
+		[ "${#v}" -ge 2 ] || continue
+		id_known "$v"
+		[ -n "$ph" ] || { tables=$((tables + 1)) && ph="<source-$tables>"; }
+		ids="$ids$v "
+		add_pair "$v" "$ph" w
+		short_pair "$v" "$ph" # a 2-character id, as the configured ones (B13 round 42 ruling 149, C2287)
 	done < <({
 		[ -z "$DOCTOR_LOG" ] || [ ! -f "$DOCTOR_LOG" ] || LC_ALL=C grep -E '^\[FAIL\] config\.vanished_sources ' "$DOCTOR_LOG"
 		[ ! -f "$INSTALL_OUT" ] || LC_ALL=C grep -E '(^configuration error: |config\.vanished_sources ).*mirrored but no longer in sources\.toml' "$INSTALL_OUT"
 	} 2>/dev/null | LC_ALL=C sed 's/ mirrored but no longer in sources\.toml.*//' |
 		LC_ALL=C grep -oE "'[a-z0-9][a-z0-9-]*' \([0-9]+ file(s|\(s\))?\)" | LC_ALL=C sed "s/^'//; s/' .*//" | LC_ALL=C sort -u)
-	# Every hold scope no source above names (hold_scopes: the hold list, the audit trail and the hold record), as
-	# a source id after them: a scope is free text in an id's shape, so a matter name can stand there, and status's
-	# HOLD: line and the lost-hold FAIL print it (B13 round 30 ruling 39, C386, as setup_report registers lane RA's
-	# pairs). An id that is one of agentsync's own words or a word this report prints stays readable, as setup_report
-	# keeps it (U62); "all" is never one. In byte order, after the vanished ids, as the Python report numbers them.
-	while IFS= read -r v; do
-		case "$ids" in *" $v "*) continue ;; esac
-		case " $GENERIC_SOURCE_IDS " in *" $v "*) continue ;; esac
-		! report_word "$v" || continue
-		tables=$((tables + 1)) ids="$ids$v "
-		add_pair "$v" "<source-$tables>" w
-		short_pair "$v" "<source-$tables>" # as the vanished ids' loop (B13 round 42 ruling 149, C2287)
-	done < <(hold_scopes)
-	# and the folder each one is added back from: doctor's fix and the sync's refusal end with
+	# and the folder each vanished id is added back from: doctor's fix and the sync's refusal end with
 	# cycle.vanished_add_back_tail, "... install.sh --source-local "<folder>" [--source-local ...]" under
 	# install.sh and "... add-source "<folder>"[, then ... add-source "<folder>"]" elsewhere, each folder
 	# double-quoted with \ " $ and ` escaped (cycle._shown_arg), single-quoted by shlex.quote for a name holding
@@ -3990,6 +3987,25 @@ redaction_pairs() {
 			if (v != "") print v
 		}
 	}' | LC_ALL=C sort -u)
+	# Every hold scope no source above names (hold_scopes: the hold list, the audit trail and the hold record), as
+	# a source id after them: a scope is free text in an id's shape, so a matter name can stand there, and status's
+	# HOLD: line and the lost-hold FAIL print it (B13 round 30 ruling 39, C386, as setup_report registers lane RA's
+	# pairs). An id that is one of agentsync's own words or a word this report prints stays readable, as setup_report
+	# keeps it (U62); "all" is never one. In byte order, after the vanished ids and their add-back folders, as the
+	# Python report registers them, so a scope that spells such a folder reads its <folder-N>; as the vanished ids, an
+	# id under 2 characters is skipped before it counts and one id_known finds keeps that placeholder (B13 round 43
+	# ruling 159, C2501 with C2433).
+	while IFS= read -r v; do
+		case "$ids" in *" $v "*) continue ;; esac
+		case " $GENERIC_SOURCE_IDS " in *" $v "*) continue ;; esac
+		! report_word "$v" || continue
+		[ "${#v}" -ge 2 ] || continue
+		id_known "$v"
+		[ -n "$ph" ] || { tables=$((tables + 1)) && ph="<source-$tables>"; }
+		ids="$ids$v "
+		add_pair "$v" "$ph" w
+		short_pair "$v" "$ph" # as the vanished ids' loop (B13 round 42 ruling 149, C2287)
+	done < <(hold_scopes)
 	# The CloudStorage folders only install.log's --source-local words (and this run's) name, after every value the
 	# Python report numbers, which never numbers them: configured and listed folders and one outside CloudStorage
 	# then read one <folder-N> in both reports, and a product word such as Copilot stays unnumbered (B13 round 42

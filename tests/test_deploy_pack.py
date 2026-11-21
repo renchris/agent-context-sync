@@ -13126,7 +13126,8 @@ def test_the_guides_redaction_rows_name_own_moved_folders_and_dotted_remotes() -
     script = SCRIPTS[0].read_text(encoding="utf-8")
     shell_projects = script.index('\t\t\tproject_values "$line"\n')
     shell_own = script.index('own_folder_values "$own_state" "$HOME/Library/Application Support/agentsync"')
-    assert shell_projects < shell_own < script.index('add_pair "$v" "<source-$tables>" w')
+    # the source ids' loops, after id_known's lookup (B13 round 43 ruling 159, C2501 with C2433)
+    assert shell_projects < shell_own < script.index('\t\t\tid_known "$v"\n')
     [row] = [ln for ln in _feedback_page().splitlines() if ln.startswith("| `<library-N>`, `<folder-N>`")]
     assert (
         "and, in the agentsync report since 2026-10-21 (B13 round 22 Z21, Z28, CONTRACTS §16.158) and in the"
