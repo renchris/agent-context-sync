@@ -44212,7 +44212,21 @@ Reserved for round 43 lane RB of B13.
 
 ### 16.272 Round 43: the inbox's state decided once, a unit-removed tombstone naming its successor, and a waiting recording told and rolled back as waiting (2026-11-21, wave B13 round 43 lane B)
 
-Reserved for round 43 lane B of B13.
+Round 43's lane B items (`docs/plans/bring-back-ocr.md`, "B13 round 43"; specs `round43/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's rulings 162 to 165 and 169 settle it). A dated line this round writes
+reads `Amended 2026-11-21, §16.272 C<n>`.
+
+**No stage reads an inbox recording inside its quiescence window** (C2509; ruling 165; data integrity). C2293
+skipped the inbox walk's withheld ids only in the interactive replan and re-read, so a background poll still read a
+recording the walk held back as settling: `touch_withheld` stamps only `last_seen_run`, so an older UNCHANGED stub
+was a re-read candidate of the recording pass, and a pending row stayed in the source's work queue, and a page was
+built from bytes a paused writer had not finished. `_sync_source` drops the walk's withheld ids from an unforced
+work queue (`materialise PATH` names its own files and is left as it was; `queued` stays the whole queue's ids, so
+the replan's skip set and the renames' `moved - queued` keep their meaning), and `_recording_candidates` takes the
+source's withheld ids from `_withheld`, passes them to `reread_candidates` as `skip` and drops them from the queued
+recordings. A file that settles is listed on the next pass and read there. Test:
+`test_a_poll_reads_no_inbox_recording_inside_its_window_c2509` (a settled stub and a pending row, each under a poll
+with `quiescence_s = 600` and a fake-clock inbox: no fetch and no piece read inside the window, both read after it).
 
 ### 16.273 Round 43: the converters: the zero-byte re-read counted a row at a time, a record flattened before it is escaped, and a capped page showing the largest cut that fits (2026-11-21, wave B13 round 43 lane E)
 

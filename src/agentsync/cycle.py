@@ -4624,13 +4624,19 @@ class _Cycle:
             self.budget_bytes if self.budget_bytes is not None else src.max_materialise_bytes, src.max_files
         )
         queued = {r.stable_id for r in queue}
+        # A file the walk withheld as still settling (an inbox's quiescence) is not work this pass, though
+        # its row may be pending from an earlier one: no stage reads it inside its window, and the pass
+        # after it settles lists it again (B13 round 43 C2509, ruling 165).  ``materialise PATH`` names
+        # its own files and is left as it was; ``queued`` stays the whole queue's ids.
+        held = set(scan.withheld) if forced is None else set()
         # The local, inbox and drive arms have a path scope (include/exclude) and answer for a row they did
         # not list this pass.  Mail and Teams have none: every queued row of theirs is work.
         in_scope: Callable[[str], bool] | None = getattr(arm, "in_scope", None)
         work = [
             r
             for r in queue
-            if not (complete_full and r.last_seen_run < self.run_id)
+            if r.stable_id not in held
+            and not (complete_full and r.last_seen_run < self.run_id)
             and (in_scope is None or in_scope(r.rel_path))
         ]
         # (a row absent from a complete listing is a deletion candidate, not work; a row the source's
@@ -5608,13 +5614,20 @@ class _Cycle:
             if arm is None:
                 continue
             record = self._recording_load(src.id)
-            queued = self.manifest.get_items(src.id, self._recording_queue.get(src.id, ()))
+            # a recording the walk withheld as still settling is read by no stage this pass, queued or a
+            # stub to read again (B13 round 43 C2509, ruling 165)
+            held = self._withheld.get(src.id, (frozenset(), frozenset()))[0]
+            queued = {
+                sid: row
+                for sid, row in self.manifest.get_items(src.id, self._recording_queue.get(src.id, ())).items()
+                if sid not in held
+            }
             picked = [(row, False) for row in queued.values()]
             targets = self._reread_targets(src.id, recordings=True) if not self.forced_paths else []
             after = ""
             while isinstance(arm, LocalArm) and targets:
                 rows = self.manifest.reread_candidates(
-                    src.id, targets, seen_run=self.run_id, after=after, limit=_WORK_BATCH
+                    src.id, targets, seen_run=self.run_id, skip=held, after=after, limit=_WORK_BATCH
                 )
                 if not rows:
                     break

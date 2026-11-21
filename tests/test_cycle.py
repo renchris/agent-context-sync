@@ -7892,6 +7892,67 @@ def test_a_settling_inbox_recording_is_not_replanned_until_it_settles_c2293(
     assert _row(config, clip, "inbox").state_reason == cycle_mod.RECORDING_WAITS
 
 
+@pytest.mark.parametrize("pending", [False, True], ids=["settled-stub", "pending-row"])
+def test_a_poll_reads_no_inbox_recording_inside_its_window_c2509(
+    tmp_path: Path, local_source_dir: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch, pending: bool
+) -> None:
+    """B13 round 43 C2509 (ruling 165): C2293's skip set held only the interactive replan, so a background
+    poll still read an inbox recording the walk withheld as settling: an UNCHANGED stub was a re-read
+    candidate of the recording pass, and a pending row stayed in the source's work queue. _sync_source drops
+    held ids from an unforced work queue and _recording_candidates skips them, so no stage fetches the file
+    inside its quiescence window; the poll after the window reads it."""
+    ahead = [3600 * 1_000_000_000]
+    fetched: list[str] = []
+
+    class FakeClockInbox(al.InboxArm):
+        def __init__(self, cfg: Any) -> None:
+            super().__init__(cfg)
+            self._clock = lambda: time.time_ns() + ahead[0]
+            self._sleep = lambda _s: None
+
+        def fetch(self, item: Any, dest_dir: Path, budget: Any) -> Any:
+            fetched.append(item.rel_path)
+            return super().fetch(item, dest_dir, budget)
+
+    monkeypatch.setattr(cycle_mod, "InboxArm", FakeClockInbox)
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    clip = "Contoso clip.mp4"
+    stub_recording(inbox / clip, 10)
+    sources = INBOX_SOURCE.format(path=inbox).replace("quiescence_s = 0", "quiescence_s = 600")
+    config = config_with(tmp_path, local_source_dir, sources)
+    monkeypatch.setattr(loop_mod.launchd, "agents_installed", lambda _c: False)
+    _fail_ocr(monkeypatch)
+    for _ in range(2):  # the second leaves the stub's verdict unchanged
+        assert run(config, mode=None, only=["inbox"]).exit_code == 0
+    page_path = config.docs_repo / slug.mirror_rel_path("inbox", clip)
+    page = page_path.read_bytes()
+    row = _row(config, clip, "inbox")
+    assert (row.state, row.state_reason) == (RowState.REFUSED, "no converter for .mp4"), row
+    assert row.last_verdict is Verdict.UNCHANGED, row
+    sid = row.stable_id
+    if pending:
+        with Manifest(config.state_paths.db) as m:
+            m.set_verdict("inbox", sid, Verdict.MAYBE_CHANGED)
+    _use_ocr(monkeypatch, tmp_path)
+    monkeypatch.setattr(cycle_mod.media, "probe", lambda _c, _d: ("ready", ""))
+    ahead[0] = 0
+    os.utime(inbox / clip)  # rewritten in place: its ctime is now, inside the window
+    fetched.clear()
+    rec.worked.clear()
+    assert run(config, mode=CycleMode.POLL, only=["inbox"]).exit_code == 0
+    assert fetched == [] and rec.worked == [], (fetched, rec.worked)
+    after = _row(config, clip, "inbox")
+    assert (after.state, after.state_reason) == (RowState.REFUSED, "no converter for .mp4"), after
+    want = Verdict.MAYBE_CHANGED if pending else Verdict.UNCHANGED
+    assert after.last_verdict is want, after
+    assert page_path.read_bytes() == page
+    ahead[0] = 3600 * 1_000_000_000
+    assert run(config, mode=CycleMode.POLL, only=["inbox"]).exit_code == 0
+    assert fetched and rec.worked, (fetched, rec.worked)
+    assert page_path.read_bytes() != page
+
+
 def test_a_no_media_recording_stub_stays_uncounted_and_unplanned_c2039(
     tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
 ) -> None:
