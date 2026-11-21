@@ -2824,8 +2824,26 @@ def test_both_reports_read_a_googledrive_address_tenant_and_a_short_id_alike_c20
             assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
 
 
+def _hold(env: dict[str, str], *scopes: str) -> None:  # noqa: F811
+    """``scopes`` held, as status's HOLD: line reads them from the heartbeat."""
+    state = Path(env["HOME"]) / "Library" / "Application Support" / "agentsync"
+    state.mkdir(parents=True, exist_ok=True)
+    (state / "heartbeat.json").write_text(json.dumps({"holds": list(scopes)}), encoding="utf-8")
+
+
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
-@pytest.mark.parametrize(("sid", "private"), [("it", True), ("hr", False), ("qx", False)])
+@pytest.mark.parametrize(
+    ("sid", "private"),
+    [
+        ("it", True),
+        ("hr", False),
+        ("qx", False),
+        ("q-3", False),
+        ("a-b", False),
+        ("q-x", False),
+        ("i-t", True),
+    ],
+)
 def test_both_reports_cut_a_two_character_id_in_any_case_one_id_each_c2287_c2312(
     env: dict[str, str],  # noqa: F811
     locale: str,
@@ -2836,7 +2854,9 @@ def test_both_reports_cut_a_two_character_id_in_any_case_one_id_each_c2287_c2312
     in any case in both reports, quoted as written, in capitals and capitalized, in free text and on doctor's
     vanished-sources line; one id a report each, so the private-only verdict is the id's own: a word id
     (`it`) makes the report private only where its placeholder shows, `hr` and `qx` leave it public, the id
-    still cut. The shell half is lane RB's (_R146_SHELL)."""
+    still cut. The shell half is lane RB's (_R146_SHELL). B13 round 43 ruling 159, C2434: an id 2 characters
+    long without its `-` (`q-3`, `a-b`, `q-x`) is one too, as the agentsync report's _norm reads it, where
+    the shell measured it as written and printed `Q-3` in clear; `i-t` makes the report private only."""
     said = [
         f"the {sid} source, {sid.upper()} and {sid.capitalize()} too",
         f"[FAIL] config.vanished_sources — {sid}, reports-2 have files on record",
@@ -2852,33 +2872,34 @@ def test_both_reports_cut_a_two_character_id_in_any_case_one_id_each_c2287_c2312
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
 @pytest.mark.parametrize("entry", ["hold-scope", "vanished"])
+@pytest.mark.parametrize("sid", ["qx", "q-3", "a-b", "q-x", "i-t"])
 def test_both_reports_cut_a_two_character_hold_scope_or_vanished_id_in_any_case_c2287(
     env: dict[str, str],  # noqa: F811
     locale: str,
     entry: str,
+    sid: str,
 ) -> None:
     """B13 round 42 ruling 149, C2287 with C2232 (privacy): the shell's vanished-source and hold-scope loops
     registered an id through add_pair alone, whose floor is 3 characters, so a 2-character vanished id or hold
     scope printed in clear in the shell report. Each loop now calls short_pair after add_pair with the same
     <source-N>: a whole word in any case. A hold scope is read by both reports (one line each); a vanished id
     quoted on install.out's configuration error is read by the shell from that line, the agentsync report
-    from the manifest, so its rows are the shell's alone."""
+    from the manifest, so its rows are the shell's alone. B13 round 43 ruling 159, C2434: one 2 characters
+    long without its `-` (`q-3`, `a-b`, `q-x`, `i-t`) too, as _norm reads it."""
     home = Path(env["HOME"])
     if entry == "hold-scope":
-        state = home / "Library" / "Application Support" / "agentsync"
-        state.mkdir(parents=True, exist_ok=True)
-        (state / "heartbeat.json").write_text(json.dumps({"holds": ["qx"]}), encoding="utf-8")
+        _hold(env, sid)
     else:
         out = home / "agent-context" / "setup" / "install.out"
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(
-            "configuration error: source 'qx' (3 files) is mirrored but no longer in sources.toml\n",
+            f"configuration error: source '{sid}' (3 files) is mirrored but no longer in sources.toml\n",
             encoding="utf-8",
         )
-    said = ["waiting on qx now", "waiting on QX now", "waiting on Qx now"]
+    said = [f"waiting on {sid} now", f"waiting on {sid.upper()} now", f"waiting on {sid.capitalize()} now"]
     shell, python, shell_private, python_private = _both_reports(env, ["Juniper Notes"], said, locale)
     assert len(shell) == len(said), shell
-    assert not [ln for ln in shell if "qx" in ln.lower()], shell
+    assert not [ln for ln in shell if sid in ln.lower()], shell
     assert len(set(shell)) == 1 and "<source-" in shell[0], shell
     if entry == "hold-scope":
         assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
@@ -2911,13 +2932,6 @@ def test_both_reports_number_an_id_another_value_hides_alike_c2233(
     assert len(python) == len(said), python
     assert not [ln for ln in python for sid in ids if len(sid) > 1 and f" {sid} " in ln], python
     assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
-
-
-def _hold(env: dict[str, str], *scopes: str) -> None:  # noqa: F811
-    """``scopes`` held, as status's HOLD: line reads them from the heartbeat."""
-    state = Path(env["HOME"]) / "Library" / "Application Support" / "agentsync"
-    state.mkdir(parents=True, exist_ok=True)
-    (state / "heartbeat.json").write_text(json.dumps({"holds": list(scopes)}), encoding="utf-8")
 
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])

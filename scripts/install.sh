@@ -3892,6 +3892,16 @@ redaction_pairs() {
 			case "$folded_vals" in *$'\n'"$x"$'\t'*) x="${folded_vals#*$'\n'"$x"$'\t'}" ph="${x%%$'\n'*}" ;; esac
 		fi
 	}
+	# ID PLACEHOLDER KEY: a source id's pairs, as written (flag w), then the 2-character case decided by KEY, the
+	# separator-free fuzzy key id_known leaves in k, as setup_report.Redactor.add tests len(_norm(value)) == 2:
+	# an id longer as written whose key is 2 characters (`q-3`, `i-t`) is a whole word in any case (flag i), and
+	# fallback_redaction judges its two-letter word on that key; any other goes to short_pair, which tests the
+	# written length, its folder-part callers unchanged (B13 round 43 ruling 159, C2434; makes worse True for
+	# measuring the raw length in both reports, which stopped the agentsync report cutting `Q-3`)
+	id_pairs() {
+		add_pair "$1" "$2" w
+		if [ "${#3}" -eq 2 ] && [ "${#1}" -ne 2 ]; then add_forms "$1" "$2" i; else short_pair "$1" "$2"; fi
+	}
 	if [ -f "$CONFIG" ]; then
 		while IFS=$'\t' read -r i v f; do
 			ids="$ids$v "
@@ -3906,8 +3916,7 @@ redaction_pairs() {
 			# numbered in config order among the ids that take a number of their own, as the Python report
 			# numbers them: one that shares its folder's <folder-N> takes none (C2071)
 			[ -n "$ph" ] || { tables=$((tables + 1)) && ph="<source-$tables>"; }
-			add_pair "$v" "$ph" w
-			short_pair "$v" "$ph"
+			id_pairs "$v" "$ph" "$k"
 		done < <(LC_ALL=C awk '
 			function flush() { if (inside && id != "") print n "\t" id "\t" path; id = ""; path = "" }
 			/^[[:space:]]*\[/ {
@@ -3933,8 +3942,7 @@ redaction_pairs() {
 		id_known "$v"
 		[ -n "$ph" ] || { tables=$((tables + 1)) && ph="<source-$tables>"; }
 		ids="$ids$v "
-		add_pair "$v" "$ph" w
-		short_pair "$v" "$ph" # a 2-character id, as the configured ones (B13 round 42 ruling 149, C2287)
+		id_pairs "$v" "$ph" "$k" # a 2-character id, as the configured ones (B13 round 42 ruling 149, C2287)
 	done < <({
 		[ -z "$DOCTOR_LOG" ] || [ ! -f "$DOCTOR_LOG" ] || LC_ALL=C grep -E '^\[FAIL\] config\.vanished_sources ' "$DOCTOR_LOG"
 		[ ! -f "$INSTALL_OUT" ] || LC_ALL=C grep -E '(^configuration error: |config\.vanished_sources ).*mirrored but no longer in sources\.toml' "$INSTALL_OUT"
@@ -4003,8 +4011,7 @@ redaction_pairs() {
 		id_known "$v"
 		[ -n "$ph" ] || { tables=$((tables + 1)) && ph="<source-$tables>"; }
 		ids="$ids$v "
-		add_pair "$v" "$ph" w
-		short_pair "$v" "$ph" # as the vanished ids' loop (B13 round 42 ruling 149, C2287)
+		id_pairs "$v" "$ph" "$k" # as the vanished ids' loop (B13 round 42 ruling 149, C2287)
 	done < <(hold_scopes)
 	# The CloudStorage folders only install.log's --source-local words (and this run's) name, after every value the
 	# Python report numbers, which never numbers them: configured and listed folders and one outside CloudStorage
@@ -7055,7 +7062,8 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	# this loop over the pairs, since a flag set in the redaction_pairs subshell never reaches it (B13 round 39
 	# C1627 with C1671 and C1681, C1635).
 	while IFS=$'\t' read -r v p _; do
-		case "$p" in "<folder-"* | "<org-"*) ;; "<source-"*) [ "${#v}" -eq 2 ] || continue ;; *) continue ;; esac
+		# a source id by its key without `-`, the one separator an id holds, as id_pairs reads it (C2434)
+		case "$p" in "<folder-"* | "<org-"*) ;; "<source-"*) v="${v//-/}" && [ "${#v}" -eq 2 ] || continue ;; *) continue ;; esac
 		case "$v" in
 		"") continue ;;
 		*[!A-Za-z]*)
