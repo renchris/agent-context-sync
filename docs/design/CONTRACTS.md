@@ -44183,6 +44183,26 @@ exit-0 install case after this lands; round 43 rehearses v39 with v38's block (4
 `test_step2_tells_of_the_inbox_only_when_its_source_is_live_c2092` (a kind = "local" source on the kept folder and
 cli's own line), `test_the_prompt_text_changes_only_with_its_version`, `test_readme_prompt_compat_matches_the_installer`.
 
+### 16.270 Round 43: the report: every path cut in every spelling its printer writes, a cut token ending at the same byte in both reports, and the inbox's state as one helper decides it (2026-11-21, wave B13 round 43 lane RA)
+
+Reserved for round 43 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 43").
+
+### 16.271 Round 43: the installer: a source id and a folder take Python's number and length rule, another build's render gets every cut, and C2469 waits on the operator (2026-11-21, wave B13 round 43 lane RB)
+
+Reserved for round 43 lane RB of B13.
+
+### 16.272 Round 43: the inbox's state decided once, a unit-removed tombstone naming its successor, and a waiting recording told and rolled back as waiting (2026-11-21, wave B13 round 43 lane B)
+
+Reserved for round 43 lane B of B13.
+
+### 16.273 Round 43: the converters: the zero-byte re-read counted a row at a time, a record flattened before it is escaped, and a capped page showing the largest cut that fits (2026-11-21, wave B13 round 43 lane E)
+
+Reserved for round 43 lane E of B13.
+
+### 16.274 Round 43: the prompt goes to v40 (only lines setup prints in every branch), CI polled every 60 seconds, and the guides (2026-11-21, wave B13 round 43 lane D)
+
+Reserved for round 43 lane D of B13.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units

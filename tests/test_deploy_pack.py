@@ -492,13 +492,16 @@ def test_every_result_note_ends_with_a_section_for_later_lanes_and_the_rehearsal
     is empty, a word for one lane inside it, and the rehearsal's fallback to a note's Items and Corrections,
     so an item listed elsewhere (round 41 lane D's C2077) is still read."""
     lanes = _page("docs/lanes/COMMON.md")
-    assert (
-        "Result note: `~/.cache/agentsync-bring-back/b13/lanes/r42-<lane>.md`. It ends with a section"
+    # B13 round 43 C2480: the note's round number is not pinned, so the lead's round-start commit that moves
+    # the path to the new round's notes keeps this test green.
+    sentence = re.escape(
+        "Result note: `~/.cache/agentsync-bring-back/b13/lanes/r@@-<lane>.md`. It ends with a section"
         " headed exactly `For later lanes and the rehearsal`, which says `none` when the lane has nothing for"
         " a later lane or the rehearsal; a word for one lane, lane D included, goes inside that section,"
         " never under a heading of its own (C2215). The rehearsal reads each note's section, and where a note"
         " has none, its Items and Corrections in full."
-    ) in lanes
+    ).replace("@@", r"\d+")
+    assert re.search(sentence, lanes)
 
 
 def test_the_guides_say_when_to_dispatch_ci_and_how_to_find_your_own_land() -> None:

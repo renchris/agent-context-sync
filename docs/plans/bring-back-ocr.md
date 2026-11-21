@@ -3203,6 +3203,79 @@ with the two privacy residuals round 42's verifiers found: a quote wrapping a wh
 trunk with `round43/tools/trunk.sh`, never a fetch in the operator checkout (C1470, C1661, C2066). The stop rule names
 Codex and Gemini: a clean round without Gemini goes to the operator before the loop closes.
 
+### B13 round 43: v39 rehearsal, cross-lane review, harvest, Codex beside Claude; Gemini not run (2026-11-21)
+
+Run `wf_a001a48e-5c5` on `bd65e0e1` (BASE `60835dd7`), codex-only, 158 agents with no errors: 141 raw findings, 123
+confirmed (0 turns, 34 wrongs, 89 small, as the verifiers classed them), 18 refuted (C2405, C2412, C2426, C2429, C2467,
+C2472, C2475, C2481, C2482, C2484, C2489, C2490, C2491, C2493, C2505, C2520, C2533, C2539). All six rehearsal scenarios
+passed on v39 at `bd65e0e1`. No turn, but the stop rule is not met (34 wrongs). Ten builds need prompt words: step 2's
+other-kind sentence said `no drop folder` while other live inbox sources existed (C2406), the Finish's inbox exclusion
+and step 2's ordinary-folder sentence pulled different ways for a local source on the inbox folder (C2408), the Finish
+named folders from a `config:` line that has no referent when setup stopped before step 2 and pointed to status after
+the report (C2419 with C2524), step 2 read its two `config:` lines as one (C2420), an early step 2 failure left the
+agent without the inbox path it is told to use (C2536), the folder recovery covered one step 1 branch and could miss
+step 3's first `no folder` result (C2523, C2538), step 1 could ask for folders while macOS still waited for an Allow
+click (C2535), and the final message could point to an old or missing bring-back.md (C2541), so the prompt goes to v40.
+Fifteen items are data integrity, 12 of them privacy, and the wrongs share six root causes: a report cut a value for
+one printer or one spelling and the other printed it (C2497 with C2431, C2432, C2430, C2526, C2466, C2468, C2501,
+C2498, C2499, C2500, and C2469 behind the operator's open decision); a reader said more than the Mac held (C2525 with
+C2503, C2513 and C2537, C2441, C2424); a row's state did not survive its writer (C2507, C2508, C2511, C2407, C2509); a
+record was re-split or flattened after its writer framed it (C2528, C2519, C2531); a cut assumed what it measured only
+grows (C2516 with C2529, C2450); and a rule outlived the condition it was written for (C2406, C2455, C2527, C2479,
+C2515). Codex gave 34 opinions, none disputed. Gemini did not run (C2488; the allow rule for
+`~/.claude/scripts/agy-review.sh` is the operator's, backlog `8ed9dae0fbc0`, now a fifth round without it). The lead's
+triage (`round43/triage.md`) placed every item once.
+
+Lead rulings for round 43 (in `lanes/COMMON42.md`, mirrored in `docs/lanes/COMMON.md`): (157) every path a report
+prints is cut in every spelling its printer writes, in both reports, pandoc_path's and an outside-home inbox's
+included; (158) a cut token ends at the same byte in both reports, whatever head or quote opens it, amending ruling 148
+and lifting its whole-argument-quote clause, lanes RA and RB landing the halves of rulings 157 and 158 in one run;
+(159) a source id and a folder take one number and one length rule in both reports, the shell moving to Python's; (160)
+a render by another build gets every cut this build makes, or the shell report replaces it; (161) C2469 is built only
+on the operator's "Allow it" on class C decision `1476293d00a3` (or a packet the lead files to replace it), ruling 150
+standing; (162) the inbox's state is decided once, by folder identity and the disk, in one helper every reader prints,
+completing ruling 151; (163) no reader calls a Mac synced, or asks for a draft, while nothing from a folder is
+converted; (164) a unit-removed tombstone is a change that names its successor, wherever it is read; (165) a recording
+that waits is told, counted and rolled back as waiting, and a withheld file is read by no stage, completing ruling 155;
+(166) the zero-byte re-read is counted, rolls back one row at a time and reads each row once whatever its scope,
+amending ruling 155 once more for `.drawio` stubs; (167) a record stays one record from its writer to its last reader,
+and a page line is flattened before it is escaped, completing ruling 152; (168) a capped page shows the largest cut
+that fits on both xlsx paths, and a cut fence always closes, completing ruling 153; (169) a [convert] edit's tests fail
+without their fix, every reader parses the options meta as the cycle writes it, and every reader names the recording
+exception, completing ruling 154; (170) the prompt reads only lines setup prints in every branch and goes to v40 in
+lane D's one commit, after lane RB lands the lines it quotes, as ruling 156 took it to v39. The triage's 21 calls, each
+drafted one way so nothing waits (convictions 60 to 85), are filed as one class B packet with their courses kept:
+decision 767198a7eec3. Once every course is on origin/main, the packet is marked with `cc-decide action`, so its expiry
+fires nothing, and its evidence cites a sha only once `git merge-base --is-ancestor` puts it on origin/main (C2494).
+
+C2469 (round 42's C2263, round 41's C2060) is still gated on the operator's open class C decision `1476293d00a3`: lane
+RB reads `cc-decide list --open` for it, and for any packet the lead files to replace it, at start and before its last
+land, builds it only on "Allow it", from `round42/verify-c2060-rebased.diff` once it checks that the diff applies at
+its base, in a commit of its own the joint run never waits for, and otherwise leaves the strict xfail in place, §16.271
+saying C2469 stays unbuilt (ruling 161). Its verifier asks for a fresh class C packet in that one's place, since its
+pane is gone and the joint stack it waited on has landed. Of the two privacy residuals that opened round 43's harvest,
+a quote wrapping a whole argument is C2466, built under ruling 158; `--cwd=is not a folder this run can enter: <name>`
+(C2467) was refuted, so nothing covers it.
+
+Convergence: confirmed as before, then 109, then 123; turns as before, then 0, then 0; wrongs as before, then 22, then
+34.
+
+Lanes (`--account auto`, CONTRACTS §16.270 to §16.274, plain `scripts/ship-land.sh`, scratch under `round43/`): RA 19
+(the Python halves and both-reports rows of rulings 157 and 158 first, sent to lane RB; ruling 162's report line on
+lane B's helper; C2438 with C2458's legend words), RB 19 (both halves of rulings 157 and 158 landed in one run on lane
+RA's branch, rulings 159 and 160 on its own, C2463's and C2401's printed lines before lane D's v40 commit, and C2469
+only on the operator's word), B 24 (ruling 162's helper and C2540's mark first, sent to lanes RA and RB, then rulings
+163 to 165 and 169), E 20 (rulings 166 to 168 and the conversion clusters), D 25 (the v40 prompt commit after lane RB's
+printed lines land, then ship-land's 60-second CI poll, the gate's 13,200-second ceiling and the guides). No lane
+passes about 25, so none splits; if D grows, D1 is the v40 prompt commit (its ten items) and D2 the other 15; if B
+grows, ruling 164's tombstone (C2507, C2444, C2445, C2409, C2510) splits off. Moved in triage: C2458 from D to RA,
+C2502 from RB to B, C2512 from B to E, and C2469 from the lead to RB, gated. The lead holds 16: round 44's kit (C2404,
+C2421, C2427), the brief (C2403, C2414, C2416, C2417, C2418, C2428, C2485), C2487 (the launch read through trunk.sh and
+the harvest's scan listing bare ls-remote reads), round 42's record (C2474, C2492, C2494), the round 41 and 42
+leftovers (C2495) and C2488 (Gemini). The specs cite `bd65e0e1`'s line numbers, and the kept lessons in
+`lanes/COMMON42.md` and `docs/lanes/COMMON.md` now say so. Round 44 rehearses v40, with v39's block (`1433dd16`) as
+scenario C's first old copy.
+
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be
