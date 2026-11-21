@@ -1856,7 +1856,10 @@ def _r142_lines(
     each line break config.toml_string wrote raw in each escaped spelling (report_cuts.TOML_BREAKS), the table
     split at LF only, never by splitlines(), which cuts it at U+2028; and the older writer's echo, the breaks
     raw (B13 round 42 C2320 with C2239). B13 round 42 C2275: install.sh's own two ``--cwd=`` forms outside
-    CloudStorage, never the one whose quote wraps the whole argument; and :func:`_r146_lines`."""
+    CloudStorage. B13 round 43 C2466 (ruling 158, lifting ruling 148's "never the form whose quote wraps the
+    whole argument"): a quote that wraps a whole ``--cwd``, ``--source-local`` or ``add-source`` argument, in
+    the ``=`` and blank forms, single and double, outside CloudStorage and under it with an unconfigured name
+    holding a blank, left open, and with a second head inside it; and :func:`_r146_lines`."""
     shown = _listed(name)
     root = f"~/Library/CloudStorage/{provider}"
     q = _printf_q(name, locale)
@@ -1887,6 +1890,16 @@ def _r142_lines(
         f"# run=s{n} 2026-11-17T00:00:00Z install.sh --cwd ~/{out} --debug --source-local ./{q}",
         f"# run=s{n} 2026-11-17T00:00:00Z install.sh --cwd=~/{out}/{q} --debug",  # B13 round 42 C2275
         f"start install.sh args=--cwd='~/{_OUTSIDE}/{shown}' --source-local ./x",  # B13 round 42 C2275
+        # B13 round 43 C2466 (ruling 158): the quote wraps the whole argument
+        f"start install.sh args='--cwd=~/{_OUTSIDE}/{shown}' x",
+        f"start install.sh args='--cwd ~/{_OUTSIDE}/{shown}' x",
+        f'start install.sh args="--cwd=~/{_OUTSIDE}/{shown}" x',
+        f"start install.sh args='--source-local=~/{_OUTSIDE}/{shown}' x",
+        f'start install.sh args="--source-local ~/{_OUTSIDE}/{shown}" x',
+        f"start install.sh args='--source-local={root}/{_OUTSIDE}' x",
+        f"I ran 'add-source ~/{_OUTSIDE}/{shown}' first",
+        f"start install.sh args='--cwd=~/{_OUTSIDE}/{shown} then more",
+        f"start install.sh args='--cwd ~/{_OUTSIDE} --debug --source-local ./{shown}' x",
         f"debug: cwd ~/{out} | debug: source checkout ~/{out}/{q}",
         f"debug: source checkout ~/{out}/{q} | debug: source tree ~/{out}/x",
         f"debug: cwd {root}/{shown} | debug: cwd ~/{out}",

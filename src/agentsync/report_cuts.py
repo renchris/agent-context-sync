@@ -149,7 +149,10 @@ form, the home as ~, and debug_line prints it as given) runs to the line's first
 every one on a line is cut (C2029); every other head's path is one shell word. B13 round 41 ruling 142: a
 bare word with no slash, backslash or quote after ``--source-local ``, ``--source-local=`` or ``add-source
 `` is prose and stays (C2062 with C2031 and C2085), and so do install.sh's own words after ``--cwd ``
-(:data:`CWD_USAGE`, C2030); a not-a-folder or refused name is always cut."""
+(:data:`CWD_USAGE`, C2030); a not-a-folder or refused name is always cut. B13 round 43 C2466 (ruling 158):
+one of those one-word heads right after a ``'`` or ``"`` (``'--cwd=``, ``"--source-local ``, ``'add-source
+``) is a quote that wraps the whole argument: its value runs to the closing quote or the line's end, split at
+any later such head after a blank, each piece cut by its own head's rule, in both reports."""
 
 CWD_USAGE = ("needs a folder, got the option", "needs a folder")
 """install.sh's own usage words right after ``--cwd `` (``usage error: --cwd needs a folder (see --help)``),

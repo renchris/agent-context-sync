@@ -19061,6 +19061,62 @@ def _source_local_shown(red: Redactor, m: re.Match[str]) -> str:
     return m.group(1) + opened + _cut_path(text) + closed + tail
 
 
+_WORD_HEADS = "|".join(
+    re.escape(head)
+    for head, rule in report_cuts.PATH_HEADS
+    if head.startswith(("--", "add-source")) and rule != "cwd_name"
+)
+_QUOTED_HEAD_RE = re.compile(rf"""(['"])({_WORD_HEADS})""")
+"""B13 round 43 C2466 (ruling 158; privacy): a one-shell-word head of :data:`_SOURCE_LOCAL_RE` right after a
+``'`` or ``"`` that wraps the whole argument (``args='--cwd=~/Wombat Ledger/x'``, ``"--source-local ..."``,
+``'add-source ...'``): the quote is the value's own, so the value runs to its closing quote
+(:func:`_closing_quote`) or the line's end, where the one-word read cut it at its first blank and printed
+the rest of a name with a blank (``~/<path> Ledger/<folder-1>``). Ruling 148's "never the form whose quote
+wraps the whole argument" clause is lifted."""
+_LATER_HEAD_RE = re.compile(rf"(?<=[ \t])({_WORD_HEADS})")
+"""A later head inside that quoted span, after a blank: the span splits there and each piece is cut by its
+own head's rule, so a second head's configured folder keeps its ``<folder-N>`` (C2466)."""
+
+
+def _quoted_heads_cut(red: Redactor, line: str) -> str:
+    """``line`` (already redacted) with each :data:`_QUOTED_HEAD_RE` span cut: from the head to the closing
+    quote or the line's end, split at each :data:`_LATER_HEAD_RE` head, each piece's value (its trailing
+    blanks kept) cut by its head's :data:`report_cuts.PATH_HEADS` rule (B13 round 43 C2466, ruling 158). A
+    value with no ``/``, ``\\`` or quote stays as prose, as :func:`_source_local_shown` keeps one, but a
+    ``--cwd`` value, which names a folder even when relative; install.sh's own --cwd usage words stay."""
+    out: list[str] = []
+    pos = 0
+    while (m := _QUOTED_HEAD_RE.search(line, pos)) is not None:
+        k = _closing_quote(line[m.start() :], m.group(1))
+        end = len(line) if k < 0 else m.start() + k
+        span, start = line[m.end() : end], 0
+        out.append(line[pos : m.end()])
+        head = m.group(2)
+        for later in _LATER_HEAD_RE.finditer(span):
+            out += [_head_value_cut(red, head, span[start : later.start()]), later.group(1)]
+            head, start = later.group(1), later.end()
+        out.append(_head_value_cut(red, head, span[start:]))
+        pos = end
+    out.append(line[pos:])
+    return "".join(out)
+
+
+def _head_value_cut(red: Redactor, head: str, value: str) -> str:
+    """One piece of a :func:`_quoted_heads_cut` span: ``value`` cut by ``head``'s rule, its trailing blanks
+    kept."""
+    text = value.rstrip(" \t")
+    trail = value[len(text) :]
+    cwd = _HEAD_RULE.get(head) == "cwd"
+    if not text or (cwd and head.endswith(" ") and text.startswith(_CWD_KEPT)):
+        return value
+    if not re.search(r"""[/\\'"]""", text) and not cwd:
+        return value
+    if _HEAD_RULE.get(head) == "provider":
+        return _cut_path(text, red.listed_only, configured=red.configured_held) + trail
+    return _cut_path(text) + trail
+
+
+_CWD_KEPT = (*report_cuts.CWD_USAGE, _CWD_NAME_HEAD.removeprefix("--cwd "))
 _CWD_KEPT = (*report_cuts.CWD_USAGE, _CWD_NAME_HEAD.removeprefix("--cwd "))
 """What stays whole right after ``--cwd ``: install.sh's own usage words (:data:`report_cuts.CWD_USAGE`) and
 the rest of its not-a-folder head, whose name :data:`_CWD_NAME_RE` cuts (B13 round 41 C2030)."""
@@ -19323,7 +19379,7 @@ def _redact_lines(red: Redactor, lines: list[str], agents: Iterable[str] = ()) -
         if (i := line.find("--source-local ")) >= 0 and (m := _SOURCE_LOCAL_REFUSED_RE.match(line, i)):
             line = line[: m.start()] + _not_a_folder_shown(red, m) + line[m.end() :]
         if "--source-local" in line or "add-source " in line or "--cwd" in line:
-            line = _SOURCE_LOCAL_RE.sub(shown, line)
+            line = _SOURCE_LOCAL_RE.sub(shown, _quoted_heads_cut(red, line))
         if "debug: " in line:
             # B13 round 41 C2029 (ruling 142): every head on the line, each source path judged under the
             # carried cwd and every debug: cwd on this line, the line's last one carried on
