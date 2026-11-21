@@ -4991,11 +4991,14 @@ redact_stream() {
 		print line
 	}
 	END { if (hn && ENVIRON["HOLD_WORD_FILE"] != "") print hn > ENVIRON["HOLD_WORD_FILE"] } # the words cut, each once' |
-		typed_note_cut "$pairs" "$cfg" "$listed" "$allcfg" | foreign_home_cut
+		foreign_home_cut | typed_note_cut "$pairs" "$cfg" "$listed" "$allcfg"
 }
 # A path in another home (a moved home's install.log source= or args=, a --source in another account's folder) is
 # cut whole to /Users/<path>, the form a --source-local argument already gets, uncounted, as setup_report.Redactor
-# cuts it (B13 round 34 ruling 91, C822): after the pairs pass, so this home is already ~ and the login <user>.
+# cuts it (B13 round 34 ruling 91, C822): after the pairs pass, so this home is already ~ and the login <user>,
+# and before typed_note_cut's head cuts, as setup_report's red.redact cuts other homes before its head cuts, so
+# a head's value reads /Users/<path> or /Volumes/<path>, which cut() keeps: after them, a head ended the value
+# at its first blank and the later words of a name with a blank printed (B13 round 43 ruling 158, C2468).
 # `/users` in any case and one or more `/` (B13 round 35 ruling 102, C947), not right after a letter, a digit, `_`,
 # `.` or `-`, and its next component neither `Shared` nor `<user>` nor an already-cut `<path>`, each whole: any
 # other placeholder an earlier pass made, or one a component opens with (`<value>`, `<org-1>`, `<name>`,
@@ -5102,7 +5105,8 @@ foreign_home_cut() {
 	END { if (ENVIRON["CUT_COUNT"] != "") printf "%d\n", ncut > ENVIRON["CUT_COUNT"] }'
 }
 # add-source's and init's note, `added source '<id>' to <file> (<typed>, stored as <stored>):` and its inbox twin
-# `added inbox source '<id>' (<typed>, stored as <stored>):`, read by its structure after every pair has run, as
+# `added inbox source '<id>' (<typed>, stored as <stored>):`, read by its structure after every pair and the
+# other-home cut (foreign_home_cut, B13 round 43 C2468) have run, as
 # setup_report._ADDED_TYPED_RE reads it after red.redact (each part lazy, the `)` followed by `:`): <typed> is
 # cut as _cut_path cuts it, kept up to its first part that is not "", ~, . or .., made only of placeholders, a
 # fixed macOS component, a generic drive folder, a generic home dir in any case or the part after CloudStorage,

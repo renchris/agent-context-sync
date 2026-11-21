@@ -8510,7 +8510,8 @@ def test_the_guide_says_both_reports_cut_a_path_in_another_home() -> None:
     limit = "an unquoted path keeps its tail after the first quote, backtick, bracket, comma or semicolon"
     assert limit in page
     shell = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
-    assert 'typed_note_cut "$pairs" "$cfg" "$listed" "$allcfg" | foreign_home_cut' in shell
+    # B13 round 43 C2468 (ruling 158): the other-home cut runs before the head cuts, as Python's does
+    assert 'foreign_home_cut | typed_note_cut "$pairs" "$cfg" "$listed" "$allcfg"' in shell
 
 
 def test_the_guides_purge_queue_row_names_the_sections_parts() -> None:

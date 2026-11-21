@@ -1841,6 +1841,18 @@ def _r146_lines(
 _OUTSIDE = "Wombat Ledger"
 """A made-up private folder outside ~/Library/CloudStorage, in no config, with a blank (ruling 142's case of a
 path outside the expected place)."""
+_OTHER_HOME = f"/Users/olga/{_OUTSIDE}/Tailspin Northwind"
+"""Another home's path with a blank and a later word holding a `/` (B13 round 43 C2468): both reports cut it
+to ``/Users/<path> Northwind``, the other-home rule's residual word, whatever head it follows."""
+_C2468_HEADS = (
+    "--source-local=",
+    "--source-local ",
+    "'--source-local=",
+    "--cwd=",
+    "'--cwd=",
+    "--cwd ",
+    "add-source ",
+)
 
 
 def _r142_lines(
@@ -1859,7 +1871,9 @@ def _r142_lines(
     CloudStorage. B13 round 43 C2466 (ruling 158, lifting ruling 148's "never the form whose quote wraps the
     whole argument"): a quote that wraps a whole ``--cwd``, ``--source-local`` or ``add-source`` argument, in
     the ``=`` and blank forms, single and double, outside CloudStorage and under it with an unconfigured name
-    holding a blank, left open, and with a second head inside it; and :func:`_r146_lines`."""
+    holding a blank, left open, and with a second head inside it. B13 round 43 C2468 (ruling 158): another
+    home's path with a blank after each head (:data:`_C2468_HEADS`) and behind a registered org's volume,
+    which the shell cut after its head cuts; and :func:`_r146_lines`."""
     shown = _listed(name)
     root = f"~/Library/CloudStorage/{provider}"
     q = _printf_q(name, locale)
@@ -1900,6 +1914,10 @@ def _r142_lines(
         f"I ran 'add-source ~/{_OUTSIDE}/{shown}' first",
         f"start install.sh args='--cwd=~/{_OUTSIDE}/{shown} then more",
         f"start install.sh args='--cwd ~/{_OUTSIDE} --debug --source-local ./{shown}' x",
+        # B13 round 43 C2468 (ruling 158): another home's path with a blank, a later word holding a `/`, after
+        # each head and behind a registered org's volume, only the residual word (no `/`) in clear in both
+        *(f"I ran {h}{_OTHER_HOME} x" for h in _C2468_HEADS),
+        f"I ran --source-local=/Volumes/{provider.split('-', 1)[1]}{_OTHER_HOME} x",
         f"debug: cwd ~/{out} | debug: source checkout ~/{out}/{q}",
         f"debug: source checkout ~/{out}/{q} | debug: source tree ~/{out}/x",
         f"debug: cwd {root}/{shown} | debug: cwd ~/{out}",
