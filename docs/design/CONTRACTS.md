@@ -43173,6 +43173,8 @@ formula a page does not show whole rides whole in `NN-<slug>.formulas.txt`, whic
 Amended 2026-11-20, §16.268 C2268: the later rows that fit uncut keep their bytes and the cut row takes the largest
 length whose rendered row fits the rest, and a streamed summary's rows get the real room left (no flat 4,096), so the
 four-sheet book's streamed pages show all six rows.
+Amended 2026-11-21, §16.273 C2516 (with C2529): the largest length is searched allowing for the width dropping where
+a cut marker disappears, and the floor the later rows are reserved against is the cheapest breakpoint.
 
 **The per-cell cuts stay, scaled with the cap** (C2045, makes worse True; `agentsync.convert.xlsx`; amends §16.258
 C1848). C1848's 600-character headers cell and 200-character first-row value applied at any cap, so thirty headers of
@@ -43869,6 +43871,9 @@ cap by its footer lines (C2254). Tests:
 streamed, over 2,000 characters where 124 and 83 were) and
 `test_convert_page_cap.py::test_an_oversized_first_row_is_shown_with_its_cells_cut_c2022` (the streamed pages now
 show all six rows).
+Amended 2026-11-21, §16.273 C2516 (with C2529): the search allows for the row's bytes dropping where a cut marker
+disappears, walking the segments between the cells' lengths from the top, and the later rows are reserved against
+the cheapest breakpoint, not the cut at one character.
 
 **The index's header formula names its 1,024-byte reserve and the 200-byte row** (C2314; ruling 153;
 `agentsync.convert.xlsx`; amends §16.263 C2045). `_index_body` cuts a headers cell to 600 characters or
@@ -44362,7 +44367,29 @@ one absent) and the recorded-holder test (the old mark once, the new one absent)
 
 ### 16.273 Round 43: the converters: the zero-byte re-read counted a row at a time, a record flattened before it is escaped, and a capped page showing the largest cut that fits (2026-11-21, wave B13 round 43 lane E)
 
-Reserved for round 43 lane E of B13.
+Round 43's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 43"; specs `round43/items/C<n>.md`, the
+verifier's corrected fix built as the lead's rulings 166, 167 and 168 settle it). A dated line this round writes reads
+`Amended 2026-11-21, §16.273 C<n>`.
+
+**A capped page shows the largest cut of a row that fits** (C2516 with C2529; ruling 168; `agentsync.convert.xlsx`;
+amends §16.263 C2022 and §16.268 C2268). `_cut_row` returned no cut when the row cut to one character did not fit,
+and halved over the lengths as if a longer cut always cost more. It does not: a
+cell cut short of its length ends in the 3-byte `…`, which goes once the length reaches the cell's own, so cells
+"ab", "cd" and a 40-character cell cost 24 bytes cut to one character and 23 cut to two, and a 23-byte room dropped
+the row. A 20,008-character cell beside 400 cells of "ab" costs 2,412 bytes at one character and 2,013 at two, so a
+page with room for the second showed `first 0 of 2` (`[no row fits the page; ...]` streamed). `_table_lines` also
+reserved the later rows against the cut at one character, so a page that held the cheapest cut and row 2 showed row 1
+alone. A row's bytes are now summed from its cells' own (`_RowCuts`: the empty row's separators plus each cell, whole
+or cut), so no length costs a render of the whole line; the breakpoints are 1 and each length of the row's plain,
+formula and cached value texts, and between two of them the bytes only rise. `_cut_row` walks the segments from the
+top and halves inside the first whose start fits; `_table_lines`' floor is the cheapest breakpoint. Only a length
+rendered and seen to fit is kept. The emitter moves to 1.0.5 (rulings 167 and 168 together). Tests:
+`test_convert_page_cap.py::test_a_cut_row_takes_a_longer_cut_that_costs_less_c2516`,
+`test_convert_page_cap.py::test_later_rows_are_reserved_against_the_cheapest_cut_c2516`,
+`test_convert_page_cap.py::test_a_cut_row_costing_less_than_one_character_is_shown_c2529` (full and streamed, row 1
+cut alone and row 1 cut with row 2 after it) and
+`test_convert_page_cap.py::test_a_wide_row_is_cut_without_rendering_each_length_c2516` (2,000 cells beside a
+30,000-character cell render the whole line once).
 
 ### 16.274 Round 43: the prompt goes to v40 (only lines setup prints in every branch), CI polled every 60 seconds, and the guides (2026-11-21, wave B13 round 43 lane D)
 

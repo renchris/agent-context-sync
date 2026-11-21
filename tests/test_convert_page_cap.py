@@ -594,6 +594,104 @@ def test_a_long_cell_beside_short_ones_takes_the_room_the_later_rows_leave_c2268
     assert "| 6 | r6 | a | b |" in page.body and f"| 1 | Contoso {'x' * 1990}" in page.body
 
 
+def _cut_sheet(rows: dict[int, list[str]]) -> xlsx._Sheet:
+    """A sheet of plain text cells, row ``r``'s list from column A (B13 round 43 C2516)."""
+    sheet = xlsx._Sheet(number=1, title="Contoso", hidden=False)
+    for r, texts in rows.items():
+        for c, text in enumerate(texts, start=1):
+            sheet.plain[(r, c)] = text
+            sheet.shown[(r, c)] = _common._cell(text)
+    width = max(len(texts) for texts in rows.values())
+    sheet.bounds = (min(rows), 1, max(rows), width)
+    return sheet
+
+
+def _line_bytes(line: str) -> int:
+    return len(line.encode("utf-8")) + 1
+
+
+def test_a_cut_row_takes_a_longer_cut_that_costs_less_c2516() -> None:
+    """B13 round 43 C2516: cut to one character, "ab" and "cd" each became the 3-byte `…`, so the row cost
+    24 bytes at one character and 23 at two, and a 23-byte room returned no cut. The cut drops where a
+    cell's `…` goes, so the segments between those lengths are searched from the top."""
+    sheet = _cut_sheet({1: ["ab", "cd", "x" * 40]})
+    header = ["Row", "A", "B", "C"]
+    costs = [_line_bytes(xlsx._cut_line(sheet, header, 1, n)) for n in range(1, 6)]
+    assert costs == [24, 23, 24, 25, 26]
+    assert xlsx._cut_row(sheet, header, 1, 23) == ("| 1 | ab | cd | x… |", 2)
+    assert xlsx._cut_row(sheet, header, 1, 22) is None
+    assert xlsx._cut_row(sheet, header, 1, 25) == ("| 1 | ab | cd | xxx… |", 4)
+
+
+def test_later_rows_are_reserved_against_the_cheapest_cut_c2516() -> None:
+    """B13 round 43 C2516: _table_lines reserved the later rows against the row cut to one character (24
+    bytes), not its cheapest cut (23 bytes at two), so a page with room for the cut row and the uncut row
+    after it showed the cut row alone."""
+    sheet = _cut_sheet({1: ["ab", "cd", "x" * 40], 2: ["e", "f", "g"]})
+    header_bytes = _line_bytes("| Row | A | B | C |") + _line_bytes("|---|---|---|---|")
+    budget = header_bytes + 23 + _line_bytes("| 2 | e | f | g |")
+    lines, shown, cut = xlsx._table_lines(sheet, [1, 2], sheet.shown, budget, 10)
+    assert (shown, cut) == (2, [(1, 2)])
+    assert lines[2:] == ["| 1 | ab | cd | x… |", "| 2 | e | f | g |"]
+    assert sum(_line_bytes(x) for x in lines) == budget
+
+
+@pytest.mark.parametrize(
+    ("streamed", "cap", "both"),
+    [(False, 9925, False), (False, 11525, True), (True, 16850, False), (True, 18450, True)],
+    ids=["full-cut", "full-next-row", "streamed-cut", "streamed-next-row"],
+)
+def test_a_cut_row_costing_less_than_one_character_is_shown_c2529(
+    tmp_path: Path, streamed: bool, cap: int, both: bool
+) -> None:
+    """B13 round 43 C2529: a 20,008-character cell beside 400 cells of "ab" costs 2,412 bytes cut to one
+    character and about 400 fewer cut to two, where each "ab" is whole again. A room between the two
+    showed no row (`[no row fits the page;` streamed), and a room that also held row 2 after the cheapest
+    cut showed row 1 alone. Row 1 is now shown cut, row 2 follows when it fits, and the page stays within
+    the cap."""
+    book = openpyxl.Workbook()
+    ws = book.active
+    assert ws is not None
+    ws.title = "Contoso"
+    ws.append(["Contoso " + "x" * 20_000, *(["ab"] * 400)])
+    ws.append(["r2", *(["c"] * 400)])
+    src = tmp_path / "wide.xlsx"
+    book.save(src)
+    _index, page = _pages(src, cap, **({"xlsx_stream_threshold_bytes": 0} if streamed else {}))
+    assert _size(page) <= cap
+    assert "[no row fits the page;" not in page.body and "first 0 of 2" not in page.body
+    assert re.search(r"\| 1 \| C[^|]*… \| ab \| ab \|", page.body), page.body[-600:]
+    found = re.search(r"row 1's cells cut to (\d+) characters", page.body)
+    assert found and int(found.group(1)) >= 2, page.body[-600:]
+    assert ("| 2 | r2 | c | c |" in page.body) is both
+    shown = "2 of 2" if both else "1 of 2"
+    assert (f"## First {shown} non-empty rows" if streamed else f"first {shown} non-empty rows") in page.body
+
+
+def test_a_wide_row_is_cut_without_rendering_each_length_c2516(monkeypatch: pytest.MonkeyPatch) -> None:
+    """B13 round 43 C2516: the segments are costed from each cell's own bytes, so a row of 2,000 cells of
+    varied lengths beside a 30,000-character cell renders the whole line once, not once a length or once a
+    segment, and still takes the largest cut that fits."""
+    texts = ["ab" if n % 3 else "Contoso"[: n % 7 + 1] * (n % 11 + 1) for n in range(2000)]
+    sheet = _cut_sheet({1: ["x" * 30_000, *texts]})
+    header = ["Row", *(xlsx._col_letter(c) for c in range(1, 2002))]
+    room = xlsx._RowCuts(sheet, header, 1).cheapest(10**9)
+    assert room is not None and room < _line_bytes(xlsx._cut_line(sheet, header, 1, 1))
+    room += 500
+    calls: list[int] = []
+    real = xlsx._cut_line
+
+    def counted(sheet_: xlsx._Sheet, header_: list[str], r: int, limit: int) -> str:
+        calls.append(limit)
+        return real(sheet_, header_, r, limit)
+
+    monkeypatch.setattr(xlsx, "_cut_line", counted)
+    fitted = xlsx._cut_row(sheet, header, 1, room)
+    assert fitted is not None and len(calls) < 200, len(calls)
+    line, limit = fitted
+    assert _line_bytes(line) <= room < _line_bytes(real(sheet, header, 1, limit + 1))
+
+
 def test_xlsx_first_row_past_the_budget_is_cut_and_the_short_row_follows_c2022(tmp_path: Path) -> None:
     """B13 round 41 C2022, on C1676's own workbook: the 20,008-character first cell is shown cut, the short
     row after it is shown, and the page stays within the cap."""

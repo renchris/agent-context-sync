@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import bisect
 import datetime as dt
 import math
 import re
@@ -32,7 +33,7 @@ from agentsync.errors import ConversionError
 from agentsync.model import RenderedUnit, UnitKind
 from agentsync.text import plural
 
-_EMITTER_VERSION = "1.0.4"  # B13 round 42 C2302, C2300, C2301, C2268: one record a row, formulas kept whole
+_EMITTER_VERSION = "1.0.5"  # B13 round 43 rulings 167 and 168: C2516, C2529
 _INDEX_TERM_LIMIT = 400  # distinct terms kept on 00-index (most frequent first, then listed sorted)
 _TERM_MAX_CHARS = 80  # a text cell up to this long is one term; longer text contributes its words
 _HEADER_LIMIT = 30  # column headers listed per sheet on 00-index
@@ -341,8 +342,9 @@ def _table_lines(
     number of characters ending ``…`` before :func:`_cell` and :func:`_code` render them (:func:`_cut_cell`),
     so no cut splits an escape or a formula's code span, kept as (row, characters) in the cut rows (B13
     round 41 C2022, round 42 C2300).  The later rows that fit uncut (up to ``max_rows``) keep their bytes
-    first, and the cut row takes the largest length whose rendered row fits what is left (:func:`_cut_row`,
-    B13 round 42 C2268).  The rows shown stay a run from the top: a row that fits the table but not the room
+    first, reserved against the row's cheapest cut (:meth:`_RowCuts.cheapest`, B13 round 43 C2516), and the
+    cut row takes the largest length whose rendered row fits what is left (:func:`_cut_row`, B13 round 42
+    C2268).  The rows shown stay a run from the top: a row that fits the table but not the room
     left, or a cut row that still does not fit, ends it."""
     assert sheet.bounds is not None
     _r0, c0, _r1, c1 = sheet.bounds
@@ -365,14 +367,17 @@ def _table_lines(
         if used + size > budget:
             if start + size <= budget:
                 break
-            floor = len(_cut_line(sheet, header, r, 1).encode("utf-8")) + 1
+            costs = _RowCuts(sheet, header, r)
+            floor = costs.cheapest(budget - used)  # the cheapest cut there is (B13 round 43 C2516, C2529)
+            if floor is None:
+                break
             later = 0  # the later rows that fit uncut keep their bytes (B13 round 42 C2268)
             for after in rows[i + 1 : i + max_rows - shown]:
                 more = len(whole(after).encode("utf-8")) + 1
                 if start + more > budget or used + floor + later + more > budget:
                     break
                 later += more
-            fitted = _cut_row(sheet, header, r, budget - used - later)
+            fitted = _cut_row(sheet, header, r, budget - used - later, costs)
             if fitted is None:
                 break
             line, limit = fitted
@@ -403,30 +408,78 @@ def _cut_line(sheet: _Sheet, header: list[str], r: int, limit: int) -> str:
     return _gfm_table(header, [[str(r), *(_cut_cell(sheet, (r, c), limit) for c in range(c0, c1 + 1))]])[2]
 
 
-def _cut_row(sheet: _Sheet, header: list[str], r: int, room: int) -> tuple[str, int] | None:
+class _RowCuts:
+    """Row ``r``'s rendered bytes, its line end included, at each cut length (:func:`_cut_line`), summed from
+    its cells' own bytes, so no length costs a render of the whole row (B13 round 43 C2516, C2529).
+
+    A line is its cells joined by fixed separators, so its bytes are the empty row's plus each cell's.  A cell
+    no longer than the length is whole, its bytes known; only the cells the length cuts are rendered.  A
+    cell's cut bytes rise with the length but fall where a text's whole length is reached, since its ``…``
+    goes, so the breakpoints are 1 and each length of the row's plain, formula and cached value texts, and
+    between two breakpoints the row's bytes only rise."""
+
+    def __init__(self, sheet: _Sheet, header: list[str], r: int) -> None:
+        assert sheet.bounds is not None
+        _r0, c0, _r1, c1 = sheet.bounds
+        self.sheet = sheet
+        keys = [(r, c) for c in range(c0, c1 + 1)]
+        self.base = len(_gfm_table(header, [[str(r), *("" for _ in keys)]])[2].encode("utf-8")) + 1
+        sources = (sheet.plain, sheet.formula, sheet.values)
+        lengths = {k: max(len(src.get(k, "")) for src in sources) for k in keys}
+        self.keys = sorted(keys, key=lengths.__getitem__)
+        self.lengths = [lengths[k] for k in self.keys]
+        self.whole = [0]  # bytes of the shortest i cells whole, for the i a length leaves uncut
+        for k in self.keys:
+            self.whole.append(self.whole[-1] + len(_cut_cell(sheet, k, max(1, lengths[k])).encode("utf-8")))
+        self.points = sorted({1, *(n for n in self.lengths if n)})
+
+    def cost(self, limit: int, bound: int) -> int | None:
+        """The row's bytes cut to ``limit`` characters, or None once they pass ``bound``."""
+        uncut = bisect.bisect_right(self.lengths, limit)
+        total = self.base + self.whole[uncut]
+        for k in reversed(self.keys[uncut:]):  # the longest cells first, so a cost past the bound stops soon
+            if total > bound:
+                return None
+            total += len(_cut_cell(self.sheet, k, limit).encode("utf-8"))
+        return total if total <= bound else None
+
+    def cheapest(self, bound: int) -> int | None:
+        """The fewest bytes any cut of the row takes, at most ``bound``, or None when no cut fits it; a
+        segment's cheapest length is its start, so only the breakpoints are costed."""
+        best: int | None = None
+        for limit in self.points:
+            got = self.cost(limit, bound if best is None else best)
+            if got is not None:
+                best = got
+        return best
+
+
+def _cut_row(
+    sheet: _Sheet, header: list[str], r: int, room: int, costs: _RowCuts | None = None
+) -> tuple[str, int] | None:
     """Row ``r`` with each cell cut to the largest number of characters (:func:`_cut_cell`) whose rendered
-    line fits ``room`` bytes, its line end included, with that number; None when one character a cell does
-    not fit (B13 round 41 C2022).  The search is on the rendered UTF-8 bytes, since escapes and the 3-byte
-    ``…`` make a character's cost uneven, and keeps only a length it rendered and saw fit, so a cost that
-    is not monotone never passes the room (B13 round 42 C2268: halving an even share left most of it)."""
-    assert sheet.bounds is not None
-    _r0, c0, _r1, c1 = sheet.bounds
-
-    def fits(limit: int) -> bool:
-        return len(_cut_line(sheet, header, r, limit).encode("utf-8")) + 1 <= room
-
-    if not fits(1):
-        return None
-    keys = [(r, c) for c in range(c0, c1 + 1)]
-    texts = [*(sheet.plain.get(k, "") for k in keys), *(sheet.formula.get(k, "") for k in keys)]
-    lo, hi = 1, max(1, *(len(x) for x in texts))
-    while lo < hi:
-        mid = (lo + hi + 1) // 2
-        if fits(mid):
-            lo = mid
-        else:
-            hi = mid - 1
-    return _cut_line(sheet, header, r, lo), lo
+    line fits ``room`` bytes, its line end included, with that number; None when no cut fits (B13 round 41
+    C2022).  The search is on the rendered UTF-8 bytes, since escapes and the 3-byte ``…`` make a character's
+    cost uneven (B13 round 42 C2268).  Those bytes fall where a cell's ``…`` goes, so a cut of one character
+    is not the cheapest: the segments between breakpoints (:class:`_RowCuts`) are searched from the top, and
+    inside the first whose start fits, where the bytes only rise, the largest length that fits is found by
+    halving (B13 round 43 C2516, C2529).  Only a length rendered and seen to fit is kept."""
+    costs = costs or _RowCuts(sheet, header, r)
+    points = costs.points
+    for i in range(len(points) - 1, -1, -1):
+        lo = points[i]
+        if costs.cost(lo, room) is None:
+            continue
+        hi = points[i + 1] - 1 if i + 1 < len(points) else lo
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if costs.cost(mid, room) is not None:
+                lo = mid
+            else:
+                hi = mid - 1
+        line = _cut_line(sheet, header, r, lo)
+        return (line, lo) if len(line.encode("utf-8")) + 1 <= room else None
+    return None
 
 
 def _formulas_left(sheet: _Sheet, rows: list[int], shown: int, cut: list[tuple[int, int]]) -> list[str]:
