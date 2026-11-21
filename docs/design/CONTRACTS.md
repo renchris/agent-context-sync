@@ -42578,6 +42578,10 @@ text and `_cap_body` pages; both now stay within it.
 Amended 2026-11-17, §16.263 C2055, C2091: with every list bounded, `(C1848's sheet-comment residual aside)` no longer holds: the
 config's comment and the ConvertConfig row say every page stays within any cap the config accepts (a recording's index
 and a window with more keyframes than its footer lines fit aside, C2044's residuals at §16.263; §16.268 C2269).
+Amended 2026-11-21, §16.274 C2477: the cap bounds each page's guarded body; the front matter above it (paths, URL,
+digests, title, summary), sized by the item's metadata rather than its bytes (often under 1 KB, about 2 KB with a long
+path, URL and summary), sits outside the cap, never budgeted, so a page file passes the cap by its front matter (§16.268
+C2220, C2306; §16.273 C2532).
 
 **A cut table's note counts no rows** (C1849; `agentsync.convert.text`; amends §16.253 C1676). `_table` decides the
 cut on the GFM sizes of the header, its delimiter and the first row, about 4 bytes a short cell (`| x `), while the
@@ -43873,6 +43877,12 @@ tabbed, forged-looking, backslashed and 9,000-character comment) and
 Amended 2026-11-21, §16.273 C2519 (with C2530, C2452): the author and a rich chart title were stripped before
 `_record_escape` and a pivot location was not escaped at all; each now reaches its record raw and escaped, and the page
 flattens the author, chart title, pivot name and location before `_escape_line`.
+Amended 2026-11-21, §16.274 C2415: on disk a text sidecar (`.txt` or `.md`: comments, objects, formulas, full text)
+starts with two lines the converter guard adds (`registry._with_sidecar_digests`): the untrusted-content banner
+(`policy.UNTRUSTED_BANNER`, one line) and an empty line; in a list sidecar every line after those two is one LF-ended
+escaped record. A reader drops exactly those two lines, and only when line 1 is the banner: the guard adds none to
+bytes that already start with it, and a full-text body may itself start with `> ` or an empty line. The page footer's
+sha256 covers the bannered bytes.
 
 **git's settings for the seed are read as NUL-ended records** (C2304; ruling 152; `agentsync.convert.speech`; amends
 §16.54 Q52). `_git_config` split `git config --type=path --get-urlmatch http <NEMO_URL>`'s output with
@@ -44901,6 +44911,17 @@ scenario C's first old copy. Tests: `test_the_v40_prompt_reads_only_lines_setup_
 page that a unit-removed tombstone names a successor for as `SOURCE-SUPERSEDED`, naming the page to cite now; README's
 refresh-queue paragraph listed `STALE`, `SOURCE-DELETED` and `SOURCE-UNREADABLE` only. It lists the fourth with one
 clause on what it asks. Test: `tests/test_deploy_pack.py::test_the_readme_lists_every_refresh_verdict_curate_reports_ruling_164`.
+
+**The cap's front-matter line at §16.258 and the sidecar's two header lines** (C2477, C2415; amends §16.258 C1886,
+§16.268 C2301). §16.258's C1886 paragraph and its run of dated lines said every page stays within any cap the config
+accepts, while §16.268's C2220 line and lane E's C2532 (f9e96ccd1) say the cap bounds the guarded body and the front
+matter sits outside it; §16.258 takes a dated line in lane E's C2532 words (C2477). C2301's paragraph said a list
+sidecar is one record per LF-ended line, while the guard writes the untrusted-content banner and an empty line above
+the records of every `.txt` and `.md` sidecar, so a reader built from that paragraph counted two records too many; its
+dated line names the two lines, when to drop them and when not (C2415; no code change: removing the banner would drop
+the injection guard and move every sidecar digest). docs/plans/bring-back-ocr.md:3166's line is the lead's. Test:
+`tests/test_deploy_pack.py::test_the_cap_and_sidecar_dated_lines_say_what_the_page_and_sidecar_hold_c2477_c2415`, held to
+the guard's own bytes.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

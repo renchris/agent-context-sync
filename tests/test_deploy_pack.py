@@ -4114,6 +4114,42 @@ def test_the_readme_lists_every_refresh_verdict_curate_reports_ruling_164() -> N
     assert "the row names the page to cite now" in listed
 
 
+def test_the_cap_and_sidecar_dated_lines_say_what_the_page_and_sidecar_hold_c2477_c2415() -> None:
+    """B13 round 43 C2477: §16.258's C1886 lines said every page stays within any cap, while the front matter
+    sits outside it (lane E's C2532); its dated line says so in C2532's words. C2415: C2301 said a list
+    sidecar is one record per LF-ended line, but the guard writes the banner and an empty line above the
+    records; its dated line names both, dropped only when line 1 is the banner. Held to the guard's own
+    bytes."""
+    from agentsync import policy  # noqa: PLC0415
+    from agentsync.convert import registry  # noqa: PLC0415
+
+    contracts = (ROOT / "docs" / "design" / "CONTRACTS.md").read_text(encoding="utf-8")
+    flat = " ".join(contracts.split())
+    assert (
+        "Amended 2026-11-21, §16.274 C2477: the cap bounds each page's guarded body; the front matter above"
+        " it (paths, URL, digests, title, summary), sized by the item's metadata rather than its bytes (often"
+        " under 1 KB, about 2 KB with a long path, URL and summary), sits outside the cap, never budgeted, so"
+        " a page file passes the cap by its front matter"
+    ) in flat
+    c1886 = flat.split("**A page cap under 8 KiB is refused at load", 1)[1].split("**A cut table's note", 1)[
+        0
+    ]
+    assert "§16.274 C2477" in c1886
+    assert (
+        "Amended 2026-11-21, §16.274 C2415: on disk a text sidecar (`.txt` or `.md`: comments, objects,"
+        " formulas, full text) starts with two lines the converter guard adds"
+    ) in flat
+    c2301 = flat.split("**Each line of a list sidecar is one escaped record** (C2301", 1)[1].split(
+        "**git's", 1
+    )[0]
+    assert "A reader drops exactly those two lines, and only when line 1 is the banner" in c2301
+    guard = inspect.getsource(registry._with_sidecar_digests)
+    assert (
+        'banner + b"\\n\\n" + raw if text_sidecar else raw' in guard and "not raw.startswith(banner)" in guard
+    )
+    assert registry._TEXT_SIDECAR_SUFFIXES == (".txt", ".md") and "\n" not in policy.UNTRUSTED_BANNER
+
+
 def test_the_exit_0_no_folder_next_is_named_as_status_s_c2457_c2464() -> None:
     """B13 round 43 C2457 with C2464: K63 and §16.269 said step 2 ended with exit 0 and a `no folder to sync
     yet` NEXT, and §16.266 read the C2316 test's stub rc 2 as status's. install.sh prints that NEXT only on a
