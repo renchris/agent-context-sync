@@ -1414,7 +1414,8 @@ class ConvertConfig:
     max_page_bytes: int = 1_000_000  # hard cap before a unit is split / row-capped with a sidecar
     # Amended 2026-11-16, §16.258 C1886: a config sets at least 8 KiB (MIN_PAGE_BYTES); pages stay within any cap it accepts
     # Amended 2026-11-17, §16.263 C2055, C2091: every page converted under any cap it accepts stays within it, a sheet's lists included (a recording's index and a window with more keyframes than its footer lines fit aside, §16.263); a new cap reaches existing local and inbox pages over the next syncs (lane B's C2021)
-    # Amended 2026-11-20, §16.268 C2220, C2306: the cap bounds each page's guarded body (a window past its keyframes keeps its text and passes by their footer lines only, C2254); the front matter above it, up to about 1 KB, sits outside the cap, never budgeted; a [convert] edit re-reads local and inbox pages converted under other options, not recordings or Graph files, nor after an edit made before the first sync that recorded [convert] (lane B's C2297); a recording's page keeps its cap until it is read again for another reason (C2256 with C2253)
+    # Amended 2026-11-20, §16.268 C2220, C2306: the cap bounds each page's guarded body (a window past its keyframes keeps its text and passes by their footer lines only, C2254); the front matter above it (paths, URL, digests, title, summary), sized by the item's metadata rather than its bytes (often under 1 KB, about 2 KB with a long path, URL and summary), sits outside the cap, never budgeted; a [convert] edit re-reads local and inbox pages converted under other options, not recordings or Graph files, nor after an edit made before the first sync that recorded [convert] (lane B's C2297); a recording's page keeps its cap until it is read again for another reason (C2256 with C2253)
+    # Amended 2026-11-21, §16.273 C2532: the front matter's size is an example, never a bound: it is sized by the item's metadata, not its bytes
     pandoc_path: Path | None = None  # None = the pypandoc_binary bundled pandoc, by absolute path
     # Amended 2026-10-17, §16.114 Q62: None = that pandoc, or on macOS its native arm64 copy when installed
     ocr: bool = True  # False = never build or run the on-device OCR helper (§16.25)
@@ -43215,7 +43216,9 @@ each sync, and a Graph file's page when its bytes next change. The ConvertConfig
 so, and a dated line at §16.258's C1886 paragraph withdraws its `(C1848's sheet-comment residual aside)`. No test
 pins the comment's words; the contract scan reads the dated lines.
 Amended 2026-11-20, §16.268 C2220, C2306: the cap bounds each page's guarded body; the publisher's front matter above
-it, up to about 1 KB, sits outside the cap, never budgeted, so a page file can pass it by that much.
+it (paths, URL, digests, title, summary), sized by the item's metadata rather than its bytes (often under 1 KB, about 2 KB with a long path, URL and summary), sits outside the cap, never budgeted, so a page file passes the cap by its front matter.
+Amended 2026-11-21, §16.273 C2532: the line above said the front matter is up to about 1 KB and a page passes the cap
+by that much; its size is an example, never a bound, set by the item's metadata.
 
 **A zero-byte file's reason says it holds 0 bytes** (C2001, makes worse True; `agentsync.policy`, `agentsync.convert`;
 amends §16.233 C930; dated line at §16.28). Every zero-byte branch (`screen_file`'s Office guard, msg, diagram, the
@@ -43955,19 +43958,20 @@ each within 8,192 and showing at least half its room),
 said every page converted under any cap the config accepts stays within it, but a converter sizes only the body: the
 publisher writes `render_mirror_page`, the front matter then the body, so a page file passed 8,192 by its front matter
 (a 400-row CSV: body 7,354 bytes, front matter 967, file 8,321; a synced `.txt` 8,719 with 707 of front matter; the
-verifiers' runs at 1faa3f3a). Budgeting the front matter makes things worse: it holds the source's path, URL, etag
-and title, which do not follow the file's bytes, and the body's own `rendered_sha256` and token count, so a rename or
+verifiers' runs at 1faa3f3a). Budgeting the front matter makes things worse: it holds the source's path, URL and
+title (the eTag lives in the manifest, not on the page), which do not follow the file's bytes, and the body's own `rendered_sha256` and token count, so a rename or
 a longer URL would re-cut the body and change its hash and the cache, and the budget would feed on itself. The words
 now say the cap bounds the guarded body (the guard's banner and footer, a fence and a sheet's lists included; a
 recording's index, and a window past its keyframes, which keeps its text and passes by their footer lines only, C2254,
-aside), and the front matter above it, up to about 1 KB (paths, URL, digests, title, summary), sits outside the cap,
-never budgeted. The same comment and row carry lane B's re-read words once (ruling 154, §16.267): a [convert] edit
+aside), and the front matter above it (paths, URL, digests, title, summary), sized by the item's metadata rather than its bytes (often under 1 KB, about 2 KB with a long path, URL and summary), sits outside the cap, never budgeted. The same comment and row carry lane B's re-read words once (ruling 154, §16.267): a [convert] edit
 re-reads every local and inbox page converted under other options before the edit's sync, a few per sync, its note
 starting `sync again:` only while another sync reads more; an edit made before the first sync that recorded
 [convert] re-reads nothing, recordings and cloud (Graph) files are not re-read for an options edit, a Graph file's
 page takes a new cap when its bytes next change and a recording's keeps its cap until it is read again for another
 reason (C2297, C2256 with C2253, C2308). Test:
 `test_convert_page_cap.py::test_the_cap_bounds_the_guarded_body_and_the_words_say_the_front_matter_is_outside_c2220`.
+Amended 2026-11-21, §16.273 C2532: the 967 and 707 bytes above are examples, not a bound, and the eTag is not in a
+current page's front matter; the words above say so.
 
 **§16.258's C2055 line names the two exceptions its sources name** (C2269; ruling 153; docs). §16.258's dated line
 for C2055 and C2091 said the config's comment and the ConvertConfig row say every page stays within any cap the
@@ -44517,6 +44521,21 @@ is, so the capabilities digest (§16.45 R100) does not move. `_sidecar_name`, `_
 `_convert_streaming` now name C2300's `.formulas.txt` beside the CSV and list sidecars; docstrings only, so xlsx's
 emitter does not move. Test:
 `test_convert_formats.py::test_lxml_is_declared_and_the_xlsx_docstrings_name_the_formulas_sidecar_c2454`.
+
+**The front matter's size is an example, never a bound** (C2532; `agentsync.config` and docs; amends §16.268 C2220,
+§16.263 C2055; dated line at §15). config.py's comment, the ConvertConfig row's dated line, §16.263's C2055 line and
+§16.268's C2220 paragraph said the front matter is "up to about 1 KB" and that a page file "can pass [the cap] by that
+much", but its size has no limit: `_provenance` passes the source path and web URL uncapped, `_one_line` caps the title
+and summary in characters, not bytes, and `render_mirror_page` is `render_frontmatter(...) + text` (the verifier's
+render at bd65e0e1: 2,144 bytes with a 323-character path, a 453-character URL and a 500-character summary; 2,226 for
+a CJK title and summary). Each now says the front matter (paths, URL, digests, title, summary), sized by the item's
+metadata rather than its bytes (often under 1 KB, about 2 KB with a long path, URL and summary), sits outside the cap,
+never budgeted, so a page file passes the cap by its front matter; the old dated lines' words change in place, their
+dates kept, and a dated line beside each says so. §16.268's rationale lists the path, URL and title, not the eTag,
+which `_provenance` sets to None (it lives in the manifest). No byte cap is added and nothing is budgeted (§16.268's
+reason stands). Test:
+`test_convert_page_cap.py::test_the_cap_bounds_the_guarded_body_and_the_words_say_the_front_matter_is_outside_c2220`
+(the new words in config.py and CONTRACTS, and a long path, URL and summary rendering front matter over 1 KB).
 
 ### 16.274 Round 43: the prompt goes to v40 (only lines setup prints in every branch), CI polled every 60 seconds, and the guides (2026-11-21, wave B13 round 43 lane D)
 

@@ -26,7 +26,8 @@ from agentsync.convert.pandoc import PandocConverter
 from agentsync.convert.registry import Registry, _bannered, _with_sidecar_digests
 from agentsync.convert.xlsx import _record_escape
 from agentsync.errors import ConversionError, UnreadableSourceError
-from agentsync.model import RenderedUnit, UnitKind
+from agentsync.frontmatter import MirrorFrontmatter, render_mirror_page
+from agentsync.model import PageStatus, RenderedUnit, UnitKind
 from test_convert_builders import (
     build_drawio,
     build_pdf,
@@ -264,19 +265,50 @@ def test_the_cap_bounds_the_guarded_body_and_the_words_say_the_front_matter_is_o
     config_py = Path(setup_report.__file__).with_name("config.py").read_text(encoding="utf-8")
     comment = " ".join(config_py.replace("    # ", " ").split())
     assert "the cap bounds the guarded body of every page converted under any cap it accepts" in comment
-    assert (
-        "the front matter above it, up to about 1 KB (paths, URL, digests, title, summary), sits outside"
-        in comment
+    words = (
+        "the front matter above it (paths, URL, digests, title, summary), sized by the item's metadata "
+        "rather than its bytes (often under 1 KB, about 2 KB with a long path, URL and summary), sits "
+        "outside the cap, never budgeted"
     )
+    assert words + ", so a page file passes the cap by its front matter." in comment
     assert "an edit made before the first sync that recorded [convert] re-reads nothing" in comment
     contracts = " ".join(Path("docs/design/CONTRACTS.md").read_text(encoding="utf-8").split())
     assert "the cap bounds each page's guarded body (a window past its keyframes keeps its text" in contracts
-    assert "the front matter above it, up to about 1 KB, sits outside the cap, never budgeted;" in contracts
+    assert (
+        words + "; a [convert] edit re-reads" in contracts and "1 KB, sits outside the cap" not in contracts
+    )
     assert (
         "say every page stays within any cap the config accepts (a recording's index and a window with more "
         "keyframes than its footer lines fit aside, C2044's residuals at §16.263; §16.268 C2269)."
         in contracts
     )
+    # B13 round 43 C2532: "about 1 KB" is an example, not a bound: the front matter follows the item's
+    # metadata, and a long path, URL and summary (the title and summary at their character caps) pass 1 KB.
+    folder = "/".join(f"Contoso Programme Office {n}" for n in range(8))
+    fm = MirrorFrontmatter(
+        source_kind="graph",
+        source_id="contoso-sharepoint",
+        stable_id="b!contoso:01CONTOSO",
+        source_path=f"Sites/Contoso/{folder}/Contoso Quarterly Operating Plan.xlsx",
+        status=PageStatus.CURRENT,
+        source_web_url="https://contoso.sharepoint.com/sites/Contoso/"
+        + "Shared%20Documents/" * 20
+        + "Plan.xlsx",
+        content_sha256="a" * 64,
+        canonical_sha256="b" * 64,
+        rendered_sha256="c" * 64,
+        part_kind="sheet",
+        part_name="Q3",
+        unit_index=1,
+        unit_of=2,
+        converter="xlsx-openpyxl@1.0.4",
+        options_hash="sha256:" + "d" * 64,
+        source_title="Contoso quarterly plan " * 9,
+        summary="Contoso budget lines by quarter, owner and region. " * 10,
+    )
+    page = render_mirror_page(fm, "# Q3\n")
+    head = page[: page.index("# Q3\n")]
+    assert len(head.encode("utf-8")) > 1024, len(head.encode("utf-8"))
 
 
 def test_every_cap_body_caller_passes_the_configured_cap() -> None:
