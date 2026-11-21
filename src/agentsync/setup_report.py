@@ -19023,9 +19023,11 @@ _CWD_NAME_RE = re.compile(
 """B13 round 41 C2030 (ruling 142; privacy): install.sh's ``usage error: --cwd is not a folder this run can
 enter: <folder> (see --help)``, a whole-name head as :data:`_NOT_A_FOLDER_RE`'s is, its name running to the
 line's last `` (see --help)`` that ends a name or its end, cut by the cwd rule (:func:`_cut_path`, no
-``configured``) and counted as a ``<path>`` replacement; :data:`_SOURCE_LOCAL_RE`'s ``--cwd `` read its first
-word (``is``) as the folder and left the folder in clear. B13 round 42 (ruling 148): an empty name is taken
-as written (C2242), and the line's-end branch is group ``eol``, as :data:`_NOT_A_FOLDER_RE`'s (C2234)."""
+``configured``) and not counted (``counted=False``; B13 round 42 C2321, ruling 148: the shell counts the --cwd
+name no more than any cut; the words corrected by round 43 C2506); :data:`_SOURCE_LOCAL_RE`'s ``--cwd ``
+read its first word (``is``) as the folder and left the folder in clear. B13 round 42 (ruling 148): an empty
+name is taken as written (C2242), and the line's-end branch is group ``eol``, as :data:`_NOT_A_FOLDER_RE`'s
+(C2234)."""
 
 
 def _source_local_shown(red: Redactor, m: re.Match[str]) -> str:
