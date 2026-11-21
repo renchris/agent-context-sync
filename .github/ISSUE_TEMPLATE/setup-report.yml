@@ -76,8 +76,8 @@ body:
     attributes:
       label: Loop stage
       description: >-
-        The stage on the Summary's "Loop:" line: how far the loop got after the install (installed, synced,
-        baseline drafted, baseline confirmed, before run, topics N, after run). It is separate from the outcome,
+        The stage on the Summary's "Loop:" line: how far the loop got after the install (installed, inbox
+        synced, synced, baseline drafted, baseline confirmed, before run, topics N, after run). It is separate from the outcome,
         which judges only the install. Reports from before this field have no Loop line: leave it empty.
       placeholder: "synced"
     validations:

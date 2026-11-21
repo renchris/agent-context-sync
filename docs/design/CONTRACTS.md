@@ -5478,8 +5478,9 @@ Amended 2026-10-16, §16.98 N20: and left out too when the rest is the closing `
 deviation, prompt or error, or the closing `end | finished` line, and no legacy line); its counts still include it.
 
 KISS K16b revision (2026-10-05; supersedes the paragraphs above where they differ). **Loop line.** The Summary's
-second bullet is `- Loop: <stage>; NEXT: <step>[; WAITING ON YOU: <first wait>[ (+N more)]]`: `loop_stage(baseline, topics, synced)` gives the furthest
-`LOOP_STAGES` stage reached (`installed` when no sync ran, `synced`, `baseline drafted`, `baseline confirmed`,
+second bullet is `- Loop: <stage>; NEXT: <step>[; WAITING ON YOU: <first wait>[ (+N more)]]`: `loop_stage(baseline, topics, synced, folders)` gives the furthest
+`LOOP_STAGES` stage reached (`installed` when no sync ran, `inbox synced` when one ran with no live source but the
+inbox (B13 round 43 C2402, `folders` from sources.toml by loop.next_step's rule 2 test), `synced`, `baseline drafted`, `baseline confirmed`,
 `before run`, `topics N`, `after run`), from the Status hook's `loop:` line (`baseline <word>`, `topics N`) and
 its `last runs:` line (a sync ran unless it is "none" or the manifest is missing); the NEXT is the first `NEXT: `
 line of a third hook, `ReportHooks.loop_next` (the CLI's `loop.next_lines(config, fixes=<the doctor hook's FAIL
@@ -5552,7 +5553,8 @@ ISSUE_LINK_LABEL = "issue link (review the report first):"  # the CLI's last lin
 ISSUE_TITLE = "Setup report: "
 ISSUE_FIELDS = {"outcome": "outcome", "run_type": "run_type", "prompt": "prompt_version", "agent": "agent",
                 "loop_stage": "loop_stage"}  # loop_stage: KISS K16b
-LOOP_STAGES = ("installed", "synced", "baseline drafted", "baseline confirmed", "before run", "topics N", "after run")
+LOOP_STAGES = ("installed", "inbox synced", "synced", "baseline drafted", "baseline confirmed", "before run",
+               "topics N", "after run")  # inbox synced: B13 round 43 C2402
 ISSUE_RUN_TYPES = {"real": "Real Mac", "sandbox": "Sandbox", "simulated launchd": "Sandbox with simulated launchd"}
 RECENT_ERROR_LINES = 40
 INSTALL_RUNS_SHOWN = 3

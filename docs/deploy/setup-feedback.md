@@ -581,8 +581,8 @@ later version until one moves a step, since the version changes with every edit 
 the rules only with its steps.
 
 The outcome judges only the install. How far the loop got after it is the Summary's `Loop:` line (KISS K16b):
-`Loop: <stage>; NEXT: <the loop's current NEXT line>`. The stage is `installed` (no sync ran), `synced`,
-`baseline drafted`, `baseline confirmed`, `before run`, `topics N` (N curated pages) or `after run`, computed from
+`Loop: <stage>; NEXT: <the loop's current NEXT line>`. The stage is `installed` (no sync ran), `inbox
+synced` (a sync ran, and no folder but the inbox is a live source), `synced`, `baseline drafted`, `baseline confirmed`, `before run`, `topics N` (N curated pages) or `after run`, computed from
 status's loop line (when status cannot read the state, `not read: status says <status's own words>`, or `not read
 (status cannot read the state)` when it gives none; `not read (status did not finish in time)` when the report's
 time limit cut the status call, and `not read (status failed: <why>)` when it failed otherwise (B13 round 34 C801);

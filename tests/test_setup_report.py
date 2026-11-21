@@ -60,6 +60,7 @@ from agentsync.config import (
     RETIRE_ADVICE,
     Config,
     ConvertConfig,
+    default_config_text,
     load_config,
     set_source_exclude,
     toml_string,
@@ -11336,6 +11337,37 @@ def test_a_loop_stage_status_could_not_read_is_not_read_not_installed(
     assert "last runs: " in status and "retention:" not in status, status
     assert _line(section(text, "Summary"), "- Loop: ").startswith("- Loop: synced;")
     assert "loop_stage=synced" in text
+
+
+def test_an_inbox_only_sync_reads_inbox_synced_never_synced_c2402(fake_mac: dict[str, Path]) -> None:
+    """B13 round 43 C2402 (ruling 163): on an inbox-only config after one sync, the Summary read `Loop:
+    synced` and the issue link `loop_stage=synced` beside a NEXT that no folder is synced yet. A stage of
+    its own, `inbox synced`, from sources.toml by loop.next_step's rule 2 test: a folder source gives
+    `synced` again, and a baseline drafted on an inbox-only config keeps its stage."""
+    assert setup_report.LOOP_STAGES.index("inbox synced") == setup_report.LOOP_STAGES.index("installed") + 1
+    assert setup_report.LOOP_STAGES.index("synced") == setup_report.LOOP_STAGES.index("inbox synced") + 1
+    cfg = fake_mac["config"]
+    folders = cfg.read_text(encoding="utf-8")
+    inbox = cfg.parent / "inbox"
+    inbox.mkdir(exist_ok=True)
+    only = default_config_text() + f'\n[[source]]\nid = "inbox"\nkind = "inbox"\npath = "{inbox}"\n'
+
+    def stage(body: str, baseline: str) -> tuple[str, str]:
+        cfg.write_text(body, encoding="utf-8")
+        hooks = setup_report.ReportHooks(
+            status=lambda c: [f"loop: skill current · baseline {baseline}", "last runs: 1 poll ok"]
+        )
+        text, _red = setup_report.build_report(cfg, hooks=hooks)
+        return _line(section(text, "Summary"), "- Loop: "), text
+
+    loop, text = stage(only, "missing")
+    assert loop.startswith("- Loop: inbox synced;"), loop
+    assert "loop_stage=inbox%20synced" in text, [ln for ln in text.splitlines() if "loop_stage=" in ln]
+    assert "loop_stage=synced" not in text
+    loop, text = stage(folders, "missing")
+    assert loop.startswith("- Loop: synced;") and "loop_stage=synced" in text, loop
+    loop, _text = stage(only, "draft")
+    assert loop.startswith("- Loop: baseline drafted;"), loop
 
 
 def test_a_part_the_report_could_not_read_says_why_in_words_not_a_class_name(

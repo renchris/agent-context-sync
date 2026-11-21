@@ -416,6 +416,7 @@ ISSUE_FIELD_LABELS = {
 """A prefilled field's ``id`` -> its label in the issue form, in the form's order."""
 LOOP_STAGES = (
     "installed",
+    "inbox synced",
     "synced",
     "baseline drafted",
     "baseline confirmed",
@@ -424,7 +425,9 @@ LOOP_STAGES = (
     "after run",
 )
 """The Summary's ``Loop:`` stages in loop order (KISS K16b; ``topics N`` carries the curated page count): how
-far past the install the setup got, apart from the outcome, which judges only the install."""
+far past the install the setup got, apart from the outcome, which judges only the install. B13 round 43
+C2402 (ruling 163): ``inbox synced`` is a sync with no live source but the inbox, where ``synced`` said the
+Mac was synced beside a NEXT that no folder is synced yet."""
 ISSUE_RUN_TYPES = {
     "real": "Real Mac",
     "sandbox": "Sandbox",
@@ -4181,12 +4184,16 @@ def compute_run_type(runs: Sequence[InstallRun], home: str) -> str:
     return "sandbox" if is_sandbox_home(home) else "real"
 
 
-def loop_stage(baseline: str | None, topics: int | None, synced: bool | None) -> str | None:
+def loop_stage(
+    baseline: str | None, topics: int | None, synced: bool | None, folders: bool | None = None
+) -> str | None:
     """How far the loop got (:data:`LOOP_STAGES`), from status's loop line (``baseline`` is
     ``loop.baseline_state``'s word, ``topics`` the curated page count) and whether a sync ran: the furthest
     stage reached, so a curated page outranks the baseline before it. ``synced`` None: status could not read
     the state, so whether a sync ran is unknown; a stage the baseline or the topics settle (read from disk)
-    still stands, and otherwise there is none, never a false ``installed`` (B13 round 17 U7)."""
+    still stands, and otherwise there is none, never a false ``installed`` (B13 round 17 U7). ``folders``
+    False (B13 round 43 C2402, ruling 163): no live source but the inbox, by loop.next_step's own test, so a
+    sync reads ``inbox synced``; None keeps ``synced``. A baseline or topics stage still wins first."""
     if baseline == "after":
         return "after run"
     if topics:
@@ -4196,6 +4203,8 @@ def loop_stage(baseline: str | None, topics: int | None, synced: bool | None) ->
         return stage[baseline]
     if synced is None:
         return None
+    if synced and folders is False:
+        return "inbox synced"
     return "synced" if synced else "installed"
 
 
@@ -16898,7 +16907,12 @@ def _loop_line(r: _Run) -> str:
     are on this line. Sets ``r.loop_stage`` for the issue link;
     :func:`build_report` runs it once, before ``took``."""
     if r.facts.loop is not None:
-        r.loop_stage = loop_stage(*r.facts.loop)
+        # B13 round 43 C2402 (ruling 163): a folder other than the inbox, by loop.next_step's rule 2 test,
+        # from sources.toml, never from status's words
+        folders = None
+        if r.config is not None:
+            folders = any(s.kind is not SourceKind.INBOX for s in r.config.live_sources())
+        r.loop_stage = loop_stage(*r.facts.loop, folders)
     stage = r.loop_stage or "unknown (no status loop line)"
     if r.loop_stage is None and r.facts.loop is None and r.facts.status_failed:  # B13 round 34 C801
         why = r.facts.status_failed
