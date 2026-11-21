@@ -1328,6 +1328,54 @@ def test_a_file_named_inbox_is_not_called_an_ensured_inbox_c2207(
     assert not _config_line(env).endswith(" inbox=not-added"), _config_line(env)
 
 
+@pytest.mark.parametrize("case", ["refused", "does not load", "dry run"])
+def test_a_refused_step_2_names_its_docs_repo_and_inbox_when_the_config_loads_c2463(
+    real_env: dict[str, str], wheel: Path, folder: Path, case: str
+) -> None:
+    """B13 round 43 ruling 170, C2463: the setup prompt reads the folder step 2's `inbox:` line names whether
+    or not step 2 exited non-zero, but only a step 2 that ended well printed `docs repo:` and `inbox:`: a
+    refused init or add-source (here a docs-repo remote [governance] does not allow) stopped in config_failed
+    first, though init had made the inbox. Every refused step 2 whose config loads now prints both, before
+    its error; a config that does not load prints neither, nor does a dry run."""
+    env = real_env
+    home = Path(env["HOME"])
+    ctx = home / "agent-context"
+    first = install_sh(env, str(wheel), "--source-local", str(folder), timeout=300)
+    assert first.returncode == 0, first.stdout + first.stderr
+    docs = ctx / "docs"
+    if case == "does not load":
+        (ctx / "sources.toml").write_text("[agentsync\n", encoding="utf-8")
+    else:
+        url = "https://git.contoso.example/team/kb.git"
+        subprocess.run(["git", "-C", str(docs), "remote", "add", "origin", url], check=True)
+    run = {**env, "AGENTSYNC_INSTALL_DRY_RUN": "1"} if case == "dry run" else env
+    cp = subprocess.run(
+        [BASH32, str(INSTALL_SH), str(wheel)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        check=False,
+        timeout=_install_bound(300),
+        env=run,
+        stdin=subprocess.DEVNULL,
+    )
+    lines = cp.stdout.splitlines()
+    named = [ln for ln in lines if ln.startswith(("docs repo: ", "inbox: "))]
+    if case == "dry run":
+        assert cp.returncode == 0 and not named, cp.stdout
+        return
+    assert cp.returncode == 1, cp.stdout
+    [error] = [i for i, ln in enumerate(lines) if ln.startswith("error: ")]
+    if case == "does not load":
+        assert "does not load" in lines[-1] and not named, cp.stdout
+        return
+    assert lines[-1].startswith("NEXT: the docs repo has a git remote the [governance] policy"), cp.stdout
+    assert named == [f"docs repo: {docs}", f"inbox: {ctx / 'inbox'}"], cp.stdout
+    at = lines.index(f"docs repo: {docs}")
+    assert lines[at + 1] == f"inbox: {ctx / 'inbox'}" and at < error, cp.stdout
+    assert (ctx / "inbox").is_dir()
+
+
 def test_confirm_install_agent_without_any_source_exits_1(env: dict[str, str], wheel: Path) -> None:
     cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
     for again in (False, True):  # a fresh install, then a re-run over a config holding only the inbox

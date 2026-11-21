@@ -12674,6 +12674,10 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 		second_stop_words ""
 		FAIL_NEXT="agentsync's state file cannot be read (the error above, with its fix; ~/.local/bin/agentsync status prints it again$SECOND): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; $ONCE, the next run is: $SELF$RERUN_ARGS"
 	fi
+	# a refused step 2 names its docs repo and inbox as a step 2 that ends well does: init and add-source make the
+	# inbox before they refuse (cli._ensure_setup), and the setup prompt reads the folder the inbox: line names;
+	# nothing when the config does not load, nor in a dry run (B13 round 43 ruling 170, C2463)
+	config_folder_lines
 	(exit "$rc") || fail "$@"
 }
 KEPT=0 # the folders synced before this step, and below the ones it added: both in its log line
