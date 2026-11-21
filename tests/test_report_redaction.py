@@ -1472,6 +1472,52 @@ def test_another_builds_render_gives_way_exactly_where_the_free_text_cut_changes
     assert report.read_bytes() == before, "this checkout's own render stays byte for byte"
 
 
+@pytest.mark.parametrize(
+    "line",
+    [
+        "debug: config | ~/Projects/acquisition-fabrikam/cfg/sources.toml",
+        "| 3 | debug: config | ~/Projects/acquisition-fabrikam/cfg/sources.toml |",
+        "debug: config | debug: source checkout ~/src/agent-context-sync",
+        "| 3 | debug: config | debug: source checkout ~/src/agent-context-sync |",
+        "2026-11-20T00:00:01Z | step 2 | note | debug: config  | -",
+        "debug: config ~/agent-context/sources.toml",
+        "debug: config ~/Projects/acquisition-fabrikam/cfg/sources.toml",
+    ],
+)
+def test_the_config_guard_reads_an_empty_cell_as_both_reports_do_c2499(tmp_path: Path, line: str) -> None:
+    """B13 round 43 ruling 160, C2499 (privacy): report_config_lines read every value after `| ` as empty, so
+    an install.out line `debug: config | ~/Projects/...` kept another build's render, which printed the path
+    both reports cut. Through dbval's own dbempty, a value after `| ` is empty only before another debug head,
+    so the guard fires exactly where setup_report._redact_lines cuts the line; the recut of this checkout's
+    own render (other=0) leaves it byte for byte."""
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    fns = "\n".join(
+        m.group(0)
+        for m in re.finditer(
+            r"(?ms)^DBCELL_AWK='.*?^'$|^report_config_lines\(\) \{\n.*?^\}$|" + _REPORT_CUTS_BLOCK, text
+        )
+    )
+    out = tmp_path / "install.out"
+    out.write_text(f"{line}\n", encoding="utf-8")
+    run = f"set -euo pipefail\n{fns}\nCONFIG=\nINSTALL_OUT={shlex.quote(str(out))}\nreport_config_lines"
+    cp = subprocess.run(
+        [BASH32, "-c", run],
+        capture_output=True,
+        check=False,
+        env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)},
+    )
+    assert cp.returncode in (0, 1), cp.stderr
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    python = setup_report._redact_lines(red, [line])
+    assert (cp.returncode == 0) is (python != line), (line, python)
+    report = tmp_path / "setup-report.md"
+    report.write_text(f"# agentsync setup report\n\n{line}\n", encoding="utf-8")
+    before = report.read_bytes()
+    assert _report_recut_harness(tmp_path, report, other=0).returncode == 0
+    assert report.read_bytes() == before, "this checkout's own render stays byte for byte"
+
+
 @pytest.mark.parametrize("folders", [["Empty Project", "Project Alpha"], ["Project Alpha", "Empty Project"]])
 def test_both_reports_hold_agentsyncs_own_verb_whole_c1425(
     env: dict[str, str],  # noqa: F811

@@ -5189,6 +5189,25 @@ function freecut(l,    out, a, r, i, w, j, p, t, x, y, z, nw, e, sl) {
 	return out l
 }
 '
+# A debug head's empty cell, one awk function the shell report's dbval and report_config_lines both read (B13
+# round 43 ruling 160, C2499: the guard read every value after `| ` as empty, so `debug: config | ~/Projects/x`
+# kept another build's render that printed the path, which both reports cut). dbinit takes the debug heads, the
+# `debug: ` rows of CUT_HEADS_CWD and every row of CUT_HEADS_UNDER_CWD and CUT_HEADS_CONFIG; dbempty(r), for the
+# text after a head, is 1 only when it opens with `| ` and another such head (the head's blank doubling as the
+# separator's), as setup_report._DEBUG_RE reads it (B13 round 42 ruling 148, C2286 with C2242).
+DBCELL_AWK='function dbinit(cwds, under, config,    n, k, w) {
+	ndh = 0
+	n = split(cwds, w, "|"); for (k = 1; k <= n; k++) if (index(w[k], "debug: ") == 1) dh[++ndh] = w[k]
+	n = split(under, w, "|"); for (k = 1; k <= n; k++) if (w[k] != "") dh[++ndh] = w[k]
+	n = split(config, w, "|"); for (k = 1; k <= n; k++) if (w[k] != "") dh[++ndh] = w[k]
+}
+function dbempty(r,    k, x) {
+	if (substr(r, 1, 2) != "| ") return 0
+	x = substr(r, 3)
+	for (k = 1; k <= ndh; k++) if (index(x, dh[k]) == 1) return 1
+	return 0
+}
+'
 # add-source's and init's note, `added source '<id>' to <file> (<typed>, stored as <stored>):` and its inbox twin
 # `added inbox source '<id>' (<typed>, stored as <stored>):`, read by its structure after every pair and the
 # other-home cut (foreign_home_cut, B13 round 43 C2468) have run, as
@@ -5213,7 +5232,7 @@ typed_note_cut() {
 		FREE_HEAD="$CUT_FREE_HEAD" FREE_END="$CUT_FREE_END" FREE_TRAIL="$CUT_FREE_TRAIL" \
 		FREE_CUT_TRAIL="${CUT_FREE_CUT_TRAIL:-}" FREE_STOP="$CUT_FREE_PART_STOP" FREE_PATH="$CUT_FREE_PATH_START" \
 		FREE_APPS="$CUT_APPS" FREE_KEPT="$CUT_PROVIDER_KEPT" \
-		LC_ALL=C awk "$FREECUT_AWK"'
+		LC_ALL=C awk "$FREECUT_AWK$DBCELL_AWK"'
 	function norm(v) { v = tolower(v); gsub(ENVIRON["CUT_SEP"], "", v); return v }
 	BEGIN {
 		# the placeholders of configured folders: a pair whose value is a part of a configured CloudStorage path
@@ -5234,6 +5253,7 @@ typed_note_cut() {
 		# head, its word\047s end and its trailing signs (C1862)
 		nhp = split(ENVIRON["TYPED_PROVIDER"], hp, "|"); nhf = split(ENVIRON["TYPED_FIRST"], hf, "|")
 		nhc = split(ENVIRON["TYPED_CWDS"], hc, "|"); nhu = split(ENVIRON["TYPED_UNDER"], hu, "|")
+		dbinit(ENVIRON["TYPED_CWDS"], ENVIRON["TYPED_UNDER"], ENVIRON["TYPED_CONFIG"]) # DBCELL_AWK\047s (C2499)
 		# the one-shell-word heads a quote can wrap with its value (C2466): the provider, first-unknown and cwd
 		# rows that open with `--` or `add-source`, each with its rule, as setup_report._WORD_HEADS takes them
 		nwh = 0
@@ -5358,14 +5378,10 @@ typed_note_cut() {
 	# a debug head\047s value: to the next ` | ` or the line\047s end, empty only before `| ` and another debug head
 	# (the head\047s blank doubling as the separator\047s) or in the double-space form, as setup_report._DEBUG_RE reads
 	# it: an empty cell took the next cell as its value (B13 round 42 ruling 148, C2286 with C2242; makes worse True
-	# for allowing every empty value)
-	function dbval(r,    e, k, x) {
-		if (substr(r, 1, 2) == "| ") {
-			x = substr(r, 3)
-			for (k = 1; k <= nhc; k++) if (index(hc[k], "debug: ") == 1 && index(x, hc[k]) == 1) return ""
-			for (k = 1; k <= nhu; k++) if (hu[k] != "" && index(x, hu[k]) == 1) return ""
-			for (k = 1; k <= nhg; k++) if (hg[k] != "" && index(x, hg[k]) == 1) return ""
-		}
+	# for allowing every empty value); the empty cell is DBCELL_AWK\047s dbempty, report_config_lines\047 too (B13
+	# round 43 ruling 160, C2499)
+	function dbval(r,    e) {
+		if (dbempty(r)) return ""
 		e = index(r, " | ")
 		return e ? substr(r, 1, e - 1) : r
 	}
@@ -7901,18 +7917,20 @@ report_provider_lines() {
 # ` | ` cell included, whose value up to the next ` | ` or the line's end is neither empty nor CUT_CONFIG_DEFAULT. A
 # build before B13 round 41 C2063 prints that path in clear on its `- config:`, `- loads:` and `Not run:` lines and in
 # install.out's echoes, and report_recut has no config rule, so such a render is replaced by the shell report, which
-# cuts every spelling of it (B13 round 42 ruling 147, C2230 with C2284).
+# cuts every spelling of it (B13 round 42 ruling 147, C2230 with C2284). A value after `| ` is empty only when
+# another debug head follows, through dbval's own dbempty (B13 round 43 ruling 160, C2499).
 report_config_lines() {
 	local m=""
 	if [ -n "${CONFIG:-}" ] && [ "$(debug_path "$CONFIG")" != "$CUT_CONFIG_DEFAULT" ] && [ -n "$(config_shown "$CONFIG")" ]; then
 		m="a config path other than $CUT_CONFIG_DEFAULT"
 	elif [ -f "$INSTALL_OUT" ] && [ ! -L "$INSTALL_OUT" ]; then
-		m="$(H="$CUT_HEADS_CONFIG" D="$CUT_CONFIG_DEFAULT" LC_ALL=C awk 'BEGIN { h = ENVIRON["H"]; d = ENVIRON["D"] }
+		m="$(H="$CUT_HEADS_CONFIG" D="$CUT_CONFIG_DEFAULT" CWDS="$CUT_HEADS_CWD" UNDER="$CUT_HEADS_UNDER_CWD" LC_ALL=C awk "$DBCELL_AWK"'
+			BEGIN { h = ENVIRON["H"]; d = ENVIRON["D"]; dbinit(ENVIRON["CWDS"], ENVIRON["UNDER"], ENVIRON["H"]) }
 			h != "" { s = $0
 				while ((i = index(s, h)) > 0) {
 					s = substr(s, i + length(h)); v = s
 					if ((j = index(v, " | ")) > 0) v = substr(v, 1, j - 1)
-					if (substr(v, 1, 2) == "| ") v = ""
+					if (dbempty(s)) v = ""
 					if (v != "" && v != d) { print "a `" substr(h, 1, length(h) - 1) "` line with a config path other than " d; exit }
 				} }' "$INSTALL_OUT" 2>/dev/null)" || m=""
 		[ -z "$m" ] || m="$m in ${INSTALL_OUT##*/}"

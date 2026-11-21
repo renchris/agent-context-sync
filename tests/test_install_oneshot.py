@@ -18346,7 +18346,20 @@ CONFIG_RENDERER = OLDER_RENDERER.replace(
 )
 
 
-@pytest.mark.parametrize("case", ["debug", "cell", "env", "env-default", "debug-default", "debug-empty"])
+@pytest.mark.parametrize(
+    "case",
+    [
+        "debug",
+        "cell",
+        "env",
+        "env-default",
+        "debug-default",
+        "debug-empty",
+        "debug-bar",
+        "cell-bar",
+        "debug-bar-head",
+    ],
+)
 def test_another_builds_render_of_a_config_other_than_the_default_falls_back_c2230_c2284(
     env: dict[str, str], case: str
 ) -> None:
@@ -18355,7 +18368,10 @@ def test_another_builds_render_of_a_config_other_than_the_default_falls_back_c22
     and in install.out's echoes, and this checkout's recut has no config rule, so with a private
     AGENTSYNC_CONFIG, or a `debug: config` line naming one, another build's kept render printed the project
     folder. Such a render is now replaced by the shell report, which cuts every spelling of it; the default
-    config, given or written, and an empty `debug: config` value keep the render."""
+    config, given or written, and an empty `debug: config` value keep the render. B13 round 43 ruling 160,
+    C2499: the guard read every value after `| ` as empty, so `debug: config | ~/Projects/...` kept the render
+    that printed it; that value is empty only before another debug head now, as dbval and _DEBUG_RE read
+    it."""
     assert 'cfg="$2"' in CONFIG_RENDERER and ' "$cfg"' in CONFIG_RENDERER, "the stub prints its --config"
     env = _renderer_home(env, "older", stamp="0123456789ab" * 3)
     home = Path(env["HOME"])
@@ -18374,6 +18390,10 @@ def test_another_builds_render_of_a_config_other_than_the_default_falls_back_c22
         " ~/Projects/acquisition-fabrikam/cfg/sources.toml | -\n",
         "debug-default": "debug: config ~/agent-context/sources.toml\n",
         "debug-empty": "2026-11-20T00:00:01Z | step 2 | note | debug: config  | -\n",
+        # B13 round 43 ruling 160, C2499: a value after `| ` is empty only before another debug head
+        "debug-bar": "debug: config | ~/Projects/acquisition-fabrikam/cfg/sources.toml\n",
+        "cell-bar": "| 3 | debug: config | ~/Projects/acquisition-fabrikam/cfg/sources.toml |\n",
+        "debug-bar-head": "debug: config | debug: source checkout ~/src/agent-context-sync\n",
     }
     out.write_text(
         "# run=r1 2026-11-20T00:00:00Z install.sh --report-only\n" + lines.get(case, ""), encoding="utf-8"
@@ -18385,7 +18405,7 @@ def test_another_builds_render_of_a_config_other_than_the_default_falls_back_c22
     cp = install_sh(run, "--report-only")
     assert cp.returncode == 0, cp.stdout + cp.stderr
     text = report_path(env).read_text(encoding="utf-8")
-    if case in ("env-default", "debug-default", "debug-empty"):
+    if case in ("env-default", "debug-default", "debug-empty", "debug-bar-head"):
         assert "(agentsync setup-report)" in cp.stdout and "older stub render" in text, cp.stdout
         assert "- config: ~/agent-context/sources.toml (exists)" in text, text
         return
@@ -23574,9 +23594,10 @@ MDM_URL = "https://contosoltd.mdm.example:443/mdm/ServerURL"
 _REPORT_CUTS_BLOCK = r"^# BEGIN report_cuts\n.*?^# END report_cuts$"
 """install.sh's generated block (B13 round 39 ruling 133), which both function sets below take whole, so every
 harness built from them reads the cut table its functions read (C1633)."""
-_FREECUT_AWK = r"^FREECUT_AWK='.*?^'$"
-"""The free-text provider cut's awk (freeinit, freecut), which typed_note_cut and report_provider_lines read
-(B13 round 43 ruling 160, C2498): a harness of either takes it, (?ms)."""
+_FREECUT_AWK = r"^(?:FREECUT_AWK|DBCELL_AWK)='.*?^'$"
+"""The awks typed_note_cut shares (B13 round 43 ruling 160), (?ms): the free-text provider cut (freeinit,
+freecut), which report_provider_lines reads too (C2498), and a debug head's empty cell (dbinit, dbempty),
+which report_config_lines reads too (C2499). A harness of any of them takes both."""
 SHELL_REDACTION_FNS = re.compile(
     r"(?ms)^(?:hold_values|hold_scopes|safe_shown|redaction_pairs|redact_stream|typed_note_cut|foreign_home_cut"
     r"|hold_cut)"
@@ -23584,7 +23605,8 @@ SHELL_REDACTION_FNS = re.compile(
     + _REPORT_CUTS_BLOCK
     # B13 round 40: the word run redact_stream builds from CUT_SEP (C1890) and its fail-closed marker (C1836)
     + r"|^SEP_RUN_AWK='.*?^'$|^redact_failed\(\) \{ [^\n]*\}$"
-    # B13 round 43 ruling 160 (C2498): the free-text cut typed_note_cut shares with report_provider_lines
+    # B13 round 43 ruling 160 (C2498, C2499): the awks typed_note_cut shares with report_provider_lines and
+    # report_config_lines
     + r"|"
     + _FREECUT_AWK
 )
