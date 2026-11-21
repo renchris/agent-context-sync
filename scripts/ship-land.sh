@@ -57,8 +57,29 @@ fi
 # A gh error is told from an answer by gh's exit status. `gh run watch --exit-status` fails both on a red run and on
 # a network error, so the run's state is read with `gh run view`, retried; a watch that broke off before the run
 # completed is watched again. Every wait is bounded: SHIP_LAND_RUN_POLLS polls (24) and re-reads, each
-# SHIP_LAND_RUN_SLEEP s apart (5), so runs get 2 minutes to appear; the two are for tests.
-polls=${SHIP_LAND_RUN_POLLS:-24} pause=${SHIP_LAND_RUN_SLEEP:-5}
+# SHIP_LAND_RUN_SLEEP s apart (5), so runs get 2 minutes to appear; the two are for tests. A watch refreshes every
+# SHIP_LAND_WATCH_INTERVAL s (60), not gh's default 3: at 3 s one watcher spent about 2,400 of the account's 5,000 API
+# requests an hour, and the rate limit stopped a green land with "nothing pushed" (B13 round 43 C2479). A gh read that
+# fails while the limit is spent waits once for its reset, at most SHIP_LAND_RATE_WAIT_MAX s (3900, 65 minutes), and
+# is read again; every other gh failure keeps its bound.
+polls=${SHIP_LAND_RUN_POLLS:-24} pause=${SHIP_LAND_RUN_SLEEP:-5} rate_max=${SHIP_LAND_RATE_WAIT_MAX:-3900}
+
+# Whether GitHub's API rate limit is spent, and if so a wait until its reset (5 s past it, at most rate_max s).
+# `gh api rate_limit` does not count against the limit. 0 after a wait; 1 when there is headroom or the limit could
+# not be read, so a failure that is not the limit is never waited out.
+rate_wait() {
+  local core remaining reset secs
+  core=$(gh api rate_limit --jq '.resources.core | "\(.remaining) \(.reset)"' 2>/dev/null) || return 1
+  remaining=${core%% *} reset=${core##* }
+  case $remaining in '' | *[!0-9]*) return 1 ;; esac
+  case $reset in '' | *[!0-9]*) return 1 ;; esac
+  [ "$remaining" -eq 0 ] || return 1
+  secs=$((reset - $(date +%s) + 5))
+  [ "$secs" -ge 1 ] || secs=1
+  [ "$secs" -le "$rate_max" ] || secs=$rate_max
+  echo "== CI: GitHub's API rate limit is spent; waiting $secs s for its reset" >&2
+  /bin/sleep "$secs"
+}
 
 # Whether run $1, which ended failure, lost its hosted runner rather than failed a step (B13 round 31 C569: run
 # 40523387625's first attempt ended failure at 46:01 with no step failed, pytest's still in progress, and the
@@ -77,7 +98,7 @@ lost_words() {
 }
 
 watch_runs() {
-  local sha=$1 ids='' req all id tries=0 answered=0 state passes reads workflow newest
+  local sha=$1 ids='' req all id tries=0 answered=0 state passes reads workflow newest rated=0
   while [ -z "$ids" ] && [ "$tries" -lt "$polls" ]; do
     # A sha's runs are listed one at a time, and diagrams can be listed before ci: the list counts only once it
     # holds a ci run, which every push to main starts (B13 round 23: a land read back diagrams alone as CI green).
@@ -88,6 +109,10 @@ watch_runs() {
       [ -z "$req" ] || ids=$(printf '%s\n' "$req" "$all" | awk 'NF && !seen[$0]++')
     else
       ids=''
+      if [ "$rated" = 0 ] && rate_wait; then
+        rated=1
+        continue
+      fi
     fi
     [ -n "$ids" ] || { tries=$((tries + 1)); /bin/sleep "$pause"; }
   done
@@ -103,9 +128,13 @@ watch_runs() {
     passes=0
     while :; do
       echo "== CI: waiting for run $id" >&2
-      gh run watch "$id" --exit-status >/dev/null 2>&1 && break
+      gh run watch "$id" --interval "${SHIP_LAND_WATCH_INTERVAL:-60}" --exit-status >/dev/null 2>&1 && break
       state='' reads=0
       until state=$(gh run view "$id" --json status,conclusion --jq '"\(.status) \(.conclusion)"' 2>/dev/null); do
+        if [ "$rated" = 0 ] && rate_wait; then
+          rated=1
+          continue
+        fi
         reads=$((reads + 1))
         if [ "$reads" -ge 3 ]; then
           echo "gh run view $id failed 3 times"

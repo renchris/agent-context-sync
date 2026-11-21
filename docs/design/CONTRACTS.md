@@ -44201,7 +44201,22 @@ Reserved for round 43 lane E of B13.
 
 ### 16.274 Round 43: the prompt goes to v40 (only lines setup prints in every branch), CI polled every 60 seconds, and the guides (2026-11-21, wave B13 round 43 lane D)
 
-Reserved for round 43 lane D of B13.
+Round 43's lane D items (`docs/plans/bring-back-ocr.md`, "B13 round 43"; specs `round43/items/C<n>.md`, the verifier's
+corrected fix built, as the lead's rulings 157 to 170 settle it). A dated line this round writes reads
+`Amended 2026-11-21, §16.274 C<n>`.
+
+**Every CI watch refreshes once a minute, and a spent API rate limit is waited out once** (C2479; `scripts/ship-land.sh`,
+`CLAUDE.md`). `gh run watch` refreshes every 3 s by default, and each refresh of a run in progress reads the run and its
+jobs: one watcher spent about 2,400 of the account's 5,000 core API requests an hour, and on 2026-11-21 at 03:43Z the
+limit stopped lane E's third land after a green gate (`could not read trunk CI (gh run view 44856539196 failed 3
+times); nothing pushed`, exit 9). ship-land's watch passes `--interval "${SHIP_LAND_WATCH_INTERVAL:-60}"` after the run
+id, and CLAUDE.md's read-back loop `--interval 60`; a finished run is seen up to a minute later, against jobs of 50 to
+80 minutes. When a `gh run list` or `gh run view` read fails and `gh api rate_limit` (which the limit does not count)
+says no core request is left, `watch_runs` waits once for the reset, 5 s past it and at most
+`SHIP_LAND_RATE_WAIT_MAX` s (3900, 65 minutes), and reads again; a failure with headroom, or a limit it cannot read,
+keeps its 3 reads and exit 9. Tests: `tests/test_ship_land.py`
+`::test_every_ci_watch_refreshes_once_a_minute_not_every_3_s_c2479` and
+`::test_a_read_that_fails_on_a_spent_rate_limit_waits_for_its_reset_once_c2479`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

@@ -239,6 +239,63 @@ def test_a_watch_that_breaks_off_reads_the_runs_state(
     assert _git(remote, "rev-parse", "main") == _git(clone, "rev-parse", "HEAD")
 
 
+def test_every_ci_watch_refreshes_once_a_minute_not_every_3_s_c2479(
+    remote: Path, tmp_path: Path, env: dict[str, str]
+) -> None:
+    """B13 round 43 C2479: ship-land and CLAUDE.md's read-back loop ran `gh run watch` at gh's default 3 s
+    refresh, about 2,400 of the account's 5,000 API requests an hour for one watcher, and the rate limit
+    stopped a green land with "nothing pushed". Both watch with `--interval 60`, the run id still gh's third
+    word."""
+    clone = _clone(remote, tmp_path / "a", env, "one")
+    body = 'case "$1 $2" in\n  "run list") echo 101 ;;\n  "run watch") exit 0 ;;\nesac\n'
+    cp = _land(clone, _with_gh(tmp_path, env, body))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    calls = (tmp_path / "gh.log").read_text().splitlines()
+    watches = [line for line in calls if line.startswith("run watch")]
+    assert watches and set(watches) == {"run watch 101 --interval 60 --exit-status"}, watches
+    loop = 'gh run watch "$id" --interval 60 --exit-status || echo "CI RED: run $id"'
+    assert loop in (REPO / "CLAUDE.md").read_text(encoding="utf-8")
+
+
+def test_a_read_that_fails_on_a_spent_rate_limit_waits_for_its_reset_once_c2479(
+    remote: Path, tmp_path: Path, env: dict[str, str]
+) -> None:
+    """B13 round 43 C2479: a `gh run view` refused for the API rate limit was retried 3 times 5 s apart and
+    the land stopped "could not read trunk CI ... nothing pushed" after a full green gate. With no headroom
+    left (`gh api rate_limit`, which the limit does not count) it waits for the reset, bounded, and reads
+    again; with headroom a failure keeps its 3 reads and is not read, never waited out."""
+    clone = _clone(remote, tmp_path / "a", env, "one")
+    reset = tmp_path / "reset"
+    body = (
+        'case "$1 $2" in\n'
+        '  "run list") echo 111 ;;\n'
+        '  "run watch") exit 1 ;;\n'
+        f'  "run view") [ -e "{reset}" ] || exit 1; echo completed success ;;\n'
+        f'  "api rate_limit") : >"{reset}"; echo "0 $(( $(date +%s) + 3600 ))" ;;\n'
+        "esac\n"
+    )
+    waits = {**_with_gh(tmp_path, env, body), "SHIP_LAND_RATE_WAIT_MAX": "1"}
+    cp = _land(clone, waits)
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert "GitHub's API rate limit is spent; waiting 1 s for its reset" in cp.stderr
+    assert _git(remote, "rev-parse", "main") == _git(clone, "rev-parse", "HEAD")
+
+    other = _clone(remote, tmp_path / "b", env, "two")
+    before = _git(remote, "rev-parse", "main")
+    body = (
+        'case "$1 $2" in\n'
+        '  "run list") echo 111 ;;\n'
+        '  "api rate_limit") echo "4999 $(( $(date +%s) + 3600 ))" ;;\n'
+        "  *) exit 1 ;;\n"
+        "esac\n"
+    )
+    cp = _land(other, {**_with_gh(tmp_path, env, body), "SHIP_LAND_RATE_WAIT_MAX": "1"})
+    assert cp.returncode == 9, cp.stdout + cp.stderr
+    assert "could not read trunk CI (gh run view 111 failed 3 times)" in cp.stderr
+    assert "rate limit" not in cp.stderr
+    assert _git(remote, "rev-parse", "main") == before
+
+
 def test_a_pushed_sha_with_no_run_says_landed_and_ci_not_read(
     remote: Path, tmp_path: Path, env: dict[str, str]
 ) -> None:

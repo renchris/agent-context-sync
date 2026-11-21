@@ -77,7 +77,7 @@ gate passed. So a push to `main` is not done until its runs are read back:
 
 ```sh
 for id in $(gh run list --commit "$(git rev-parse HEAD)" --json databaseId --jq '.[].databaseId'); do
-  gh run watch "$id" --exit-status || echo "CI RED: run $id"
+  gh run watch "$id" --interval 60 --exit-status || echo "CI RED: run $id"
 done
 ```
 
