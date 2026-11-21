@@ -3924,7 +3924,11 @@ def test_the_shell_report_reads_past_a_dollar_quoted_install_log_word(
         "the Redaction text is not itself redacted, and reads plainly (B13 R7; round 38 C1493; round 39"
         " C1648)"
     )
-    assert item["<path>"].endswith("never numbered, its trailing )]}.,;: kept"), item["<path>"]
+    assert "never numbered, its trailing )]}.,;: kept; a relative --source-local word" in item["<path>"]
+    # B13 round 43 C2437: ruling 148's second kept divergence closes the item (C2265's shell half)
+    assert item["<path>"].endswith("with its ./ or ../ head and cuts it from its first unknown part"), item[
+        "<path>"
+    ]
     # B13 round 40 ruling 138: the one divergence between the reports is named where the cut is described
     # B13 round 39 C1601: a CloudStorage argument no configured source names keeps only its provider folder
     assert (

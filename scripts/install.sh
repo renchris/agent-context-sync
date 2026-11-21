@@ -7073,7 +7073,10 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 		say "  not a folder this run can enter: \" and after debug: cwd is cut as a path is (the word --cwd kept), and so are a"
 		say "  debug: source path under that cwd and every config path but ~/agent-context/sources.toml, wherever it shows; on"
 		say "  any line, a ~/Library/CloudStorage/<App>-<word> folder the report numbers no organization for reads"
-		say "  ~/Library/CloudStorage/<path>, never numbered, its trailing )]}.,;: kept"
+		say "  ~/Library/CloudStorage/<path>, never numbered, its trailing )]}.,;: kept; a relative --source-local word on"
+		# ruling 148's second kept divergence, declared in both legends (B13 round 42 C2265; round 43 C2437)
+		say "  install.log's run header naming no CloudStorage folder is cut whole here, where the agentsync report shows it"
+		say "  with its ./ or ../ head and cuts it from its first unknown part"
 		;;
 	esac
 	# as setup_report._LEGEND words them (B13 round 16 T3, round 17 U93)

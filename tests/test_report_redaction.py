@@ -2675,6 +2675,13 @@ def test_the_second_kept_divergence_is_pinned_in_both_reports_c2265(
     assert any(tail in ln for ln in python), python
     legend = " ".join(setup_report._LEGEND["path"].split())
     assert "shown with its ./ or ../ head and cut from its first unknown part" in legend
+    # the shell half, as the shell report prints its legend (B13 round 43 C2437)
+    shell_legend = " ".join(texts[0].split("\n## Redaction\n", 1)[1].split("\n\n")[0].split())
+    assert (
+        "a relative --source-local word on install.log's run header naming no CloudStorage folder is cut"
+        " whole here, where the agentsync report shows it with its ./ or ../ head and cuts it from its first"
+        " unknown part"
+    ) in shell_legend, shell_legend
 
 
 def _debug_path(home: str, path: str, locale: str) -> str:
