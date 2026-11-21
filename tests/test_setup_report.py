@@ -28797,7 +28797,8 @@ def test_the_configuration_names_a_convert_setting_and_the_run_it_changed_in_c22
     [line] = [ln for ln in section(text, "Configuration").splitlines() if ln.startswith("- [convert]")]
     assert line == (
         "- [convert]: set (max_page_bytes 8192, pandoc_path); changed in run 7: local and inbox pages made "
-        "under other converter options are read again"
+        "under other converter options are read again, but a meeting recording's pages keep the cap they "
+        "were made under until it is read again for another reason"
     ), line
     assert setup_report._CONVERT_OPTIONS_META == cycle._CONVERT_OPTIONS_META
 

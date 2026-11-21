@@ -1717,6 +1717,8 @@ _FIXED_VALUE_PHRASES = (
     # lane B's sync line since B13 round 33 C728 (ruling 90; the two above stay for an older install.out)
     "because a label rule could not parse or open its label data",
     "because a label rule could not parse or open their label data",
+    "but a meeting recording's pages keep the cap they were made under until it is read again for another "
+    "reason",  # B13 round 43 C2521 (ruling 68's lists)
 )
 """The report's own fixed phrases, as written, that hold a word a hold's one-word value can be ("page", the
 value the rehearsal measured; B13 round 27 P107): a match inside one is the report's word, not the value, so
@@ -8352,7 +8354,8 @@ def _convert_line(c: Config) -> str:
     ``pandoc_path`` by its name only, never its value (a path that can name the person); then, from the
     manifest meta an edit after the first synced run leaves (:data:`_CONVERT_OPTIONS_META`), the run it
     was made in. An older manifest, or one with no such edit, adds nothing. A page cap someone set showed
-    nowhere, though an edit re-reads local and inbox pages."""
+    nowhere, though an edit re-reads local and inbox pages, but a meeting recording's, whose pages keep the
+    cap they were made under until it is read again for another reason (B13 round 43 C2521, ruling 169)."""
     default = ConvertConfig()
     # a number shown with its name (max_page_bytes'), never a path; no option name spelled here as a literal,
     # which the one-word hold value scan would read (test_a_one_word_hold_value_stays_in_the_reports_own_...)
@@ -8364,8 +8367,10 @@ def _convert_line(c: Config) -> str:
     line = f"- [convert]: set ({', '.join(names)})" if names else "- [convert]: default"
     run = _convert_changed_run(c)
     if run:
-        line += (
+        line += (  # B13 round 43 C2521 (ruling 169): the recording exception, as README.md says it
             f"; changed in run {run}: local and inbox pages made under other converter options are read again"
+            ", but a meeting recording's pages keep the cap they were made under until it is read again for "
+            "another reason"
         )
     return line
 

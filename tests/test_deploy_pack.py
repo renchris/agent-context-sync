@@ -13912,8 +13912,9 @@ def test_the_guide_reads_the_configurations_inbox_and_convert_lines_c2207_c2210(
         assert words in inbox, words
     assert "`- [convert]: default`, or `- [convert]: set (<option names>)`" in convert
     assert (
-        "`; changed in run N: local and inbox pages made under other converter options are read again`"
-        in convert
+        "`; changed in run N: local and inbox pages made under other converter options are read again, but a"
+        " meeting recording's pages keep the cap they were made under until it is read again for another"
+        " reason`" in convert
     )
     source = inspect.getsource(setup_report._inbox_line) + inspect.getsource(setup_report._convert_line)
     for code in (
@@ -13925,6 +13926,9 @@ def test_the_guide_reads_the_configurations_inbox_and_convert_lines_c2207_c2210(
         '"- [convert]: default"',
         "f\"- [convert]: set ({', '.join(names)})\"",
         "; changed in run {run}: local and inbox pages made under other converter options are read again",
+        # B13 round 43 C2521 (ruling 169): the recording exception, split for ruff
+        ", but a meeting recording's pages keep the cap they were made under until it is read again for ",
+        '"another reason"',
     ):
         assert code in source, code
 

@@ -2917,6 +2917,7 @@ FIXED_VALUE_PHRASES+="|refused while the trail has lost nothing and records no s
 FIXED_VALUE_PHRASES+="|because a label rule could not read its label data|because a label rule could not read their label data"
 FIXED_VALUE_PHRASES+="|purge-record.json records: agentsync's audit trail no longer holds it"
 FIXED_VALUE_PHRASES+="|because a label rule could not parse or open its label data|because a label rule could not parse or open their label data"
+FIXED_VALUE_PHRASES+="|but a meeting recording's pages keep the cap they were made under until it is read again for another reason"
 # "value<TAB>placeholder<TAB>w" lines (w: whole words only; t: not followed by a word character, a dot or a
 # hyphen) for redact_stream; the %q form too, since install.log quotes paths that way.
 # The folder paths step 1's lists wrote to install.out ("$cs/<provider>/<name>[/<name>]"), less their
