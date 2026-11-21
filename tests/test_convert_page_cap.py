@@ -670,7 +670,12 @@ def test_later_rows_are_reserved_against_the_cheapest_cut_c2516() -> None:
 
 @pytest.mark.parametrize(
     ("streamed", "cap", "both"),
-    [(False, 9925, False), (False, 11525, True), (True, 16850, False), (True, 18450, True)],
+    [
+        (False, 6423, False),
+        (False, 8023, True),
+        (True, 16850, False),
+        (True, 18450, True),
+    ],  # C2476: no flat 4,096
     ids=["full-cut", "full-next-row", "streamed-cut", "streamed-next-row"],
 )
 def test_a_cut_row_costing_less_than_one_character_is_shown_c2529(
@@ -784,6 +789,58 @@ def test_later_rows_are_reserved_against_a_formula_s_cheapest_cut_c2516() -> Non
     lines, shown, cut = xlsx._table_lines(sheet, [2, 3], sheet.shown, budget, 10)
     assert (shown, cut) == (2, [(2, 2)])
     assert lines[2:] == ["| 2 | … `=1` |", "| 3 | x |"]
+
+
+def _reserve_book(path: Path, *, lists: bool) -> Path:
+    """6,000 rows under a 200-character title, a formula with no cached value, a long cell cut on row 3, and
+    with ``lists`` three comments and a chart."""
+    book = openpyxl.Workbook()
+    ws = book.active
+    assert ws is not None
+    with pytest.warns(UserWarning, match="31 characters"):
+        ws.title = "Contoso " + "t" * 192
+    for i in range(6000):
+        ws.append([f"North {i}", i, f"Contoso value {i}"])
+    ws["D1"] = "=B1*2"
+    ws["C3"] = "Contoso long words " * 1200
+    if lists:
+        for i in range(3):
+            ws.cell(row=i + 1, column=1).comment = Comment(f"Contoso check {i}", "Ana")
+        chart = BarChart()
+        chart.title = "Contoso chart"
+        chart.add_data(Reference(ws, min_col=2, min_row=1, max_row=3))
+        ws.add_chart(chart, "F2")
+    book.save(path)
+    return path
+
+
+@pytest.mark.parametrize(
+    ("cap", "lists", "old"),
+    [(8192, True, 86), (20_000, True, 328), (8192, False, 91), (20_000, False, 332)],
+    ids=["8192-lists", "20000-lists", "8192-no-lists", "20000-no-lists"],
+)
+def test_the_full_path_budgets_the_real_bytes_around_its_table_c2476(
+    tmp_path: Path, cap: int, lists: bool, old: int
+) -> None:
+    """B13 round 43 C2476: the full path kept a flat 4,096 bytes for its head, notes, banner and footers,
+    so a page showed 86 rows at 8,192 where the cap left room for more (``old``, each case's count under
+    the flat reserve). The budget is now the real head, the widest row-cap note, the no-cached-values note,
+    the guard and each sidecar's footer, and the lists' share keeps their cut notes' room, so they list
+    whole: the guarded page stays within the cap, shows more rows than before, and, on a sheet with no
+    list, as many as the streamed path shows."""
+    src = _reserve_book(tmp_path / "c.xlsx", lists=lists)
+    _index, full = _pages(src, cap)
+    _index, streamed = _pages(src, cap, xlsx_stream_threshold_bytes=0)
+    assert _size(full) <= cap and _size(streamed) <= cap
+    assert "row 3's cells cut to " in full.body and "[no cached values: 1 of 1" in full.body
+    if lists:
+        assert "Contoso check 2" in full.body and "Contoso chart" in full.body
+        assert "list truncated" not in full.body and "## Charts, pivots and images" in full.body
+    shown = _rows_shown(full.body)
+    assert shown > old
+    assert f"[row cap: first {shown} of 6000 non-empty rows shown" in full.body
+    if not lists:
+        assert shown >= _rows_shown(streamed.body)
 
 
 def test_xlsx_first_row_past_the_budget_is_cut_and_the_short_row_follows_c2022(tmp_path: Path) -> None:

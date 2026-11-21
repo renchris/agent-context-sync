@@ -33,7 +33,9 @@ from agentsync.errors import ConversionError
 from agentsync.model import RenderedUnit, UnitKind
 from agentsync.text import plural
 
-_EMITTER_VERSION = "1.0.5"  # B13 round 43 rulings 167 and 168: C2516, C2529, C2519, C2530, C2452, C2531
+_EMITTER_VERSION = (
+    "1.0.5"  # B13 round 43 rulings 167 and 168: C2516, C2529, C2519, C2530, C2452, C2531, C2476
+)
 _INDEX_TERM_LIMIT = 400  # distinct terms kept on 00-index (most frequent first, then listed sorted)
 _TERM_MAX_CHARS = 80  # a text cell up to this long is one term; longer text contributes its words
 _HEADER_LIMIT = 30  # column headers listed per sheet on 00-index
@@ -42,7 +44,6 @@ _FIRST_ROW_CHARS = (
     200  # a streamed Schema's first-row value, at least, cut before escaping (B13 round 40 C1848)
 )
 _LABEL_CHARS = 200  # a chart title or pivot name on a sheet page, cut before escaping (B13 round 41 C2046)
-_SHEET_RESERVE = 4096  # a sheet page's room under the cap for its head, notes, banner and footers
 _INDEX_RESERVE = 1024  # room under the cap for the index's cut notes, its term list and the banner
 _WORD_RE = re.compile(r"[^\W\d_][\w'\u2019-]{2,}", re.UNICODE)
 _WS_RE = re.compile(r"\s+")
@@ -530,11 +531,6 @@ class _RowCuts:
         steps = (a + b for a, b in zip(rise, accumulate(ramp), strict=True))
         self.bytes = list(accumulate(steps))[1 : top + 1]
 
-    def cost(self, limit: int, bound: int) -> int | None:
-        """The row's bytes cut to ``limit`` characters, or None when they pass ``bound``."""
-        got = self.bytes[min(limit, len(self.bytes)) - 1]
-        return got if got <= bound else None
-
     def cheapest(self, bound: int) -> int | None:
         """The fewest bytes any cut of the row takes, at most ``bound``, or None when no cut fits it."""
         best = min(self.bytes)
@@ -673,6 +669,13 @@ def _cut_rows_note(cut: list[tuple[int, int]]) -> str:
     return f"the cells of {len(cut)} rows cut to {plural(most, 'character')} or fewer, row {cut[0][0]} first"
 
 
+def _list_note(sheet: _Sheet, width: int, one: str, count: int) -> str:
+    """A comment or object list's longest cut note, every one of its ``count`` lines cut."""
+    name = _sidecar_name(sheet.number, width, sheet.title, f"{one}s.txt")
+    where = f"; every {one} is whole in the sidecar `{name}`"
+    return f"[{one} list truncated at the page size cap: {count} of {count} listed{where}]"
+
+
 def _sheet_lists(
     out: list[str], sheet: _Sheet, *, width: int, cap: int, names: list[str]
 ) -> list[tuple[str, bytes]]:
@@ -690,13 +693,7 @@ def _sheet_lists(
         ("## Charts, pivots and images", sheet.objects, sheet.objects_whole, "object", sheet.labels_cut),
     )
     shown = [entry for entry in lists if entry[1]]
-    notes: list[str] = []  # each list's longest cut note: every one of its lines cut
-    for _heading, lines, _whole, one, _labels_cut in shown:
-        name = _sidecar_name(sheet.number, width, sheet.title, f"{one}s.txt")
-        where = f"; every {one} is whole in the sidecar `{name}`"
-        notes.append(
-            f"[{one} list truncated at the page size cap: {len(lines)} of {len(lines)} listed{where}]"
-        )
+    notes = [_list_note(sheet, width, one, len(lines)) for _h, lines, _w, one, _l in shown]
     # a list's fixed bytes: its heading and blank line, its note and the blank line after it
     fixed = [len(h.encode()) + len(note.encode()) + 4 for (h, *_rest), note in zip(shown, notes, strict=True)]
     for n, (heading, lines, whole, one, labels_cut) in enumerate(shown):
@@ -711,6 +708,43 @@ def _sheet_lists(
     return sidecars
 
 
+def _full_uncached_note(sheet: _Sheet) -> str:
+    """A full sheet page's note on formulas with no stored result, longer than the streamed one."""
+    return (
+        f"[no cached values: {_uncached(sheet)} no stored "
+        "result (the workbook was last written by a tool that does not calculate, e.g. a script "
+        f"or BI export); {_uncached_cells(sheet)} the formula only, never a guessed number]"
+    )
+
+
+def _full_tail(sheet: _Sheet, out: list[str], rows: list[int], sc: str, fsc: str, *, names: list[str]) -> int:
+    """The most bytes a full sheet page adds besides its table and lists: the head already in ``out``, the
+    blank line after the table, the widest row-cap note (its cut-rows clause as :func:`_streamed_tail`
+    builds it, the formulas clause when the sheet has a formula) or the formulas note alone if that is
+    longer, the no-cached-values note, and the guard's banner and the footer lines of every sidecar the page
+    may carry, of ``names`` (the rows' CSV, the formulas sidecar on a sheet with a formula, and a list's
+    sidecar on a sheet with that list; B13 round 43 C2476: a flat 4,096 left about half the room unused)."""
+
+    def size(*lines: str) -> int:
+        return sum(len(x.encode("utf-8")) + 1 for x in lines)
+
+    longest = max((len(x) for x in (*sheet.plain.values(), *sheet.formula.values())), default=1)
+    widest = [(rows[-1] if rows else 0, longest)] * max(2, len(rows))  # the note's longest form
+    formulas = f"; {_formulas_note(fsc)}" if sheet.formulas else ""
+    note = (
+        f"[row cap: first {len(rows)} of {plural(len(rows), 'non-empty row')} shown, "
+        f"{_cut_rows_note(widest)}; every row is in the sidecar `{sc}`{formulas}]"
+    )
+    tail = size(*out) + size("") + size(note, "")
+    if sheet.formulas:  # the note a sheet with no row cap carries on its own (C2531)
+        tail = max(tail, size(*out) + size("") + size(f"[{_formulas_note(fsc)}]", ""))
+    if sheet.missing_cache:
+        tail += size(_full_uncached_note(sheet), "")
+    carried = [sc, *([fsc] if sheet.formulas else [])]  # a list's sidecar only when the sheet has that list
+    carried += [n for n, lines in zip(names[2:], (sheet.comments, sheet.objects), strict=True) if lines]
+    return tail + GUARD_RESERVE + sum(_footer_bytes(n) for n in carried)
+
+
 def _sheet_body(
     sheet: _Sheet, *, total: int, width: int, cfg: ConvertConfig
 ) -> tuple[str, tuple[tuple[str, bytes], ...]]:
@@ -719,11 +753,13 @@ def _sheet_body(
     included, its note then a line of its own; B13 round 43 C2531), and a list's ``.comments.txt`` or
     ``.objects.txt`` when that list was cut.
 
-    The comment and object sections are measured first: the table's budget is the cap less
-    :data:`_SHEET_RESERVE` less their real bytes, up to a quarter of the cap, with no guess per item and no
-    floor, so a sheet with many short comments keeps its rows and one with long ones keeps a share for them;
-    each list then fits the room left (:func:`_sheet_lists`), so the page stays within any cap the config
-    accepts (B13 round 41 C2043, C2088, C2064)."""
+    The comment and object sections are measured first: the table's budget is the cap less the page's real
+    fixed bytes (:func:`_full_tail`: the head already written, the widest row-cap note, the no-cached-values
+    note, the guard's banner and every sidecar's footer line; B13 round 43 C2476, in place of round 42's flat
+    4,096) less the lists' real bytes, up to a quarter of the cap, with no guess per item and no floor, so a
+    sheet with many short comments keeps its rows and one with long ones keeps a share for them; each list
+    then fits the room left (:func:`_sheet_lists`), so the page stays within any cap the config accepts
+    (B13 round 41 C2043, C2088, C2064)."""
     hidden = " (hidden sheet)" if sheet.hidden else ""
     out = [f"# Sheet: {_cut_value(sheet.title, _LABEL_CHARS)} (used range {sheet.used_range}){hidden}", ""]
     rows = sheet.rows()
@@ -736,6 +772,11 @@ def _sheet_body(
     cap = cfg.max_page_bytes
     sc = _sidecar_name(sheet.number, width, sheet.title)
     fsc = _sidecar_name(sheet.number, width, sheet.title, "formulas.txt")
+    names = [
+        sc,
+        fsc,
+        *(_sidecar_name(sheet.number, width, sheet.title, k) for k in ("comments.txt", "objects.txt")),
+    ]
     sidecars: list[tuple[str, bytes]] = []
     if not rows:
         out += ["[empty sheet]", ""]
@@ -743,7 +784,14 @@ def _sheet_body(
         sections = [*(["## Comments", "", *sheet.comments, ""] if sheet.comments else [])]
         sections += ["## Charts, pivots and images", "", *sheet.objects, ""] if sheet.objects else []
         tail = sum(len(x.encode("utf-8")) + 1 for x in sections)
-        budget = max(0, cap - _SHEET_RESERVE - min(tail, cap // 4))  # no floor (B13 round 40 C1886)
+        # each list's share holds the cut note and blank line _sheet_lists keeps room for (C2476)
+        tail += sum(
+            len(_list_note(sheet, width, one, len(lines)).encode("utf-8")) + 2
+            for one, lines in (("comment", sheet.comments), ("object", sheet.objects))
+            if lines
+        )
+        fixed = _full_tail(sheet, out, rows, sc, fsc, names=names)  # the real bytes, no flat reserve (C2476)
+        budget = max(0, cap - fixed - min(tail, cap // 4))  # no floor (B13 round 40 C1886)
         lines, shown, cut = _table_lines(sheet, rows, sheet.shown, budget, cfg.max_rows_per_sheet)
         out += lines
         out.append("")
@@ -767,17 +815,7 @@ def _sheet_body(
         if left:  # the CSV holds values only (B13 round 42 C2300)
             sidecars.append((fsc, _formulas_sidecar(left)))
     if sheet.missing_cache:
-        out += [
-            f"[no cached values: {_uncached(sheet)} no stored "
-            "result (the workbook was last written by a tool that does not calculate, e.g. a script "
-            f"or BI export); {_uncached_cells(sheet)} the formula only, never a guessed number]",
-            "",
-        ]
-    names = [
-        sc,
-        fsc,
-        *(_sidecar_name(sheet.number, width, sheet.title, k) for k in ("comments.txt", "objects.txt")),
-    ]
+        out += [_full_uncached_note(sheet), ""]
     sidecars += _sheet_lists(out, sheet, width=width, cap=cap, names=names)
     return "\n".join(out), tuple(sidecars)
 

@@ -43159,6 +43159,9 @@ flattened.
 Amended 2026-11-21, §16.273 C2519 (with C2530, C2452): an author and a rich chart title reach the sidecar raw (both
 were stripped first), a pivot location is escaped too, and the page flattens each author, chart title, pivot name and
 location before escaping it; one that is blank or all whitespace adds nothing to either.
+Amended 2026-11-21, §16.273 C2476: the table's budget is the cap less the page's real fixed bytes (the head, the
+widest row-cap note, the no-cached-values note, the guard's banner and each sidecar's footer), no longer 4,096, less
+the lists' real bytes with each list's cut note, up to a quarter of the cap.
 
 **A row too long for the sheet's table is shown with its cells cut** (C2022; `agentsync.convert.xlsx`; amends §16.253
 C1676). C1676 made `_table_lines` leave off a first row past the budget, so at 8,192 four sheets of thirty
@@ -44582,6 +44585,26 @@ Tests: `test_convert_page_cap.py::test_a_formula_the_page_flattens_rides_whole_i
 `test_convert_page_cap.py::test_a_capped_sheet_lists_a_flattened_formula_on_a_row_shown_uncut_c2531` (each LF and
 CR, full and streamed) and
 `test_convert_page_cap.py::test_a_sheet_with_no_flattened_formula_writes_no_formulas_sidecar_c2531`.
+
+**The full path's table gets the room its page really leaves** (C2476; ruling 168; `agentsync.convert.xlsx`; amends
+§16.263 C2043). `_sheet_body` took a flat 4,096 bytes off the table's budget for the head,
+notes, banner and footers, which C2268 had already replaced on the streamed path only, so a 6,000-row sheet showed
+113 rows at 8,192 where the streamed page showed 194 (the verifier's runs at bd65e0e1). The budget is now the cap less
+`_full_tail`: the head already written (a 200-character title included), the blank line after the table, the widest
+row-cap note (its cut-rows clause in the longest form `_streamed_tail` builds, with the formulas clause on a sheet
+with a formula; the formulas note alone, C2531's line, when that is longer), the full path's own no-cached-values
+note, and the guard's banner with the footer line of each sidecar the page may carry (the rows' CSV, the formulas
+sidecar on a sheet with a formula, a list's sidecar on a sheet with that list). The lists keep their share,
+`min(tail, cap // 4)`, where `tail` now also counts each list's longest cut note and its blank line (corrected by
+measurement: without them `_sheet_lists`, which keeps that room for each list, listed 0 of 3 short comments).
+`_SHEET_RESERVE` is gone, and the unused `_RowCuts.cost` with it; the streamed Schema's own 4,096 stays. A book of
+6,000 rows under a 200-character title with a formula lacking its cached value and a cut row now shows 127 rows at
+8,192 with three comments and a chart (86 before) and 146 with no list (91 before; the streamed page shows 145), and
+368 and 387 at 20,000 (328 and 332 before). The C2529 test's full-path caps move from 9,925 and 11,525 to 6,423 and
+8,023, the same table budget. xlsx's `_EMITTER_VERSION` stays 1.0.5 (rulings 167 and 168 move it once). Tests:
+`test_convert_page_cap.py::test_the_full_path_budgets_the_real_bytes_around_its_table_c2476` (8,192 and 20,000, with
+and without the lists: within the cap, every list whole, more rows than the flat reserve gave, and with no list at
+least the streamed path's rows).
 
 ### 16.274 Round 43: the prompt goes to v40 (only lines setup prints in every branch), CI polled every 60 seconds, and the guides (2026-11-21, wave B13 round 43 lane D)
 
