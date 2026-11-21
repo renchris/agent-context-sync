@@ -5130,6 +5130,65 @@ foreign_home_cut() {
 	# with CUT_COUNT set, how many cuts this pass made, for report_recut\047s note (B13 round 38 C1406)
 	END { if (ENVIRON["CUT_COUNT"] != "") printf "%d\n", ncut > ENVIRON["CUT_COUNT"] }'
 }
+# The free-text provider cut, one awk function both of its readers share (B13 round 43 ruling 160, C2498):
+# typed_note_cut, whose last pass it is, and report_provider_lines, which scans another build's render with it.
+# freeinit reads its inputs, the block's CUT_FREE_* rows, CUT_APPS and CUT_PROVIDER_KEPT, through ENVIRON as FREE_*
+# (BSD awk takes no newline in -v); a reader without the block reads an empty head, which freecut returns on.
+# a `~/Library/CloudStorage/<App>-<word>` word on any line, after every other cut: one CUT_PROVIDER_KEPT
+# does not keep reads `~/Library/CloudStorage/<path>`, never numbered, its trailing CUT_FREE_TRAIL signs
+# kept after (B13 round 40 C1862, as setup_report._free_provider_cuts), and since B13 round 43 ruling 158
+# (C2436) its trailing blanks and tabs too (fct, FREE_CUT_TRAIL), so `Toys "q"` keeps its blank. B13 round 42 ruling 146 (C2285 with
+# C2235 and C2271; privacy): the keep test read the part's first word alone, so `OneDrive-Personal
+# Secret/Plans` printed whole. The part's long run goes across blanks from its start to the first `/`, a
+# CUT_FREE_PART_STOP, a blank before a CUT_FREE_PATH_START (an independent path start) or the line's end,
+# never stopping at a blank before `-`. A first word that is kept stays to its CUT_FREE_END byte unless the
+# run reaches its `/` and is not kept whole; any other part is cut whole to the run's end, and only after a
+# `/` on to a CUT_FREE_END byte and each blank-led word after it that holds a `/`, no `=` or `://`, and opens
+# with none of `-`, `/` or `~` (C2050 with C2032)
+FREECUT_AWK='function freeinit() {
+	fh = ENVIRON["FREE_HEAD"]; fe = ENVIRON["FREE_END"]; ft = ENVIRON["FREE_TRAIL"]
+	fstop = ENVIRON["FREE_STOP"]; fpath = ENVIRON["FREE_PATH"]
+	appre = "^(" ENVIRON["FREE_APPS"] ")-"; fkept = ENVIRON["FREE_KEPT"]
+	# the not-kept arm\047s trail: FREE_WORD_TRAIL plus a blank and a tab (FREE_CUT_TRAIL; B13 round 43 ruling
+	# 158, C2436); a block without it reads the same set
+	fct = ENVIRON["FREE_CUT_TRAIL"]; if (fct == "") fct = ft " \t"
+}
+function freecut(l,    out, a, r, i, w, j, p, t, x, y, z, nw, e, sl) {
+	if (fh == "" || fe == "") return l # as slone: an empty head never ends the loop
+	out = ""
+	while ((a = index(l, fh)) > 0) {
+		out = out substr(l, 1, a - 1); r = substr(l, a + length(fh))
+		i = 1
+		while (i <= length(r) && substr(r, i, 1) !~ fe) i++
+		w = substr(r, 1, i - 1); j = index(w, "/"); p = j ? substr(w, 1, j - 1) : w
+		if (p !~ appre) { out = out fh; l = r; continue }
+		# the long run\047s end: the first slash, stop or blank before a path start, else past the line\047s end
+		e = length(r) + 1
+		if ((x = index(r, "/")) > 0) e = x
+		if (fstop != "" && match(r, fstop) && RSTART < e) e = RSTART
+		if (fpath != "" && match(r, fpath) && RSTART < e) e = RSTART
+		sl = (substr(r, e, 1) == "/")
+		if (p ~ fkept && (!sl || substr(r, 1, e - 1) ~ fkept)) { out = out fh w; l = substr(r, i); continue }
+		i = e
+		if (sl) {
+			i = e + 1
+			while (i <= length(r) && substr(r, i, 1) !~ fe) i++
+			while (substr(r, i, 1) == " ") {
+				y = i; while (substr(r, y, 1) == " ") y++
+				z = y; while (z <= length(r) && substr(r, z, 1) !~ fe) z++
+				nw = substr(r, y, z - y)
+				if (nw == "" || !index(nw, "/") || index(nw, "=") || index(nw, "://") || substr(nw, 1, 1) ~ /^[-\/~]/) break
+				i = z
+			}
+		}
+		w = substr(r, 1, i - 1)
+		t = w
+		while (t != "" && index(fct, substr(t, length(t), 1))) t = substr(t, 1, length(t) - 1)
+		out = out fh "<path>" substr(w, length(t) + 1); l = substr(r, i)
+	}
+	return out l
+}
+'
 # add-source's and init's note, `added source '<id>' to <file> (<typed>, stored as <stored>):` and its inbox twin
 # `added inbox source '<id>' (<typed>, stored as <stored>):`, read by its structure after every pair and the
 # other-home cut (foreign_home_cut, B13 round 43 C2468) have run, as
@@ -5150,9 +5209,11 @@ typed_note_cut() {
 		TYPED_PAIRS="${1:-}" TYPED_CFG="${2:-}" TYPED_LISTED="${3:-}" TYPED_ALLCFG="${4:-}" CUT_SEP="$CUT_SEP" TYPED_PROVIDER="$CUT_HEADS_PROVIDER" \
 		TYPED_FIRST="$CUT_HEADS_FIRST_UNKNOWN" TYPED_CWDS="$CUT_HEADS_CWD" TYPED_UNDER="$CUT_HEADS_UNDER_CWD" \
 		TYPED_CWDNAME="${CUT_HEADS_CWD_NAME:-}" TYPED_CWDUSAGE="${CUT_CWD_USAGE:-}" TYPED_CONFIG="${CUT_HEADS_CONFIG:-}" \
-		TYPED_CFGDEF="${CUT_CONFIG_DEFAULT:-}" TYPED_FREESTOP="${CUT_FREE_PART_STOP:-}" TYPED_FREEPATH="${CUT_FREE_PATH_START:-}" \
-		TYPED_HEADS="$CUT_REFUSED_HEADS" TYPED_APPS="$CUT_APPS" TYPED_FREEHEAD="$CUT_FREE_HEAD" TYPED_FREEEND="$CUT_FREE_END" \
-		TYPED_FREETRAIL="$CUT_FREE_TRAIL" TYPED_FREECUTTRAIL="${CUT_FREE_CUT_TRAIL:-}" LC_ALL=C awk '
+		TYPED_CFGDEF="${CUT_CONFIG_DEFAULT:-}" TYPED_HEADS="$CUT_REFUSED_HEADS" \
+		FREE_HEAD="$CUT_FREE_HEAD" FREE_END="$CUT_FREE_END" FREE_TRAIL="$CUT_FREE_TRAIL" \
+		FREE_CUT_TRAIL="${CUT_FREE_CUT_TRAIL:-}" FREE_STOP="$CUT_FREE_PART_STOP" FREE_PATH="$CUT_FREE_PATH_START" \
+		FREE_APPS="$CUT_APPS" FREE_KEPT="$CUT_PROVIDER_KEPT" \
+		LC_ALL=C awk "$FREECUT_AWK"'
 	function norm(v) { v = tolower(v); gsub(ENVIRON["CUT_SEP"], "", v); return v }
 	BEGIN {
 		# the placeholders of configured folders: a pair whose value is a part of a configured CloudStorage path
@@ -5182,14 +5243,9 @@ typed_note_cut() {
 		# B13 round 41 ruling 142: the --cwd usage error\047s whole-name head (C2030), the words install.sh
 		# itself writes after `--cwd `, kept by phrase, and `debug: config `, cut always but the default (C2063)
 		nhn = split(ENVIRON["TYPED_CWDNAME"], hn, "|"); nus = split(ENVIRON["TYPED_CWDUSAGE"], us, "|")
-		nhg = split(ENVIRON["TYPED_CONFIG"], hg, "|"); cfgdef = ENVIRON["TYPED_CFGDEF"]; fstop = ENVIRON["TYPED_FREESTOP"]
-		fpath = ENVIRON["TYPED_FREEPATH"]
+		nhg = split(ENVIRON["TYPED_CONFIG"], hg, "|"); cfgdef = ENVIRON["TYPED_CFGDEF"]
 		nh = split(ENVIRON["TYPED_HEADS"], head, "|")
-		appre = "^(" ENVIRON["TYPED_APPS"] ")-"
-		fh = ENVIRON["TYPED_FREEHEAD"]; fe = ENVIRON["TYPED_FREEEND"]; ft = ENVIRON["TYPED_FREETRAIL"]
-		# the not-kept arm\047s trail: FREE_WORD_TRAIL plus a blank and a tab (FREE_CUT_TRAIL; B13 round 43 ruling
-		# 158, C2436); a block without it reads the same set
-		fct = ENVIRON["TYPED_FREECUTTRAIL"]; if (fct == "") fct = ft " \t"
+		freeinit() # the free-text pass\047s inputs, FREECUT_AWK\047s (B13 round 43 ruling 160, C2498)
 		dcwd = ""
 		n = split(ENVIRON["TYPED_FIXED"], w, "|"); for (i = 1; i <= n; i++) fixed[w[i]] = 1
 		n = split(ENVIRON["TYPED_DRIVE"], w, "|"); for (i = 1; i <= n; i++) drive[w[i]] = 1
@@ -5363,52 +5419,6 @@ typed_note_cut() {
 		for (k = 1; k <= nus; k++) if (us[k] != "" && index(r, us[k]) == 1) return 1
 		for (k = 1; k <= nhn; k++) if (hn[k] != "" && index(hn[k], hd) == 1 && index(r, substr(hn[k], length(hd) + 1)) == 1) return 1
 		return 0
-	}
-	# a `~/Library/CloudStorage/<App>-<word>` word on any line, after every other cut: one CUT_PROVIDER_KEPT
-	# does not keep reads `~/Library/CloudStorage/<path>`, never numbered, its trailing CUT_FREE_TRAIL signs
-	# kept after (B13 round 40 C1862, as setup_report._free_provider_cuts), and since B13 round 43 ruling 158
-	# (C2436) its trailing blanks and tabs too (fct, FREE_CUT_TRAIL), so `Toys "q"` keeps its blank. B13 round 42 ruling 146 (C2285 with
-	# C2235 and C2271; privacy): the keep test read the part\047s first word alone, so `OneDrive-Personal
-	# Secret/Plans` printed whole. The part\047s long run goes across blanks from its start to the first `/`, a
-	# CUT_FREE_PART_STOP, a blank before a CUT_FREE_PATH_START (an independent path start) or the line\047s end,
-	# never stopping at a blank before `-`. A first word that is kept stays to its CUT_FREE_END byte unless the
-	# run reaches its `/` and is not kept whole; any other part is cut whole to the run\047s end, and only after a
-	# `/` on to a CUT_FREE_END byte and each blank-led word after it that holds a `/`, no `=` or `://`, and opens
-	# with none of `-`, `/` or `~` (C2050 with C2032)
-	function freecut(l,    out, a, r, i, w, j, p, t, x, y, z, nw, e, sl) {
-		if (fh == "" || fe == "") return l # as slone: an empty head never ends the loop
-		out = ""
-		while ((a = index(l, fh)) > 0) {
-			out = out substr(l, 1, a - 1); r = substr(l, a + length(fh))
-			i = 1
-			while (i <= length(r) && substr(r, i, 1) !~ fe) i++
-			w = substr(r, 1, i - 1); j = index(w, "/"); p = j ? substr(w, 1, j - 1) : w
-			if (p !~ appre) { out = out fh; l = r; continue }
-			# the long run\047s end: the first `/`, stop or blank before a path start, else past the line\047s end
-			e = length(r) + 1
-			if ((x = index(r, "/")) > 0) e = x
-			if (fstop != "" && match(r, fstop) && RSTART < e) e = RSTART
-			if (fpath != "" && match(r, fpath) && RSTART < e) e = RSTART
-			sl = (substr(r, e, 1) == "/")
-			if (p ~ kept && (!sl || substr(r, 1, e - 1) ~ kept)) { out = out fh w; l = substr(r, i); continue }
-			i = e
-			if (sl) {
-				i = e + 1
-				while (i <= length(r) && substr(r, i, 1) !~ fe) i++
-				while (substr(r, i, 1) == " ") {
-					y = i; while (substr(r, y, 1) == " ") y++
-					z = y; while (z <= length(r) && substr(r, z, 1) !~ fe) z++
-					nw = substr(r, y, z - y)
-					if (nw == "" || !index(nw, "/") || index(nw, "=") || index(nw, "://") || substr(nw, 1, 1) ~ /^[-\/~]/) break
-					i = z
-				}
-			}
-			w = substr(r, 1, i - 1)
-			t = w
-			while (t != "" && index(fct, substr(t, length(t), 1))) t = substr(t, 1, length(t) - 1)
-			out = out fh "<path>" substr(w, length(t) + 1); l = substr(r, i)
-		}
-		return out l
 	}
 	# where a bare not-a-folder name ends: the last ` (see --help)` before the line\047s end, `;,.:`, ` | ` or
 	# ` · `, else the line\047s end, as setup_report._NOT_A_FOLDER_RE and the recut\047s name_end read it
@@ -7870,6 +7880,22 @@ report_cwd_lines() {
 	SPLIT_WHY="$m in ${INSTALL_OUT##*/}"
 	SPLIT_HOW="may not cut the folder in $SPLIT_WHY"
 }
+# 0, with SPLIT_WHY set, when the render at $REPORT_PATH holds a `~/Library/CloudStorage/<App>-<word>` word the
+# free-text provider cut would change: a build before B13 round 40 C1862, or before round 42 ruling 146, prints such
+# a tenant in clear, and report_recut has no free-text rule, so such a render is replaced by the shell report, which
+# cuts it in typed_note_cut. The scan is freecut itself (FREECUT_AWK), over the render, never install.out, so a
+# line any section printed counts, as report_words_cut leaves it: a not-a-folder or refused name the recut cuts to
+# <path> anyway is no reason to give way (B13 round 43 ruling 160, C2498, its option A).
+report_provider_lines() {
+	[ -f "$REPORT_PATH" ] && [ ! -L "$REPORT_PATH" ] || return 1
+	report_words_cut <"$REPORT_PATH" 2>/dev/null | FREE_HEAD="$CUT_FREE_HEAD" FREE_END="$CUT_FREE_END" FREE_TRAIL="$CUT_FREE_TRAIL" \
+		FREE_CUT_TRAIL="${CUT_FREE_CUT_TRAIL:-}" FREE_STOP="$CUT_FREE_PART_STOP" FREE_PATH="$CUT_FREE_PATH_START" \
+		FREE_APPS="$CUT_APPS" FREE_KEPT="$CUT_PROVIDER_KEPT" \
+		LC_ALL=C awk "$FREECUT_AWK"'BEGIN { freeinit() } freecut($0) != $0 { found = 1; exit } END { exit !found }' \
+		2>/dev/null || return 1
+	SPLIT_WHY="a provider folder name after ~/Library/CloudStorage/ in its render that this checkout cuts"
+	SPLIT_HOW="may print $SPLIT_WHY in clear"
+}
 # 0, with SPLIT_WHY set, when the report may name a config path other than the default: $CONFIG's ~-form is not
 # CUT_CONFIG_DEFAULT and config_shown cuts it, or install.out holds a CUT_HEADS_CONFIG head, anywhere on a line, a
 # ` | ` cell included, whose value up to the next ` | ` or the line's end is neither empty nor CUT_CONFIG_DEFAULT. A
@@ -8023,8 +8049,10 @@ write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2
 		# reads holds a separator such a build splits a line on, whose tail no shell cut can follow, a folder row
 		# in marks such a build may not strip (B13 round 38 C1447), or a --cwd run header or `debug: cwd` line
 		# such a build may print in clear (B13 round 41 C2028), or a config path other than the default, which a
-		# build before C2063 prints in clear (B13 round 42 ruling 147, C2230 with C2284).
-		if [ "$src" -eq 0 ] && [ -s "$REPORT_PATH" ] && [ "$other" -eq 1 ] && { report_split_lines || report_new_marks || report_cwd_lines || report_config_lines; }; then
+		# build before C2063 prints in clear (B13 round 42 ruling 147, C2230 with C2284), or a provider word the
+		# free-text cut changes, which a build before C1862 or ruling 146 prints in clear (B13 round 43 ruling 160,
+		# C2498).
+		if [ "$src" -eq 0 ] && [ -s "$REPORT_PATH" ] && [ "$other" -eq 1 ] && { report_split_lines || report_new_marks || report_cwd_lines || report_config_lines || report_provider_lines; }; then
 			warn "agentsync setup-report was not kept: $SPLIT_WHY"
 			rm -f "$REPORT_PATH" # never left in the report's place, should the fallback fail too
 			why="the installed agentsync, another build, $SPLIT_HOW"

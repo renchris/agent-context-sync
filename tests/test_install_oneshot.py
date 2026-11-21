@@ -4280,7 +4280,8 @@ def test_a_typed_note_after_punctuation_outside_ascii_is_cut(before: str) -> Non
     """The review of B13 round 32 C666: Python's \\b matches `added source` after a curly quote, a no-break
     space or an em dash, and the awk pass read any byte outside ASCII there as a letter and left the typed
     folder in clear. Run under LC_ALL=C on UTF-8 bytes, it cuts after each, as setup_report does."""
-    [fn] = re.findall(r"(?ms)^typed_note_cut\(\) \{\n.*?^\}$", INSTALL_SH.read_text(encoding="utf-8"))
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    fn = "\n".join(re.findall(r"(?ms)" + _FREECUT_AWK + r"|^typed_note_cut\(\) \{\n.*?^\}$", text))
     line = f"{before}added source 'a' to f (~/Contoso Secret/Alpha, stored as ~/<folder-1>): kept"
     cp = _bash_run(
         [BASH32, "-c", fn + "\ntyped_note_cut"],
@@ -4304,7 +4305,7 @@ def test_the_shell_free_text_cut_gives_back_the_blank_before_a_quote_c2436(local
     script = INSTALL_SH.read_text(encoding="utf-8")
     block = re.search(r"(?ms)" + _REPORT_CUTS_BLOCK, script)
     assert block is not None
-    [fn] = re.findall(r"(?ms)^typed_note_cut\(\) \{\n.*?^\}$", script)
+    fn = "\n".join(re.findall(r"(?ms)" + _FREECUT_AWK + r"|^typed_note_cut\(\) \{\n.*?^\}$", script))
     head = "saw ~/Library/CloudStorage/"
     rows = {
         'OneDrive-Tailspin Toys "quoted" rest': '<path> "quoted" rest',
@@ -4354,7 +4355,7 @@ def test_typed_note_cut_ends_on_every_head_even_an_empty_one(block: str) -> None
     stays as cheap protection, but no list reaches it: slcut hands dbcwd only a head that opens `debug: `, so
     an empty element of CUT_HEADS_CWD goes to slone (measured: with it removed, every case still passes)."""
     text = INSTALL_SH.read_text(encoding="utf-8")
-    [fn] = re.findall(r"(?ms)^typed_note_cut\(\) \{\n.*?^\}$", text)
+    fn = "\n".join(re.findall(r"(?ms)" + _FREECUT_AWK + r"|^typed_note_cut\(\) \{\n.*?^\}$", text))
     parts = (
         [*re.findall(r"(?ms)" + _REPORT_CUTS_BLOCK, text), *_SHELL_GLOBALS_RE.findall(text)]
         if block != "without"
@@ -18403,6 +18404,58 @@ def test_another_builds_render_of_a_config_other_than_the_default_falls_back_c22
         assert "acquisition" not in path.read_text(encoding="utf-8"), path
 
 
+_PROVIDER_FALLBACK_WHY = (
+    "a provider folder name after ~/Library/CloudStorage/ in its render that this checkout cuts"
+)
+"""report_provider_lines' SPLIT_WHY (B13 round 43 ruling 160, C2498)."""
+
+
+@pytest.mark.parametrize(
+    ("said", "kept"),
+    [
+        ("OneDrive-Personal Secret/Plans today", False),
+        ("OneDrive-Tailspin Toys today", False),
+        ("OneDrive-Northwind/Plans today", False),
+        ("OneDrive-<org-1>/Plans today", True),
+        ("OneDrive-Personal/Plans today", True),
+        ("<path> today", True),
+    ],
+    ids=["kept-word-whole-run", "tenant-no-slash", "tenant", "placeholder", "domain", "cut"],
+)
+def test_another_builds_render_of_a_free_text_provider_word_falls_back_c2498(
+    env: dict[str, str], said: str, kept: bool
+) -> None:
+    """B13 round 43 ruling 160, C2498 (privacy), its option A: a build before round 40's C1862, or before
+    ruling 146, prints a `~/Library/CloudStorage/<App>-<tenant>` word in ordinary prose in clear, and this
+    checkout's recut has no free-text rule, so another build's kept render printed the tenant. Such a render
+    is now replaced by the shell report when freecut, the one copy the shell report cuts with, would change a
+    line of it; a render whose provider words it keeps (a placeholder, a domain, a cut) is kept."""
+    env = _renderer_home(env, "older", stamp="0123456789ab" * 3)
+    out = Path(env["HOME"]) / "agent-context" / "setup" / "install.out"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(
+        f"# run=r1 2026-11-21T00:00:00Z install.sh --report-only\nsaw ~/Library/CloudStorage/{said}\n",
+        encoding="utf-8",
+    )
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    text = report_path(env).read_text(encoding="utf-8")
+    if kept:
+        assert "(agentsync setup-report)" in cp.stdout and "older stub render" in text, cp.stdout
+        assert f"saw ~/Library/CloudStorage/{said}" in text, text
+        return
+    assert (
+        "(shell fallback: the installed agentsync, another build, may print"
+        f" {_PROVIDER_FALLBACK_WHY} in clear)" in cp.stdout
+    ), cp.stdout
+    assert f"warning: agentsync setup-report was not kept: {_PROVIDER_FALLBACK_WHY}" in cp.stderr, cp.stderr
+    assert "older stub render" not in text, text
+    for path in (report_path(env), report_path(env).parent / "bring-back.md"):
+        if path.exists():
+            body = path.read_text(encoding="utf-8")
+            assert not [w for w in ("Secret", "Tailspin", "Northwind") if w in body], path
+
+
 def test_a_mark_outside_a_list_row_keeps_another_builds_render_c1630(env: dict[str, str]) -> None:
     """B13 round 39 C1630 (ruling 135): a mark read anywhere in install.out made a warning that quotes it,
     or a row of a run that was no --list-folders, take the fallback; a row counts only where
@@ -18414,7 +18467,8 @@ def test_a_mark_outside_a_list_row_keeps_another_builds_render_c1630(env: dict[s
         "# run=1 2026-11-13T10:00:00Z install.sh --list-folders\n"
         f"warning: a row marked {ESCAPED_MARK} cannot be pasted\n"
         "# run=2 2026-11-13T10:01:00Z install.sh --report-only\n"
-        f"{TWIN_MARK} ~/Library/CloudStorage/OneDrive-Contoso/Alpha\n",
+        # a provider folder the free-text cut keeps: a tenant there would take the fallback (C2498)
+        f"{TWIN_MARK} ~/Library/CloudStorage/OneDrive-Personal/Alpha\n",
         encoding="utf-8",
     )
     cp = install_sh(env, "--report-only")
@@ -23520,6 +23574,9 @@ MDM_URL = "https://contosoltd.mdm.example:443/mdm/ServerURL"
 _REPORT_CUTS_BLOCK = r"^# BEGIN report_cuts\n.*?^# END report_cuts$"
 """install.sh's generated block (B13 round 39 ruling 133), which both function sets below take whole, so every
 harness built from them reads the cut table its functions read (C1633)."""
+_FREECUT_AWK = r"^FREECUT_AWK='.*?^'$"
+"""The free-text provider cut's awk (freeinit, freecut), which typed_note_cut and report_provider_lines read
+(B13 round 43 ruling 160, C2498): a harness of either takes it, (?ms)."""
 SHELL_REDACTION_FNS = re.compile(
     r"(?ms)^(?:hold_values|hold_scopes|safe_shown|redaction_pairs|redact_stream|typed_note_cut|foreign_home_cut"
     r"|hold_cut)"
@@ -23527,6 +23584,9 @@ SHELL_REDACTION_FNS = re.compile(
     + _REPORT_CUTS_BLOCK
     # B13 round 40: the word run redact_stream builds from CUT_SEP (C1890) and its fail-closed marker (C1836)
     + r"|^SEP_RUN_AWK='.*?^'$|^redact_failed\(\) \{ [^\n]*\}$"
+    # B13 round 43 ruling 160 (C2498): the free-text cut typed_note_cut shares with report_provider_lines
+    + r"|"
+    + _FREECUT_AWK
 )
 _SHELL_GLOBALS_RE = re.compile(
     r"(?m)^(?:GENERIC_SOURCE_IDS|FIXED_CAPS_PHRASES|FIXED_VALUE_PHRASES|CUT_FIXED|CUT_HOME)\+?=.*$"

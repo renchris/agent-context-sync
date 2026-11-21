@@ -1410,6 +1410,68 @@ def test_the_recut_takes_the_not_a_folder_names_edge_as_the_python_report_does_c
     ]
 
 
+def _provider_lines_harness(tmp_path: Path, report: Path) -> subprocess.CompletedProcess[bytes]:
+    """install.sh's report_provider_lines over ``report`` (REPORT_PATH), with FREECUT_AWK and the generated
+    block beside it: rc 0 and its SPLIT_WHY on stdout where another build's render gives way to the shell
+    report (B13 round 43 ruling 160, C2498)."""
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    fns = "\n".join(
+        m.group(0)
+        for m in re.finditer(
+            r"(?ms)^FREECUT_AWK='.*?^'$|^(?:report_provider_lines|report_words_cut)\(\) \{\n.*?^\}$|"
+            r"^(?:CUT_FIXED|CUT_HOME)=.*?$|" + _REPORT_CUTS_BLOCK,
+            text,
+        )
+    )
+    where = shlex.quote(str(report))
+    run = f'set -euo pipefail\n{fns}\nREPORT_PATH={where}\nreport_provider_lines\necho "$SPLIT_WHY"'
+    return subprocess.run(
+        [BASH32, "-c", run],
+        capture_output=True,
+        check=False,
+        env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "TMPDIR": str(tmp_path)},
+    )
+
+
+@pytest.mark.parametrize(
+    "said",
+    [
+        *(said for said, _want in R146_FREE_ROWS),
+        "OneDrive-<org-1>/Plans x",
+        "Dropbox/Plans x",
+        "<path> today",
+    ],
+)
+@pytest.mark.parametrize("head", ["saw ", "usage error: --source-local is not an existing folder: "])
+def test_another_builds_render_gives_way_exactly_where_the_free_text_cut_changes_a_line_c2498(
+    tmp_path: Path, said: str, head: str
+) -> None:
+    """B13 round 43 ruling 160, C2498 (privacy), its option A: report_recut has no free-text provider rule, so
+    another build's render kept `~/Library/CloudStorage/OneDrive-Personal Secret/Plans` and `OneDrive-Tailspin
+    Toys today`, which the agentsync report cuts. report_provider_lines scans the render with freecut, the one
+    copy the shell report cuts with, and write_report takes the shell report where it fires: exactly on the
+    lines setup_report._redact_lines changes. A not-a-folder name, which the recut cuts to <path> itself, is
+    read as the recut leaves it, so it never takes the fallback. The recut is unchanged, and this checkout's
+    own render (other=0) stays byte for byte."""
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    line = f"{head}~/Library/CloudStorage/{said}"
+    python = setup_report._redact_lines(red, [line]) if head == "saw " else line
+    report = tmp_path / "setup-report.md"
+    report.write_text(f"# agentsync setup report\n\n{line}\n", encoding="utf-8")
+    before = report.read_bytes()
+    cp = _provider_lines_harness(tmp_path, report)
+    assert cp.returncode in (0, 1), cp.stderr
+    assert (cp.returncode == 0) is (python != line), (line, python, cp.stdout)
+    if cp.returncode == 0:
+        assert cp.stdout.decode().startswith("a provider folder name after ~/Library/CloudStorage/"), (
+            cp.stdout
+        )
+    assert report.read_bytes() == before, "the scan writes nothing"
+    assert _report_recut_harness(tmp_path, report, other=0).returncode == 0
+    assert report.read_bytes() == before, "this checkout's own render stays byte for byte"
+
+
 @pytest.mark.parametrize("folders", [["Empty Project", "Project Alpha"], ["Project Alpha", "Empty Project"]])
 def test_both_reports_hold_agentsyncs_own_verb_whole_c1425(
     env: dict[str, str],  # noqa: F811
