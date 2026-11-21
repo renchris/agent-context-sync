@@ -959,6 +959,16 @@ def _no_converter_stub(row: ItemRow) -> bool:
     return row.state is RowState.REFUSED and (row.state_reason or "").startswith(NO_CONVERTER_PREFIX)
 
 
+def _no_byte_page(outs: Sequence[OutputRow]) -> bool:
+    """True when an item's one live output is a refused stub no converter made (``NO_CONVERTER_ID``): a page
+    made from no byte read, whatever the row's state now (a recording a replan set waiting is LIVE; B13
+    round 43 C2407)."""
+    live = [o for o in outs if o.status is not OutputStatus.TOMBSTONE]
+    return (
+        len(live) == 1 and live[0].status is OutputStatus.REFUSED and live[0].converter_id == NO_CONVERTER_ID
+    )
+
+
 def _unavailable_stub(row: ItemRow) -> bool:
     """True when ``row`` has the stub of a conversion whose converter could not start: no byte of the file
     was read for it (B13 round 18 V61)."""
@@ -5018,17 +5028,30 @@ class _Cycle:
         if self._drift_run is None:
             mine = _convert_fingerprint(self.config)
             stored = (self.manifest.get_meta(_CONVERT_OPTIONS_META) or "").split()
-            if len(stored) == 2 and stored[0] == mine and stored[1].isdigit():
+            # the run id as the cycle writes it, ASCII digits only: any other value is unrecorded and written
+            # again, never a ValueError in the sync (B13 round 43 C2504 with C2522, ruling 169)
+            if len(stored) == 2 and stored[0] == mine and stored[1].isascii() and stored[1].isdigit():
                 self._drift_run = int(stored[1])
+                # the edit's own hashes, refilled by a later cycle with the same fingerprint when the edit's
+                # run could not take them (the OCR helper failing then) or the record is another run's: they
+                # equal what the edit's run would have stored (B13 round 43 C2447, ruling 169)
+                if self._drift_run and not self.dry and not self.publisher.ocr_down:
+                    have = self._drift_edit_hashes(self._drift_run)
+                    if not any(have.values()) and any(self._drift_hashes().values()):
+                        self._store_edit_hashes(self._drift_run)
             else:
                 self._drift_run = self.run_id if len(stored) == 2 else 0
                 if not self.dry:
                     self.manifest.set_meta(_CONVERT_OPTIONS_META, f"{mine} {self._drift_run}")
                     if self._drift_run:  # the edit's own hashes, stored with it (C2270)
-                        edit = {f"{cid}\t{ext}": sorted(h) for (cid, ext), h in self._drift_hashes().items()}
-                        record = {"run": self._drift_run, "hashes": edit}
-                        self.manifest.set_meta(_CONVERT_EDIT_HASHES_META, json.dumps(record, sort_keys=True))
+                        self._store_edit_hashes(self._drift_run)
         return self._drift_run
+
+    def _store_edit_hashes(self, run: int) -> None:
+        """Store :meth:`_drift_hashes` as the :data:`_CONVERT_EDIT_HASHES_META` record of ``run``."""
+        edit = {f"{cid}\t{ext}": sorted(h) for (cid, ext), h in self._drift_hashes().items()}
+        record = {"run": run, "hashes": edit}
+        self.manifest.set_meta(_CONVERT_EDIT_HASHES_META, json.dumps(record, sort_keys=True))
 
     def _claims(self, suffix: str) -> str:
         """The id of the converter this cycle's registry gives a file ending in ``suffix``, "" for none."""
@@ -5434,13 +5457,26 @@ class _Cycle:
             with self.manifest.transaction():
                 for row in rows[start : start + _WORK_BATCH]:
                     mark = len(self.changes)
+                    # what the savepoint cannot roll back: the row's pages on disk and the cycle's own books
+                    # (B13 round 43 C2508 with C2443, ruling 165)
+                    files = self._page_files(src.id, row.stable_id)
+                    books = (
+                        row.stable_id in acc.deferred_ids,
+                        acc.counted_as.get(row.stable_id),
+                        len(self._recording_queue.get(src.id, [])),
+                    )
                     try:
                         with self.manifest.savepoint():
                             if not self._empty_recording(src, arm, row, acc):
                                 self._recording_defer(src, row, acc)
                     except BaseException as exc:
                         # the rows before it commit; this row's own writes roll back, so no row is left with
-                        # its content set and no page (a plain catch committed that half, B13 round 42 C2249)
+                        # its content set and no page (a plain catch committed that half, B13 round 42 C2249),
+                        # and its pages and books go back with them, so the row's page_sha256 matches its
+                        # file and the commit names no page the row no longer has (C2508 with C2443)
+                        self._put_back(
+                            src, row.stable_id, acc, files=files, books=books, changes=self.changes[mark:]
+                        )
                         del self.changes[mark:]
                         failure = exc
                         break
@@ -5448,12 +5484,79 @@ class _Cycle:
             if failure is not None:
                 raise failure
 
+    def _page_files(self, source_id: str, stable_id: str) -> dict[str, bytes | None]:
+        """The bytes of each page of an item (None: no file there) and of each file in its pages' ``.files``
+        folders, keyed by docs-repo-relative path, for :meth:`_put_back` (B13 round 43 C2443)."""
+        saved: dict[str, bytes | None] = {}
+        for out in self.manifest.outputs_for(source_id, stable_id):
+            for rel in (out.output_path, str(PurePosixPath(out.output_path).with_suffix(".files"))):
+                path = self.repo / rel
+                try:
+                    if path.is_dir() and not path.is_symlink():
+                        for f in sorted(path.rglob("*")):
+                            if f.is_file() and not f.is_symlink():
+                                saved[f.relative_to(self.repo).as_posix()] = f.read_bytes()
+                    elif rel == out.output_path:
+                        saved[rel] = path.read_bytes() if path.is_file() else None
+                except OSError as exc:
+                    log.warning("%s: %s could not be read to keep: %s", source_id, rel, exc)
+        return saved
+
+    def _put_back(
+        self,
+        src: SourceConfig,
+        stable_id: str,
+        acc: _SourceAcc,
+        *,
+        files: dict[str, bytes | None],
+        books: tuple[bool, Verdict | None, int],
+        changes: Sequence[MirrorChange],
+    ) -> None:
+        """Undo, after a replanned row's savepoint rolled back, what the savepoint does not hold: the row's
+        page files as :meth:`_page_files` kept them (a page the run added, or moved one to, goes), and its
+        ``deferred_ids``, settle and recording-queue entries.  Best effort: a failure here is logged and never
+        hides the row's own error (B13 round 43 C2508 with C2443, ruling 165).  A page path write_pages wrote
+        before it raised, with no change recorded for it yet, is not known here and stays."""
+        was_deferred, counted, queued = books
+        if not was_deferred:
+            acc.deferred_ids.discard(stable_id)
+        now = acc.counted_as.get(stable_id)
+        if now is not counted:
+            if now is not None:
+                acc.counts[now] -= 1
+                if acc.counts[now] <= 0:
+                    del acc.counts[now]
+            if counted is None:
+                acc.counted_as.pop(stable_id, None)
+            else:
+                acc.counts[counted] += 1
+                acc.counted_as[stable_id] = counted
+        del self._recording_queue.get(src.id, [])[queued:]
+        made = {c.path for c in changes if c.op in (ChangeOp.ADDED, ChangeOp.RENAMED)} - set(files)
+        for rel, data in [*files.items(), *((rel, None) for rel in sorted(made))]:
+            path = self.repo / rel
+            try:
+                if data is None:
+                    if path.is_file() or path.is_symlink():
+                        path.unlink()
+                elif not path.is_file() or path.read_bytes() != data:
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    tmp = path.parent / f".agentsync-{secrets.token_hex(6)}.tmp"  # as the publisher writes
+                    try:
+                        tmp.write_bytes(data)
+                        tmp.replace(path)
+                    finally:
+                        tmp.unlink(missing_ok=True)
+            except OSError as exc:
+                log.warning("%s: %s could not be put back: %s", src.id, rel, exc)
+
     def _rejudge_ocr_down(self, src: SourceConfig) -> None:
         """Judge again the OCR-down mark (:data:`RECORDING_OCR_DOWN_META`) of each refused ``no converter``
         recording of ``src`` that carries it, in a cycle whose registry has no recording converter (the media
         helper gone, ``[convert] recordings`` off): such a row is in no queue and no replan, so the mark set
         during an OCR outage outlived the media helper, and status asked for a read nothing could make. Each
-        goes through :meth:`_mark_ocr_down` with its own refusal, so the rule has one home: the mark stays
+        goes through :meth:`_mark_ocr_down_for` (:meth:`_mark_ocr_down`'s rule) with its own refusal reason
+        (B13 round 43 C2449), so the rule has one home: the mark stays
         only while the page's words still say the OCR helper is not working. Only here: while the registry
         has the recording converter, the replan or the recording pass's stub path reads the row, and the mark
         holds until then (B13 round 42 C2244, ruling 155; clearing it whenever recordings did not wait on OCR
@@ -5464,7 +5567,19 @@ class _Cycle:
                 continue
             key = f"{RECORDING_OCR_DOWN_META}{row.source_id}:{row.stable_id}"
             if row.state_reason == NO_CONVERTER_PREFIX + suffix and self.manifest.get_meta(key) == "1":
-                self._mark_ocr_down_for(src, row, row.state_reason)
+                # the mark and the page move together: a mark that clears re-plans the stub with this run's
+                # words in the same savepoint, so the page never keeps the OCR-down words the mark no longer
+                # backs, and a failed write keeps both (B13 round 43 C2511, ruling 165)
+                mark = len(self.changes)
+                try:
+                    with self.manifest.savepoint():  # its own transaction outside one
+                        self._mark_ocr_down_for(src, row, row.state_reason)
+                        if not self.manifest.get_meta(key):
+                            self.changes += self.publisher.replan_ocr_down_recording(src, row, self.run_id)
+                except BaseException:
+                    del self.changes[mark:]
+                    raise
+                self._flush_changes()
 
     def _reread_zero_byte_stubs(
         self, src: SourceConfig, arm: LocalArm, acc: _SourceAcc, skip: set[str]
@@ -6762,10 +6877,13 @@ class _Cycle:
         # a label rule withheld it by its name and a rule change queued it (``mark_for_rescreen``'s withheld
         # arm), in this sync or an earlier one: it is converted for that change, so the sync line names it
         # (B13 round 20 X34, round 21 Y73)
+        # A page made with no byte read (a ``no converter`` stub, still REFUSED or a recording a replan set
+        # waiting) counts only through the persisted re-screen queue (B13 round 43 C2407, ruling 165): its
+        # hash was never there to forget, so a materialised waiting recording is no re-screen.
         rescreen = (
             not reread
             and row.content_sha256 is None
-            and (not _no_converter_stub(row) or self._rescreened_stub(row, outs))
+            and (not (_no_converter_stub(row) or _no_byte_page(outs)) or self._rescreened_stub(row, outs))
             and any(o.status not in (OutputStatus.SKIPPED_DATALESS, OutputStatus.TOMBSTONE) for o in outs)
         )
         # ...or bytes never read before, behind a stub made from the name: the stub is what there is to keep

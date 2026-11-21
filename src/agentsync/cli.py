@@ -5805,9 +5805,10 @@ def _fields_before_parse(tokens: Sequence[str]) -> int | None:
     ``--help``, in any order, at the top level, on a command or a graph action, ``help --help``) refuses as
     ``help <cmd>`` does; ``--version`` without --json refuses as every command does. Help still wins where it
     did: its text page without --json, and ``--version --json --help``'s (``_json_options.help`` is false
-    there); and ``--version --json --fields`` keeps ``_version_fields``. A token scan suffices
-    (``_asks_help``): allow_abbrev turns off long-option prefixes only, and a short-flag cluster such as
-    ``-vh`` or ``-hv`` is read as the ``-h`` argparse splits it into (B13 round 41 C2040)."""
+    there); and ``--version --json --fields`` keeps ``_version_fields``. ``_asks_help`` decides
+    help with a probe parse of the real parser (B13 round 42 C2295, after round 41 C2040's token scan), so a
+    short-flag cluster such as ``-vh`` counts as help only where the parser that owns it would split it into
+    ``-h`` (B13 round 43 C2449)."""
     if not any(t == "--fields" or t.startswith("--fields=") for t in tokens):
         return None
     helps = _asks_help(tokens)

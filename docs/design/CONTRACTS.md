@@ -3488,6 +3488,7 @@ HAND_WRITTEN = "hand-written"
 VERDICTS: tuple[str, ...] = (
     "STALE",
     "SOURCE-DELETED",
+    "SOURCE-SUPERSEDED",  # Amended 2026-11-21, §16.272 C2409: a cited page a sync replaced, naming the new one
     "SOURCE-UNREADABLE",
     "MISSING-OR-UNPARSEABLE",
     "UNPINNED",
@@ -43754,8 +43755,10 @@ C2021's test checks the body below the front matter against the cap (`len(body) 
 outside it, and its comment says so (C2250, a test-only change: the looser check it replaces passed on the same
 page, so no test can fail without it). `cli._asks_help` asks the parser that owns each token, a probe parse of
 `build_parser` whose help actions raise and whose root `--version` is read and ignored, so a short-flag cluster is
-help only where argparse makes it help: `-vh`, `-hv`, `purge -yh` in; root `-yh`, `-yvh`, `-hello`, `-eh`,
-`status -yh`, `status -vhy` out, and `--version --json -yh` prints the version document again (C2295; test
+help only where argparse makes it help (Amended 2026-11-21, §16.272 C2455: `cli._asks_help` gives argparse's own
+answer on the running Python: `-vh`, `-hv`, `purge -yh` in; root `-yh`, `-yvh`, `-eh`, `status -yh` out. `-hello`
+and `status -vhy` follow argparse: the page on 3.11.16 and 3.12.13 (measured), a usage error ('ignored explicit
+argument') on 3.11.4), and `--version --json -yh` prints the version document again (C2295; test
 `test_help_is_asked_of_the_parser_that_owns_each_token_c2295`; lane D words C2260 from it). The gate-slot
 plugin's test stub starts its nap off the pipe and writes `.queued` after `nap=`, so a TERM sent on `.queued`
 always finds the nap to kill and no orphaned `sleep 600` holds the run's pipe (C2264; test
@@ -44280,6 +44283,31 @@ True); repair still titles the page with the item's name, as before (C2510). Tes
 `test_a_cited_page_a_sync_replaced_is_superseded_not_deleted_c2409`,
 `test_a_superseded_tombstone_names_the_items_live_page_in_both_paths_c2510`.
 
+**A recording that waits is told, counted and rolled back as waiting** (C2508 with C2443, C2511, C2407, C2413;
+ruling 165). `_replan_recording_stubs`' per-row savepoint (C2249) rolled back a raising row's manifest writes but
+not the waiting page `replan_waiting_recording` had written, so the run committed a page its row no longer had,
+its `page_sha256` stale, and the retry kept it since the page already said the wait. Before each row's savepoint
+`_Cycle._page_files` keeps the bytes of the item's pages and of the files in their `.files` folders, and on
+rollback `_Cycle._put_back` writes them back, removes a page the row's changes added or moved to, and undoes the
+row's `deferred_ids`, settle and recording-queue entries, best effort and never hiding the row's own error (a
+page `write_pages` wrote before it raised, with no change recorded yet, is not known there); and
+`replan_waiting_recording` returns early only when the page says the wait in this build's words and its row's
+`page_sha256` is the file's, so a retry writes the same bytes (no change) and the row takes its digest (C2508 with
+C2443). `_rejudge_ocr_down` clears a recording's OCR-down mark and re-plans its stub with this run's words
+(`Publisher.replan_ocr_down_recording`, no byte read, written only while the page still says the OCR helper is
+not working) in one savepoint, so the page and `QUARANTINE.tsv` say `no converter for .mp4` and the next sync
+makes no commit (C2511). `_after_fetch`'s re-screen test treats a page made from no byte read (`_no_byte_page`:
+the item's one live output a refused `NO_CONVERTER_ID` stub, whatever the row's state, a recording a replan set
+waiting included) as it treats a no-converter stub: a re-screen only through the persisted re-screen queue
+(`_rescreened_stub`), so a materialised waiting recording is `converted 1` and no `re-screened` (C2407). A stub
+that waits, for the recording pass or the OCR helper, reads `# [WAITING] <title>` (`publish.STUB_WAITING_LABEL`)
+with a `waiting: ` summary, its status, stored reason, converter, keys and `QUARANTINE.tsv` row as before, and
+`publish.STUB_RENDER` moves once, to 7, so `_rerender_stubs` rewrites the stubs it can rebuild (C2413). Tests:
+`test_a_replanned_recording_that_raises_rolls_back_alone_c2249` (the page, its digest, the commit's stat and the
+deferred count, and the heal on retry with the put-back off), `test_the_ocr_down_mark_goes_with_the_recording_converter_c2244`
+(the page's and the queue's reason, no second commit), `test_a_materialised_waiting_recording_is_no_re_screen_c2407`,
+and the C2039, C1271 and OCR-down recording tests' heading and summary.
+
 **Nothing to draft from, nothing asked** (C2424; ruling 163). Rule 4 counted curated topic pages, never converted
 mirror pages, so a synced folder holding only an empty subfolder was asked for a baseline draft, and the honest
 empty draft became a wait to keep about 10 questions and confirm them. With no converted page in the mirror
@@ -44294,6 +44322,32 @@ file, only empty subfolders, or files not read)`) and the move (`add a folder th
 empty draft. A draft that holds a question is the operator's to confirm, as before. Tests:
 `test_an_empty_mirror_asks_for_no_draft_c2424`, `test_only_online_files_say_they_wait_for_a_download_c2424`,
 `test_a_file_in_the_inbox_is_enough_to_draft_c2424`.
+
+**A [convert] edit's tests fail without their fix, and the record is read as the cycle writes it** (C2446, C2447,
+C2448, C2504 with C2522; ruling 169). The C2270 test's bump run kept the build, so it never looked for re-reads
+and passed without the fix: it patches `_build_digest` beside `BANNER_VERSION` and proves `_drift_targets` ran
+(C2446). With the OCR helper failing in the edit's run, `_drift_hashes` is empty and the edit's hash record held
+none, so a later bump re-read every page: `_drift_since`, on a matching fingerprint in a non-dry cycle with OCR up,
+writes `_drift_hashes()` as the record of the edit's run when the stored one is another run's or empty (and this
+cycle's is not), hashes that equal what the edit's run would have stored (C2447; the test fails OCR in the edit's
+run). The C2292 test's last step ran the edited config, a second edit that re-read the pages whether or not their
+waiting targets were kept; it puts pandoc back at the path the broken config names and runs that config, its
+options meta unchanged (C2448). `_drift_since` takes the run only from ASCII digits (`isascii()` and `isdigit()`):
+a `²` raised ValueError in the sync and an Arabic-Indic digit read as a run the cycle never wrote; any other value
+is unrecorded and written again, as `setup_report._convert_changed_run` reads it (lane RA's half) (C2504 with
+C2522). Tests: `test_a_banner_bump_after_an_options_edit_reads_no_page_again_c2270` (OCR up, and down in the
+edit's run), `test_an_options_edit_with_a_converter_that_cannot_start_keeps_its_pages_waiting_c2292`,
+`test_a_convert_record_with_a_non_ascii_digit_is_unrecorded_c2504`.
+
+**The CLI's and the tests' own words** (C2455, C2456, C2449, C2514). The C2295 test and contract fixed one Python
+patch's answer for `-hello` and `status -vhy`: they print the page on 3.11.16 and 3.12.13 and are a usage error on
+3.11.4 (measured), so the test holds them in a group of their own to argparse's answer on the running Python, and
+§16.267's C2295 paragraph and §16.300.25 say so; no requires-python pin, which would refuse installs on older 3.11
+interpreters for a test-only matter (C2455 with C2456). `_fields_before_parse`'s docstring names `_asks_help`'s
+probe parse, and `_rejudge_ocr_down`'s names `_mark_ocr_down_for` (C2449, docstrings only). The quarantine-pointer
+check matches a page to the row whose first two fields are its source id and its path as `publish._tsv_field`
+writes it, never a substring of another row (C2514; the C2039 test proves a row under another source no longer
+passes).
 
 **A lock that named no holder has its own mark** (C2540 with C2502). Under install.sh's quiet wait, a wait its
 probe missed marked stdout with `cli.LOCK_WAITED_MARK` (`lock wait: this sync waited for another sync's lock`)
@@ -45107,8 +45161,9 @@ deprecation warning becomes a `warnings` entry instead of a stderr line. The ref
   `cli.HELP_PAGE_FIELDS`'s same bytes; C1856, C1808, C1844, C1865), or a field is unknown; the last line lists the
   valid fields. `--version --fields` without `--json` and without a help flag is the same `add --json` refusal
   (`cli.FIELDS_NEED_JSON`, C1845). A help flag is one `cli._asks_help` finds: `-h`, `--help`, or a short-flag
-  cluster argparse makes help, every letter a no-value flag of the parser that owns it and one of them `h` (`-vh` and
-  `-hv`, `purge -yh`); `-eh`, a root `-yh` or `-yvh` and `--hv` are none (§16.262 C2040, §16.267 C2295; B13 round 42
+  cluster argparse makes help, each letter before the `h` a no-value flag of the parser that owns it (Amended
+  2026-11-21, §16.272 C2455: what argparse does with the letters after the `h` depends on the Python, §16.267
+  C2295) (`-vh` and `-hv`, `purge -yh`); `-eh`, a root `-yh` or `-yvh` and `--hv` are none (§16.262 C2040, §16.267 C2295; B13 round 42
   C2260). With a help flag also present and no `--json`, `--fields` is not read:
   argparse acts on whichever of `--version` and the help flag comes first (the version line or the help page, exit
   0), exactly as `--version --help` does without `--fields` (B13 round 41 C2058). `--version --json --fields` keeps

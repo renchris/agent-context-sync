@@ -903,13 +903,16 @@ def test_help_is_asked_of_the_parser_that_owns_each_token_c2295(capsys: pytest.C
     and compact-history's alone: ``--version --json -yh`` dropped ``--version`` and ended in a usage error,
     and ``status -yh --json --fields x`` gave the help page's fields refusal where argparse refuses ``-y``.
     The scan asks the parser that owns each token, so a cluster is help only where argparse makes it help,
-    held here to argparse's own answer: a letter before the ``h`` must be a no-value flag of that parser, and
-    argparse takes the ``h`` before it looks at the letters after it, so ``-hello`` and ``status -vhy`` print
-    the page (measured; the spec expected them refused)."""
+    held here to argparse's own answer: a letter before the ``h`` must be a no-value flag of that parser.
+
+    B13 round 43 C2455 with C2456: what argparse does with the letters after the ``h`` changed within 3.11.x:
+    ``-hello`` and ``status -vhy`` print the page on 3.11.16 and 3.12.13 (measured) and are a usage error
+    (``ignored explicit argument``) on 3.11.4, so they sit in a group of their own, held only to argparse's
+    answer on the running Python (``_asks_help`` follows it); no requires-python pin."""
     asks = (["-vh"], ["-hv"], ["-h"], ["--help"], ["status", "-vh"], ["purge", "-yh"], ["purge", "-hy"])
-    asks += (["-hello"], ["status", "-vhy"])
     refuses = (["-yh"], ["-yvh"], ["-eh"], ["--hv"], ["-v"], ["status", "-yh"])
-    for argv in (*asks, *refuses):
+    follows = (["-hello"], ["status", "-vhy"])
+    for argv in (*asks, *refuses, *follows):
         out = io.StringIO()
         try:
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
@@ -917,7 +920,9 @@ def test_help_is_asked_of_the_parser_that_owns_each_token_c2295(capsys: pytest.C
             page = False
         except SystemExit as exc:
             page = exc.code == 0 and out.getvalue().startswith("usage:")
-        assert cli._asks_help(argv) is page is (argv in asks), argv
+        assert cli._asks_help(argv) is page, argv
+        if argv not in follows:
+            assert page is (argv in asks), argv
     assert json.loads(_help_text(capsys, "--version", "--json", "-yh")) == {"version": cli.__version__}
     assert _help_text(capsys, "purge", "-yh").startswith("usage: agentsync purge")
     assert cli.main(["status", "-yh", "--json", "--fields", "x"]) == cli.EXIT_USAGE

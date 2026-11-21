@@ -2589,7 +2589,9 @@ def test_an_image_whose_ocr_helper_fails_says_so_and_is_read_once_it_works_c1101
     assert (st.ocr_unread, st.refused_unread) == (1, 0), st
     fm, body = _image_page(sample_config, SITE_PLAN)
     assert fm["reason"] == publish_mod.OCR_DOWN_REASON, fm
-    assert fm["summary"] == f"refused: {publish_mod.OCR_DOWN_REASON}", fm
+    # B13 round 43 C2413: a stub that waits says so in its heading and summary; its status stays refused
+    assert fm["summary"] == f"waiting: {publish_mod.OCR_DOWN_REASON}" and fm["status"] == "refused", fm
+    assert "\n# [WAITING] " in body and "# [REFUSED]" not in body, body
     assert "no converter" not in body, body
     with Manifest(sample_config.state_paths.db) as m:
         (row,) = [r for r in m.iter_items(SID) if r.rel_path == SITE_PLAN]
@@ -2666,7 +2668,9 @@ def test_a_pending_recording_waits_on_a_failed_ocr_helper_only_with_the_media_he
     assert (st.ocr_unread, st.refused_unread) == ((1, 0) if waits else (0, 1)), st
     fm, body = _image_page(sample_config, STANDUP)
     shown = publish_mod.OCR_DOWN_RECORDING_REASON if waits else "no converter for .mp4"
-    assert (fm["reason"], fm["summary"]) == (shown, f"refused: {shown}"), fm
+    head = "waiting" if waits else "refused"  # B13 round 43 C2413
+    assert (fm["reason"], fm["summary"], fm["status"]) == (shown, f"{head}: {shown}", "refused"), fm
+    assert f"\n# [{head.upper()}] " in body, body
     assert ("no converter" in body) is not waits, body
     assert _quarantine_reason(sample_config, STANDUP) == shown
     assert _item(sample_config, STANDUP).state_reason == "no converter for .mp4"
@@ -5769,13 +5773,25 @@ def test_an_options_edit_with_a_converter_that_cannot_start_keeps_its_pages_wait
         if n:
             assert not [n for n in notes if n.startswith(loop.SYNC_AGAIN)], notes
             assert [n for n in notes if loop._REREAD_STUCK in n or loop._REREAD_STUCK_ONE in n], notes
+    # B13 round 43 C2448 (ruling 169): pandoc comes back at the path ``broken`` names, so [convert] and its
+    # options meta stay as the edit left them; running ``edited`` instead was a second edit, which re-read
+    # the pages whether or not their waiting targets were kept
+    real_bin, _ = pandoc_mod.resolved_pandoc(None)
+    gone = broken.convert.pandoc_path
+    assert gone is not None
+    gone.parent.mkdir(parents=True, exist_ok=True)
+    gone.symlink_to(real_bin)
+    with Manifest(sample_config.state_paths.db) as m:
+        meta = m.get_meta(cycle_mod._CONVERT_OPTIONS_META)
     fetched = _fetches(monkeypatch)
-    assert run(edited).exit_code == 0
+    assert run(broken).exit_code == 0
+    with Manifest(sample_config.state_paths.db) as m:
+        assert m.get_meta(cycle_mod._CONVERT_OPTIONS_META) == meta, "no second edit"
     assert any(rel.endswith(".docx") for rel in fetched), fetched
     assert "reread_waits" not in _run_record(sample_config)
     assert _reread_record(sample_config)[0] is True
     del fetched[:]
-    assert run(edited).commit_sha is None and fetched == [], "read once"
+    assert run(broken).commit_sha is None and fetched == [], "read once"
 
 
 def test_an_options_edit_asks_only_the_converters_that_made_a_page_whether_they_start_c2246(
@@ -5804,30 +5820,79 @@ def test_an_options_edit_asks_only_the_converters_that_made_a_page_whether_they_
     assert not any(cid.startswith("pandoc") for cid in asked), asked
 
 
+@pytest.mark.parametrize("ocr", ["up", "down-in-the-edits-run"])
 def test_a_banner_bump_after_an_options_edit_reads_no_page_again_c2270(
-    tmp_path: Path, meetings: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, meetings: Path, monkeypatch: pytest.MonkeyPatch, ocr: str
 ) -> None:
     """B13 round 42 C2270 (ruling 154): after an edit that moved one converter's options (max_rows_per_sheet:
     text-plain's), the pages of the others kept their hashes and their old runs; a later BANNER_VERSION bump
     moved every hash and made them drift targets, with a note blaming an edit nobody made. The edit's own hash
     set is stored with it, so a bump re-reads nothing, as a bump with no edit before it does; the note names
-    no cause."""
+    no cause.
+
+    B13 round 43 C2446 (ruling 169): the bump run kept the build, so it never looked for re-reads and the test
+    passed without the fix; a release that bumps the banner changes the build too (``_build_digest``), and
+    the test proves ``_drift_targets`` ran. C2447: with the OCR helper failing in the edit's run, its record
+    held no hashes, and the bump re-read every page; a later cycle with the same fingerprint and OCR up fills
+    the record in."""
     assert loop._REREAD_OPTIONS == (
         "have pages made under other converter options; they are among the files read again"
     )
     config = config_with(tmp_path, meetings)
     assert run(config).exit_code == 0
     edited = config_with(tmp_path, meetings, "\n[convert]\nmax_rows_per_sheet = 100\n")
+    if ocr != "up":
+        _fail_ocr(monkeypatch)
     assert run(edited).exit_code == 0
     assert "reread_options" not in _run_record(edited) and _reread_notes(edited) == []
-    with Manifest(edited.state_paths.db) as m:
-        stored = json.loads(m.get_meta(cycle_mod._CONVERT_EDIT_HASHES_META) or "{}")
+
+    def edit_record() -> dict[str, Any]:
+        with Manifest(edited.state_paths.db) as m:
+            return dict(json.loads(m.get_meta(cycle_mod._CONVERT_EDIT_HASHES_META) or "{}"))
+
+    if ocr != "up":
+        assert edit_record()["hashes"] == {}, "the edit's run took no hashes with the helper failing"
+        _use_ocr(monkeypatch, tmp_path)
+        monkeypatch.setattr(cycle_mod, "_build_digest", lambda _root: "contoso-build-2")
+        assert run(edited).exit_code == 0  # same fingerprint, OCR up: the record is filled in
+    stored = edit_record()
     assert stored["run"] and any(k.startswith("markdown") for k in stored["hashes"]), stored
     monkeypatch.setattr(content_policy, "BANNER_VERSION", content_policy.BANNER_VERSION + 1)
+    monkeypatch.setattr(cycle_mod, "_build_digest", lambda _root: "contoso-build-3")  # a real release's
+    targets: list[int] = []
+    real_targets = cycle_mod._Cycle._drift_targets
+
+    def drift_targets(self: Any, made: Any) -> Any:
+        targets.append(1)
+        return real_targets(self, made)
+
+    monkeypatch.setattr(cycle_mod._Cycle, "_drift_targets", drift_targets)
     fetched = _fetches(monkeypatch)
     assert run(edited).exit_code == 0
+    assert targets, "the bump run looked for re-reads"
     assert "reread_options" not in _run_record(edited) and _reread_notes(edited) == []
     assert "notes.md" not in fetched, fetched
+
+
+@pytest.mark.parametrize("value", ["\u00b2", "\u0667"], ids=["superscript-two", "arabic-indic-seven"])
+def test_a_convert_record_with_a_non_ascii_digit_is_unrecorded_c2504(
+    tmp_path: Path, meetings: Path, monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    """B13 round 43 C2504 with C2522 (ruling 169): _drift_since took the run from str.isdigit(), so a
+    matching fingerprint followed by ``²`` raised ValueError in the sync, and one followed by an Arabic-Indic
+    digit read as a run the cycle never wrote. Only ASCII digits are a run; any other value is unrecorded and
+    written again, as the setup report reads it."""
+    config = config_with(tmp_path, meetings)
+    assert run(config).exit_code == 0
+    with Manifest(config.state_paths.db) as m:
+        mine = (m.get_meta(cycle_mod._CONVERT_OPTIONS_META) or "").split()[0]
+        m.set_meta(cycle_mod._CONVERT_OPTIONS_META, f"{mine} {value}")
+    monkeypatch.setattr(cycle_mod, "_build_digest", lambda _root: "contoso-build-2")  # it looks for re-reads
+    report = run(config)
+    assert report.exit_code == 0, report
+    with Manifest(config.state_paths.db) as m:
+        fingerprint, run_id = (m.get_meta(cycle_mod._CONVERT_OPTIONS_META) or "").split()
+    assert fingerprint == mine and run_id.isascii() and run_id.isdigit(), run_id
 
 
 def test_an_options_edit_made_before_the_first_recorded_sync_opens_nothing_c2297(
@@ -7647,8 +7712,10 @@ def test_a_recording_first_seen_in_an_ocr_outage_is_counted_and_read_again_once_
     for rel in (EMPTY_MEETING, MEETING):
         row = _row(config, rel)
         assert (row.state, row.state_reason) == (RowState.REFUSED, "no converter for .mp4"), row
-        fm, _body = _recording_page(config, rel)
+        fm, body = _recording_page(config, rel)
         assert fm["reason"] == publish_mod.OCR_DOWN_RECORDING_REASON, fm
+        assert fm["status"] == "refused" and fm["summary"].startswith("waiting: "), fm  # C2413
+        assert "\n# [WAITING] " in body, body
     said = _recording_words(config)
     assert f"2 recordings in {SID} wait {loop_mod.RECORDING_OCR_WAIT}" in said, said
     assert "--confirm-install-agent" not in said and "materialise" not in said, said
@@ -7669,6 +7736,8 @@ def test_a_recording_first_seen_in_an_ocr_outage_is_counted_and_read_again_once_
         fm, body = _recording_page(config, MEETING)
         assert fm["status"] == "refused" and fm["reason"] == publish_mod.RECORDING_PASS_WAIT_REASON, fm
         assert "QUARANTINE.tsv" not in body and "agentsync status` counts it" in body, body
+        # B13 round 43 C2413: the wait's heading and summary, status still refused
+        assert fm["summary"].startswith("waiting: ") and "\n# [WAITING] " in body, (fm, body)
         _every_tsv_pointer_has_its_row(config)
     assert run(config, mode=None).commit_sha is None, "the page is written only when its reason changes"
     assert run(config).exit_code == 0  # a background sync reads it
@@ -7676,17 +7745,34 @@ def test_a_recording_first_seen_in_an_ocr_outage_is_counted_and_read_again_once_
     assert fm["status"] == "current" and "Contoso review" in body, (fm, body)
     assert _recording_words(config) == ""
     _every_tsv_pointer_has_its_row(config)
+    # B13 round 43 C2514: the check reads the row's fields, so a row of the same path under another source
+    # (which a substring match took for the page's) is no row of the page's
+    tsv = config.docs_repo / "_sync" / "QUARANTINE.tsv"
+    kept = tsv.read_text(encoding="utf-8")
+    assert f"{SID}\t" in kept, kept
+    tsv.write_text(kept.replace(f"{SID}\t", "contoso-other\t"), encoding="utf-8")
+    with pytest.raises(AssertionError):
+        _every_tsv_pointer_has_its_row(config)
+    tsv.write_text(kept, encoding="utf-8")
 
 
 def _every_tsv_pointer_has_its_row(config: Config) -> None:
-    """Every mirror page that says "See `_sync/QUARANTINE.tsv`" has a row there (C2245)."""
+    """Every mirror page that says "See `_sync/QUARANTINE.tsv`" has a row there (C2245): its source id and
+    path as the row's first two fields, the path as the publisher writes it (``_tsv_field``), never a
+    substring of some other row (B13 round 43 C2514)."""
     tsv = config.docs_repo / "_sync" / "QUARANTINE.tsv"
     listed = tsv.read_text(encoding="utf-8") if tsv.is_file() else ""
+    rows = [
+        tuple(line.split("\t"))
+        for line in listed.splitlines()
+        if line and not line.startswith("#") and line != "source_id\tpath\treason"
+    ]
     for path in (config.docs_repo / "mirror").rglob("*.md"):
         text = path.read_text(encoding="utf-8")
         if "See `_sync/QUARANTINE.tsv`" in text:
             fm, _body = page(config.docs_repo, str(path.relative_to(config.docs_repo)))
-            assert f"\t{fm['source_path']}\t" in listed or fm["source_path"] in listed, (path, listed)
+            want = (fm["source_id"], publish_mod._tsv_field(fm["source_path"]))
+            assert any(row[:2] == want for row in rows), (path, listed)
 
 
 def test_a_recording_deferred_before_an_ocr_outage_keeps_its_count_through_it_c2007(
@@ -7764,6 +7850,31 @@ def _ocr_down_stub(
     return config
 
 
+def test_a_materialised_waiting_recording_is_no_re_screen_c2407(
+    tmp_path: Path,
+    meetings: Path,
+    rec: Rec,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 43 C2407 (ruling 165): a recording first seen in an OCR outage has a stub made from its name
+    (no hash), an interactive sync after the helper is back sets it waiting (LIVE), and ``materialise`` read
+    it and counted ``re-screened 1 for a rule change`` with no rule changed: the re-screen test took the
+    missing hash for one a rule change forgot, and the waiting row was no longer a REFUSED no-converter stub.
+    A page made with no byte read counts only through the persisted re-screen queue."""
+    config = _ocr_down_stub(tmp_path, meetings, monkeypatch)
+    _use_ocr(monkeypatch, tmp_path)
+    assert run(config, mode=None).exit_code == 0
+    assert _row(config, MEETING).state_reason == cycle_mod.RECORDING_WAITS
+    report = run(config, materialise_paths=[meetings / MEETING])
+    assert report.exit_code == 0 and rec.worked, rec.worked
+    assert source_report(report).converted == 1 and report.rescreened == 0, report
+    capsys.readouterr()
+    cli._print_report(report)
+    out = capsys.readouterr().out
+    assert "re-screened" not in out, out
+
+
 @pytest.mark.parametrize("gone", ["media-helper", "recordings-off"])
 def test_the_ocr_down_mark_goes_with_the_recording_converter_c2244(
     tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch, gone: str
@@ -7773,7 +7884,11 @@ def test_the_ocr_down_mark_goes_with_the_recording_converter_c2244(
     helper back and the media helper gone (or ``[convert] recordings = false``) status kept asking for a read
     nothing on this Mac could make, through interactive and background syncs. A cycle whose registry has no
     recording converter judges the mark again through _mark_ocr_down: the page's words no longer say the OCR
-    helper is not working, so the mark clears and status counts nothing."""
+    helper is not working, so the mark clears and status counts nothing.
+
+    B13 round 43 C2511 (ruling 165): the mark cleared but the page kept the OCR-down words, and so did
+    QUARANTINE.tsv. Clearing it re-plans the stub with this run's words (no byte read) in the same savepoint:
+    the page and the queue say ``no converter for .mp4``, and the next sync makes no commit."""
     config = _ocr_down_stub(tmp_path, meetings, monkeypatch)
     _use_ocr(monkeypatch, tmp_path)
     if gone == "media-helper":
@@ -7781,12 +7896,18 @@ def test_the_ocr_down_mark_goes_with_the_recording_converter_c2244(
         monkeypatch.setattr(cycle_mod.media, "probe", lambda _c, _d: ("not-built", ""))
     else:
         config = config_with(tmp_path, meetings, "\n[convert]\nrecordings = false\n")
+    heads: list[str] = []
     for mode in (None, None, CycleMode.POLL):
         assert run(config, mode=mode).exit_code == 0
         assert _ocr_down_marked(config, MEETING) in (None, ""), mode
         with Manifest(config.state_paths.db) as m:
             assert loop_mod._unpublished(m, config.sources).recording == {}, mode
         assert "recording" not in _recording_words(config), mode
+        fm, _body = _recording_page(config, MEETING)
+        assert fm["reason"] == "no converter for .mp4", (mode, fm)  # never the OCR-down words (C2511)
+        assert _quarantine_reason(config, MEETING) == "no converter for .mp4", mode
+        heads.append(gitops.run_git(config.docs_repo, "rev-parse", "HEAD").stdout.strip())
+    assert heads[1] == heads[0], "the second sync makes no commit"
 
 
 def test_the_ocr_down_mark_stays_while_the_recording_converter_has_not_read_the_stub_c2244(
@@ -7804,13 +7925,32 @@ def test_the_ocr_down_mark_stays_while_the_recording_converter_has_not_read_the_
         assert loop_mod._unpublished(m, config.sources).recording == {SID: 1}
 
 
+def _page_state(config: Config, rel: str) -> tuple[str, bool]:
+    """A recording page's ``reason:`` and whether its output row's page_sha256 is the file's (B13 round 43
+    C2508 with C2443)."""
+    out_path = slug.mirror_rel_path(SID, rel)
+    stable = _row(config, rel).stable_id
+    with Manifest(config.state_paths.db) as m:
+        digests = [o.page_sha256 for o in m.outputs_for(SID, stable) if o.output_path == out_path]
+    fm, _body = _recording_page(config, rel)
+    on_disk = hashlib.sha256((config.docs_repo / out_path).read_bytes()).hexdigest()
+    return str(fm.get("reason")), digests == [on_disk]
+
+
+@pytest.mark.parametrize("put_back", [True, False], ids=["put-back", "healed-on-retry"])
 def test_a_replanned_recording_that_raises_rolls_back_alone_c2249(
-    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch, put_back: bool
 ) -> None:
     """B13 round 42 C2249 (ruling 155): _replan_recording_stubs planned a batch in one transaction, so a row
     that raised rolled back every row before it. Each row has a savepoint inside the batch: the rows before it
     commit (their state matches their pages), the raising row's own writes roll back, and the next sync plans
-    it. A plain per-row catch would commit a raising row's half (makes worse True)."""
+    it. A plain per-row catch would commit a raising row's half (makes worse True).
+
+    B13 round 43 C2508 with C2443 (ruling 165): the savepoint rolled back the row but not the waiting page
+    its replan had written, so the run committed a page the row no longer had, its page_sha256 stale, and the
+    retry kept it, since the page already said the wait. The row's page bytes are kept before its savepoint
+    and put back on rollback, so the page, its digest and the commit agree; and the retry writes a page whose
+    row's digest is not the file's again (the heal, shown with the put-back turned off)."""
     config = config_with(tmp_path, meetings)
     monkeypatch.setattr(loop_mod.launchd, "agents_installed", lambda _c: False)
     _fail_ocr(monkeypatch)
@@ -7830,14 +7970,28 @@ def test_a_replanned_recording_that_raises_rolls_back_alone_c2249(
             raise OSError(errno.EIO, "injected after the row's writes")
 
     monkeypatch.setattr(cycle_mod._Cycle, "_recording_defer", defer)
-    run(config, mode=None)
+    pages = {r: (config.docs_repo / slug.mirror_rel_path(SID, r)).read_bytes() for r in (MEETING, other)}
+    if not put_back:
+        monkeypatch.setattr(cycle_mod._Cycle, "_put_back", lambda *_a, **_k: None)
+    raised = run(config, mode=None)
     first, second = planned
+    if put_back:  # the books go back with the row: only the row before it is counted as deferred
+        assert [r.deferred for r in raised.sources if r.source_id == SID] == [1], raised.sources
     assert _row(config, first).state_reason == cycle_mod.RECORDING_WAITS, "the row before it commits"
     row = _row(config, second)
     assert (row.state, row.state_reason) == (RowState.REFUSED, "no converter for .mp4"), row
+    wait = publish_mod.RECORDING_PASS_WAIT_REASON
+    if put_back:
+        assert (config.docs_repo / slug.mirror_rel_path(SID, second)).read_bytes() == pages[second]
+        assert _page_state(config, second)[1], "its page went back, and its row's digest is the file's"
+        stat = gitops.run_git(config.docs_repo, "show", "--stat", "--format=", "HEAD").stdout
+        assert slug.mirror_rel_path(SID, second) not in stat, stat
+    else:
+        assert _page_state(config, second) == (wait, False)  # what the heal meets
     monkeypatch.setattr(cycle_mod._Cycle, "_recording_defer", real)
     assert run(config, mode=None).exit_code == 0
     assert _row(config, second).state_reason == cycle_mod.RECORDING_WAITS
+    assert _page_state(config, second) == (wait, True), "the retry leaves the page and its digest agreeing"
 
 
 def test_a_settling_inbox_recording_is_not_replanned_until_it_settles_c2293(

@@ -634,10 +634,11 @@ def test_the_contracts_name_the_help_flag_as_asks_help_finds_it_c2260(
     contracts = " ".join((ROOT / "docs" / "design" / "CONTRACTS.md").read_text(encoding="utf-8").split())
     assert (
         "A help flag is one `cli._asks_help` finds: `-h`, `--help`, or a short-flag cluster argparse makes"
-        " help, every letter a no-value flag of the parser that owns it and one of them `h` (`-vh` and `-hv`,"
-        " `purge -yh`); `-eh`, a root `-yh` or `-yvh` and `--hv` are none (§16.262 C2040, §16.267 C2295; B13"
-        " round 42 C2260)."
-    ) in contracts
+        " help, each letter before the `h` a no-value flag of the parser that owns it (Amended 2026-11-21,"
+        " §16.272 C2455: what argparse does with the letters after the `h` depends on the Python, §16.267"
+        " C2295) (`-vh` and `-hv`, `purge -yh`); `-eh`, a root `-yh` or `-yvh` and `--hv` are none (§16.262"
+        " C2040, §16.267 C2295; B13 round 42 C2260)."
+    ) in contracts  # B13 round 43 C2455 moved the letters' clause
     assert "without `-h`/`--help` is the same" not in contracts and "a cluster ending in h" not in contracts
     for flag in ("-vh", "-hv"):
         assert cli.main(["--version", flag, "--fields", "x"]) == cli.EXIT_OK, flag
@@ -7941,9 +7942,21 @@ block, C2001's at §16.28's class table and C2048's at §16.42's signal paragrap
 no item, and C2043's at §16.258's C1848 paragraph, whose claim also reaches the C1886 one, which names it."""
 _ROUND_43_B_PARAGRAPH_AMENDS = (
     ("16.300", '`add-source --json` prints `{"source": {"id", "path"}, "outcome":', "§16.272 C2441"),
+    ("16.12", "**Identity across safe-saves (security-governance-02/03,", "§16.272 C2507"),
+    (
+        "16.267",
+        "**A unit the source still has is no longer produced, never deleted upstream** (C2205;",
+        "§16.272 C2507, C2445, C2409, C2510",
+    ),
+    ("16.267", "**The CLI and test words** (C2247, C2248, C2250, C2295, C2264;", "§16.272 C2455"),
+    ("16.300", "A help flag is one `cli._asks_help` finds", "§16.272 C2455"),
+    ("15", "VERDICTS: tuple[str, ...] = (", "§16.272 C2409"),
 )
 """Round 43 lane B's dated lines no claim of §16.272 holds alone: C2441's at §16.300.6's add-source --json
-bullet (the inbox source add-source appends is ``created``)."""
+bullet (the inbox source add-source appends is ``created``), C2507's at §16.12's run_changes table (the flag
+derived, no column), ruling 164's at §16.267's C2205 paragraph, and C2455's at §16.267's C2295 paragraph and
+§16.300.25's help-flag bullet (argparse's answer on the running Python), and C2409's at §15's curate
+``VERDICTS``."""
 
 _ROUND_42_E_PARAGRAPH_AMENDS = (
     ("16.42", "`subprocess` reports a child a signal stopped as the negative signal", "§16.268 C2252"),

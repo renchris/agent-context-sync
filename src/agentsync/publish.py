@@ -323,7 +323,7 @@ M45), so ten relative paths at macOS's 1024-character limit fit with their reaso
 tails and the advice; at 6000, sized for five, the mixed alarm lost its advice and its last names (round
 12 N73), and at :data:`_REASON_MAX` five nested OneDrive paths lost their last names and the tail (round 7
 H48). Errors, skipped reasons and lint messages keep 300."""
-STUB_RENDER = 6
+STUB_RENDER = 7
 """The version of a stub page's rendering (``Publisher._plan_stub``): bump it whenever a stub's text changes
 for a reason the stored state already holds. An unchanged refused row is never planned again, so the cycle
 re-renders the stubs it can rebuild without reading a byte, once per version (``Cycle._rerender_stubs``).
@@ -333,7 +333,11 @@ converter (B13 round 5 F33, F36). 4: a withheld stub's ``reason:`` says it is wi
 a redacted item's stub is rendered again too, and so is every intact tombstone page (B13 round 6 G29, G76,
 G77). 5: a tombstone with no ``last_commit`` gets the newest commit on its path that holds content, and the
 recovery line of one that has none names no position (B13 round 7 H77). 6: the tombstones of a source deleted
-from sources.toml are rendered again too (B13 round 8 J74, round 9 K70)."""
+from sources.toml are rendered again too (B13 round 8 J74, round 9 K70). 7: a stub that waits for the
+recording pass or the OCR helper reads ``# [WAITING]`` with a ``waiting:`` summary, its status still refused
+(B13 round 43 C2413)."""
+STUB_WAITING_LABEL = "WAITING"
+"""The heading label of a stub that waits (``# [WAITING] <title>``), and, lower-cased, its summary's head."""
 _CHANGELOG_HEADING = re.compile(r"^## (\d{4}-\d{2}-\d{2}) · run (\d+) · (.*)$")
 
 
@@ -1307,10 +1311,43 @@ class Publisher:
         live = [o for o in outs if o.status is not OutputStatus.TOMBSTONE]
         if len(live) != 1 or live[0].status is not OutputStatus.REFUSED:
             return []
-        said = self._stub_says(item.source_id, item.stable_id)
-        if said is not None and said[0] == RECORDING_PASS_WAIT_REASON:
-            return []
         out = live[0]
+        said = self._stub_says(item.source_id, item.stable_id)
+        page = self._stub_from_row(source, item, out, waits=RECORDING_PASS_WAIT_REASON)
+        if (
+            said is not None
+            and said[0] == RECORDING_PASS_WAIT_REASON
+            and self._row_matches_file(out)
+            and out.rendered_sha256 == page.rendered_sha256
+        ):
+            # a page that says the wait, in this build's words (C2413's heading), and that its row's digest
+            # describes; one a rolled-back replan left behind is written again (the same bytes, so no
+            # change) and its row takes its digest (B13 round 43 C2508, ruling 165)
+            return []
+        return self.write_pages(item, [page], run_id)
+
+    def replan_ocr_down_recording(
+        self, source: SourceConfig, item: ItemRow, run_id: int
+    ) -> list[MirrorChange]:
+        """Plan ``item``'s refused recording stub again with this run's words once its OCR-down mark clears
+        (``_Cycle._rejudge_ocr_down``): no byte is read, the status (refused), converter, keys and stored
+        reason stay, and the page is written only while it still says the OCR helper is not working, so it
+        no longer points at a read nothing on this Mac can make (B13 round 43 C2511, ruling 165). [] when the
+        item has no single refused stub page or its page says something else."""
+        outs = self._manifest.outputs_for(item.source_id, item.stable_id)
+        live = [o for o in outs if o.status is not OutputStatus.TOMBSTONE]
+        if len(live) != 1 or live[0].status is not OutputStatus.REFUSED:
+            return []
+        said = self._stub_says(item.source_id, item.stable_id)
+        if said is None or said[0] != ocr_down_reason(Path(item.name).suffix.lower()):
+            return []
+        return self.write_pages(item, [self._stub_from_row(source, item, live[0], waits=None)], run_id)
+
+    def _stub_from_row(
+        self, source: SourceConfig, item: ItemRow, out: OutputRow, *, waits: str | None
+    ) -> PlannedPage:
+        """``item``'s refused ``no converter`` stub planned again from its output row alone (no byte read),
+        showing ``waits`` or, when None, the words this run gives the refusal."""
         result = ConversionResult(
             status=ConversionStatus.REFUSED,
             converter_id=out.converter_id or NO_CONVERTER_ID,
@@ -1322,8 +1359,16 @@ class Publisher:
             units=(),
             reason=NO_CONVERTER_PREFIX + Path(item.name).suffix.lower(),
         )
-        page = self._plan_stub(source, item, result, waits=RECORDING_PASS_WAIT_REASON)
-        return self.write_pages(item, [page], run_id)
+        return self._plan_stub(source, item, result, waits=waits)
+
+    def _row_matches_file(self, out: OutputRow) -> bool:
+        """True when the page at ``out``'s path is a file whose sha256 is the row's ``page_sha256``."""
+        path = self._abs(out.output_path)
+        try:
+            data = path.read_bytes() if path.is_file() and not path.is_symlink() else None
+        except OSError:
+            data = None
+        return data is not None and hashlib.sha256(data).hexdigest() == out.page_sha256
 
     def withheld(self, reason: str | None, suffix: str) -> bool:
         """:meth:`_withheld`, for the cycle's count of the stubs this says ``withheld by label rule`` on, so
@@ -1484,6 +1529,12 @@ class Publisher:
                 "The source exists but its content is not in docs/: it is unreadable, not absent. "
                 "See `_sync/QUARANTINE.tsv`.\n"
             )
+        # a stub that waits (for the recording pass or the OCR helper) says so in its heading and summary;
+        # its status stays refused, which the refresh queue, curate and older builds read (B13 round 43
+        # C2413, ruling 165)
+        waiting = waits is not None or ocr_waits
+        if waiting:
+            label = STUB_WAITING_LABEL
         body = f"{policy.UNTRUSTED_BANNER}\n\n# [{label}] {title}\n\n{text_lines}"  # banner first (Q9)
         h2 = _sha256_text(body)
         has_converter = bool(result.converter_id) and bool(result.converter_version)
@@ -1515,7 +1566,7 @@ class Publisher:
             ),
             reason=waits or (_withheld_reason(suffix) if withheld else waits_reason if ocr_waits else reason),
             source_title=title,
-            summary=f"{page_status.value}: {summary_text}",
+            summary=f"{STUB_WAITING_LABEL.lower() if waiting else page_status.value}: {summary_text}",
             tokens_estimate=math.ceil(len(body) / 4),
         )
         text = render_mirror_page(_with_trust(fm), body)
