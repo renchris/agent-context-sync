@@ -688,11 +688,11 @@ def _sheet_lists(
     """Fit the sheet's comment and object lists in the room left under ``cap``; return their sidecars.
 
     Each list is fitted line by line with :func:`_listed` after the table, in the page's room less the
-    guard's banner and footer lines (``names`` holds every sidecar the page may carry) and its own cut note,
-    so the page stays within the cap.  A cut list's note names its sidecar,
-    ``<NN>-<sheet-slug>.comments.txt`` or ``.objects.txt``, which holds every comment or object whole (a
-    cut chart title or pivot name too), one a line (B13 round 41 C2043, C2064, C2046)."""
-    room = cap - GUARD_RESERVE - sum(_footer_bytes(n) for n in names)
+    guard's banner and footer lines (of the sidecars :func:`_carried` says the page may carry, the same
+    ones :func:`_full_tail` reserves) and its own cut note, so the page stays within the cap.  A cut list's
+    note names its sidecar, ``<NN>-<sheet-slug>.comments.txt`` or ``.objects.txt``, which holds every comment
+    or object whole (a cut chart title or pivot name too), one a line (B13 round 41 C2043, C2064, C2046)."""
+    room = cap - GUARD_RESERVE - sum(_footer_bytes(n) for n in _carried(sheet, names))
     sidecars: list[tuple[str, bytes]] = []
     lists = (
         ("## Comments", sheet.comments, sheet.comments_whole, "comment", False),
@@ -723,6 +723,14 @@ def _full_uncached_note(sheet: _Sheet) -> str:
     )
 
 
+def _carried(sheet: _Sheet, names: list[str]) -> list[str]:
+    """The sidecars a full sheet page may carry, of ``names`` (rows' CSV, formulas, comments, objects): the
+    CSV, the formulas sidecar on a sheet with a formula, and a list's sidecar on a sheet with that list. The
+    table's budget and the lists' room both count these footers and no others (B13 round 43 C2476)."""
+    carried = [names[0], *(names[1:2] if sheet.formulas else [])]
+    return carried + [n for n, lines in zip(names[2:], (sheet.comments, sheet.objects), strict=True) if lines]
+
+
 def _full_tail(sheet: _Sheet, out: list[str], rows: list[int], sc: str, fsc: str, *, names: list[str]) -> int:
     """The most bytes a full sheet page adds besides its table and lists: the head already in ``out``, the
     blank line after the table, the widest row-cap note (its cut-rows clause as :func:`_streamed_tail`
@@ -746,9 +754,7 @@ def _full_tail(sheet: _Sheet, out: list[str], rows: list[int], sc: str, fsc: str
         tail = max(tail, size(*out) + size("") + size(f"[{_formulas_note(fsc)}]", ""))
     if sheet.missing_cache:
         tail += size(_full_uncached_note(sheet), "")
-    carried = [sc, *([fsc] if sheet.formulas else [])]  # a list's sidecar only when the sheet has that list
-    carried += [n for n, lines in zip(names[2:], (sheet.comments, sheet.objects), strict=True) if lines]
-    return tail + GUARD_RESERVE + sum(_footer_bytes(n) for n in carried)
+    return tail + GUARD_RESERVE + sum(_footer_bytes(n) for n in _carried(sheet, names))
 
 
 def _sheet_body(

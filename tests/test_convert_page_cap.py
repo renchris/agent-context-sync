@@ -883,6 +883,41 @@ def test_the_full_path_budgets_the_real_bytes_around_its_table_c2476(
         assert shown >= _rows_shown(streamed.body)
 
 
+@pytest.mark.parametrize("cap", [8192, 20_000])
+@pytest.mark.parametrize("what", ["comments", "chart"])
+def test_a_short_list_on_a_sheet_with_no_formula_is_listed_whole_c2476(
+    tmp_path: Path, cap: int, what: str
+) -> None:
+    """B13 round 43 C2476, review of 42c46b52d: the table's budget kept footer room only for the sidecars the
+    page can carry, but the lists' room still took off all four footers, so on a sheet with no formula (and
+    no chart, or no comment) the table took the bytes the lists then lacked, and three short comments, or one
+    short chart, read ``0 of N listed`` with a sidecar. Both now count the same sidecars."""
+    book = openpyxl.Workbook()
+    ws = book.active
+    assert ws is not None
+    ws.title = "Data"
+    for i in range(3000):
+        ws.append([f"North {i}", i, f"Contoso value {i}"])
+    if what == "comments":
+        for i in range(3):
+            ws.cell(row=i + 1, column=1).comment = Comment(f"Contoso check {i}", "Ana")
+    else:
+        chart = BarChart()
+        chart.title = "Contoso chart"
+        chart.add_data(Reference(ws, min_col=2, min_row=1, max_row=3))
+        ws.add_chart(chart, "F2")
+    src = tmp_path / "lists.xlsx"
+    book.save(src)
+    _index, full = _pages(src, cap)
+    assert _size(full) <= cap
+    assert "list truncated" not in full.body
+    if what == "comments":
+        assert all(f"Contoso check {i}" in full.body for i in range(3))
+    else:
+        assert "Contoso chart" in full.body
+    assert not any(name.endswith((".comments.txt", ".objects.txt")) for name, _ in full.sidecars)
+
+
 def test_xlsx_first_row_past_the_budget_is_cut_and_the_short_row_follows_c2022(tmp_path: Path) -> None:
     """B13 round 41 C2022, on C1676's own workbook: the 20,008-character first cell is shown cut, the short
     row after it is shown, and the page stays within the cap."""

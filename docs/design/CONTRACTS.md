@@ -44615,7 +44615,12 @@ measurement: without them `_sheet_lists`, which keeps that room for each list, l
 8,023, the same table budget. xlsx's `_EMITTER_VERSION` stays 1.0.5 (rulings 167 and 168 move it once). Tests:
 `test_convert_page_cap.py::test_the_full_path_budgets_the_real_bytes_around_its_table_c2476` (8,192 and 20,000, with
 and without the lists: within the cap, every list whole, more rows than the flat reserve gave, and with no list at
-least the streamed path's rows).
+least the streamed path's rows). The lists' room counts the same footers as the table's budget (`_carried`: the CSV,
+the formulas sidecar on a sheet with a formula, a list's sidecar on a sheet with that list), since with all four taken
+off there the table took bytes the lists then lacked, and on a sheet with no formula three short comments or one short
+chart read `0 of N listed` (review of 42c46b52d;
+`test_convert_page_cap.py::test_a_short_list_on_a_sheet_with_no_formula_is_listed_whole_c2476`, comments and a chart
+at 8,192 and 20,000).
 
 **A cut fence always closes, and its short fence shows the block's own content** (C2450 with C2451; ruling 168;
 `agentsync.convert._common`, every `_cap_body` caller; amends §16.268 C2272). C2450: `_short_fence` took the info
