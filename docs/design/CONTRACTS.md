@@ -43493,6 +43493,9 @@ Configuration prints `- inbox: <live|paused|retired> <folder>` for the inbox sou
 read decides the same fact. Tests: `test_overlapping_sources_part_finds_one_folder_in_two_cases_c2318`,
 `test_the_configuration_says_what_sits_on_the_inbox_folder_c2207`.
 
+Amended 2026-11-21, §16.274 C2460: an error from that disk read prints `- inbox: not read (<why>)` and the section
+goes on.
+
 **A dollar-quoted debug value is cut whole** (C2311; amends §16.260 C2034). Docs and a test only: over real `/bin/bash` debug_path output in
 both locales, each `$'...'` value prints `<path>`, both reports alike. Test:
 `test_both_reports_cut_each_dollar_quoted_debug_value_whole_c2311`.
@@ -44287,6 +44290,19 @@ read the C2316 test's `STUB_STATUS_RC=2` as status's rc, where the real status e
 test's docstring follows; the v39 rule sentence naming both forms, which README.md's step 2 keeps, stays. Test:
 `tests/test_deploy_pack.py::test_the_exit_0_no_folder_next_is_named_as_status_s_c2457_c2464`, held to install.sh's
 exit-2 branch and loop.py's words.
+
+**The guide dates the `<path>` count by its origins and lists the inbox line's `not read` form** (C2462, C2460;
+`docs/deploy/setup-feedback.md`; amends §16.265 C2207). The guide said `<path>` was counted for a missing or refused
+folder "since B13 round 42", but the not-a-folder name has been counted since round 37 (C1299, ef78671a4) and the
+refused `--source-local` name since round 38 (C1432, 48308e1fe); round 42 (C2321 with C2237) corrected only the count
+line's and the guide's words, and round 41's C2027 only moved the counting into `_quoted_cut`. The guide now gives the
+two origins and dates round 42 as when the words caught up. The Configuration `inbox:` row and §16.265 listed the
+line's `live`, `paused`, `retired` and `not added (<reason>)` forms but not `- inbox: not read (<why>)`, which
+`_configuration` prints when the disk read raises an error; both now list it, without naming the cause, since lane
+RA's C2525 reads a folder above that refuses a search as an absent entry, not as an error. Tests:
+`tests/test_deploy_pack.py::test_the_guides_redaction_legend_gives_every_unnumbered_kind_and_the_link_target`,
+`::test_the_guide_gives_rulings_146_to_148s_cuts_counts_and_second_divergence_c2265` (their pinned sentence moved) and
+`::test_the_guides_inbox_row_lists_the_not_read_form_c2460`, held to setup_report's own line.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

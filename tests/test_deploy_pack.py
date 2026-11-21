@@ -8682,6 +8682,24 @@ def test_the_guide_gives_round_26s_new_installer_and_report_outputs() -> None:
     assert clause in unmeasured and f"`{clause}` when the runs table cannot be read; B13 round 26 E67" in page
 
 
+def test_the_guides_inbox_row_lists_the_not_read_form_c2460() -> None:
+    """B13 round 43 C2460: setup_report prints `- inbox: not read (<why>)` when the inbox folder's disk read
+    raises an error, and neither the guide's Configuration `inbox:` row nor
+    §16.265 listed that form. Held to the report's own line."""
+    report = (ROOT / "src" / "agentsync" / "setup_report.py").read_text(encoding="utf-8")
+    assert 'out.append(f"- inbox: not read ({_why_not_read(exc)})")' in report
+    [row] = [ln for ln in _feedback_page().splitlines() if ln.startswith("| Configuration: `inbox:` |")]
+    assert (
+        "when reading that folder fails with an error, `- inbox: not read (<why>)`, and the rest of"
+        " Configuration still prints"
+    ) in row
+    contracts = " ".join((ROOT / "docs" / "design" / "CONTRACTS.md").read_text(encoding="utf-8").split())
+    assert (
+        "Amended 2026-11-21, §16.274 C2460: an error from that disk read prints `- inbox: not read (<why>)`"
+        " and the section goes on."
+    ) in contracts
+
+
 def test_the_guides_redaction_legend_gives_every_unnumbered_kind_and_the_link_target() -> None:
     """B13 round 27 P61: round 26 E2 made a state file's or the docs repo's link target outside home the
     unnumbered `<path>` in the agentsync report, and the guide's `<path>` row named only log-line paths; its
@@ -8694,10 +8712,13 @@ def test_the_guides_redaction_legend_gives_every_unnumbered_kind_and_the_link_ta
     [listed] = re.findall(r"the unnumbered ones \(([^)]*)\) as often as a value was replaced", page)
     want = {"~" if k == "home" else f"<{k}>" for k in setup_report._UNNUMBERED}
     assert sorted(re.findall(r"`([^`]+)`", listed)) == sorted(want) and len(want) == 11
+    # B13 round 43 C2462: the count's origins are rounds 37 and 38, round 42 only corrected the words
+    assert "since B13 round 42 (C2321 with C2237" not in page
     assert (
-        "`<path>` is counted only for a replaced link target and, since B13 round 42 (C2321 with C2237,"
-        " ruling 148), for a folder install.sh names as missing (after `is not an existing folder:`) or"
-        " refuses (a refused `--source-local` usage error); a log line's `<path>` cut is not counted" in page
+        "`<path>` is counted only for a replaced link target, a folder install.sh names as missing (after"
+        " `is not an existing folder:`, since B13 round 37 C1299) and a folder it refuses (a refused"
+        " `--source-local` usage error, since round 38 C1432); the count line and this guide said so only"
+        " from round 42 (C2321 with C2237, ruling 148); a log line's `<path>` cut is not counted" in page
     )
     assert "a link's target outside this home" in setup_report._LEGEND["path"]
     [row] = [line for line in _feedback_page().splitlines() if line.startswith("| `<path>` |")]
@@ -13900,9 +13921,10 @@ def test_the_guide_gives_rulings_146_to_148s_cuts_counts_and_second_divergence_c
         " second kept divergence beside ruling 138's (B13 round 42 C2265, ruling 148);"
     ) in row
     assert (
-        "`<path>` is counted only for a replaced link target and, since B13 round 42 (C2321 with C2237,"
-        " ruling 148), for a folder install.sh names as missing (after `is not an existing folder:`) or"
-        " refuses (a refused `--source-local` usage error); a log line's `<path>` cut is not counted"
+        "`<path>` is counted only for a replaced link target, a folder install.sh names as missing (after"
+        " `is not an existing folder:`, since B13 round 37 C1299) and a folder it refuses (a refused"
+        " `--source-local` usage error, since round 38 C1432); the count line and this guide said so only"
+        " from round 42 (C2321 with C2237, ruling 148); a log line's `<path>` cut is not counted"
     ) in flat
     legend = " ".join(setup_report._LEGEND["path"].split())
     for words in (
