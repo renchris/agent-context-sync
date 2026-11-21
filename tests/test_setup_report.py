@@ -28808,10 +28808,20 @@ def test_a_config_cut_runs_to_its_path_tokens_end_c2290() -> None:
         (f"[{cfg}]", "[~/Projects/<path>]"),
         (f"debug: config {cfg} | debug: cwd ~/x", "debug: config ~/Projects/<path> | debug: cwd ~/x"),
         (f"- config: {cfg} (loads)", "- config: ~/Projects/<path> (loads)"),
+        # B13 round 43 C2526 with C2435 (ruling 158): an ASCII stop set, `\n` kept, so a no-break or an
+        # ideographic space sits inside the token, as the shell's cf loop reads it
+        (f"{cfg}\u00a0PrivateBackup", "~/Projects/<path>"),
+        (f"{cfg}\u3000PrivateBackup", "~/Projects/<path>"),
+        (f"{cfg}\nnext", "~/Projects/<path>\nnext"),
+        # C2496 (ruling 158): a printf-%q escape sits inside the token; `\"` and a line-final `\` end it
+        (f"{cfg}-Private\\ Backup", "~/Projects/<path>"),
+        (f"saw {cfg}-Private\\ Backup there", "saw ~/Projects/<path> there"),
+        (f'{cfg}\\",', '~/Projects/<path>\\",'),
+        (f"{cfg}\\", "~/Projects/<path>\\"),
     ):
         got = red.redact(said)
         assert got == want, (said, got)
-        assert not any(w in got for w in ("Fabrikam", "bak", "Wombat", "Private", "Merger")), got
+        assert not any(w in got for w in ("Fabrikam", "bak", "Wombat", "Private", "Merger", "Backup")), got
 
 
 def test_an_older_writers_add_source_echo_gets_the_new_echos_number_c2320_c2239() -> None:

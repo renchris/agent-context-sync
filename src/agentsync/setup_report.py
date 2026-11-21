@@ -1793,10 +1793,16 @@ def _agent_words(name: str) -> bool:
     return bool(words) and all(w in _AGENT_WORDS for w in words)
 
 
-_CUT_TOKEN_END = r"""[^\s'"),;:\]|]*?(?=\.?(?:[\s'"),;:\]|]|$))"""
-"""Where a whole-path cut (:meth:`Redactor.add_cut`) ends, after its literal: the rest of the path token, to
-a blank, a quote, ``)``, ``,``, ``;``, ``:``, ``]``, ``|`` or the line's end, one ``.`` before such an end
-given back (B13 round 42 C2290, ruling 147; install.sh's config pairs take the same bound)."""
+_CUT_TOKEN_STOP = "".join(re.escape(c) for c in report_cuts.CUT_TOKEN_STOP + "\n")
+_CUT_TOKEN_END = rf"""(?:\\[^"\n]|[^{_CUT_TOKEN_STOP}\\])*?(?=\.?(?:[{_CUT_TOKEN_STOP}]|\\"|\\\n|\\?$))"""
+r"""Where a whole-path cut (:meth:`Redactor.add_cut`) ends, after its literal: the rest of the path token, to
+an ASCII blank, a quote, ``)``, ``,``, ``;``, ``:``, ``]``, ``|`` or the line's end, one ``.`` before such an
+end given back (B13 round 42 C2290, ruling 147; install.sh's config pairs take the same bound). B13 round 43
+C2526 with C2435 (ruling 158): the stops are :data:`report_cuts.CUT_TOKEN_STOP`, the shell's ASCII set, plus
+``\n``, so a no-break or ideographic space sits inside the token in both reports, where ``\s`` ended it here
+alone. C2496 (ruling 158): a printf-%q ``\x`` whose x is not ``"`` sits inside the token
+(``sources.toml-Private\ Backup``), and ``\"`` or a line-final ``\`` ends it, as the home rule reads them;
+the lookahead takes both as ends, so the match never fails, which would print the path in clear."""
 
 
 class Redactor:

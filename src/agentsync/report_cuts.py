@@ -197,6 +197,13 @@ def toml_break_spellings(ch: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys((f"\\u{ord(ch):04X}", f"\\u{ord(ch):04x}")))
 
 
+CUT_TOKEN_STOP = " \t\r\f\v'\"),;:]|"
+r"""What ends a whole-path cut's token after its literal, in both reports (B13 round 43 C2526 with C2435,
+ruling 158; privacy): ASCII bytes only, the set install.sh's config pairs' ``cf`` loop stops at, so a
+no-break space (U+00A0) or an ideographic space (U+3000) sits inside the token, where Python's ``\s`` ended
+the Python cut there and printed ``PrivateBackup`` after it. ``setup_report._CUT_TOKEN_END`` adds ``\n``,
+which the shell never sees inside a line."""
+
 FREE_PROVIDER_HEAD = "~/Library/CloudStorage/"
 """Where both reports run the provider rule over free text (B13 round 40 C1862): a part right after this head
 that begins with a :data:`PROVIDER_APPS` name and a hyphen and that :func:`provider_kept_pattern` does not

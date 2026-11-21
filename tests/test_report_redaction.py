@@ -2527,7 +2527,10 @@ def test_both_reports_cut_a_config_path_to_its_tokens_end_c2290(
 ) -> None:
     """B13 round 42 C2290 (ruling 147; privacy; makes worse True for a boundary-only match): the whole-config
     cut stopped at the literal, so a longer token printed its suffix, `-PrivateBackup` or `.bak`. Both
-    reports cut to the path token's end on every line, a sentence-final `.` and every terminator kept."""
+    reports cut to the path token's end on every line, a sentence-final `.` and every terminator kept. B13
+    round 43 ruling 158 (C2526 with C2435, C2496): the token ends at the same byte in both, a no-break or an
+    ideographic space and a printf-%q `\\x` inside it, `\\"` ending it (a line-final `\\`, which a friction
+    cell never holds, is the Python-only test's row)."""
     home = Path(env["HOME"])
     cfg = home / "Tailspin Merger" / "sources.toml"
     tilde = "~/Tailspin Merger/sources.toml"
@@ -2539,6 +2542,15 @@ def test_both_reports_cut_a_config_path_to_its_tokens_end_c2290(
         f"saw ({cfg}) and '{cfg}'",
         f"saw {cfg}.",
         f"ConfigError: {cfg}: bad",
+        # B13 round 43 C2526 with C2435 (ruling 158): one ASCII stop set, so a no-break or an ideographic
+        # space sits inside the token in both reports
+        f"{cfg}\u00a0PrivateBackup",
+        f"{cfg}\u3000PrivateBackup",
+        f"{cfg} then",
+        # C2496 (ruling 158): a printf-%q escape sits inside the token, `\"` and a line-final `\` end it
+        f"{cfg}-Private\\ Backup",
+        f"saw {cfg}-Private\\ Backup there",
+        f'{cfg}\\",',
     ]
     want = [
         "~/<path>",
@@ -2548,6 +2560,12 @@ def test_both_reports_cut_a_config_path_to_its_tokens_end_c2290(
         "saw (~/<path>) and '~/<path>'",
         "saw ~/<path>.",
         "ConfigError: ~/<path>: bad",
+        "~/<path>",
+        "~/<path>",
+        "~/<path> then",
+        "~/<path>",
+        "saw ~/<path> there",
+        '~/<path>\\",',
     ]
     shell, python, _sp, _pp = _both_reports(
         env, ["Juniper Notes"], said, locale, shell=_R146_SHELL, config=cfg
