@@ -84,6 +84,11 @@ name: ci
 # 20:15 above them, and no job passed round 39's 80:33, so the guides' head of 81 stays; runner waits reached 28:35
 # (4041089d's rerun, counted from the rerun's start) and 25:42 (c72c736b), not counted against timeout-minutes (B13
 # round 42 C2274). 1faa3f3a, round 42's base, took 74:47 (pytest's step 74:19 at 8791 tests).
+# Round 42's seven jobs (60835dd7 to 87ec6fee) took 59:30 to 78:52, all green on attempt 1, six past 60 and five
+# past 70; the slowest was 62a72e6c at 78:52 (pytest's step 78:19 at 8972 tests), so 100 stays 21:08 above them, and no
+# job passed round 39's 80:33, so the guides' head of 81 stays; runner waits reached 24:32 (60835dd7), not counted
+# against timeout-minutes (B13 round 43 C2478). bd65e0e1, round 43's base, took 72:55 (pytest's step 72:23 at 8973
+# tests).
 on:
   workflow_dispatch:
   push:

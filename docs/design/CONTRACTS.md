@@ -44232,6 +44232,13 @@ stopped by the 1,500 s stall bound. Test: `tests/test_gate_journal.py`
 `::test_the_ceiling_is_about_twice_the_slowest_part_and_each_record_keeps_its_duration_c2273` (its literal and
 assert moved).
 
+**The CI record carries round 42, and the head and the limit stay** (C2478; `CLAUDE.md`, `.github/workflows/ci.yml`).
+Round 42's seven ci jobs on main (60835dd7 to 87ec6fee) took 59:30 to 78:52, all green on attempt 1, six past 60 and
+five past 70; the slowest, 62a72e6c, ran pytest's step 78:19 at 8972 tests, 21:08 under the limit; 60835dd7 waited
+24:32 for a runner; bd65e0e1, round 43's base, took 72:55 (pytest's step 72:23 at 8973 tests). Both files add the
+bracket, the wait and the base, as C2274 did for round 41. No job passed round 39's 80:33, so CLAUDE.md's head of 81
+stays, and `timeout-minutes` stays 100. Test: `tests/test_deploy_pack.py::test_claude_md_gives_cis_time_and_its_limit`.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units

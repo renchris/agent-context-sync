@@ -271,7 +271,10 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
     round 42 C2274 (makes worse True for raising the head): round 41's ten attempts (4041089d to 74ceffac)
     took 63:35 to 79:45, one red on the queued-interrupt race, its rerun green, and no job passed round 39's
     80:33, the head's source: both files add the attempts, the waits and 1faa3f3a, round 42's base, at 74:47;
-    the 81 head and the 100, 20:15 above the slowest, stay."""
+    the 81 head and the 100, 20:15 above the slowest, stay. B13 round 43 C2478: round 42's seven jobs
+    (60835dd7 to 87ec6fee) took 59:30 to 78:52, all green, and a run waited 24:32 for a runner: both files add
+    the bracket, the wait and bd65e0e1, round 43's base, at 72:55; the 81 head and the 100, 21:08 above the
+    slowest, stay."""
     guide = " ".join((ROOT / "CLAUDE.md").read_text(encoding="utf-8").split())
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     [limit] = re.findall(r"^jobs:\n  test:\n(?:    .*\n)*?    timeout-minutes: (\d+)\n", ci, re.M)
@@ -322,14 +325,17 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
         " the ten attempts after it, from 4041089d to 74ceffac, took 63:35 to 79:45, all past 60 and seven"
         " past 70, the slowest green on af21e633, 8793 tests and pytest's step 78:07, and one attempt failed"
         " a test at 79:45, 4041089d's first, and its rerun was green at 67:28; 1faa3f3a, round 42's base,"
-        " took 74:47, 8791 tests and pytest's step 74:19;"
+        " took 74:47, 8791 tests and pytest's step 74:19; the seven after it, from 60835dd7 to 87ec6fee, took"
+        " 59:30 to 78:52, six past 60 and five past 70, all green on attempt 1, the slowest on 62a72e6c, 8972"
+        " tests and pytest's step 78:19; bd65e0e1, round 43's base, took 72:55, 8973 tests and pytest's step"
+        " 72:23;"
         " one run took 34 on a runner loaded 5 to 8 per core), plus any wait"
         " for a macOS runner, counted from the run appearing to its job starting (one waited 63 minutes, on"
         " ef12f28f, another 50, one 21, on d8385ef6, one 25, on 820c69dd, one 16, on 0c6b1207, one 38, on"
         " 19b1f575, one 36, on 63a12d0c, one 31, on c2ab2d12, one 22, on 877a47ab, one 17, on 5bf1911e, one"
         " 16, on c6d8227c, one 50, on 293c8081, one 39, on 4d3ba971's rerun, counted from the rerun's start,"
         " one 32, on 526fa1e2, one 52, on ffefbe0f, one 31, on 10845acb, one 29, on 4041089d's rerun, counted"
-        " from the rerun's start, one 26, on c72c736b, and earlier ones 48 and 46); the"
+        " from the rerun's start, one 26, on c72c736b, one 25, on 60835dd7, and earlier ones 48 and 46); the"
         " job's limit is"
         f" {limit} minutes (`timeout-minutes` in ci.yml), and a wait does not count against it."
     ) in guide
@@ -457,6 +463,14 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
         " reached 28:35 (4041089d's rerun, counted from the rerun's start) and 25:42 (c72c736b), not counted"
         " against timeout-minutes (B13 round 42 C2274). 1faa3f3a, round 42's base, took 74:47 (pytest's step"
         " 74:19 at 8791 tests)."
+    ) in note
+    # B13 round 43 C2478: round 42's seven, inside the range; the 81 head and the 100 stay
+    assert (
+        "Round 42's seven jobs (60835dd7 to 87ec6fee) took 59:30 to 78:52, all green on attempt 1, six past"
+        " 60 and five past 70; the slowest was 62a72e6c at 78:52 (pytest's step 78:19 at 8972 tests), so 100"
+        " stays 21:08 above them, and no job passed round 39's 80:33, so the guides' head of 81 stays; runner"
+        " waits reached 24:32 (60835dd7), not counted against timeout-minutes (B13 round 43 C2478). bd65e0e1,"
+        " round 43's base, took 72:55 (pytest's step 72:23 at 8973 tests)."
     ) in note
     assert "(measured October 2026;" not in guide
     assert "Round 24's ten jobs (c93fcd96 to 3ec66a92) took 30:06 to 36:24, all green on attempt 1" in note
