@@ -44304,6 +44304,16 @@ RA's C2525 reads a folder above that refuses a search as an absent entry, not as
 `::test_the_guide_gives_rulings_146_to_148s_cuts_counts_and_second_divergence_c2265` (their pinned sentence moved) and
 `::test_the_guides_inbox_row_lists_the_not_read_form_c2460`, held to setup_report's own line.
 
+**The README's options note comes only while a converter that can run has such files** (C2461; ruling 169; `README.md`).
+The README said a `note:` line after the re-read's counts the files whose pages were made under other converter
+options, but loop's `_reread_notes` prints it only while the re-read left files (`if options and left`), and a drift
+file whose converter cannot start (a missing pandoc) is a re-read wait, counted in `reread_waits` and the re-read's
+own note, never in `reread_options`, whose note says the files are among those read again. The sentence now says the
+note comes while a converter that can run has such files left, and that the others are counted only in the re-read's
+note; the code and `reread_options`' meaning stay. Test:
+`tests/test_deploy_pack.py::test_the_readme_says_the_options_note_comes_only_while_a_converter_that_can_run_has_files_c2461`,
+held to `_reread_notes` with a waiting-only and a live tally.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units
