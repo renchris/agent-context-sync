@@ -43158,7 +43158,8 @@ Amended 2026-11-20, §16.268 C2301: each comment, author, chart title and pivot 
 flattened.
 Amended 2026-11-21, §16.273 C2519 (with C2530, C2452): an author and a rich chart title reach the sidecar raw (both
 were stripped first), a pivot location is escaped too, and the page flattens each author, chart title, pivot name and
-location before escaping it; one that is blank or all whitespace adds nothing to either.
+location before escaping it; one that is blank or all whitespace adds nothing to either (a blank pivot name is
+`pivot` in both; a whitespace-only location is dropped).
 Amended 2026-11-21, §16.273 C2476: the table's budget is the cap less the page's real fixed bytes (the head, the
 widest row-cap note, the no-cached-values note, the guard's banner and each sidecar's footer), no longer 4,096, less
 the lists' real bytes with each list's cut note, up to a quarter of the cap.
@@ -44565,12 +44566,19 @@ pivot name or chart title, so one holding an LF forged a page line (C2452; the v
 and C2530 are one defect, built once. Each author, chart title, pivot name and location now keeps its raw value for
 the sidecar, through `_record_escape`, and a flattened value (`_WS_RE` runs to one space, ends stripped) for the
 presence test, the page line, through `_escape_line`, and `labels_cut`; `_label` flattens too. So a blank or
-whitespace-only author or title adds no `( )` or `""` to either, and a blank pivot name is `pivot` in both. xlsx's
-`_EMITTER_VERSION` stays 1.0.5 (rulings 167 and 168 move it once). Tests:
+whitespace-only author or title adds no `( )` or `""` to either (a blank pivot name is `pivot` in both; a
+whitespace-only location is dropped). A review of efda3439a found the same raw insertion at five more page sites, now
+flattened and escaped the same way (`_page_value`, or `_label` where the value is cut): a chartsheet title and a
+defined name on the 00-index, a sheet title in its object list, and a sheet title in each sheet page's `# Sheet:`
+heading, full and streamed, so `CS<LF># Fake chartsheet`, `N1<LF># Fake name` and `Contoso<LF># Fake sheet heading`
+each stay one line; sidecar names and records are unchanged. xlsx's `_EMITTER_VERSION` stays 1.0.5 (rulings 167 and
+168 move it once). Tests:
 `test_convert_records.py::test_a_padded_author_and_chart_title_stay_raw_in_their_sidecar_records_c2530`,
 `test_convert_records.py::test_a_multi_line_author_never_forges_a_page_line_c2519`,
-`test_convert_records.py::test_a_whitespace_only_author_or_title_adds_nothing_c2519` and
-`test_convert_records.py::test_a_pivot_name_and_location_holding_a_line_break_stay_one_record_and_one_line_c2452`.
+`test_convert_records.py::test_a_whitespace_only_author_or_title_adds_nothing_c2519`,
+`test_convert_records.py::test_a_pivot_name_and_location_holding_a_line_break_stay_one_record_and_one_line_c2452` and
+`test_convert_records.py::test_a_sheet_chartsheet_or_defined_name_holding_a_line_break_is_one_page_line_c2519` (full
+and streamed).
 
 **A formula holding a line break stays one table row, and rides whole in the formulas sidecar** (C2531; ruling 167,
 data integrity; `agentsync.convert.xlsx`; amends §16.263 C2022 and §16.268 C2300). `_code` turned a formula's LF into

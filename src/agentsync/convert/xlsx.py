@@ -320,6 +320,12 @@ def _build_sheet(number: int, ws: Any, wsf: Any) -> _Sheet:
     return sheet
 
 
+def _page_value(text: str) -> str:
+    """A sheet title, chartsheet title or defined name for a page line: whitespace flattened, then escaped,
+    so a line break in it never starts a page line of its own (B13 round 43 C2519, ruling 167)."""
+    return _escape_line(_WS_RE.sub(" ", text).strip())
+
+
 def _label(text: str) -> str:
     """A chart title or pivot name for a sheet page's object line: whitespace flattened (B13 round 43 C2452),
     cut to :data:`_LABEL_CHARS` characters ending ``…``, then escaped, so the line stays one line and short
@@ -761,7 +767,7 @@ def _sheet_body(
     then fits the room left (:func:`_sheet_lists`), so the page stays within any cap the config accepts
     (B13 round 41 C2043, C2088, C2064)."""
     hidden = " (hidden sheet)" if sheet.hidden else ""
-    out = [f"# Sheet: {_cut_value(sheet.title, _LABEL_CHARS)} (used range {sheet.used_range}){hidden}", ""]
+    out = [f"# Sheet: {_label(sheet.title)} (used range {sheet.used_range}){hidden}", ""]  # one line (C2519)
     rows = sheet.rows()
     ncols = 0 if sheet.bounds is None else sheet.bounds[3] - sheet.bounds[1] + 1
     out.append(
@@ -869,12 +875,12 @@ def _index_body(
             )
         out.append("")
     if chartsheets:
-        charts = [f"- [chartsheet: {_escape_line(c)} — open the workbook to view]" for c in chartsheets]
+        charts = [f"- [chartsheet: {_page_value(c)} — open the workbook to view]" for c in chartsheets]
         _listed(out, "## Chart sheets", charts, room=room, what="chart sheet list")
     if defined:
-        names = [f"- {n}: {_code(v)}" for n, v in defined]
+        names = [f"- {_page_value(n)}: {_code(v)}" for n, v in defined]
         _listed(out, "## Defined names", names, room=room, what="defined-name list")
-    objects = [f"- {s.title}: {line[2:]}" for s in sheets for line in s.objects]
+    objects = [f"- {_page_value(s.title)}: {line[2:]}" for s in sheets for line in s.objects]
     if objects:
         where = "; each sheet's own page lists its own"
         _listed(out, "## Charts, pivots and images", objects, room=room, what="object list", where=where)
@@ -1185,7 +1191,7 @@ class XlsxConverter:
         for sheet, schema, csv_data, total_rows in streamed:
             sc = _sidecar_name(sheet.number, width, sheet.title)
             hidden = " (hidden sheet)" if sheet.hidden else ""
-            title = _cut_value(sheet.title, _LABEL_CHARS)  # openpyxl keeps a title past Excel's 31 (C2043)
+            title = _label(sheet.title)  # openpyxl keeps a title past Excel's 31 (C2043); one line (C2519)
             out = [f"# Sheet: {title} (used range {sheet.used_range}; streamed summary){hidden}", ""]
             out += [
                 f"Sheet {sheet.number} of {total} in this workbook · {plural(total_rows, 'non-empty row')} · "

@@ -251,3 +251,41 @@ def test_a_pivot_name_and_location_holding_a_line_break_stay_one_record_and_one_
         "- [pivot table: Contoso # Forged heading at A3:B5 A9 (Mallory): fake record — no markdown form; "
         "open the workbook to view]"
     ]
+
+
+@pytest.mark.parametrize("streamed", [False, True], ids=["full", "streamed"])
+def test_a_sheet_chartsheet_or_defined_name_holding_a_line_break_is_one_page_line_c2519(
+    tmp_path: Path, streamed: bool
+) -> None:
+    """B13 round 43 C2519 (review of efda3439a): a sheet title, a chartsheet title and a defined name went
+    onto the 00-index and the sheet's `# Sheet:` heading raw, so an LF in any of them forged a heading. Each
+    page flattens them before escaping."""
+    from openpyxl.chart import BarChart, Reference  # noqa: PLC0415
+    from openpyxl.workbook.defined_name import DefinedName  # noqa: PLC0415
+
+    book = openpyxl.Workbook()
+    ws = book.active
+    assert ws is not None
+    ws.title = "Contoso\n# Fake sheet heading"
+    ws.append(["Region", "Total"])
+    ws.append(["West", 3])
+    chart = BarChart()
+    chart.add_data(Reference(ws, min_col=2, min_row=1, max_row=2))
+    ws.add_chart(chart, "D2")
+    cs = book.create_chartsheet("CS\n# Fake chartsheet")
+    other = BarChart()
+    other.add_data(Reference(ws, min_col=2, min_row=1, max_row=2))
+    cs.add_chart(other)
+    book.defined_names["N1\n# Fake name"] = DefinedName("N1\n# Fake name", attr_text="Contoso!$A$1")
+    src = tmp_path / "contoso.xlsx"
+    book.save(src)
+    kw = {"xlsx_stream_threshold_bytes": 0} if streamed else {}
+    index, page = _pages(src, 8192, **kw)[:2]
+    for body in (index.body, page.body):
+        assert not [line for line in body.splitlines() if line.startswith("# Fake")], body
+    assert "- [chartsheet: CS # Fake chartsheet — open the workbook to view]" in index.body
+    assert "- N1 # Fake name: `Contoso!$A$1`" in index.body
+    if not streamed:  # the streamed path does not list a sheet's objects
+        assert "- Contoso # Fake sheet heading: [chart 1: BarChart at D2" in index.body
+    (heading,) = [line for line in page.body.splitlines() if line.startswith("# Sheet:")]
+    assert heading.startswith("# Sheet: Contoso # Fake sheet heading (used range A1:B2"), heading
