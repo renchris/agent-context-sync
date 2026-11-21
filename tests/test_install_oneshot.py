@@ -1454,6 +1454,30 @@ def test_a_sourceless_first_run_exits_2_and_a_rerun_exits_0(env: dict[str, str],
     assert not any(c.startswith("agentsync sync") for c in calls(env))
 
 
+def test_a_bare_rerun_over_an_inbox_only_config_says_no_folder_is_synced_yet_c2401(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 43 ruling 163, C2401, with the real agentsync: a bare first run exits 2 on install.sh's
+    `no folder to sync yet`, and the same command again, over the inbox-only config it made, exited 0 on
+    status's `the agentsync-docs skill is missing or out of date: run ... sync`, since status puts its skill
+    rule before its no-folder rule and step 2 never syncs without a folder, so no skill is written. The
+    prompt's no-folder sentence did not fire and the agent went on to step 3. That re-run now ends, exit 0
+    kept, on `no folder is synced yet:` with the --source-local re-run."""
+    env = real_env
+    home = Path(env["HOME"])
+    first = install_sh(env, str(wheel), timeout=300)
+    assert first.returncode == 2, first.stdout + first.stderr
+    again = install_sh(env, str(wheel), timeout=300)
+    assert again.returncode == 0, again.stdout + again.stderr
+    assert last_line(again) == (
+        f"NEXT: no folder is synced yet: list them with {INSTALL_SH} --list-folders, choose the folders to "
+        f'sync, then run: {INSTALL_SH} {wheel} --source-local "<folder>" (one --source-local per folder) '
+        f"[setup report: {report_path(env)}]"
+    ), again.stdout
+    assert one_next(again) and "skill is missing" not in last_line(again)
+    assert not [p for p in home.rglob("SKILL.md") if p.parent.name == "agentsync-docs"], "no skill written"
+
+
 def test_a_no_folder_next_with_exit_0_is_one_step_2_says_to_ask_for_folders_c2316(
     env: dict[str, str], wheel: Path
 ) -> None:

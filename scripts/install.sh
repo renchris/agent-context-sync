@@ -389,7 +389,9 @@
 # --confirm-install-agent the line starts "background sync: running; " (or "ok; "). A [FAIL] line in that
 # status is printed and the NEXT says to fix it, or, as step 5's, whose fix it is; a listing macOS held for an Allow click in this terminal is
 # the NEXT and the run exits 1. A run without a folder over an existing config ends on that status's NEXT
-# too (its "no folder is synced yet" step). Nothing
+# too (its "no folder is synced yet" step; where that status names the missing agentsync-docs skill first,
+# which no sync without a folder writes, the NEXT is "no folder is synced yet:" with the --source-local re-run,
+# exit 0 kept: B13 round 43 ruling 163, C2401). Nothing
 # else it prints is an instruction: agentsync is always called by its full path (~/.local/bin/agentsync), so
 # nothing needs adding to PATH or to a shell profile; uv's "not on your PATH ... update-shell" hint is
 # filtered out of its output; every other agentsync call is told to print no "next:" hints of its own (the
@@ -13657,6 +13659,17 @@ elif [ "$INSTALL_AGENT" -eq 1 ] && [ "$WAIT_RESULT" != "ok" ] && [ "$WAIT_RESULT
 	fi
 else # the loop's NEXT, after the background-sync result when it was asked for
 	loop_next
+	# a config with no folder but the inbox: status puts its skill rule before its no-folder rule, and step 2
+	# never syncs without a folder, so the skill stays missing and status said to sync; its place goes to the
+	# no-folder NEXT with the --source-local re-run, exit 0 kept, after the [FAIL], held-listing and doctor
+	# checks (B13 round 43 ruling 163, C2401)
+	if [ "$HAVE_SOURCES" -eq 0 ] && [ "$EXIT_RC" -eq 0 ]; then
+		case "$next" in
+		"the agentsync-docs skill is missing or out of date"*)
+			next="no folder is synced yet: list them with $SELF --list-folders, choose the folders to sync, then run: $SELF$BASE_ARGS --source-local \"<folder>\" (one --source-local per folder)"
+			;;
+		esac
+	fi
 	if [ "$INSTALL_AGENT" -eq 1 ] && [ "$SIMULATE" -eq 1 ]; then
 		next="background sync: simulated (AGENTSYNC_SIMULATE_LAUNCHD=1, no job runs); $next"
 	elif [ "$INSTALL_AGENT" -eq 1 ]; then
