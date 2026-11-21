@@ -44298,7 +44298,10 @@ amends §16.265 C2210). doctor's configured-pandoc fix writes the path as one sh
 `~/'<rest>'`, `~/"<rest>"` for a name holding a `'`, the `'\''` splice, the `$'...'` form), which no registered
 literal matched, so the Doctor FAIL's fix printed the folder in clear. `_add_pandoc_cut` also registers that word of
 each absolute form (as written, expanded, resolved) under the home, shown as `_add_config_cut`'s own `~/<path>`
-(`_config_cut_shown`, one helper both share); a pandoc outside the home (`/opt/homebrew/...`) stays in clear. The
+(`_config_cut_shown`, one helper both share); a pandoc outside the home (`/opt/homebrew/...`) stays in clear. Lane RB's review of
+the joint run added two spellings the shell already cut: install.sh's debug_path form (printf %q, the home as `~`:
+`~/Tools/Zephyr\ Quarry/pandoc`, `_printf_q_forms`, whose escaped set was measured the same on bash 3.2.57 and 5.3)
+and the value as written in sources.toml, unnormalised (`~/Tools//Zephyr Quarry/./pandoc`), with its expanded form. The
 native copy's fix names `~/.local/share/agentsync/pandoc`, a fixed agentsync location no person chose: no cut, and
 doctor.py is unchanged (C2497 with C2431). With a docs repo outside the home, `<its parent>/inbox` is registered
 whole after the four own folders, so `- inbox:` and status's `inbox:` lines read a `<folder-N>`; never at the

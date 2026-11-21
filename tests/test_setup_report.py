@@ -28947,6 +28947,29 @@ def test_a_malformed_options_meta_leaves_configuration_whole_c2504_c2522(fake_ma
         assert any(ln.startswith("- inbox: ") for ln in conf.splitlines()), (value, conf)
 
 
+def test_the_pandoc_path_is_cut_in_debug_paths_and_its_raw_spelling_c2497() -> None:
+    """B13 round 43 C2497 (ruling 157; privacy), lane RB's review of the joint run: install.sh's debug_path
+    writes a configured pandoc_path in printf %q's spelling, the home as `~`
+    (`~/Tools/Zephyr\\ Quarry/pandoc`), and the value as written in sources.toml is echoed unnormalised
+    (`~/Tools//Zephyr Quarry/./pandoc`); the shell report cut both and the agentsync report printed them. Each
+    reads `~/<path>`."""
+    home = str(Path.home())
+    red = setup_report.Redactor()
+    red.add("home", home)
+    raw = "~/Tools//Zephyr Quarry/./pandoc"
+    setup_report._add_pandoc_cut(red, Path(home) / "Tools" / "Zephyr Quarry" / "pandoc", raw=raw)
+    for said, want in (
+        ("debug: pandoc ~/Tools/Zephyr\\ Quarry/pandoc | x", "debug: pandoc ~/<path> | x"),
+        (f"ran {home}/Tools/Zephyr\\ Quarry/pandoc --version", "ran ~/<path> --version"),
+        (f'pandoc_path = "{raw}"', 'pandoc_path = "~/<path>"'),
+        (f"saw {home}/Tools//Zephyr Quarry/./pandoc.", "saw ~/<path>."),
+        ("fix: (~/'Tools/Zephyr Quarry/pandoc')", "fix: (~/<path>)"),
+    ):
+        got = red.redact(said)
+        assert got == want, (said, got)
+    assert setup_report._printf_q_forms("/opt/x\tb") == [], "a $'...' word is cut whole elsewhere"
+
+
 def test_a_config_cut_runs_to_its_path_tokens_end_c2290() -> None:
     """B13 round 42 C2290 (ruling 147; privacy; makes worse True for a boundary-only match): the whole-config
     cut replaced the literal alone, so `sources.toml-PrivateBackup` printed its suffix after the cut, and a

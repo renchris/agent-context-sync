@@ -136,6 +136,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import tomllib
 import unicodedata
 import weakref
 from collections import Counter
@@ -6145,11 +6146,11 @@ def _build_redactor(r: _Run) -> Redactor:
         red.add("path", target)
     _add_config_cut(red, r.config_path)
     if r.config is not None and r.config.convert.pandoc_path is not None:
-        _add_pandoc_cut(red, r.config.convert.pandoc_path)
+        _add_pandoc_cut(red, r.config.convert.pandoc_path, raw=_raw_pandoc_path(r.config_path))
     return red
 
 
-def _add_pandoc_cut(red: Redactor, path: Path) -> None:
+def _add_pandoc_cut(red: Redactor, path: Path, *, raw: str | None = None) -> None:
     """Register a configured ``[convert] pandoc_path`` under this home as one cut, as the config path is
     (:func:`_add_config_cut`), so the pandoc line and doctor's read ``~/<path>`` (B13 round 42, lane RA's
     finding while building C2210; privacy): the probe printed the path as configured and nothing registered
@@ -6160,7 +6161,14 @@ def _add_pandoc_cut(red: Redactor, path: Path) -> None:
     ``'\\''`` splice or the ``$'...'`` form), whose quote broke every registered literal, so the Doctor FAIL's
     fix printed the folder in clear. Each absolute form (as written, expanded, resolved) also registers its
     shell word, cut to the same ``~/<path>``; ``home_only`` kept. The native copy's fix names
-    ``~/.local/share/agentsync/pandoc``, a fixed agentsync location no person chose, so it needs no cut."""
+    ``~/.local/share/agentsync/pandoc``, a fixed agentsync location no person chose, so it needs no cut.
+
+    Lane RB's review of the joint run (ruling 157: every spelling its printer writes): install.sh's
+    debug_path writes the path in printf %q's spelling, the home as ``~``
+    (``~/Tools/Zephyr\\ Quarry/pandoc``), and the value as written in sources.toml (``raw``,
+    ``~/Tools//Zephyr Quarry/./pandoc``) is echoed unnormalised; the shell report cut both and this one
+    printed them. Both are registered too, with the raw value's expanded form, each cut to the same
+    ``~/<path>``."""
     from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are
 
     for form in dict.fromkeys((path, expand(path))):
@@ -6175,6 +6183,53 @@ def _add_pandoc_cut(red: Redactor, path: Path) -> None:
         quoted = doctor._shell_path(form)
         if quoted.startswith("~/"):
             red.add_cut(quoted, shown)
+        for word in _printf_q_forms(str(form)):
+            red.add_cut(word, shown)
+    if raw:
+        # os.path, never Path: Path collapses the `//` and `/./` the echo keeps
+        unnormalised = os.path.expanduser(raw)  # noqa: PTH111
+        shown = _config_cut_shown(Path(unnormalised)) if unnormalised.startswith("/") else None
+        if shown is not None:
+            for word in dict.fromkeys((raw, unnormalised, *_printf_q_forms(unnormalised))):
+                red.add_cut(word, shown)
+
+
+_PRINTF_Q_ESCAPED = frozenset(" !\"$&'()*,;<>?[\\]^`{|}")
+"""The printable ASCII characters bash's ``printf %q`` writes with a backslash inside a word, measured the
+same on /bin/bash 3.2.57 and bash 5.3 (B13 round 43, lane RB's review of C2497): a word holding any other byte
+below 0x20 or above 0x7E is a ``$'...'`` word, which :data:`_ANSI_C_WORD_RE` cuts whole."""
+
+
+def _printf_q_forms(path: str) -> list[str]:
+    """``path`` (absolute) as install.sh's debug_path writes it, ``printf %q`` with this home as ``~``, and
+    the plain ``%q`` word, for a path of printable ASCII; none otherwise."""
+    if not path.startswith("/") or not all(" " <= c <= "~" for c in path):
+        return []
+
+    def q(text: str) -> str:
+        return "".join("\\" + c if c in _PRINTF_Q_ESCAPED else c for c in text)
+
+    word = q(path)
+    out = [word]
+    for h in sorted({str(Path.home()), os.path.realpath(Path.home())}, key=len, reverse=True):
+        hq = q(h.rstrip("/"))
+        if hq and word.startswith(hq + "/"):
+            out.append("~" + word[len(hq) :])
+    return out
+
+
+def _raw_pandoc_path(config_path: Path | None) -> str | None:
+    """``[convert] pandoc_path`` as written in sources.toml, before any normalisation, or None."""
+    if config_path is None:
+        return None
+    with contextlib.suppress(Exception):
+        value = (
+            tomllib.loads(expand(config_path).read_text(encoding="utf-8"))
+            .get("convert", {})
+            .get("pandoc_path")
+        )
+        return value if isinstance(value, str) and value.strip() else None
+    return None
 
 
 def _add_config_cut(
