@@ -15,6 +15,7 @@ import pytest
 from agentsync.config import ConvertConfig
 from agentsync.convert._common import _csv_bytes
 from agentsync.convert.registry import Registry
+from agentsync.convert.xlsx import _build_sheet, _Sheet
 from agentsync.model import RenderedUnit
 
 CFG = ConvertConfig()
@@ -136,3 +137,117 @@ def test_each_comment_in_the_comment_sidecar_is_one_escaped_record_c2301(tmp_pat
         assert record.startswith(head)
         assert _unescape(record[len(head) :]) == text
     assert "- A1 (Ana): line one line two tab three spaces" in sheet.body
+
+
+# ---------------------------------------------------------------------------------------------------------
+# C2519 with C2530 and C2452: a comment author, chart title, pivot name and location stay raw in the sidecar
+# and are flattened on the page
+# ---------------------------------------------------------------------------------------------------------
+
+
+def _rich_title(*runs: str) -> object:
+    """A chart title of rich-text ``runs``, as Excel writes a formatted one."""
+    from openpyxl.chart.text import RichText, Text  # noqa: PLC0415
+    from openpyxl.chart.title import Title  # noqa: PLC0415
+    from openpyxl.drawing.text import Paragraph, RegularTextRun  # noqa: PLC0415
+
+    return Title(tx=Text(rich=RichText(p=[Paragraph(r=[RegularTextRun(t=t) for t in runs])])))
+
+
+def _built(src: Path) -> _Sheet:
+    """``src``'s first sheet as :func:`agentsync.convert.xlsx._build_sheet` collects it."""
+    values = openpyxl.load_workbook(src, data_only=True)
+    formulas = openpyxl.load_workbook(src)
+    return _build_sheet(1, values.worksheets[0], formulas.worksheets[0])
+
+
+def _labelled_book(tmp_path: Path, authors: list[str], title: object) -> Path:
+    from openpyxl.chart import BarChart, Reference  # noqa: PLC0415
+    from openpyxl.comments import Comment  # noqa: PLC0415
+
+    book = openpyxl.Workbook()
+    ws = book.active
+    assert ws is not None
+    ws.title = "Contoso"
+    for i, author in enumerate(authors, start=1):
+        ws.cell(row=i, column=1, value=i)
+        ws.cell(row=i, column=1).comment = Comment(f"note {i}", author)
+    chart = BarChart()
+    chart.title = title  # type: ignore[assignment]
+    chart.add_data(Reference(ws, min_col=1, min_row=1, max_row=len(authors)))
+    ws.add_chart(chart, "C2")
+    src = tmp_path / "contoso.xlsx"
+    book.save(src)
+    return src
+
+
+def test_a_padded_author_and_chart_title_stay_raw_in_their_sidecar_records_c2530(tmp_path: Path) -> None:
+    """B13 round 43 C2530: the author and a rich chart title were stripped before `_record_escape`, so the
+    sidecar lost their padding though its contract says nothing is stripped. Un-escaping each record gives
+    the raw string back; the page shows them trimmed."""
+    author = "  Contoso Reviewer\t"
+    src = _labelled_book(tmp_path, [author], _rich_title("  Revenue ", "2026\t "))
+    sheet = _built(src)
+    (record,) = sheet.comments_whole
+    assert _unescape(record[len("A1 (") : record.index("): note 1")]) == author
+    (chart,) = sheet.objects_whole
+    assert chart.startswith('chart 1: BarChart "') and chart.endswith('" at C2'), chart
+    assert _unescape(chart[len('chart 1: BarChart "') : -len('" at C2')]) == "  Revenue 2026\t "
+    body = _pages(src, 8192)[1].body
+    assert "- A1 (Contoso Reviewer): note 1" in body
+    assert 'BarChart "Revenue 2026" at C2' in body
+
+
+def test_a_multi_line_author_never_forges_a_page_line_c2519(tmp_path: Path) -> None:
+    """B13 round 43 C2519: the author went onto the comment's page line raw, so `Contoso<LF># Fake heading`
+    wrote a real heading. The page flattens it; the sidecar keeps it, one record a comment."""
+    author = "Contoso\n# Fake heading"
+    src = _labelled_book(tmp_path, ["Ana", author], "Contoso Q3")
+    sheet = _built(src)
+    assert len(sheet.comments_whole) == 2
+    record = sheet.comments_whole[1]
+    assert "\n" not in record and _unescape(record[len("A2 (") : record.index("): note 2")]) == author
+    body = _pages(src, 8192)[1].body
+    assert not [line for line in body.splitlines() if line.startswith("# Fake")], body
+    assert "- A2 (Contoso # Fake heading): note 2" in body
+
+
+def test_a_whitespace_only_author_or_title_adds_nothing_c2519(tmp_path: Path) -> None:
+    """B13 round 43 C2519 with C2530: presence is decided on the flattened value, so a whitespace-only
+    author or chart title adds no `( )` or `""` to the page or the sidecar."""
+    src = _labelled_book(tmp_path, [" \t "], _rich_title("  ", "\t"))
+    sheet = _built(src)
+    assert sheet.comments_whole == ["A1: note 1"]
+    assert sheet.comments == ["- A1: note 1"]
+    assert sheet.objects_whole == ["chart 1: BarChart at C2"]
+    assert sheet.objects == ["- [chart 1: BarChart at C2 — no markdown form; open the workbook to view]"]
+
+
+def test_a_pivot_name_and_location_holding_a_line_break_stay_one_record_and_one_line_c2452(
+    tmp_path: Path,
+) -> None:
+    """B13 round 43 C2452: the pivot location went raw into the objects sidecar and the page, and the name
+    raw onto the page, so an LF in either forged a second record or a page heading. The sidecar escapes
+    both; the page flattens both before escaping."""
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    book = openpyxl.Workbook()
+    ws = book.active
+    assert ws is not None
+    ws.append([1])
+    src = tmp_path / "contoso.xlsx"
+    book.save(src)
+    values, formulas = openpyxl.load_workbook(src, data_only=True), openpyxl.load_workbook(src)
+    wsf = formulas.worksheets[0]
+    name, loc = "Contoso\n# Forged heading", "A3:B5\nA9 (Mallory): fake record"
+    wsf._pivots = [SimpleNamespace(name=name, location=SimpleNamespace(ref=loc))]
+    sheet = _build_sheet(1, values.worksheets[0], wsf)
+    (record,) = sheet.objects_whole
+    assert "\n" not in record and record.startswith("pivot table: ")
+    got_name, got_loc = record[len("pivot table: ") :].split(" at ", 1)
+    assert (_unescape(got_name), _unescape(got_loc)) == (name, loc)
+    page = "\n".join(sheet.objects).splitlines()
+    assert page == [
+        "- [pivot table: Contoso # Forged heading at A3:B5 A9 (Mallory): fake record — no markdown form; "
+        "open the workbook to view]"
+    ]

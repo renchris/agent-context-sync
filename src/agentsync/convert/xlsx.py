@@ -33,7 +33,7 @@ from agentsync.errors import ConversionError
 from agentsync.model import RenderedUnit, UnitKind
 from agentsync.text import plural
 
-_EMITTER_VERSION = "1.0.5"  # B13 round 43 rulings 167 and 168: C2516, C2529
+_EMITTER_VERSION = "1.0.5"  # B13 round 43 rulings 167 and 168: C2516, C2529, C2519, C2530, C2452
 _INDEX_TERM_LIMIT = 400  # distinct terms kept on 00-index (most frequent first, then listed sorted)
 _TERM_MAX_CHARS = 80  # a text cell up to this long is one term; longer text contributes its words
 _HEADER_LIMIT = 30  # column headers listed per sheet on 00-index
@@ -123,7 +123,8 @@ def _code(text: str) -> str:
 
 
 def _chart_title(chart: Any) -> str:
-    """Best-effort plain title of an openpyxl chart (rich-text runs joined), or ""."""
+    """Best-effort plain title of an openpyxl chart (rich-text runs joined, nothing stripped, so its sidecar
+    record keeps the title byte for byte; B13 round 43 C2530), or ""."""
     try:
         title = chart.title
         if title is None:
@@ -134,7 +135,7 @@ def _chart_title(chart: Any) -> str:
         for para in title.tx.rich.p:
             for run in para.r or []:
                 runs.append(str(run.t or ""))
-        return "".join(runs).strip()
+        return "".join(runs)
     except AttributeError:
         return ""
 
@@ -237,12 +238,13 @@ def _build_sheet(number: int, ws: Any, wsf: Any) -> _Sheet:
         vtext = _fmt_value(value)
         comment = None if fcell is None else getattr(fcell, "comment", None)
         if comment is not None and str(comment.text or "").strip():  # an empty cell's too (round 41 C2088)
-            author = str(comment.author or "").strip()
+            author_raw = str(comment.author or "")  # the sidecar's, nothing stripped (B13 round 43 C2530)
+            author = _WS_RE.sub(" ", author_raw).strip()  # the page's and the presence test's (C2519)
             raw = str(comment.text)
             text = _WS_RE.sub(" ", raw).strip()  # the page's line only
-            who = f" ({author})" if author else ""
+            who = f" ({_escape_line(author)})" if author else ""
             sheet.comments.append(f"- {_ref(*key)}{who}: {_escape_line(text)}")
-            whole_who = f" ({_record_escape(author)})" if author else ""
+            whole_who = f" ({_record_escape(author_raw)})" if author else ""
             sheet.comments_whole.append(f"{_ref(*key)}{whole_who}: {_record_escape(raw)}")
         if not vtext.strip() and formula is None:
             continue
@@ -283,24 +285,32 @@ def _build_sheet(number: int, ws: Any, wsf: Any) -> _Sheet:
                     if anchor in sheet.formula:
                         sheet.formula[(r, c)] = sheet.formula[anchor]
     for i, chart in enumerate(getattr(wsf, "_charts", []), start=1):
-        title = _chart_title(chart)
+        title_raw = _chart_title(chart)  # the sidecar's; the page, presence and cut use it flattened (C2519)
+        title = _WS_RE.sub(" ", title_raw).strip()
         where = f" at {w}" if (w := _anchor_ref(chart)) else ""
         kind = type(chart).__name__
-        named, whole = (f' "{_label(title)}"', f' "{_record_escape(title)}"') if title else ("", "")
+        named, whole = (f' "{_label(title)}"', f' "{_record_escape(title_raw)}"') if title else ("", "")
         sheet.labels_cut |= len(title) > _LABEL_CHARS
         sheet.objects.append(
             f"- [chart {i}: {kind}{named}{where} — no markdown form; open the workbook to view]"
         )
         sheet.objects_whole.append(f"chart {i}: {kind}{whole}{where}")
     for pivot in getattr(wsf, "_pivots", []):
-        name = str(getattr(pivot, "name", "") or "pivot")
-        loc = getattr(getattr(pivot, "location", None), "ref", "") or ""
-        at = f" at {loc}" if loc else ""
+        # The sidecar keeps the name and location raw, escaped; the page flattens both first, so neither a
+        # line break in the name nor one in the location ref forges a page line (B13 round 43 C2452, C2519).
+        name_raw = str(getattr(pivot, "name", "") or "")
+        name = _WS_RE.sub(" ", name_raw).strip()
+        if not name:
+            name = name_raw = "pivot"
+        loc_raw = str(getattr(getattr(pivot, "location", None), "ref", "") or "")
+        loc = _WS_RE.sub(" ", loc_raw).strip()
+        at = f" at {_escape_line(loc)}" if loc else ""
+        whole_at = f" at {_record_escape(loc_raw)}" if loc else ""
         sheet.labels_cut |= len(name) > _LABEL_CHARS
         sheet.objects.append(
             f"- [pivot table: {_label(name)}{at} — no markdown form; open the workbook to view]"
         )
-        sheet.objects_whole.append(f"pivot table: {_record_escape(name)}{at}")
+        sheet.objects_whole.append(f"pivot table: {_record_escape(name_raw)}{whole_at}")
     for i, image in enumerate(getattr(wsf, "_images", []), start=1):
         where = _anchor_ref(image)
         sheet.objects.append(f"- [image {i}" + (f" at {where}" if where else "") + "]")
@@ -309,10 +319,11 @@ def _build_sheet(number: int, ws: Any, wsf: Any) -> _Sheet:
 
 
 def _label(text: str) -> str:
-    """A chart title or pivot name for a sheet page's object line: cut to :data:`_LABEL_CHARS` characters
-    ending ``…``, then escaped, so the line stays short and a cut never splits an escape; the whole name
-    rides in the sheet's ``.objects.txt`` sidecar (B13 round 41 C2046)."""
-    return _escape_line(_cut_value(text, _LABEL_CHARS))
+    """A chart title or pivot name for a sheet page's object line: whitespace flattened (B13 round 43 C2452),
+    cut to :data:`_LABEL_CHARS` characters ending ``…``, then escaped, so the line stays one line and short
+    and a cut never splits an escape; the whole name rides in the sheet's ``.objects.txt`` sidecar (B13
+    round 41 C2046)."""
+    return _escape_line(_cut_value(_WS_RE.sub(" ", text).strip(), _LABEL_CHARS))
 
 
 # ---------------------------------------------------------------------------------------------------------

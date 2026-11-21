@@ -43156,6 +43156,9 @@ and streamed) and `test_convert_page_cap.py::test_a_sheet_under_the_cap_keeps_it
 Amended 2026-11-20, §16.268 C2301: each comment, author, chart title and pivot name in a list sidecar is escaped
 (backslash, newline, CR and tab as `\\`, `\n`, `\r`, `\t`), nothing stripped, one record a line; the page's line stays
 flattened.
+Amended 2026-11-21, §16.273 C2519 (with C2530, C2452): an author and a rich chart title reach the sidecar raw (both
+were stripped first), a pivot location is escaped too, and the page flattens each author, chart title, pivot name and
+location before escaping it; one that is blank or all whitespace adds nothing to either.
 
 **A row too long for the sheet's table is shown with its cells cut** (C2022; `agentsync.convert.xlsx`; amends §16.253
 C1676). C1676 made `_table_lines` leave off a first row past the budget, so at 8,192 four sheets of thirty
@@ -43834,6 +43837,9 @@ U+0085, U+2028 and U+2029 stay as they are: the records end at LF, and a reader 
 `test_convert_records.py::test_each_comment_in_the_comment_sidecar_is_one_escaped_record_c2301` (a multi-line,
 tabbed, forged-looking, backslashed and 9,000-character comment) and
 `test_convert_page_cap.py::test_a_sheets_comment_list_stays_within_the_cap_and_rides_whole_in_its_sidecar_c2064`.
+Amended 2026-11-21, §16.273 C2519 (with C2530, C2452): the author and a rich chart title were stripped before
+`_record_escape` and a pivot location was not escaped at all; each now reaches its record raw and escaped, and the page
+flattens the author, chart title, pivot name and location before `_escape_line`.
 
 **git's settings for the seed are read as NUL-ended records** (C2304; ruling 152; `agentsync.convert.speech`; amends
 §16.54 Q52). `_git_config` split `git config --type=path --get-urlmatch http <NEMO_URL>`'s output with
@@ -44536,6 +44542,24 @@ which `_provenance` sets to None (it lives in the manifest). No byte cap is adde
 reason stands). Test:
 `test_convert_page_cap.py::test_the_cap_bounds_the_guarded_body_and_the_words_say_the_front_matter_is_outside_c2220`
 (the new words in config.py and CONTRACTS, and a long path, URL and summary rendering front matter over 1 KB).
+
+**A comment author, chart title and pivot table stay raw in their sidecar record, and the page flattens each before
+escaping it** (C2519 with C2530 and C2452; ruling 167, data integrity; `agentsync.convert.xlsx`; amends §16.263
+C2043 and §16.268 C2301). C2301's contract says a list sidecar strips nothing, but `_build_sheet` stripped a comment's
+author and `_chart_title` a rich title's joined runs before `_record_escape`, so `  Contoso Reviewer<TAB>` and runs
+`  Revenue ` and `2026<TAB> ` lost their padding (C2530). The page put the author in raw, so an author
+`Contoso<LF># Fake heading` wrote a real heading line (C2519). A pivot's location ref went raw into both the objects
+sidecar and the page, so `A3:B5<LF>A9 (Mallory): fake record` forged a second record, and `_label` never flattened a
+pivot name or chart title, so one holding an LF forged a page line (C2452; the verifiers' runs at bd65e0e1). C2519
+and C2530 are one defect, built once. Each author, chart title, pivot name and location now keeps its raw value for
+the sidecar, through `_record_escape`, and a flattened value (`_WS_RE` runs to one space, ends stripped) for the
+presence test, the page line, through `_escape_line`, and `labels_cut`; `_label` flattens too. So a blank or
+whitespace-only author or title adds no `( )` or `""` to either, and a blank pivot name is `pivot` in both. xlsx's
+`_EMITTER_VERSION` stays 1.0.5 (rulings 167 and 168 move it once). Tests:
+`test_convert_records.py::test_a_padded_author_and_chart_title_stay_raw_in_their_sidecar_records_c2530`,
+`test_convert_records.py::test_a_multi_line_author_never_forges_a_page_line_c2519`,
+`test_convert_records.py::test_a_whitespace_only_author_or_title_adds_nothing_c2519` and
+`test_convert_records.py::test_a_pivot_name_and_location_holding_a_line_break_stay_one_record_and_one_line_c2452`.
 
 ### 16.274 Round 43: the prompt goes to v40 (only lines setup prints in every branch), CI polled every 60 seconds, and the guides (2026-11-21, wave B13 round 43 lane D)
 
