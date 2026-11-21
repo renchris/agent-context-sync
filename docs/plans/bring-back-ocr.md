@@ -3120,6 +3120,89 @@ handoff-fire.sh's cold-worktree fetch fired to claude-infrastructure), C2267 (pa
 `cc-decide action`) and C2280 (Gemini). The specs cite `1faa3f3a`'s line numbers, and the kept lessons in
 `lanes/COMMON41.md` and `docs/lanes/COMMON.md` now say so.
 
+### B13 round 42 landed (2026-11-21)
+
+All five lanes landed, and the prompt is now v39 (`1433dd16`, lane D's commit for C2316, C2317, C2212 and C2310 with
+C2319, ruling 156). Notes `lanes/r42-<lane>.md`, lead notes `round29/lead-notes.md`. Of the 109 confirmed items, 95 are
+built on trunk: the lanes held 96 (RA 23, RB 11, B 17, E 23, D 22) and built all but C2263, and the lead's 13 (lane L)
+went into round 43's kit and brief, not into shipped files. The lead's `60835dd7` carries rulings 146 to 156 and
+reserves §16.265 to §16.269 (ci `44791617127` success); on it the lanes landed 61 commits
+(`git log --oneline 60835dd7..87ec6fee`), each landed tip's CI read back green by the lead up to `62a72e6c`
+(`87ec6fee`'s CI: ci `44878616091` success). Lane B's 17 items landed first, `8288a235..fa8bdd72` (7, ci `44835399234` success).
+Lanes RA and RB then landed in one `scripts/ship-land.sh` run, `c2560376..9523d015` (21: lane RA's 13 commits for its 23
+items, then lane RB's 8 with the shell halves of rulings 146 to 149), so no trunk commit carries one half (ci
+`44842535377` and diagrams `44842535491` success); lane RB's first land went red on a comment that split a phrase a
+whole-tree test pins and was folded into that run, whose first try went red on two of lane RA's report words that the
+one-word hold value tests scan (fixed in `1937ea7e`). Lane RB's C2207 followed in a run of its own after lane B's C2309
+(`a82363ed`, ci `44856539196` and diagrams `44856539194` success), then lane D's 15 commits, `d52ce684..1433dd16` (ci
+`44867341570` and diagrams `44867341638` success), lane E's 16, `cb82b478..62a72e6c` (ci `44872444955` success), and
+last lane RB's exit-0 test for C2316 (`87ec6fee`), which needs v39's step 2 sentence on trunk.
+
+C2263 (round 41's C2060) is unbuilt: the operator's class C decision `1476293d00a3` was still open at each of lane RB's
+lands, so ruling 150's strict xfail stays, §16.266 says so, and lane D's guide carries the caveat (C2259, `09021d54`).
+The commit that lands C2263 must drop that caveat and its pin, or
+`test_the_folder_row_names_c2060s_gap_only_while_its_strict_xfail_stands_c2259` fails. The lead's 13 went into round
+43's kit (`round43/tools`, 873 checks passing in its own `kit-test.sh`); C2266's part c, `handoff-fire.sh`'s
+cold-worktree fetch, was a claude-infrastructure fix (`7c0bb835` to `633b2e52` on that repo's trunk). The class B packet
+`342ec4f53471` (the triage's 22 calls) has every course on origin/main.
+
+Choices that differ from a spec's words, each with its measured reason in the lane's note: ruling 146's bound let a part
+with no `/` run to its line's end and eat a friction row's next ` | -` cell, so the free-text stop gains ` | ` and ` · `
+in both reports, and the report's pandoc line printed a configured `pandoc_path` under the home in clear, now cut as a
+grown privacy item (lane RA); C2317's `docs repo:` and `inbox:` lines print after `folders:` and the moved-docs-repo cut
+already covers them, and C2287's single-id test passed on the old shell, so a new test seeds a two-character hold scope
+and a vanished id (lane RB); real argparse prints help for a root `-hello` and `status -vhy`, taking the `h` before the
+letters after it, so C2295's test holds each case to argparse's own answer, and C2270's hash set is a new meta key,
+`convert_options_hashes`, so an older build that reads `convert_options` is unaffected (lane B); C2219's bound is a
+per-source manifest meta key, `zero-bytes-v1:<source>`, not a token in a converter's `outdated_key`, which would move
+six converters' keys, C2296's picture piece is keyed on `_PIECE_REVISION` and C2251's `_RENDER_REVISION` is not built
+(ruling 155 chose C2296's design), and C2268's full path keeps its flat 4,096-byte reserve (lane E); ruling 156's "K62
+row" is K63, since K62 is v37's, C2317's final inventory still reads the config file that step 2's or status's `config:`
+line names, and C2256's optional code is not built (lane D).
+
+For later lanes and the rehearsal, from each lane note's closing section: status prints `inbox: <path>` as its third
+line, after `config:` and `docs repo:`, and setup's config step prints `docs repo:` and `inbox:` after `folders:`;
+`paths.same_folder` is the one folder-identity test (`cli._same_folder` an alias of it); a sheet page with formulas past
+its shown rows gets an `NN-<slug>.formulas.txt` sidecar, and every list sidecar is one LF-ended record a line, with
+backslash, LF, CR and tab escaped; a removed unit's tombstone may read `# [NO LONGER PRODUCED]`; every cycle re-reads a
+local or inbox source's zero-byte stubs until its `zero-bytes-v1` token is set; `GATE_CEILING_S` is 10,800 seconds, a
+part that runs past it while still writing says `ran past its 180 min ceiling`, which ship-land calls a slow part, not a
+hang, and each gate journal record carries its `duration`; a whole-tree test in another lane's file pins install.sh
+comment text, so pre-gate with `scripts/gate.sh --affected`; and a test run that spans a source-file swap reads shifted
+`inspect.getsource` lines (5 false failures in test_deploy_pack), so never edit `src/` while a suite runs. The
+SharedLibraries mismatch runs the other way from C2288's guess: the agentsync report numbers a library `<library-1>`
+where the shell numbers it `<folder-1>`, shifting every later folder number, and the C2071 test holds the two reports
+equal for that provider only on lines with no such number (lane RA; a round 43 harvest item).
+
+| Lane | Landed (lane commits) |
+|---|---|
+| B | `8288a235..fa8bdd72` (7, 17 items) |
+| RA | `c2560376` to `1937ea7e` in the joint run (13: its 23 items and other lanes' report halves) |
+| RB | `84244e49` to `9523d015` in the joint run (8), `a82363ed` (C2207), `87ec6fee` (C2316's exit 0); C2263 unbuilt |
+| Joint (RA, RB) | `c2560376..9523d015` (21) |
+| D | `d52ce684..1433dd16` (15, 22 items; v39 at `1433dd16`) |
+| E | `cb82b478..62a72e6c` (16, 23 items; the first two from the first session) |
+
+Learnings: from the round's launch (2026-11-20, about 14:50Z) to the last lane land (`87ec6fee`, 05:46Z on 2026-11-21)
+took about 15 hours. The `next4` account reached its weekly limit at 17:28Z on 2026-11-20 (it resets 2026-11-22 09:00Z),
+and the lead and lanes RA, RB, B and D moved to `next3` with their sessions; machine load reached about 555, at which a
+pane read timed out. Lane E's first session (`c88d1cb6`) stopped at that limit after two commits (C2299's and C2302's,
+landed as `cb82b478` and `6538b2f6`) and could not move accounts: its unsent `/goal` line held the move, then the move
+request ran out of retries. A successor, E2, took its branch tip and its uncommitted diff as a patch and landed all 23
+items, after three land runs that stopped with nothing pushed (a rebase conflict with lane B's C2293 in cycle.py, 7 red
+tests from moved pins and an import doctor defers, and GitHub's API rate limit while reading trunk's CI). Lane D's CI
+job on `1433dd16` ran 64:51, and its land gate's rest part 56:04 under load.
+
+Round 43: the round 42 workflow (`round42/round42-workflow.js` through `round43/tools/edit.py` and `edit-xvendor.py`,
+codex-only: the allow rule for `~/.claude/scripts/agy-review.sh` is the operator's) with the harvest list in
+`round43/tools/harvest-lead.txt`, on this section's landed tip passed as its full 40-hex sha, BASE `60835dd7`, ids C2401
+and up, prompt v39 (v38's block from `4c1fd00d` as scenario C's first old copy), outputs `round43/`. Its harvest opens
+with the two privacy residuals round 42's verifiers found: a quote wrapping a whole argument
+(`'--cwd=~/<outside>/<name with a blank>'`, `'--source-local=…'`) leaks a later word in both reports, and
+`--cwd=is not a folder this run can enter: <name>` leaves the name in clear in both. While its slots run, the lead reads
+trunk with `round43/tools/trunk.sh`, never a fetch in the operator checkout (C1470, C1661, C2066). The stop rule names
+Codex and Gemini: a clean round without Gemini goes to the operator before the loop closes.
+
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be
