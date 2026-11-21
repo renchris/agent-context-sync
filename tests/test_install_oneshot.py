@@ -2611,6 +2611,30 @@ def test_report_only_runs_just_the_report(env: dict[str, str]) -> None:
     )
 
 
+def test_report_only_names_the_bring_back_beside_a_custom_report_not_the_default_c2541(
+    env: dict[str, str],
+) -> None:
+    """B13 round 43 C2541: with AGENTSYNC_SETUP_REPORT set, --report-only writes bring-back.md beside that
+    report, and its `bring back:` line and NEXT name that file, never an older ~/agent-context/bring-back.md
+    (the shell fallback, no agentsync installed; test_report_only_runs_just_the_report holds agentsync's)."""
+    home = Path(env["HOME"])
+    old = home / "agent-context" / "bring-back.md"
+    old.parent.mkdir(parents=True)
+    old.write_text("an older bundle\n", encoding="utf-8")
+    out = home / "custom" / "setup-report.md"
+    cp = install_sh({**env, "AGENTSYNC_SETUP_REPORT": str(out)}, "--report-only")
+    assert cp.returncode == 0 and "shell fallback" in cp.stdout, cp.stdout + cp.stderr
+    bundle = out.parent / "bring-back.md"
+    assert out.is_file() and bundle.is_file(), cp.stdout
+    assert old.read_text(encoding="utf-8") == "an older bundle\n"
+    assert f"bring back: {bundle} (one file: report, fix request, local work)" in cp.stdout.splitlines()
+    assert last_line(cp).startswith(f"NEXT: review {bundle} and copy that one file back privately"), (
+        last_line(cp)
+    )
+    said = cp.stdout + cp.stderr
+    assert str(old) not in said and "~/agent-context/bring-back.md" not in said, said
+
+
 ORIGIN_URLS = (
     "https://github.com/renchris/agent-context-sync.git",
     "https://github.com/renchris/agent-context-sync",
