@@ -3710,7 +3710,9 @@ redaction_pairs() {
 	# generic one, or the home itself), as the Python report's "own".
 	hp="$(cd "$HOME" 2>/dev/null && pwd -P || true)"
 	own_state="" own_docs="" own_cache="" own_logs=""
+	# each as pathlib reads it (path_norm), as doctor and status print it and the Python report registers it
 	while IFS=$'\t' read -r k v; do
+		v="$(path_norm "$v")"
 		case "$k" in state_dir) own_state="$v" ;; docs_repo) own_docs="$v" ;; cache_dir) own_cache="$v" ;; log_dir) own_logs="$v" ;; esac
 	done < <(agentsync_dir_values)
 	beside="${own_docs:-$HOME/agent-context/docs}"
@@ -3845,6 +3847,19 @@ redaction_pairs() {
 	[ -z "$own_docs" ] || own_folder_values "$own_docs" "$HOME/agent-context/docs"
 	[ -z "$own_cache" ] || own_folder_values "$own_cache" "$HOME/Library/Caches/agentsync"
 	[ -z "$own_logs" ] || own_folder_values "$own_logs" "$HOME/Library/Logs/agentsync"
+	# With a docs repo outside the home, the inbox setup keeps beside it, whole, after the four, so theirs keep
+	# their numbers: status and the Configuration print it, the docs path's own cut one line above no use. Never at
+	# its default, never under a / parent (/inbox would cut ~/agent-context/inbox), never the parent itself (/tmp
+	# would cut every temporary path); inside the home the parent's own part is registered already, as
+	# setup_report._build_redactor registers it (B13 round 43 ruling 157, C2430)
+	if [ -n "$own_docs" ] && [ -n "$beside" ]; then
+		x="$(cd "$beside" 2>/dev/null && pwd -P || true)"
+		h="${hp:-$HOME}"
+		case "$beside" in "$HOME" | "$HOME"/* | "$h" | "$h"/*) ;; *)
+			case "$x" in "$HOME" | "$HOME"/* | "$h" | "$h"/*) ;; *) own_folder_values "$beside/inbox" "$HOME/agent-context/inbox" ;; esac
+			;;
+		esac
+	fi
 	# Every configured source id, as <source-N> numbered in config order among the ids that take a number of their
 	# own (B13 round 5 F6; round 41 C2071; round 42 C2238): an id is its
 	# folder's name in slug form ("project-beta---general"), and the empty-folder wait an agent quotes names it.
@@ -11961,7 +11976,9 @@ synced_count() {
 # The docs repo and the inbox folder of $CONFIG, as the agentsync step 2 installed loads it: `docs repo: <path>`
 # (expand(docs_repo)) and `inbox: <path>` (its parent's inbox, the folder config.ensure_inbox keeps), each in
 # list_name's spelling as the config step's folders are, so the setup prompt reads the folders this run used,
-# never ~/agent-context's (B13 round 42 ruling 156, C2317). Both reports cut each as they cut a moved docs repo.
+# never ~/agent-context's (B13 round 42 ruling 156, C2317). Both reports cut each as they cut a moved docs repo:
+# inside the home by the parent's own part, outside it the docs path and the inbox each whole, the inbox after
+# the four own folders, never under a / parent nor at its default (B13 round 43 ruling 157, C2430).
 # Nothing in a dry run, or when that agentsync cannot load the config within 10 s. -I: nothing from the folder
 # this runs in is imported.
 config_folder_lines() {

@@ -2383,7 +2383,15 @@ def test_both_reports_cut_a_config_path_but_the_default_c2063_c2083(
 
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
-@pytest.mark.parametrize("docs", ["/Volumes/Zephyr Drive/Wombat/docs", "/Users/Shared/Zephyr Quarry/docs"])
+@pytest.mark.parametrize(
+    "docs",
+    [
+        "/Volumes/Zephyr Drive/Wombat/docs",
+        "/Users/Shared/Zephyr Quarry/docs",
+        "/Volumes/Zephyr Drive//Wombat/docs",
+        "/Volumes/Zephyr Drive/Wombat/./docs",
+    ],
+)
 def test_both_reports_cut_the_inbox_beside_a_docs_repo_outside_the_home_c2430(
     env: dict[str, str],  # noqa: F811
     locale: str,
@@ -2392,7 +2400,10 @@ def test_both_reports_cut_the_inbox_beside_a_docs_repo_outside_the_home_c2430(
     """B13 round 43 C2430 (ruling 157; privacy): with a docs repo outside the home, both reports printed the
     inbox beside it whole (`- inbox: not added (no source on /Volumes/Zephyr Drive/Wombat/inbox)`), the docs
     path's own cut one line above it no use. Both register `<parent>/inbox` whole after the four own folders:
-    the Configuration lines and a friction row quoting the inbox print no part of the parent, and agree."""
+    the Configuration lines and a friction row quoting the inbox print no part of the parent, and agree. A
+    docs repo written with a `//` or a `/./` is the path pathlib reads, which both print: the shell report
+    printed it and its inbox in clear (B13 round 43, lane RB's review)."""
+    shown = str(Path(docs))
     inbox = str(Path(docs).parent / "inbox")
     config = Path(env["HOME"]) / "agent-context" / "sources.toml"
     body = f"[agentsync]\ndocs_repo = {toml_string(docs)}\n" + default_config_text()
@@ -2400,7 +2411,7 @@ def test_both_reports_cut_the_inbox_beside_a_docs_repo_outside_the_home_c2430(
     shell, python, sp, pp = _both_reports(
         env,
         [],
-        [f"saw {inbox}", f"docs at {docs} and {inbox}"],
+        [f"saw {inbox}", f"docs at {shown} and {inbox}"],
         locale,
         shell=_R142_SHELL,
         config=config,
@@ -2414,7 +2425,9 @@ def test_both_reports_cut_the_inbox_beside_a_docs_repo_outside_the_home_c2430(
     if _R142_SHELL:
         assert shell == python and sp == pp, (shell, python, sp, pp)
         conf = [[ln for ln in t.splitlines() if ln.startswith(("- docs repo: ", "- inbox: "))] for t in texts]
-        assert conf[0] == conf[1], conf
+        # the shell prints these lines only through an installed agentsync (config_folder_lines), which this
+        # stub harness has none of: where it prints them they are the agentsync report's (lane RB, C2430)
+        assert conf[1] and conf[0] in ([], conf[1]), conf
 
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
@@ -2665,6 +2678,31 @@ def test_both_reports_cut_a_configured_pandoc_path_in_every_spelling_c2432(
         "debug: pandoc ~/<path>",
         *(["pandoc_path (~/<path>)"] * (len(shell_only) - 1)),
     ], shell
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+def test_both_reports_register_no_inbox_beside_a_docs_repo_under_the_root_c2430(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+) -> None:
+    """B13 round 43 C2430 (ruling 157; privacy), the guard lane RA's
+    test_both_reports_cut_the_inbox_beside_a_docs_repo_outside_the_home_c2430 has no row for: a docs repo
+    right under `/` registers no `/inbox`, which would cut agentsync's own `~/agent-context/inbox`, while the
+    docs path itself stays registered whole (lane RA's measured deviation: skipping it printed the folder in
+    clear). Both reports, one line, in both locales."""
+    home = Path(env["HOME"])
+    body = '[agentsync]\ndocs_repo = "/Zephyr"\n' + default_config_text()
+    said = ["saw /Zephyr", "docs at /Zephyr and /inbox", "inbox: /inbox", f"{home}/agent-context/inbox"]
+    shell, python, sp, pp = _both_reports(
+        env, [], said, locale, config=home / "agent-context" / "sources.toml", config_body=body
+    )
+    assert python == [
+        "saw <folder-1>",
+        "docs at <folder-1> and /inbox",
+        "inbox: /inbox",
+        "~/agent-context/inbox",
+    ], python
+    assert shell == python and sp == pp, (shell, python)
 
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
