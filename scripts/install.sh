@@ -109,7 +109,10 @@
 #                           AGENTSYNC_WAIT_SECONDS and AGENTSYNC_REINSTALL_WAIT_SECONDS, which set those two
 #                           waits alone without it; the uv installer keeps its own limits
 #   --cwd DIR               change to DIR before anything else is read, so a relative path (a checkout, a
-#                           wheel, a --source-local folder, $AGENTSYNC_CONFIG) is read from DIR
+#                           wheel, a --source-local folder) is read from DIR; an install run refuses a relative
+#                           $AGENTSYNC_CONFIG, which a later agentsync run from another folder reads as another
+#                           file, and names its absolute path to export (--report-only and --list-folders read
+#                           it from DIR)
 #   --debug                 also print the run's settings (the folder it runs in, what it installs, the config
 #                           and the limits) on stderr, each line starting "debug: ", the home written as ~
 #   --non-interactive       accepted and ignored: the installer never asks a question
@@ -194,7 +197,8 @@
 #   agent step      the step, logged step=agent, that installs the LaunchAgents: agent there is the LaunchAgent, and
 #                   "not a step for the agent" means the coding agent
 #
-# The config is $AGENTSYNC_CONFIG, else ~/agent-context/sources.toml.
+# The config is $AGENTSYNC_CONFIG, else ~/agent-context/sources.toml. As agentsync reads it, the blanks around
+# the value are trimmed (a blank value is the default) and a leading ~ or ~/ is the home.
 #
 # Folders already synced: a re-run on a Mac that is set up asks for no folder. The person chose them once, and
 # they are in the config: the folder of each live local source (the inbox is agentsync's own folder and is
@@ -1728,7 +1732,20 @@ SOURCE_KIND="-"
 SOURCE_LOCALS=()
 FOLDERS=()
 BAD_FOLDERS=()
-CONFIG="${AGENTSYNC_CONFIG:-$HOME/agent-context/sources.toml}"
+# The config as agentsync.paths.default_config_path reads AGENTSYNC_CONFIG: the blanks around it trimmed, a blank
+# value the default, and a leading ~ or ~/ the home, so step 2 and a later bare `agentsync sync` name one file. A
+# value still relative is made absolute after --cwd, and an install run refuses it (B13 round 43 C2534).
+CONFIG="${AGENTSYNC_CONFIG:-}"
+CONFIG="${CONFIG#"${CONFIG%%[![:space:]]*}"}"
+CONFIG="${CONFIG%"${CONFIG##*[![:space:]]}"}"
+[ -n "$CONFIG" ] || CONFIG="$HOME/agent-context/sources.toml"
+case "$CONFIG" in
+\~) CONFIG="$HOME" ;;
+\~/*)
+	CONFIG="${CONFIG#"~/"}"
+	CONFIG="$HOME${CONFIG:+/$CONFIG}"
+	;;
+esac
 APP_NAME="AgentSyncLauncher.app"
 APP_DEST="$HOME/Applications/$APP_NAME"
 # The uv installer, pinned to the uv version the three workflows use and to its SHA-256, so a changed or
@@ -11436,6 +11453,20 @@ if [ "$LIST_FOLDERS" -eq 1 ]; then json_goes_with --list-folders; else json_goes
 if [ -n "$RUN_DIR" ]; then
 	case "$RUN_DIR" in /*) ;; *) RUN_DIR="./$RUN_DIR" ;; esac
 	cd "$RUN_DIR" 2>/dev/null || usage_error '--cwd is not a folder this run can enter:' "${RUN_DIR#./}"
+fi
+# A relative AGENTSYNC_CONFIG: step 2 would write a config under this folder that a later bare `agentsync sync`
+# from another folder never reads, so an install run refuses it, naming the absolute path to export; a ~user
+# home is refused too. --report-only and --list-folders read it from this folder (B13 round 43 C2534).
+if [ "$LIST_FOLDERS" -eq 0 ] && [ "$REPORT_ONLY" -eq 0 ]; then
+	case "$CONFIG" in
+	/*) ;;
+	\~*) usage_error "AGENTSYNC_CONFIG names another account's home; export it as an absolute path and run the command again" ;;
+	*)
+		cfg_abs="$CONFIG"
+		while [ "${cfg_abs#./}" != "$cfg_abs" ]; do cfg_abs="${cfg_abs#./}"; done
+		usage_error "AGENTSYNC_CONFIG is a relative path, which a later agentsync run from another folder reads as another file; export AGENTSYNC_CONFIG=$(shown_arg "$PWD/$cfg_abs") and run the command again"
+		;;
+	esac
 fi
 record_flush
 # The arguments a NEXT's re-run names: every one until the config step has added the folders, then none of

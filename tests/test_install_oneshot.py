@@ -9368,7 +9368,8 @@ def test_the_shell_report_cuts_a_cwd_folder_on_the_run_header_and_debug_lines_c1
     or a newline in the folder never leaves a line no cut reads."""
     cwd = Path(env["HOME"]) / "Projects" / "acquisition Fabrikam Deal"
     (cwd / "cfg").mkdir(parents=True)
-    run = {**env, "AGENTSYNC_CONFIG": "cfg/sources.toml"}
+    # absolute: an install run refuses a relative AGENTSYNC_CONFIG (B13 round 43 C2534)
+    run = {**env, "AGENTSYNC_CONFIG": str(cwd / "cfg" / "sources.toml")}
     arg = ["--cwd", str(cwd)] if form == "blank" else [f"--cwd={cwd}"]
     cp = install_sh(run, *arg, "--debug", "--source-local", "./missing-thing")
     assert cp.returncode == 2, cp.stdout + cp.stderr
@@ -9426,6 +9427,48 @@ def test_the_shell_report_cuts_a_config_path_that_is_not_the_default_c2063(
     cp = install_sh(env, "--report-only")
     assert cp.returncode == 0, cp.stdout + cp.stderr
     assert "- config: ~/agent-context/sources.toml (" in report_path(env).read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "~/agent-context/contoso.toml",
+        " \t~/agent-context/contoso.toml \n",
+        "~/contoso.toml",
+        "   ",
+        "cfg/sources.toml",
+        "  ./cfg/sources.toml\t",
+        "~nobody/contoso.toml",
+    ],
+)
+def test_the_installer_reads_agentsync_config_as_the_cli_does_c2534(
+    env: dict[str, str], folder: Path, wheel: Path, value: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 43 C2534: install.sh prefixed the working folder to a quoted `~/...` AGENTSYNC_CONFIG, so
+    step 2 wrote a config under a `~` folder there while step 3's bare `agentsync sync` read the home's. The
+    installer trims the value and expands a leading ~ or ~/ as agentsync.paths.default_config_path does, and
+    every step-2 call names that path; a value still relative is a usage error naming the absolute path
+    default_config_path gives from the --cwd folder, and a ~user home is refused."""
+    cwd = Path(env["HOME"]) / "Projects" / "Contoso Plans"
+    (cwd / "cfg").mkdir(parents=True)
+    monkeypatch.setenv("HOME", env["HOME"])
+    monkeypatch.setenv(paths.CONFIG_ENV, value)
+    monkeypatch.chdir(cwd)
+    want = paths.default_config_path()
+    cp = install_sh(
+        {**env, "AGENTSYNC_CONFIG": value}, "--cwd", str(cwd), str(wheel), "--source-local", str(folder)
+    )
+    if value.strip().startswith("~n"):
+        assert cp.returncode == 2 and calls(env) == [], cp.stdout + cp.stderr
+        assert "AGENTSYNC_CONFIG names another account's home; export it as an absolute path" in cp.stderr
+    elif not value.strip() or value.strip().startswith("~"):
+        assert cp.returncode == 0, cp.stdout + cp.stderr
+        assert f"agentsync add-source {folder} --config {want}" in calls(env), calls(env)
+    else:
+        assert cp.returncode == 2 and calls(env) == [], cp.stdout + cp.stderr
+        m = re.search(r"export AGENTSYNC_CONFIG=(.+) and run the command again", cp.stderr)
+        assert m and shlex.split(m.group(1)) == [str(want)], cp.stderr
+        assert not (cwd / "cfg" / "sources.toml").exists()
 
 
 @pytest.mark.parametrize("renderer", ["shell", "agentsync"])
