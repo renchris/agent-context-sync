@@ -6118,9 +6118,28 @@ def _add_pandoc_cut(red: Redactor, path: Path) -> None:
     """Register a configured ``[convert] pandoc_path`` under this home as one cut, as the config path is
     (:func:`_add_config_cut`), so the pandoc line and doctor's read ``~/<path>`` (B13 round 42, lane RA's
     finding while building C2210; privacy): the probe printed the path as configured and nothing registered
-    its folders. A path outside this home (``/opt/homebrew/bin/pandoc``) names no person and stays."""
+    its folders. A path outside this home (``/opt/homebrew/bin/pandoc``) names no person and stays.
+
+    B13 round 43 C2497 with C2431 (ruling 157; privacy): doctor's configured-pandoc fix writes the path as
+    one shell word (``doctor._shell_path``: ``~/'<rest>'``, ``~/"<rest>"`` for a name holding a ``'``, the
+    ``'\\''`` splice or the ``$'...'`` form), whose quote broke every registered literal, so the Doctor FAIL's
+    fix printed the folder in clear. Each absolute form (as written, expanded, resolved) also registers its
+    shell word, cut to the same ``~/<path>``; ``home_only`` kept. The native copy's fix names
+    ``~/.local/share/agentsync/pandoc``, a fixed agentsync location no person chose, so it needs no cut."""
+    from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are
+
     for form in dict.fromkeys((path, expand(path))):
         _add_config_cut(red, form, kept=None, home_only=True)
+    forms = [path, expand(path)]
+    with contextlib.suppress(OSError, RuntimeError):
+        forms.append(expand(path).resolve())
+    for form in dict.fromkeys(forms):
+        shown = _config_cut_shown(form) if form.is_absolute() else None
+        if shown is None:
+            continue
+        quoted = doctor._shell_path(form)
+        if quoted.startswith("~/"):
+            red.add_cut(quoted, shown)
 
 
 def _add_config_cut(
@@ -6136,26 +6155,33 @@ def _add_config_cut(
     folder or organization reads ``~/Library/CloudStorage/<path>`` in both reports, where the redacted form
     kept ``OneDrive-<org-1>/<folder-1>`` here alone. ``kept`` is the one form left in clear, ``home_only``
     cuts only a path under this home (:func:`_add_pandoc_cut`)."""
-    home = Path.home()
-    homes = {str(home), os.path.realpath(home)}
     forms = {str(path)}
     with contextlib.suppress(OSError, RuntimeError):
         forms.add(str(path.resolve()))
-
-    def tilde(form: str) -> str | None:
-        for h in sorted(homes, key=len, reverse=True):
-            if h not in ("", "/") and form.startswith(h.rstrip("/") + "/"):
-                return "~" + form[len(h.rstrip("/")) :]
-        return None
-
-    if home_only and tilde(str(path)) is None:
+    if home_only and _home_tilde(str(path)) is None:
         return
-    shown_as = tilde(str(path)) or str(path)
+    shown_as = _home_tilde(str(path)) or str(path)
     if shown_as == kept:
         return
     shown = _cut_path(shown_as)  # unredacted, as install.sh's config_shown cuts it (B13 round 42 C2231)
-    for form in [*forms, *filter(None, map(tilde, forms))]:
+    for form in [*forms, *filter(None, map(_home_tilde, forms))]:
         red.add_cut(form, shown)
+
+
+def _home_tilde(form: str) -> str | None:
+    """``form`` as ``~/<rest>`` when it lies under this home (as HOME gives it, or resolved), else None."""
+    home = Path.home()
+    for h in sorted({str(home), os.path.realpath(home)}, key=len, reverse=True):
+        if h not in ("", "/") and form.startswith(h.rstrip("/") + "/"):
+            return "~" + form[len(h.rstrip("/")) :]
+    return None
+
+
+def _config_cut_shown(path: Path) -> str | None:
+    """What :func:`_add_config_cut` shows a path under this home as (``~/<path>``), or None outside it: the
+    one computation the config cut and the pandoc cut's shell words share (B13 round 43 C2431)."""
+    tilde = _home_tilde(str(path))
+    return None if tilde is None else _cut_path(tilde)
 
 
 def _link_targets(r: _Run) -> list[str]:

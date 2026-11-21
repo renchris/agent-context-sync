@@ -28724,6 +28724,34 @@ def test_the_configuration_names_a_convert_setting_and_the_run_it_changed_in_c22
     assert setup_report._CONVERT_OPTIONS_META == cycle._CONVERT_OPTIONS_META
 
 
+def test_doctors_quoted_pandoc_path_is_cut_through_the_real_doctor_c2497_c2431(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 43 C2497 with C2431 (ruling 157; privacy): doctor's configured-pandoc fix writes the path as
+    one shell word (`~/'Tools/Zephyrine Quarry/pandoc'`), which no registered literal matched, so the Doctor
+    FAIL's fix printed the folder in clear; the C2210 test built with no doctor hook and never saw it. Built
+    through the CLI's own hooks: a missing pandoc under the home whose name holds a blank, then a `'` (the
+    double-quoted word), reads `pandoc_path (~/<path>)`, and one under /opt/homebrew stays in clear."""
+    base = fake_mac["config"].read_text(encoding="utf-8")
+    for leaf in ("Zephyrine Quarry", "O'Zephyrine Quarry"):
+        pandoc = Path.home() / "Tools" / leaf / "pandoc"
+        fake_mac["config"].write_text(
+            base + f"\n[convert]\npandoc_path = {toml_string(str(pandoc))}\n", encoding="utf-8"
+        )
+        text, _red = setup_report.build_report(fake_mac["config"], hooks=cli._report_hooks())
+        leaks = [ln for ln in text.splitlines() if "Zephyrine" in ln or "Quarry" in ln]
+        assert not leaks, (leaf, leaks)
+        [fail] = [ln for ln in section(text, "Doctor").splitlines() if "[FAIL] pandoc" in ln]
+        assert "pandoc_path (~/<path>)" in fail, (leaf, fail)
+    kept = "/opt/homebrew/Cellar/zephyrine-missing/bin/pandoc"
+    fake_mac["config"].write_text(
+        base + f"\n[convert]\npandoc_path = {toml_string(kept)}\n", encoding="utf-8"
+    )
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=cli._report_hooks())
+    [fail] = [ln for ln in section(text, "Doctor").splitlines() if "[FAIL] pandoc" in ln]
+    assert f"pandoc_path ('{kept}')" in fail, fail
+
+
 def test_a_config_cut_runs_to_its_path_tokens_end_c2290() -> None:
     """B13 round 42 C2290 (ruling 147; privacy; makes worse True for a boundary-only match): the whole-config
     cut replaced the literal alone, so `sources.toml-PrivateBackup` printed its suffix after the cut, and a
