@@ -2991,10 +2991,11 @@ config_path_values() {
 # The [agentsync] table's state_dir, docs_repo, cache_dir and log_dir as "<key> TAB <value>", the first of each,
 # read as TOML strings: a basic one "..." unescaped as config_path_values unescapes it, a literal one '...' as it
 # stands (B13 round 23 A41: the docs_repo reader took "..." only and undid no escape). A TAB in a value is a
-# space, which the pair format carries.
+# space, which the pair format carries. Given TABLE KEY, that table's first KEY alone, read the same way: the
+# [convert] table's pandoc_path, which redaction_pairs cuts (B13 round 43 ruling 157, C2432).
 agentsync_dir_values() {
 	[ -f "$CONFIG" ] || return 0
-	LC_ALL=C awk '
+	T="${1:-agentsync}" K="${2:-state_dir|docs_repo|cache_dir|log_dir}" LC_ALL=C awk '
 		function hex(h,    i, v) {
 			v = 0; h = tolower(h)
 			for (i = 1; i <= length(h); i++) v = v * 16 + index("0123456789abcdef", substr(h, i, 1)) - 1
@@ -3006,8 +3007,8 @@ agentsync_dir_values() {
 			if (c < 65536) return sprintf("%c%c%c", 224 + int(c / 4096), 128 + int(c / 64) % 64, 128 + c % 64)
 			return sprintf("%c%c%c%c", 240 + int(c / 262144), 128 + int(c / 4096) % 64, 128 + int(c / 64) % 64, 128 + c % 64)
 		}
-		/^[[:space:]]*\[/ { t = ($0 ~ /^[[:space:]]*\[[[:space:]]*agentsync[[:space:]]*\]/); next }
-		t && match($0, /^[[:space:]]*(state_dir|docs_repo|cache_dir|log_dir)[[:space:]]*=[[:space:]]*/) {
+		/^[[:space:]]*\[/ { t = ($0 ~ ("^[[:space:]]*\\[[[:space:]]*" ENVIRON["T"] "[[:space:]]*\\]")); next }
+		t && match($0, "^[[:space:]]*(" ENVIRON["K"] ")[[:space:]]*=[[:space:]]*") {
 			k = $0; sub(/^[[:space:]]*/, "", k); sub(/[[:space:]=].*$/, "", k)
 			v = substr($0, RLENGTH + 1); q = substr(v, 1, 1); v = substr(v, 2); out = ""; ok = 0
 			if (q == "\047") {
@@ -3217,7 +3218,7 @@ config_shown() { # PATH
 }
 redaction_pairs() {
 	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x links walked lk
-	local cfg_cut tilde port k folders_seen=$'\n' ph b auth sep tail rw keys key m sp top folder_keys=$'\n' FUZZY
+	local cfg_cut tilde port k folders_seen=$'\n' ph b auth sep tail rw keys key m sp top raw folder_keys=$'\n' FUZZY
 	local tables=0 ids=" " hp beside own_state own_docs own_cache own_logs fl fuzzy_keys=$'\n' folded_vals=$'\n'
 	local -a known=() logged_late=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=() listed=() rooted=() placed=() cfgpaths=()
 	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
@@ -3301,6 +3302,31 @@ redaction_pairs() {
 	}
 	home_flag() { # a home's pair flag: u under /Users/, else t (B13 round 35 C941)
 		case "$1" in /Users/*) echo u ;; *) echo t ;; esac
+	}
+	# A configured path as pathlib reads it (paths.expand), so as doctor and status print it and the Python report
+	# registers it: each // and /./ is one /, a trailing / or /. goes, .. stays; a leading // of exactly two
+	# slashes stays, as POSIX pathlib keeps it; ~ and a relative path are left as written. Each replacement is a
+	# variable: bash 3.2 keeps the backslash of a literal \/ in one (B13 round 43 ruling 157, C2430, C2432)
+	pnorm() { # PATH: its parts, // and /./ collapsed, no slash at either end
+		local p="/$1/" s=/ d=// o=/./
+		while case "$p" in *//* | */./*) true ;; *) false ;; esac; do
+			p="${p//$o/$s}"
+			p="${p//$d/$s}"
+		done
+		p="${p#/}"
+		printf '%s' "${p%/}"
+	}
+	path_norm() { # VALUE
+		local r
+		case "$1" in
+		//[!/]*) printf '//%s' "$(pnorm "$1")" ;;
+		/*) printf '/%s' "$(pnorm "$1")" ;;
+		\~/*)
+			r="$(pnorm "${1#\~/}")"
+			printf '~%s' "${r:+/$r}"
+			;;
+		*) printf '%s' "$1" ;;
+		esac
 	}
 	add_pair() { # VALUE PLACEHOLDER [w]: add_forms for a value of 3 or more characters
 		[ "${#1}" -ge 3 ] || return 0
@@ -3482,6 +3508,30 @@ redaction_pairs() {
 			add_pair "$(debug_path "$CONFIG")" "$cfg_cut" c
 		fi
 	fi
+	# a configured [convert] pandoc_path strictly under this home (as HOME gives it, or pwd -P) reads as the config
+	# path does, ~/<path>, in every spelling the pandoc line and doctor write or an agent pastes: as written, both
+	# absolute forms, ~/, debug_path and doctor._shell_path's ~/'..', ~/".." and '\'' splice; one elsewhere
+	# (/opt/homebrew/bin/pandoc) names no person and stays, as setup_report._add_pandoc_cut cuts it (B13 round 43
+	# ruling 157, C2432)
+	# (as written, and as pathlib reads it: a // or /./ in it is one /, which every printer writes)
+	while IFS=$'\t' read -r k v; do
+		raw="$v"
+		v="$(path_norm "$v")"
+		u="$v"
+		case "$u" in \~) u="$HOME" ;; \~/*) u="$HOME/${u#\~/}" ;; esac
+		case "$u" in
+		"$HOME"/?*) rw="${u#"$HOME"/}" ;;
+		*) if [ -n "$hp" ] && [ "$hp" != / ]; then case "$u" in "$hp"/?*) rw="${u#"$hp"/}" ;; *) continue ;; esac; else continue; fi ;;
+		esac
+		[ "$HOME" != / ] || continue
+		tilde='~' cfg_cut="$(config_shown "$HOME/$rw")"
+		[ -n "$cfg_cut" ] || continue
+		x="'" sep="'\\''"
+		for w in "$raw" "$v" "$HOME/$rw" ${hp:+"$hp/$rw"} "$tilde/$rw" "$(debug_path "$HOME/$rw")" "$tilde/'$rw'" "$tilde/\"$rw\"" \
+			"$tilde/'${rw//$x/$sep}'"; do
+			add_pair "$w" "$cfg_cut" c
+		done
+	done < <(agentsync_dir_values convert pandoc_path)
 	for w in ${loose[@]+"${loose[@]}"}; do # only as the argument: a short relative name is also a common word
 		v="$(printf '%q' "$w")"
 		printf '%s\t%s\t\n' "--source-local $v" "--source-local <path>"

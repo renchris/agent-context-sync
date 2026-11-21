@@ -2590,6 +2590,85 @@ def test_both_reports_cut_a_config_path_to_its_tokens_end_c2290(
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
 @pytest.mark.parametrize(
+    ("leaf", "written"),
+    [
+        ("Zephyr Quarry", None),
+        ("O'Zephyr Quarry", None),
+        ("O'Zephyr $Quarry", None),
+        (None, None),
+        ("Zephyr Quarry", "~/Tools//{leaf}/pandoc"),
+        ("Zephyr Quarry", "{home}/Tools/./{leaf}/pandoc"),
+    ],
+)
+def test_both_reports_cut_a_configured_pandoc_path_in_every_spelling_c2432(
+    env: dict[str, str],  # noqa: F811
+    leaf: str | None,
+    written: str | None,
+    locale: str,
+) -> None:
+    """B13 round 43 C2432 (ruling 157; privacy): the shell report registered no `[convert] pandoc_path`, so
+    the pandoc line, doctor's FAIL and its fix printed the folder in clear where the agentsync report printed
+    `~/<path>`. A pandoc under the home whose folder holds a blank (a literal TOML string), then a `'` (a
+    basic one: doctor writes `~/"..."`), then a `'` and a `$` (doctor's `'\\''` splice) reads `~/<path>` in
+    both reports, one line, in each spelling a printer writes: as written, absolute, `~/` and doctor's shell
+    word (doctor._quoted of the part under the sandbox home); the shell report (bash 3.2) also cuts the
+    spellings ruling 157 pairs that no printer writes for it, debug_path's `%q` and the shell words doctor
+    did not pick. One under /opt/homebrew names no person and stays, in both locales. One written with a
+    `//` or a `/./` (`written`) is the path pathlib reads, which every printer writes: the shell report
+    printed it in clear (B13 round 43, lane RB's review), and cuts the spelling as written too."""
+    from agentsync.ops import doctor  # noqa: PLC0415 - as setup_report imports it
+
+    home = Path(env["HOME"])
+    pandoc = home / "Tools" / leaf / "pandoc" if leaf else Path("/opt/homebrew/bin/pandoc")
+    spelled = written.format(home=home, leaf=leaf) if written else str(pandoc)
+    value = f"'{spelled}'" if leaf and "'" not in leaf else json.dumps(spelled)
+    table = local_source_table("s0", _cloud(env) / "OneDrive-Contoso" / "Juniper Notes")
+    body = f"{default_config_text()}{table}\n[convert]\npandoc_path = {value}\n"
+    rest = str(pandoc.relative_to(home)) if leaf else ""
+    picked = f"~/{doctor._quoted(rest)}" if leaf else doctor._shell_path(pandoc)  # _shell_path under env HOME
+    said = [
+        f"[ok  ] pandoc — pandoc 3.1.9 at {pandoc}",
+        f"[FAIL] pandoc — {f'~/{rest}' if leaf else pandoc} did not run",
+        f"check or replace the pandoc at [convert] pandoc_path ({picked})",
+        "[ok  ] pandoc — pandoc 3.1.9 at /opt/homebrew/bin/pandoc",
+    ]
+    splice = "~/'" + rest.replace("'", "'\\''") + "'"
+    words = [f"~/'{rest}'", f'~/"{rest}"', splice] if leaf else []
+    shell_only = [
+        f"debug: pandoc {_debug_path(str(home), str(pandoc), locale)}" if leaf else "",
+        *(f"pandoc_path ({w})" for w in dict.fromkeys(words) if w != picked),
+        f"pandoc_path ({spelled})" if written else "",
+    ]
+    shell_only = [ln for ln in shell_only if ln]
+    shell, python, shell_private, python_private = _both_reports(
+        env,
+        ["Juniper Notes"],
+        [*said, *shell_only],
+        locale,
+        config=home / "agent-context" / "sources.toml",
+        config_body=body,
+    )
+    n = len(said)
+    assert shell[:n] == python[:n] and shell_private == python_private, list(zip(shell, python, strict=True))
+    if leaf is None:
+        assert python == said, python
+        return
+    leaks = [ln for ln in [*shell, *python[:n]] if "Zephyr" in ln or "Quarry" in ln]
+    assert not leaks, leaks
+    assert python[:n] == [
+        "[ok  ] pandoc — pandoc 3.1.9 at ~/<path>",
+        "[FAIL] pandoc — ~/<path> did not run",
+        "check or replace the pandoc at [convert] pandoc_path (~/<path>)",
+        said[3],
+    ], python
+    assert shell[n:] == [
+        "debug: pandoc ~/<path>",
+        *(["pandoc_path (~/<path>)"] * (len(shell_only) - 1)),
+    ], shell
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize(
     "names", [["Alder29\x1eBirch29", "Alder30\x7fBirch30"], ["Alder31\tBirch31", "Q3\x08Plans"]]
 )
 @pytest.mark.xfail(
