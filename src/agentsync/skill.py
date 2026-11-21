@@ -148,7 +148,10 @@ def procedure(*, archive: bool = False) -> str:
         + f"""\
 6. What each `{bin_} curate` row asks of you:
    `STALE`: the source changed since the page's pin: re-read it, update the page and the pin.
-   `SOURCE-DELETED`: the source was deleted upstream: re-cite the claim from another source or retire it.
+   `SOURCE-DELETED`: the cited page is a tombstone (its detail, when there is one, is the page's `reason:`;
+   none means the source was deleted upstream): re-cite the claim from another source or retire it.
+   `SOURCE-SUPERSEDED`: the page was replaced by other pages of the same, still-live file: re-cite the claim
+   from the page the row names after `now` and update the pin.
    `SOURCE-UNREADABLE`: the source is unreadable or refused, not absent (see `_sync/QUARANTINE.tsv`):
    never re-curate on it.
    `MISSING-OR-UNPARSEABLE`: the cited path is not a readable mirror page (a typo, or moved or reaped):

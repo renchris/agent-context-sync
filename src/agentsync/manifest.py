@@ -455,6 +455,8 @@ _SOURCE_COLUMNS = (
 )
 
 _FOLD_SQL_FUNCTION = "agentsync_fold"
+UNIT_REMOVED_REASON = "unit-removed"
+"""A tombstone's reason for a unit of a still-live item the run removed (publish's ``_UNIT_REMOVED``)."""
 _RESET_HASHES_SQL = (
     "UPDATE items SET content_sha256 = NULL, canonical_sha256 = NULL, canonical_method = NULL, "
     "canonical_parts = NULL WHERE source_id = ? AND stable_id = ?"
@@ -2861,12 +2863,26 @@ class Manifest:
             )
 
     def run_changes(self, run_id: int) -> list[MirrorChange]:
-        """The mirror changes recorded for ``run_id``, in production order."""
+        """The mirror changes recorded for ``run_id``, in production order.
+
+        ``unit_removed`` is derived, never stored: a D change is one when the tombstone on its path was
+        written by the same run with reason ``unit-removed``, which add_tombstone writes in the transaction
+        that records the change.  So a run carried after a crash counts a removed unit m, never d, with no
+        schema change an older build would refuse (B13 round 43 C2507 with C2444, ruling 164)."""
         return [
-            MirrorChange(ChangeOp(r[0]), str(r[1]), str(r[2]), str(r[3]), r[4])
+            MirrorChange(
+                ChangeOp(r[0]),
+                str(r[1]),
+                str(r[2]),
+                str(r[3]),
+                r[4],
+                unit_removed=r[0] == ChangeOp.DELETED.value and r[5] == UNIT_REMOVED_REASON,
+            )
             for r in self._db.execute(
-                "SELECT op, path, source_id, stable_id, prev_path FROM run_changes WHERE run_id = ? "
-                "ORDER BY seq",
+                "SELECT rc.op, rc.path, rc.source_id, rc.stable_id, rc.prev_path, t.reason "
+                "FROM run_changes rc LEFT JOIN tombstones t "
+                "ON t.output_path = rc.path AND t.deleted_run = rc.run_id "
+                "WHERE rc.run_id = ? ORDER BY rc.seq",
                 (run_id,),
             ).fetchall()
         ]

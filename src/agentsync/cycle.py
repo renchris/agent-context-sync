@@ -120,7 +120,7 @@ from agentsync.errors import (
     PublishError,
     SidecarPathError,
 )
-from agentsync.frontmatter import FrontmatterError, parse_frontmatter, parse_mirror_page
+from agentsync.frontmatter import FrontmatterError, parse_frontmatter, parse_mirror_page, split_frontmatter
 from agentsync.graph.auth import MsalAuth, settings_from_config
 from agentsync.graph.client import GraphClient, user_agent
 from agentsync.graph.drive import DriveArm
@@ -1699,6 +1699,23 @@ def _repair_outputs(
                             ),
                         )
                         _write_atomic(path, text)
+                        # the row takes the page it now holds, as _rerender_tombstones' does, so the next
+                        # repair does not take it for damage and a re-render can reach it again (B13 round
+                        # 43 C2510, ruling 164)
+                        body = split_frontmatter(text)[1]
+                        fixed = dataclasses.replace(
+                            out,
+                            page_sha256=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                            rendered_sha256=hashlib.sha256(body.encode("utf-8")).hexdigest(),
+                        )
+                        manifest.replace_outputs(
+                            src.id,
+                            stable_id,
+                            [
+                                fixed if o.output_path == out.output_path else o
+                                for o in manifest.outputs_for(src.id, stable_id)
+                            ],
+                        )
             live = [o for o in outs if o.status is not OutputStatus.TOMBSTONE]
             if not live:
                 continue

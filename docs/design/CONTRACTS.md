@@ -4920,7 +4920,9 @@ All additive: no §15/§16 signature was removed or renamed. Behaviour changes a
 correctness-noop-safe-save-commits, deploy-ops-purge-false-verified).** The manifest gains additive tables
 created on open (no `MANIFEST_SCHEMA_VERSION` bump; an older build ignores them): `item_aliases(source_id,
 alias_id, stable_id, origin)` (`manifest.ALIASES_SQL`), `redacted_items(source_id, stable_id)` and
-`run_changes(run_id, seq, op, path, source_id, stable_id, prev_path)`. `Manifest.rekey` records every retired id;
+`run_changes(run_id, seq, op, path, source_id, stable_id, prev_path)` (Amended 2026-11-21, §16.272 C2507: no
+`unit_removed` column; `Manifest.run_changes` derives it for a D change from the tombstone on the same path written
+by the same run with reason `unit-removed`). `Manifest.rekey` records every retired id;
 the **durable key** (the item's first id) is what page frontmatter `stable_id` and the shard's `stable_id` carry,
 so a same-content safe-save or a volume-UUID change moves no committed byte (§5.1 "nothing volatile" now holds for
 local sources). New `Manifest` methods: `durable_id`, `aliases_of`, `resolve_alias`, `forget_item`,
@@ -43724,6 +43726,10 @@ page itself, and repair from the item's live pages. `MirrorChange.unit_removed` 
 run record, so it leaves the `d` count. `lints.py`'s tombstone headings take `# [NO LONGER PRODUCED]` in the
 same commit. Tests: `test_a_whole_page_replaced_by_units_names_its_first_new_page_and_counts_no_deletion_c2205`,
 `test_removed_unit_is_tombstoned_and_can_come_back` (the removed sheet's heading, no `superseded_by`, `0d`).
+Amended 2026-11-21, §16.272 C2507, C2445, C2409, C2510: a run carried after a crash derives `unit_removed` from
+the same run's `unit-removed` tombstone, so it still counts M; the CHANGELOG's path line prints the counted letter
+and ` (part no longer produced)`; curate reads `reason:` and `superseded_by:` (SOURCE-SUPERSEDED); and a re-render,
+like repair, takes `superseded_by` from the item's live pages, never the page itself, repair recording its digests.
 
 **A re-planned recording stub says the wait it is in now** (C2245; ruling 155). `_recording_defer`'s stub
 branch, which `_replan_recording_stubs` reaches in an interactive sync, moved a recording's `no converter` row
@@ -44247,6 +44253,32 @@ source on PATH as `created` with that one line (C2441). Tests:
 `test_status_says_the_inbox_state_on_a_line_of_its_own_c2410` (a home through a link, paused, retired, another
 kind, a file, a dangling link, no source), `test_status_line_matches_the_kept_inbox_by_identity_c2411`, and the
 three add-source inbox-first tests, each now asserting one line and `--json`'s `created`.
+
+**A unit-removed tombstone is a change that names its successor, wherever it is read** (C2507 with C2444,
+C2445, C2409, C2510; ruling 164). `run_changes` kept no `unit_removed`, so a run carried after a crash
+(`_carry_crashed_changes` reads only `Manifest.run_changes`) counted a removed unit `d`. `Manifest.run_changes`
+derives it, with no schema change an older build would refuse: a D change whose path's tombstone was written by
+the same run (`deleted_run`) with reason `manifest.UNIT_REMOVED_REASON` (`unit-removed`; publish's `_UNIT_REMOVED`
+is it), by a LEFT JOIN on `tombstones` (C2507 with C2444, over a new column). The CHANGELOG's path line printed
+`- D` beside a count of `0d`; it prints `model.counted_op`'s letter and, for a removed unit,
+`publish.UNIT_REMOVED_CHANGELOG_NOTE` (` (part no longer produced)`), as `- M <path> (part no longer produced)`,
+`MirrorChange.op` staying D (C2445). The page keeps `status: deleted` and `deleted_at:` (a superseded status
+fails `lint_mirror_frontmatter`'s required fields and drops the page from every reader that finds tombstones by
+`status: deleted`: makes worse True); curate reads a deleted page's `reason:` and `superseded_by:` through its
+frontmatter: `unit-removed` with a replacement is `curate.SOURCE_SUPERSEDED` (`SOURCE-SUPERSEDED <page> <source>
+(now <superseded_by>)`), in `VERDICTS` and outside `CHECKPOINT_VERDICTS` as SOURCE-DELETED is; any other reason
+but `deleted-upstream` is SOURCE-DELETED with `(<reason>)` as its detail, and an upstream deletion stays a bare
+SOURCE-DELETED. The skill's step 6 gives SOURCE-SUPERSEDED its row and SOURCE-DELETED its detail, and
+`MIRROR_CLAUDE_MD` says `reason:` gives the cause and `superseded_by:` any replacement (C2409).
+`Publisher._tombstone_again` derives `superseded_by` from the item's live outputs through `superseded_page`, never
+the page's own, `write_pages` and `rewrite_frontmatter` re-render a kept `unit-removed` whole tombstone whose
+successor their rows move (`_successors_again`, one M change each), and `_repair_outputs` stores the repaired
+tombstone's `page_sha256` and `rendered_sha256` (storing the successor would freeze a stale path: makes worse
+True); repair still titles the page with the item's name, as before (C2510). Tests:
+`test_a_carried_unit_removed_change_still_counts_m_c2507` (a deleted-upstream control),
+`test_removed_unit_is_tombstoned_and_can_come_back` (the CHANGELOG line),
+`test_a_cited_page_a_sync_replaced_is_superseded_not_deleted_c2409`,
+`test_a_superseded_tombstone_names_the_items_live_page_in_both_paths_c2510`.
 
 **A lock that named no holder has its own mark** (C2540 with C2502). Under install.sh's quiet wait, a wait its
 probe missed marked stdout with `cli.LOCK_WAITED_MARK` (`lock wait: this sync waited for another sync's lock`)

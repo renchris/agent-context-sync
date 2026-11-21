@@ -45,7 +45,7 @@ from agentsync.frontmatter import (
     render_mirror_page,
     split_frontmatter,
 )
-from agentsync.manifest import ItemRow, Manifest, OutputRow, TombstoneRow, redacted_path
+from agentsync.manifest import UNIT_REMOVED_REASON, ItemRow, Manifest, OutputRow, TombstoneRow, redacted_path
 from agentsync.model import (
     SYNC_OUTPUT_END,
     CarriedLines,
@@ -76,7 +76,9 @@ MIRROR_CLAUDE_MD = (
     + """
 Every page here is a pure function of one source file; edits are overwritten by the next sync.
 Read `summary:` and `tokens_estimate:` in the frontmatter to decide whether to open a page; the ids and
-hashes are for the pipeline.  `status: deleted` pages are tombstones (the source was deleted upstream).
+hashes are for the pipeline.  `status: deleted` pages are tombstones: `reason:` says why
+(`deleted-upstream`: the source was deleted upstream), and `superseded_by:` names the page that replaced
+one, if any.
 Cite a page from topics/ with its `rendered_sha256`.  Check _sync/STATE.md before trusting a negative
 result.
 """
@@ -342,7 +344,9 @@ def notice_gone_why(n: int = 1) -> str:
 
 
 _EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
-_UNIT_REMOVED = "unit-removed"
+_UNIT_REMOVED = UNIT_REMOVED_REASON
+UNIT_REMOVED_CHANGELOG_NOTE = " (part no longer produced)"
+"""What a CHANGELOG path line adds for a removed unit, counted M (B13 round 43 C2445)."""
 DELETED_UPSTREAM = "deleted-upstream"
 """Tombstone reason of a confirmed upstream deletion: the one ``[governance] archive`` keeps a copy for."""
 ARCHIVE_DIR = "archive"
@@ -1690,10 +1694,20 @@ class Publisher:
         )
         return self._tombstone_again(out, archived=archived)
 
-    def _tombstone_again(self, out: OutputRow, *, archived: bool) -> OutputRow | None:
+    def _tombstone_again(
+        self, out: OutputRow, *, archived: bool, live_paths: Sequence[str] | None = None
+    ) -> OutputRow | None:
         """Render the tombstone page of ``out`` again from its row and its own frontmatter (a removed unit's
         title is its unit's, not the item's name); the updated row, or None when there is no tombstone, its
-        page does not parse or the text is unchanged."""
+        page does not parse or the text is unchanged.  ``superseded_by`` is derived from the item's live
+        pages (``live_paths``, else the manifest's), never the page's own, so a page that moved or went is
+        never named (B13 round 43 C2510, ruling 164: storing it froze a stale path)."""
+        if live_paths is None:
+            live_paths = [
+                o.output_path
+                for o in self._manifest.outputs_for(out.source_id, out.stable_id)
+                if o.status is not OutputStatus.TOMBSTONE
+            ]
         row = self._manifest.get_tombstone(out.output_path)
         current = self._read_text(out.output_path)
         if row is None or current is None:
@@ -1709,7 +1723,7 @@ class Publisher:
             source_path=fm.source_path,
             durable_id=fm.stable_id,
             archived=archived,
-            superseded_by=fm.superseded_by,
+            superseded_by=superseded_page(row, live_paths),
         )
         if text == current:
             return None
@@ -1717,6 +1731,25 @@ class Publisher:
         return dataclasses.replace(
             out, rendered_sha256=_sha256_text(split_frontmatter(text)[1]), page_sha256=_sha256_text(text)
         )
+
+    def _successors_again(self, rows: list[OutputRow]) -> list[MirrorChange]:
+        """Re-render, in ``rows`` (an item's output rows about to be stored), each kept ``unit-removed`` whole
+        tombstone whose ``superseded_by`` the item's live pages there no longer give, so it never names a page
+        that moved or went (B13 round 43 C2510, ruling 164).  Its row takes the new digests in place; one M
+        change each."""
+        live = [r.output_path for r in rows if r.status is not OutputStatus.TOMBSTONE]
+        changes: list[MirrorChange] = []
+        for n, out in enumerate(rows):
+            if out.status is not OutputStatus.TOMBSTONE or out.unit_id != UnitKind.WHOLE.value:
+                continue
+            tomb = self._manifest.get_tombstone(out.output_path)
+            if tomb is None or tomb.reason != _UNIT_REMOVED:
+                continue
+            new = self._tombstone_again(out, archived=False, live_paths=live)
+            if new is not None:
+                rows[n] = new
+                changes.append(MirrorChange(ChangeOp.MODIFIED, out.output_path, out.source_id, out.stable_id))
+        return changes
 
     def write_pages(self, item: ItemRow, pages: Sequence[PlannedPage], run_id: int) -> list[MirrorChange]:
         """Write pages + sidecars, replace the item's ``outputs`` rows, tombstone units that disappeared
@@ -1799,6 +1832,7 @@ class Publisher:
             )
             changes.append(change)
             rows.append(row)
+        changes += self._successors_again(rows)  # a kept tombstone names this run's live pages (C2510)
         self._manifest.replace_outputs(sid, stable, rows)
         refusal = next((p.refusal for p in pages if p.refusal), None)
         if refusal is not None and self._manifest.get_item(sid, stable) is not None:
@@ -1907,6 +1941,7 @@ class Publisher:
                 )
             )
         if rows:
+            changes += self._successors_again(rows)  # its pages moved: a kept tombstone follows (C2510)
             self._manifest.replace_outputs(sid, stable, rows)
         return changes
 
@@ -2274,7 +2309,10 @@ class Publisher:
             ordered = sorted(changes, key=lambda c: (c.path, c.op.value))
             for c in ordered[:_CHANGELOG_MAX_PATHS]:
                 arrow = f" ← {_quoted(c.prev_path, 400)}" if c.prev_path else ""
-                section.append(f"- {c.op.value} {_quoted(c.path, 400)}{arrow}")
+                # the letter the counts above take (a removed unit of a still-live item is M), and the word
+                # saying the page is now a tombstone (B13 round 43 C2445, ruling 164)
+                note = UNIT_REMOVED_CHANGELOG_NOTE if c.unit_removed else ""
+                section.append(f"- {counted_op(c).value} {_quoted(c.path, 400)}{arrow}{note}")
             if len(ordered) > _CHANGELOG_MAX_PATHS:
                 rest = len(ordered) - _CHANGELOG_MAX_PATHS
                 section.append(f"- … {rest} more paths: `git show --stat` on this sync's commit")

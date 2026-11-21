@@ -45,6 +45,7 @@ HAND_WRITTEN = "hand-written"
 VERDICTS: tuple[str, ...] = (
     "STALE",
     "SOURCE-DELETED",
+    "SOURCE-SUPERSEDED",
     "SOURCE-UNREADABLE",
     "MISSING-OR-UNPARSEABLE",
     "UNPINNED",
@@ -81,8 +82,15 @@ _DOCS_ROOT_SOURCE_PREFIXES = ("mirror/", "archive/")
 CHECKPOINT_VERDICTS: frozenset[str] = frozenset(
     {"STALE", "UNPINNED", "BAD-PIN", "MALFORMED", "MISSING-OR-UNPARSEABLE"}
 )
-"""Refresh verdicts that hold the ``curated`` checkpoint for a page changed since it.  SOURCE-DELETED and
-SOURCE-UNREADABLE never do: the source's state is not the page's fault and can outlive any session."""
+"""Refresh verdicts that hold the ``curated`` checkpoint for a page changed since it.  SOURCE-DELETED,
+SOURCE-SUPERSEDED and SOURCE-UNREADABLE never do: the source's state is not the page's fault and can outlive
+any session."""
+SOURCE_SUPERSEDED = "SOURCE-SUPERSEDED"
+"""The verdict for a cited page a sync replaced with other pages of the same, still-live item (a tombstone
+with ``reason: unit-removed`` and ``superseded_by:``): its detail names the replacement, ``(now <page>)``,
+never SOURCE-DELETED, which says the source was removed (B13 round 43 C2409, ruling 164)."""
+_UNIT_REMOVED = "unit-removed"
+_DELETED_UPSTREAM = "deleted-upstream"
 _VERDICT_HINTS: Mapping[str, str] = {
     "STALE": "the source changed since its at_rendered_sha256 pin: re-read it, update the page and the pin",
     "UNPINNED": "no at_rendered_sha256 pin",
@@ -1005,6 +1013,17 @@ def _read_mirror_head(root: Path, src: bytes) -> tuple[bytes, bytes, bool]:
     return cur, status, ok
 
 
+def _tombstone_head(root: Path, src: bytes) -> tuple[str, str]:
+    """A tombstone's ``reason:`` and ``superseded_by:`` (each "" when absent or unread), read through the
+    page's frontmatter: a path value may be quoted, which a line scan would keep (B13 round 43 C2409)."""
+    try:
+        data, _body = parse_frontmatter((root / os.fsdecode(src)).read_text(encoding="utf-8"))
+    except (OSError, ValueError, FrontmatterError):
+        return "", ""
+    reason, successor = data.get("reason"), data.get("superseded_by")
+    return (reason if isinstance(reason, str) else ""), (successor if isinstance(successor, str) else "")
+
+
 def _decode(b: bytes) -> str:
     """Bytes of the TSV to str, losslessly (``surrogateescape``) so lines re-encode byte-identical."""
     return b.decode("utf-8", "surrogateescape")
@@ -1029,7 +1048,13 @@ def _queue_row(root: Path, record: bytes) -> RefreshVerdict | None:
         return RefreshVerdict("MISSING-OR-UNPARSEABLE", page, src)
     cur, status, ok = _read_mirror_head(root, src_b)
     if status == b"deleted":
-        return RefreshVerdict("SOURCE-DELETED", page, src)
+        # the page stays ``status: deleted`` (every tombstone reader finds it so); its ``reason:`` and
+        # ``superseded_by:`` say why and what replaced it (B13 round 43 C2409, ruling 164)
+        reason, successor = _tombstone_head(root, src_b)
+        if reason == _UNIT_REMOVED and successor:
+            return RefreshVerdict(SOURCE_SUPERSEDED, page, src, f"(now {successor})")
+        why = f"({reason})" if reason and reason != _DELETED_UPSTREAM else ""
+        return RefreshVerdict("SOURCE-DELETED", page, src, why)
     if status in (b"unreadable", b"refused"):
         return RefreshVerdict("SOURCE-UNREADABLE", page, src)
     if not ok:

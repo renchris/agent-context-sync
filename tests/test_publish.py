@@ -18,7 +18,12 @@ from agentsync.config import Config, SourceConfig, canonical_source_root, parse_
 from agentsync.convert.registry import SIDECAR_DIGEST_PREFIX, _with_sidecar_digests
 from agentsync.curate import refresh_queue
 from agentsync.errors import PublishError, SidecarPathError
-from agentsync.frontmatter import parse_frontmatter, parse_mirror_page, validate_mirror_frontmatter
+from agentsync.frontmatter import (
+    parse_frontmatter,
+    parse_mirror_page,
+    split_frontmatter,
+    validate_mirror_frontmatter,
+)
 from agentsync.manifest import ItemRow, Manifest, TombstoneRow
 from agentsync.model import (
     ChangeOp,
@@ -592,6 +597,107 @@ def test_a_whole_page_replaced_by_units_names_its_first_new_page_and_counts_no_d
     assert env.pub.rerender_tombstone(out) is None and env.text(stub) == before, "re-rendered the same"
 
 
+def test_a_cited_page_a_sync_replaced_is_superseded_not_deleted_c2409(env: Env) -> None:
+    """B13 round 43 C2409 (ruling 164, makes worse True for a superseded status): a whole stub a workbook's
+    pages replaced is a tombstone (``status: deleted``, kept: every tombstone reader finds it so), and curate
+    called a page citing it SOURCE-DELETED, which the skill said meant the source was deleted upstream. curate
+    reads ``reason:`` and ``superseded_by:``: the row is SOURCE-SUPERSEDED naming the new first page, outside
+    the checkpoint verdicts as SOURCE-DELETED is; an upstream deletion stays a bare SOURCE-DELETED, and a
+    removed unit with no replacement gives its reason. The skill and mirror/CLAUDE.md say so."""
+    item = env.observe("vol:7", "contoso-clip.xlsx")
+    env.publish(item, result(unit()))
+    stub = "mirror/src/contoso-clip.xlsx.md"
+    env.publish(item, workbook("Q3", "Q4"))
+    first = "mirror/src/contoso-clip.xlsx.d/00-index.md"
+    fm, _body = parse_mirror_page(env.text(stub))
+    assert fm.status is PageStatus.DELETED and fm.deleted_at and fm.superseded_by == first  # kept
+
+    def row(source: str) -> curate.RefreshVerdict | None:
+        return curate._queue_row(env.repo, f"topics/contoso.md\t{source}\t{'a' * 64}".encode())
+
+    got = row(stub)
+    assert got is not None and got.line() == f"SOURCE-SUPERSEDED\ttopics/contoso.md\t{stub}\t(now {first})"
+    assert "SOURCE-SUPERSEDED" in curate.VERDICTS and "SOURCE-SUPERSEDED" not in curate.CHECKPOINT_VERDICTS
+    assert not curate._source_missing(env.repo, stub)
+    env.publish(item, workbook("Q3"))  # a sheet gone: unit-removed with no replacement
+    q4 = "mirror/src/contoso-clip.xlsx.d/02-q4.md"
+    got = row(q4)
+    assert got is not None and got.line() == f"SOURCE-DELETED\ttopics/contoso.md\t{q4}\t(unit-removed)"
+    gone = env.observe("vol:8", "Contoso notes.docx")
+    env.publish(gone, result(unit("# Notes\n\nbody\n", title="Notes")))
+    env.pub.tombstone(
+        "src", "vol:8", reason="deleted-upstream", run_id=env.run_id, today=TODAY, last_commit="f" * 40
+    )
+    notes = "mirror/src/contoso-notes.docx.md"
+    got = row(notes)
+    assert got is not None and got.line() == f"SOURCE-DELETED\ttopics/contoso.md\t{notes}", got
+    assert "`SOURCE-SUPERSEDED`: the page was replaced" in skill.procedure()
+    assert "`superseded_by:` names the page" in publish.MIRROR_CLAUDE_MD
+    assert "(the source was deleted upstream)." not in publish.MIRROR_CLAUDE_MD
+
+
+def test_a_superseded_tombstone_names_the_items_live_page_in_both_paths_c2510(env: Env) -> None:
+    """B13 round 43 C2510 (ruling 164, makes worse True for storing the successor): after a rename,
+    write_pages kept the superseded stub's tombstone as it was and _tombstone_again reused its own
+    ``superseded_by``, so it named a page that no longer exists, while repair derived the live one and left
+    the row's digests stale, so every later repair rewrote it and a re-render skipped it as changed. Both
+    paths derive it from the item's live pages through superseded_page, a kept tombstone is re-rendered when
+    they move, and repair records its page and rendered digests."""
+    item = env.observe("vol:7", "contoso-clip.xlsx")
+    env.publish(item, result(unit()))
+    stub = "mirror/src/contoso-clip.xlsx.md"
+    env.publish(item, workbook("Q3"))
+    assert parse_mirror_page(env.text(stub))[0].superseded_by == "mirror/src/contoso-clip.xlsx.d/00-index.md"
+    moved = env.observe("vol:7", "contoso-renamed.xlsx")
+    ch = env.publish(moved, workbook("Q3"))
+    now = "mirror/src/contoso-renamed.xlsx.d/00-index.md"
+    assert (env.repo / now).is_file()
+    fm, body = parse_mirror_page(env.text(stub))
+    assert fm.status is PageStatus.DELETED and fm.superseded_by == now and now in body, fm
+    assert (ChangeOp.MODIFIED, stub) in [(c.op, c.path) for c in ch], ch
+    out = env.manifest.output_by_path(stub)
+    assert out is not None and out.page_sha256 == sha(env.text(stub))  # the row holds what is on disk
+    assert env.pub.rerender_tombstone(out) is None, "the re-render derives the same successor"
+    # repair: a damaged tombstone page is rendered again and its row takes the new digests
+    (env.repo / stub).write_text("damaged\n", encoding="utf-8")
+    cycle._repair_outputs(env.config, env.manifest, env.run_id)
+    fm = parse_mirror_page(env.text(stub))[0]
+    assert fm.superseded_by == now, fm
+    out = env.manifest.output_by_path(stub)
+    assert out is not None and out.page_sha256 == sha(env.text(stub)), "repair recorded its page digest"
+    assert out.rendered_sha256 == sha(split_frontmatter(env.text(stub))[1])
+
+
+def test_a_carried_unit_removed_change_still_counts_m_c2507(env: Env) -> None:
+    """B13 round 43 C2507 with C2444 (ruling 164): run_changes kept no unit_removed, so a run carried after a
+    crash (``_carry_crashed_changes`` reads only ``Manifest.run_changes``) counted a removed unit as an
+    upstream deletion: the next commit read ``1d`` for a sheet gone from a still-live workbook. run_changes
+    derives the flag from the tombstone the same run wrote with reason ``unit-removed`` (no schema change),
+    so the carried change still counts m; a deleted-upstream tombstone stays d."""
+    item = env.observe("vol:1", "book.xlsx")
+    env.publish(item, workbook("Q3", "Q4"))
+    q4 = "mirror/src/book.xlsx.d/02-q4.md"
+    ch = env.publish(item, workbook("Q3"))
+    assert any(c.unit_removed and c.path == q4 for c in ch), ch
+    env.manifest.record_run_changes(env.run_id, ch)
+    carried = env.manifest.run_changes(env.run_id)  # what the next cycle reads after a crash
+    assert [(c.op, c.path, c.unit_removed) for c in carried if c.path == q4] == [(ChangeOp.DELETED, q4, True)]
+    assert gitops.commit_subject(carried, ["src"]) == gitops.commit_subject(ch, ["src"])
+    assert gitops.commit_subject(carried, ["src"]).endswith(" 0d src"), carried
+    assert [c for c in carried if c.op is ChangeOp.DELETED and not c.unit_removed] == []
+    # the control: an upstream deletion recorded the same way reads back d
+    gone = env.observe("vol:2", "Contoso notes.docx")
+    env.publish(gone, result(unit("# Notes\n\nbody\n", title="Notes")))
+    later = env.manifest.begin_run(CycleMode.POLL, host="test", pid=1)
+    deleted = env.pub.tombstone(
+        "src", "vol:2", reason="deleted-upstream", run_id=later, today=TODAY, last_commit="f" * 40
+    )
+    env.manifest.record_run_changes(later, deleted)
+    back = env.manifest.run_changes(later)
+    assert [(c.op, c.unit_removed) for c in back] == [(ChangeOp.DELETED, False)], back
+    assert gitops.commit_subject(back, ["src"]) == "sync: 0a 0m 0r 1d src"
+
+
 def test_rename_moves_the_page_with_op_r(env: Env) -> None:
     item = env.observe("vol:1", "old/a.docx")
     env.publish(item, result(unit()))
@@ -617,6 +723,13 @@ def test_removed_unit_is_tombstoned_and_can_come_back(env: Env) -> None:
     assert body.startswith(policy.UNTRUSTED_BANNER) and body.split("\n")[2] == "# [NO LONGER PRODUCED] Q4"
     assert "removed upstream" not in body and "no longer contains this part" in body
     assert publish._counts_text(ch).endswith(" 0d") and gitops.commit_subject(ch, ["src"]).endswith(" 0d src")
+    # B13 round 43 C2445 (ruling 164): the CHANGELOG's path line takes the letter its counts take, and says
+    # the page is no longer produced, never "- D" beside a count of 0d
+    env.pub.append_changelog(env.run_id, TODAY, ch, report())
+    log = (env.repo / f"CHANGELOG/{TODAY[:7]}.md").read_text(encoding="utf-8").splitlines()
+    named = [line for line in log if q4 in line]
+    assert named == [f"- M `{q4}`{publish.UNIT_REMOVED_CHANGELOG_NOTE}"], named
+    assert publish.UNIT_REMOVED_CHANGELOG_NOTE == " (part no longer produced)"
     t = env.manifest.get_tombstone(q4)
     assert t is not None and t.reason == "unit-removed" and t.reap_after == "2027-03-28"
     rows = {o.unit_id: o.status for o in env.manifest.outputs_for("src", "vol:1")}

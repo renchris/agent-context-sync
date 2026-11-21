@@ -128,6 +128,7 @@ def test_constants_match_the_design() -> None:
     assert set(VERDICTS) == {
         "STALE",
         "SOURCE-DELETED",
+        "SOURCE-SUPERSEDED",  # B13 round 43 C2409
         "SOURCE-UNREADABLE",
         "MISSING-OR-UNPARSEABLE",
         "UNPINNED",
