@@ -8350,7 +8350,8 @@ _CONVERT_OPTIONS_META = "convert_options"
 def _convert_line(c: Config) -> str:
     """Configuration's ``[convert]`` line (B13 round 42 C2210 with C2221, ruling 154): ``- [convert]:
     default``, or ``- [convert]: set (<option names>)`` naming each option that differs from
-    :class:`ConvertConfig`'s default, a number option (``max_page_bytes``) with its number and
+    :class:`ConvertConfig`'s default, each number option (``xlsx_stream_threshold_bytes``,
+    ``max_rows_per_sheet``, ``max_page_bytes``; B13 round 43 C2459) with its number and
     ``pandoc_path`` by its name only, never its value (a path that can name the person); then, from the
     manifest meta an edit after the first synced run leaves (:data:`_CONVERT_OPTIONS_META`), the run it
     was made in. An older manifest, or one with no such edit, adds nothing. A page cap someone set showed
