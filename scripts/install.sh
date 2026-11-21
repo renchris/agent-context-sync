@@ -4947,8 +4947,20 @@ redact_stream() {
 					post = substr(s, i + n, 1)
 					nn = n
 					if (cf) {
-						q = i + n
-						while (q <= length(s) && substr(s, q, 1) !~ /[] \t\r\f\013\047"),;:|]/ && !(substr(s, q, 1) == "." && (q == length(s) || substr(s, q + 1, 1) ~ /[] \t\r\f\013\047"),;:|]/))) q++
+						# a printf-%q \x whose x is not " sits inside the token; \" or a line-final \ ends it,
+						# and a . before either is a sentence end, as setup_report._CUT_TOKEN_END reads them
+						# (B13 round 43 ruling 158, C2496)
+						q = i + n; ls = length(s)
+						while (q <= ls) {
+							ch = substr(s, q, 1)
+							if (ch == "\\" && q < ls && substr(s, q + 1, 1) != "\"") { q += 2; continue }
+							if (ch == "\\" || ch ~ /[] \t\r\f\013\047"),;:|]/) break
+							if (ch == ".") {
+								after = substr(s, q + 1, 1)
+								if (q == ls || after ~ /[] \t\r\f\013\047"),;:|]/ || (after == "\\" && (q + 1 == ls || substr(s, q + 2, 1) == "\""))) break
+							}
+							q++
+						}
 						nn = q - i
 					}
 					if ((word && (pre ~ /[A-Za-z0-9_]/ || post ~ /[A-Za-z0-9_]/)) || (tail && post ~ /[A-Za-z0-9_.-]/) || (esc && !(post == "" || post == "/" || index(STOP, post) || (post == "\\" && substr(s, i + n + 1, 1) == "\""))) || (esc && pre ~ /[A-Za-z0-9_.-]/ && !sysdata(acc substr(s, 1, i - 1))) || (alnum && post ~ /[A-Za-z0-9]/) || (arg && post != "" && post !~ /[ \t"\047),;\]]/)) {

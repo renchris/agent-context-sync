@@ -2577,6 +2577,10 @@ def test_both_reports_cut_a_config_path_to_its_tokens_end_c2290(
         f"{cfg}-Private\\ Backup",
         f"saw {cfg}-Private\\ Backup there",
         f'{cfg}\\",',
+        # lane RB's shell half (C2496): two escapes, a `.` before `\"` and an escaped `.` inside
+        f"saw {tilde}-Private\\ Backup\\ Copy, then",
+        f'saw {cfg}.\\" x',
+        f"{cfg}-Private\\.Backup.",
     ]
     want = [
         "~/<path>",
@@ -2592,6 +2596,9 @@ def test_both_reports_cut_a_config_path_to_its_tokens_end_c2290(
         "~/<path>",
         "saw ~/<path> there",
         '~/<path>\\",',
+        "saw ~/<path>, then",
+        'saw ~/<path>.\\" x',
+        "~/<path>.",
     ]
     shell, python, _sp, _pp = _both_reports(
         env, ["Juniper Notes"], said, locale, shell=_R146_SHELL, config=cfg
