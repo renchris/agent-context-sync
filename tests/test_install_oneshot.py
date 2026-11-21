@@ -192,11 +192,13 @@ case "$sub" in
   init)
     [ -z "${STUB_INIT_RC:-}" ] ||
       { echo "configuration error: $cfg: not valid TOML (stub)" >&2; exit "$STUB_INIT_RC"; }
+    [ -z "${STUB_INBOX_ERR:-}" ] || printf '%s\\n' "$STUB_INBOX_ERR" >&2  # what init said of the inbox
     setup; inbox; hint "agentsync doctor" ;;
   add-source)
     [ -z "${STUB_ADD_SOURCE_SLEEP:-}" ] || sleep "$STUB_ADD_SOURCE_SLEEP"  # a slow call on a busy Mac
     [ -z "${STUB_ADD_SOURCE_RC:-}" ] || { echo "add-source failed (stub)" >&2; exit "$STUB_ADD_SOURCE_RC"; }
     [ "$pos" != "${STUB_ADD_SOURCE_FAIL:-}" ] || { echo "add-source failed (stub)" >&2; exit 1; }
+    [ -z "${STUB_INBOX_ERR:-}" ] || printf '%s\\n' "$STUB_INBOX_ERR" >&2
     setup; printf '[[source]]\\npath = "%s"\\n' "$pos" >> "$cfg"; inbox; hint "agentsync doctor"
     if [ -n "${STUB_ADD_SOURCE_SUMMARY:-}" ]; then  # the lines cli._ensure_setup ends every call on
       echo "added source '${pos##*/}'"
@@ -1327,6 +1329,32 @@ def test_a_file_named_inbox_is_not_called_an_ensured_inbox_c2207(
     again = install_sh(env, *args, timeout=300)
     assert "inbox: not added" not in again.stderr, again.stderr
     assert not _config_line(env).endswith(" inbox=not-added"), _config_line(env)
+
+
+@pytest.mark.parametrize("with_folder", [False, True], ids=["init", "add-source"])
+@pytest.mark.parametrize("said", ["not added", "another kind", "another kind, split", "added"])
+def test_another_kinds_source_on_the_inbox_folder_logs_inbox_not_added_c2440(
+    env: dict[str, str], wheel: Path, folder: Path, with_folder: bool, said: str
+) -> None:
+    """B13 round 43 ruling 162, C2440: install.log's inbox=not-added fired only on `inbox: not added`, while
+    another kind's source on the inbox folder, which ensure_inbox counts as there and the report reads as
+    not added, prints `inbox: <path> is source '<id>' (<kind>, <state>), not an inbox source`
+    (cli._ensure_inbox). Both lines now end the config step's log line with inbox=not-added; init's or
+    add-source's line for an inbox it added does not. The path is printed raw, so a newline in the docs
+    repo's parent splits the second line: it is matched on its tail."""
+    inbox = Path(env["HOME"]) / "agent-context" / "inbox"
+    lines = {
+        "not added": f"inbox: not added: {inbox} is not a folder",
+        "another kind": f"inbox: {inbox} is source {'contoso-drop'!r} (local, live), not an inbox source",
+        "another kind, split": f"inbox: {inbox.parent}/Con\ntoso/inbox is source 'contoso-2' (graph_drive, "
+        "retired), not an inbox source",
+        "added": f"added inbox source 'inbox' ({inbox}): drop files here",
+    }
+    args = [str(wheel), *(["--source-local", str(folder)] if with_folder else [])]
+    cp = install_sh({**env, "STUB_INBOX_ERR": lines[said]}, *args)
+    assert cp.returncode in (0, 2), cp.stdout + cp.stderr
+    assert f"\n{lines[said]}\n" in f"\n{cp.stderr}", cp.stderr
+    assert _config_line(env).endswith(" inbox=not-added") is (said != "added"), _config_line(env)
 
 
 @pytest.mark.parametrize("case", ["refused", "does not load", "dry run"])

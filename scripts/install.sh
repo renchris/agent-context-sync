@@ -431,9 +431,9 @@
 # synced, 0 included, or "synced=unreadable marks=<why>" when a config is there and it could not be read (why: no-tool, timeout,
 # older:<the name the installed agentsync lacks>, failed or failed:<the class of its error>); the config line ends with kept=N added=M when agentsync could count them: the folders
 # synced before the step and the ones it added, then inbox=not-added when init or add-source printed `inbox: not
-# added` (alone when the counts are unknown)), then the report step's line, then one "end" line (exit
-# status, total seconds, the report included). The report is written while a provisional end line is the log's
-# last line, so it reads a
+# added` or another kind's `inbox: <path> is source ..., not an inbox source` (alone when the counts are
+# unknown)), then the report step's line, then one "end" line (exit status, total seconds, the report
+# included). The report is written while a provisional end line is the log's last line, so it reads a
 # finished run; that line is then replaced by the report step's line and the final end line (when another
 # line followed it meanwhile, the report step's line is appended instead). `agentsync setup-report` reads it
 # and redacts it. git runs read-only (GIT_OPTIONAL_LOCKS=0: not even the index's stat
@@ -12274,6 +12274,16 @@ except Exception:
 	say "inbox: $(list_name "$inbox")"
 	case "$state" in "" | "live "*) ;; *) say "inbox state: $(list_name "$state")" ;; esac
 }
+# 0 when init's or add-source's stderr, the file $1, says the inbox was not added: `inbox: not added ...`, or
+# `inbox: <path> is source '<id>' (<kind>, <state>), not an inbox source` (cli._ensure_inbox), another kind's
+# source on the folder, which ensure_inbox counts as there and setup_report reads as not added (B13 round 43
+# ruling 162, C2440). The second form is matched on its tail alone, never from `inbox: `: the path is printed
+# raw, so a newline in the docs repo's parent splits the line. The tail holds config.SOURCE_ID_RE's id (repr
+# quotes it in single quotes), a SourceKind value and a SourceState value.
+inbox_not_added() {
+	LC_ALL=C grep -q -e '^inbox: not added' \
+		-e " is source '[a-z0-9][a-z0-9-]*' ([a-z_]*, [a-z]*), not an inbox source\$" "$1" 2>/dev/null
+}
 # How many remotes of the docs repo [governance] refuses, as init and add-source read them (cli._refuse_remotes):
 # a number only when the agentsync step 2 installed loads the config and its [governance] table and reads the
 # repo, within 10 s; empty when it cannot say. -I: nothing from the folder this runs in is imported.
@@ -12938,7 +12948,7 @@ if [ "${#FOLDERS[@]}" -gt 0 ]; then
 		HELD_RC=0
 		run "$AGENTSYNC" add-source "$f" --config "$CONFIG" </dev/null 2>"$ERRF" | add_source_filter "$nth" "${#FOLDERS[@]}" "$HELD" "$MARK" || HELD_RC=$?
 		cat "$ERRF" >&2
-		! LC_ALL=C grep -q '^inbox: not added' "$ERRF" 2>/dev/null || INBOX_NOT_ADDED=1
+		! inbox_not_added "$ERRF" || INBOX_NOT_ADDED=1
 		: >"$ERRF" # printed: on_exit prints only what a signal kept from this line
 		[ "$HELD_RC" -ne 0 ] || continue
 		[ -z "$HELD" ] || { cat "$HELD" && rm -f "$HELD"; }
@@ -12974,7 +12984,7 @@ else
 	INIT_RC=0
 	run "$AGENTSYNC" init --config "$CONFIG" </dev/null 2>"$ERRF" || INIT_RC=$?
 	cat "$ERRF" >&2
-	! LC_ALL=C grep -q '^inbox: not added' "$ERRF" 2>/dev/null || INBOX_NOT_ADDED=1
+	! inbox_not_added "$ERRF" || INBOX_NOT_ADDED=1
 	rm -f "$ERRF"
 	ERRF=""
 	(exit "$INIT_RC") || config_failed "agentsync init failed (see the error above)"
@@ -12986,7 +12996,8 @@ fi
 # What became of the folder choice, as counts: a re-run with no --source-local keeps what the person chose
 # before, and one with it adds only the folders not yet there. One line for the reader, and two fields on
 # the step's log line for the setup report; and inbox=not-added when init or add-source printed `inbox: not
-# added`, so install.log carries it (B13 round 42 ruling 151, C2207).
+# added` or `inbox: <path> is source ..., not an inbox source` (inbox_not_added), so install.log carries it
+# (B13 round 42 ruling 151, C2207; round 43 C2440).
 FOLDER_COUNTS=""
 NOW="$(synced_count)"
 kill "$TICKER" 2>/dev/null || true
