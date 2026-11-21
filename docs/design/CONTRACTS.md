@@ -44039,6 +44039,10 @@ stall bound; no reader needs it. Tests: `tests/test_gate_journal.py`
 `::test_the_ceiling_is_about_twice_the_slowest_part_and_each_record_keeps_its_duration_c2273` and
 `tests/test_ship_land.py::test_a_land_gate_part_stopped_at_status_124_says_which_line_names_a_hang_c2273`.
 
+Amended 2026-11-21, §16.274 C2483: round 42 lane RB's first land ran its rest part 6,522.58 s (8,220 tests), 1.66x
+under 10800, so `GATE_CEILING_S` is 13200 s (3 h 40 min), about twice that part, rounded up, and gate.sh's comment
+names it; the C2273 rule and its test's name stand.
+
 **The CI record carries round 41, and the head and the limit stay** (C2274; `CLAUDE.md`, `.github/workflows/ci.yml`; a
 fix that raises the head makes things worse). Round 41's ten ci attempts on main (4041089d to 74ceffac) took 63:35 to
 79:45, all past 60 and seven past 70; the slowest green was af21e633 at 78:44 (pytest's step 78:07 at 8793 tests), and
@@ -44217,6 +44221,16 @@ says no core request is left, `watch_runs` waits once for the reset, 5 s past it
 keeps its 3 reads and exit 9. Tests: `tests/test_ship_land.py`
 `::test_every_ci_watch_refreshes_once_a_minute_not_every_3_s_c2479` and
 `::test_a_read_that_fails_on_a_spent_rate_limit_waits_for_its_reset_once_c2479`.
+
+**The gate's ceiling stays about twice the slowest part** (C2483; `scripts/gate.sh`, `tests/test_gate_journal.py`;
+amends §16.269 C2273). gate.sh's comment called `GATE_CEILING_S`'s 10800 s about twice the slowest part, the rest
+part's 5,341 s in round 41, but round 42 lane RB's first land ran its rest part 6,522.58 s (8,220 tests, a red land
+whose part still ran to its end), 1.66x under it. No land was stopped or re-run past the ceiling, so nothing broke; the
+ceiling keeps C2273's rule, about twice the slowest part measured, rounded up: 13200 s (2 x 6,522.58 = 13,045), and
+the comment names that part. A slow part holds the land lock longer only while it still writes; a hang is still
+stopped by the 1,500 s stall bound. Test: `tests/test_gate_journal.py`
+`::test_the_ceiling_is_about_twice_the_slowest_part_and_each_record_keeps_its_duration_c2273` (its literal and
+assert moved).
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
