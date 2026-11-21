@@ -5161,7 +5161,9 @@ foreign_home_cut() {
 # never stopping at a blank before `-`. A first word that is kept stays to its CUT_FREE_END byte unless the
 # run reaches its `/` and is not kept whole; any other part is cut whole to the run's end, and only after a
 # `/` on to a CUT_FREE_END byte and each blank-led word after it that holds a `/`, no `=` or `://`, and opens
-# with none of `-`, `/` or `~` (C2050 with C2032)
+# with none of `-`, `/` or `~` (C2050 with C2032). Two residuals are named: a tenant written without the head,
+# and a kept first word whose run stops before a `/` (`OneDrive-Personal Secret then ~/x` keeps `Secret`), as
+# report_cuts.FREE_PART_STOP names them; no rule built on blanks tells a tenant word from prose there (C2473)
 FREECUT_AWK='function freeinit() {
 	fh = ENVIRON["FREE_HEAD"]; fe = ENVIRON["FREE_END"]; ft = ENVIRON["FREE_TRAIL"]
 	fstop = ENVIRON["FREE_STOP"]; fpath = ENVIRON["FREE_PATH"]

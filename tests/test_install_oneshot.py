@@ -4408,6 +4408,30 @@ def test_typed_note_cut_ends_on_every_head_even_an_empty_one(block: str) -> None
         assert out[3] == "debug: cwd ~/Projects/<path>" and out[5] == "debug: config ~/Projects/<path>", out
 
 
+def test_freecuts_comment_names_ruling_146s_two_residuals_as_report_cuts_does_c2473() -> None:
+    """B13 round 43 C2473: both reports cut every ruling-146 example alike and leave two named residuals,
+    which report_cuts.FREE_PART_STOP's docstring names; install.sh's freecut comment named neither. Since
+    ruling 160 (C2498) freecut lives in the shared FREECUT_AWK, and its comment is the shell comment block
+    right above that assignment, outside any quoted awk program."""
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    above = script.split("\nFREECUT_AWK='", 1)[0].splitlines()
+    block: list[str] = []
+    for ln in reversed(above):
+        if not ln.startswith("#"):
+            break
+        block.insert(0, ln.removeprefix("#"))
+    comment = " ".join(block)
+    source = (REPO / "src" / "agentsync" / "report_cuts.py").read_text(encoding="utf-8")
+    docstring = source.split("\nFREE_PART_STOP = ", 1)[1].split('"""', 2)[1]
+    for words in (
+        "Two residuals are named: a tenant written without the head, and a kept first word whose run stops"
+        " before a /",
+        "OneDrive-Personal Secret then ~/x",
+    ):
+        assert words in " ".join(comment.replace("`", "").split()), comment
+        assert words in " ".join(docstring.replace("``", "").split()), docstring
+
+
 def test_the_typed_cuts_word_lists_are_the_shells_and_the_reports() -> None:
     """B13 round 32 C666: typed_note_cut's awk reads the fixed components, generic folders and home dirs from
     ENVIRON; each list is setup_report's set (generic_folder's and generic_home_dir's, which their own tests
