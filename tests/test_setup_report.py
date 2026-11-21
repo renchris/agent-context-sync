@@ -28739,6 +28739,17 @@ R146_FREE_ROWS = (
 what both reports print for it there, ``OneDrive-Contoso`` configured (``<org-1>``)."""
 
 
+def test_the_legend_names_every_stop_of_the_free_text_run_c2438_c2458() -> None:
+    """B13 round 43 C2438 with C2458: report_cuts.FREE_PART_STOP gained ` | ` and ` · ` in round 42, but the
+    `<path>` legend listed only a quote, a backtick, `):`, `, stored as `, a blank before a path or the line's
+    end. Every multi-character stop is named in the legend, quoted, so the next one cannot drift."""
+    legend = " ".join(setup_report._LEGEND["path"].split())
+    for stop in report_cuts.FREE_PART_STOP:
+        if len(stop) > 1:
+            assert f'"{stop}"' in legend, stop
+    assert "(a table cell's or a Summary field's end)" in legend
+
+
 def test_the_free_text_scan_judges_a_tenants_whole_run_ruling_146() -> None:
     """B13 round 42 ruling 146 (C2285 with C2235 and C2271; privacy): the keep test read the tenant's first
     word, so `OneDrive-Personal Secret/Plans` printed whole, and a not-kept part ran to the next `/` anywhere,

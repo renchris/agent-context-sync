@@ -1162,7 +1162,9 @@ _LEGEND = {
         "organization for, cut to ~/Library/CloudStorage/<path>, never numbered, its trailing )]}.,;: kept"
         # B13 round 42 ruling 146 (C2285 with C2235 and C2271)
         ", with the words after it a name can hold: to the next / and each path word after that, or else to "
-        'a quote, a backtick, "):", ", stored as ", a blank before a path of its own or the line\'s end, '
+        # B13 round 43 C2438 with C2458: the two cell stops report_cuts.FREE_PART_STOP holds, named
+        'a quote, a backtick, "):", ", stored as ", " | " or " \u00b7 " (a table cell\'s or a Summary '
+        "field's end), a blank before a path of its own or the line's end, "
         "a generic word such as Personal judged with those words when a / follows them"
     ),
     "link": "<link-N> a symlink's own name in ~/Library/CloudStorage (not an organization)",
