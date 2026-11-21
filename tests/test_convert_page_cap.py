@@ -668,28 +668,90 @@ def test_a_cut_row_costing_less_than_one_character_is_shown_c2529(
     assert (f"## First {shown} non-empty rows" if streamed else f"first {shown} non-empty rows") in page.body
 
 
+def _count_cut_cells(monkeypatch: pytest.MonkeyPatch, most: int) -> list[int]:
+    """Count the cut cells xlsx renders (:func:`xlsx._cut_cell`), failing at once past ``most``, so a
+    quadratic search fails in a second instead of running for minutes."""
+    calls: list[int] = []
+    real = xlsx._cut_cell
+
+    def counted(sheet: xlsx._Sheet, key: tuple[int, int], limit: int) -> str:
+        calls.append(limit)
+        assert len(calls) <= most, f"more than {most} cut cells rendered"
+        return real(sheet, key, limit)
+
+    monkeypatch.setattr(xlsx, "_cut_cell", counted)
+    return calls
+
+
 def test_a_wide_row_is_cut_without_rendering_each_length_c2516(monkeypatch: pytest.MonkeyPatch) -> None:
-    """B13 round 43 C2516: the segments are costed from each cell's own bytes, so a row of 2,000 cells of
-    varied lengths beside a 30,000-character cell renders the whole line once, not once a length or once a
-    segment, and still takes the largest cut that fits."""
+    """B13 round 43 C2516: a row's bytes at each length are summed from its texts' own, so a row of 2,000
+    cells of varied lengths beside a 30,000-character cell renders its cut cells once, for the line it
+    shows, not once a length or once a breakpoint, and still takes the largest cut that fits. (The count was
+    of whole-line renders, which the costing never made: it rendered each cut cell at each breakpoint.)"""
     texts = ["ab" if n % 3 else "Contoso"[: n % 7 + 1] * (n % 11 + 1) for n in range(2000)]
     sheet = _cut_sheet({1: ["x" * 30_000, *texts]})
     header = ["Row", *(xlsx._col_letter(c) for c in range(1, 2002))]
     room = xlsx._RowCuts(sheet, header, 1).cheapest(10**9)
     assert room is not None and room < _line_bytes(xlsx._cut_line(sheet, header, 1, 1))
     room += 500
-    calls: list[int] = []
-    real = xlsx._cut_line
-
-    def counted(sheet_: xlsx._Sheet, header_: list[str], r: int, limit: int) -> str:
-        calls.append(limit)
-        return real(sheet_, header_, r, limit)
-
-    monkeypatch.setattr(xlsx, "_cut_line", counted)
+    calls = _count_cut_cells(monkeypatch, 2001)
     fitted = xlsx._cut_row(sheet, header, 1, room)
-    assert fitted is not None and len(calls) < 200, len(calls)
+    assert fitted is not None and len(calls) == 2001, len(calls)
     line, limit = fitted
-    assert _line_bytes(line) <= room < _line_bytes(real(sheet, header, 1, limit + 1))
+    monkeypatch.undo()
+    assert _line_bytes(line) <= room < _line_bytes(xlsx._cut_line(sheet, header, 1, limit + 1))
+
+
+def test_a_row_of_many_cut_lengths_is_costed_in_one_sweep_c2516(monkeypatch: pytest.MonkeyPatch) -> None:
+    """B13 round 43 C2516 (review): cells "a" and 1 to 4,000 spaces cost 5 bytes cut ("a …") and 1 whole, so
+    every length is a breakpoint, and the cheapest cut rendered each cell still cut at each one: 4,000
+    cells took 100 seconds. The cheapest cut and the cut row now render the 4,000 cut cells once."""
+    n = 4000
+    sheet = _cut_sheet({1: ["a" + " " * k for k in range(1, n + 1)]})
+    header = ["Row", *(xlsx._col_letter(c) for c in range(1, n + 1))]
+    calls = _count_cut_cells(monkeypatch, n)
+    costs = xlsx._RowCuts(sheet, header, 1)
+    floor = costs.cheapest(10**9)
+    assert calls == []
+    fitted = xlsx._cut_row(sheet, header, 1, floor or 0, costs)
+    assert fitted is not None and fitted[1] == n + 1 and _line_bytes(fitted[0]) == floor
+    assert len(calls) == n
+
+
+def _formula_sheet(value: str) -> xlsx._Sheet:
+    """Row 2 a formula cell `=1` whose cached value is ``value``, row 3 a cell "x" (B13 round 43 C2516)."""
+    sheet = xlsx._Sheet(number=1, title="Contoso", hidden=False)
+    sheet.formula[(2, 1)] = "=1"
+    sheet.values[(2, 1)] = sheet.plain[(2, 1)] = value
+    sheet.shown[(2, 1)] = f"{_common._cell(value)} `=1`"
+    sheet.plain[(3, 1)] = sheet.values[(3, 1)] = sheet.shown[(3, 1)] = "x"
+    sheet.bounds = (2, 1, 3, 1)
+    return sheet
+
+
+def test_a_formula_shorter_than_its_value_is_a_breakpoint_c2516() -> None:
+    """B13 round 43 C2516 (review): the breakpoints were each cell's longest text, so the formula `=1`
+    beside the value " abcdef" left out length 2, where the formula is whole and the row costs 17 bytes,
+    not 18: the cheapest cut read 18 and a 17-byte room returned no cut."""
+    sheet = _formula_sheet(" abcdef")
+    header = ["Row", "A"]
+    costs = [_line_bytes(xlsx._cut_line(sheet, header, 2, n)) for n in range(1, 8)]
+    assert costs == [18, 17, 18, 19, 20, 21, 20]
+    assert xlsx._RowCuts(sheet, header, 2).cheapest(10**9) == 17
+    assert xlsx._cut_row(sheet, header, 2, 17) == ("| 2 | … `=1` |", 2)
+    assert xlsx._cut_row(sheet, header, 2, 16) is None
+
+
+def test_later_rows_are_reserved_against_a_formula_s_cheapest_cut_c2516() -> None:
+    """B13 round 43 C2516 (review): with the formula's length left out of the breakpoints, _table_lines
+    reserved row 3 against an 18-byte cut of row 2, not its 17-byte cut at two characters, and showed row
+    2 alone on a page that held both."""
+    sheet = _formula_sheet(" " + "a" * 40)
+    header_bytes = _line_bytes("| Row | A |") + _line_bytes("|---|---|")
+    budget = header_bytes + 17 + _line_bytes("| 3 | x |")
+    lines, shown, cut = xlsx._table_lines(sheet, [2, 3], sheet.shown, budget, 10)
+    assert (shown, cut) == (2, [(2, 2)])
+    assert lines[2:] == ["| 2 | … `=1` |", "| 3 | x |"]
 
 
 def test_xlsx_first_row_past_the_budget_is_cut_and_the_short_row_follows_c2022(tmp_path: Path) -> None:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import bisect
 import datetime as dt
 import math
 import re
@@ -11,6 +10,7 @@ import zipfile
 from collections import Counter
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
+from itertools import accumulate
 from pathlib import Path
 from typing import Any
 
@@ -408,50 +408,124 @@ def _cut_line(sheet: _Sheet, header: list[str], r: int, limit: int) -> str:
     return _gfm_table(header, [[str(r), *(_cut_cell(sheet, (r, c), limit) for c in range(c0, c1 + 1))]])[2]
 
 
-class _RowCuts:
-    """Row ``r``'s rendered bytes, its line end included, at each cut length (:func:`_cut_line`), summed from
-    its cells' own bytes, so no length costs a render of the whole row (B13 round 43 C2516, C2529).
+# A cut text's runs of characters whose each adds the same bytes to its rendering, for :class:`_RowCuts`:
+# a line break, a run :func:`_cell` collapses, any other whitespace, then non-space runs by UTF-8 width (an
+# escaped ``\\`` or ``|`` counts two).  ``\s`` is ``str.isspace``, which :func:`_cell`'s strip uses.
+_CELL_RUNS = re.compile(
+    r"(\r\n?|[\n\x0b])|([ \t\f]+)|(\s)|((?:(?![\s\\|])[\x00-\x7f])+)|((?:(?!\s)[\\|\x80-\u07ff])+)"
+    r"|((?:(?!\s)[\u0800-\uffff])+)|([\U00010000-\U0010ffff]+)"
+)
+_CODE_RUNS = re.compile(
+    r"(`+)|([^`|\x80-\U0010ffff]+)|([|\x80-\u07ff]+)|([\u0800-\uffff]+)|([\U00010000-\U0010ffff]+)"
+)
 
-    A line is its cells joined by fixed separators, so its bytes are the empty row's plus each cell's.  A cell
-    no longer than the length is whole, its bytes known; only the cells the length cuts are rendered.  A
-    cell's cut bytes rise with the length but fall where a text's whole length is reached, since its ``…``
-    goes, so the breakpoints are 1 and each length of the row's plain, formula and cached value texts, and
-    between two breakpoints the row's bytes only rise."""
+
+def _cell_steps(text: str) -> Iterator[tuple[int, int, int, int]]:
+    """The bytes each character of ``text`` adds to ``_cell(text[:m] + "…")`` as ``m`` grows, as runs
+    (start, count, the first's bytes, each other's): a line break adds its ``<br>`` and drops the blanks
+    before it, a blank run after text adds one space, leading blanks add nothing (B13 round 43 C2516)."""
+    started = False  # a non-blank character is on this line, so blanks after it are kept until the next one
+    tail = 0  # the bytes of the blanks since the line's last non-blank character
+    for m in _CELL_RUNS.finditer(text):
+        at, count = m.start(), m.end() - m.start()
+        kind = m.lastindex
+        assert kind is not None  # every alternative is a group
+        if kind == 1:
+            yield at, count, 4 - tail, 0
+            started, tail = False, 0
+        elif not started:
+            if kind > 3:
+                started = True
+                yield at, count, kind - 3, kind - 3
+        elif kind == 2:
+            yield at, count, 1, 0
+            tail += 1
+        elif kind == 3:
+            size = len(m.group().encode("utf-8"))
+            yield at, 1, size, size
+            tail += size
+        else:
+            yield at, count, kind - 3, kind - 3
+            tail = 0
+
+
+def _code_steps(text: str) -> Iterator[tuple[int, int, int, int]]:
+    """As :func:`_cell_steps`, for ``_code(text[:m] + "…")``: a backtick past the longest run so far widens
+    both fences, and the first also adds their padding (B13 round 43 C2516)."""
+    longest = 0
+    for m in _CODE_RUNS.finditer(text):
+        at, count = m.start(), m.end() - m.start()
+        kind = m.lastindex
+        assert kind is not None  # every alternative is a group
+        if kind != 1:
+            yield at, count, kind - 1, kind - 1
+            continue
+        if longest:
+            yield at, min(count, longest), 1, 1
+        if count > longest:
+            yield at + longest, count - longest, 3 if longest else 5, 3
+            longest = count
+
+
+class _RowCuts:
+    """Row ``r``'s rendered bytes, its line end included, at each cut length (:func:`_cut_line`), found for
+    every length in one sweep, so no length costs a render (B13 round 43 C2516, C2529).
+
+    A line is its cells joined by fixed separators, so its bytes are the empty row's plus each cell's, and a
+    cell's are its texts' own: its plain text, or its formula's code span and its cached value.  A text no
+    longer than the length is whole; cut, it is its first characters and ``…``, so each character adds a
+    known number of bytes (:func:`_cell_steps`, :func:`_code_steps`) and the text costs one whole render and
+    arithmetic over its characters.  A text's cut bytes never fall as the length grows, but fall where its own
+    length is reached, since its ``…`` goes; so the row's bytes fall only at 1 and each length of its plain,
+    formula and cached value texts, and between two of those never fall."""
 
     def __init__(self, sheet: _Sheet, header: list[str], r: int) -> None:
         assert sheet.bounds is not None
         _r0, c0, _r1, c1 = sheet.bounds
-        self.sheet = sheet
         keys = [(r, c) for c in range(c0, c1 + 1)]
-        self.base = len(_gfm_table(header, [[str(r), *("" for _ in keys)]])[2].encode("utf-8")) + 1
-        sources = (sheet.plain, sheet.formula, sheet.values)
-        lengths = {k: max(len(src.get(k, "")) for src in sources) for k in keys}
-        self.keys = sorted(keys, key=lengths.__getitem__)
-        self.lengths = [lengths[k] for k in self.keys]
-        self.whole = [0]  # bytes of the shortest i cells whole, for the i a length leaves uncut
-        for k in self.keys:
-            self.whole.append(self.whole[-1] + len(_cut_cell(sheet, k, max(1, lengths[k])).encode("utf-8")))
-        self.points = sorted({1, *(n for n in self.lengths if n)})
+        base = len(_gfm_table(header, [[str(r), *("" for _ in keys)]])[2].encode("utf-8")) + 1
+        texts: list[tuple[str, bool]] = []  # each text and whether it renders as a code span
+        for k in keys:
+            formula = sheet.formula.get(k)
+            if formula is None:
+                texts.append((sheet.plain.get(k, ""), False))
+                continue
+            texts.append((formula, True))
+            value = sheet.values.get(k, "")
+            if value:
+                base += 1  # the space between the value and its formula
+                texts.append((value, False))
+        top = max([1, *(len(text) for text, _code_span in texts)])
+        rise = [0] * (top + 2)  # rise[n]: the bytes at length n less those at n - 1, rise[1] those at 1
+        ramp = [0] * (top + 2)  # a run's equal steps, added to rise from its start to its end
+        rise[1] = base
+        for text, code in texts:
+            n = len(text)
+            whole = len((_code(text) if code else _cell(text)).encode("utf-8"))
+            if n <= 1:
+                rise[1] += whole
+                continue
+            at = 5 if code else 3  # "`…`" or "…": the text cut to one character
+            rise[1] += at
+            # length L + 1 adds character L - 1, the last before the ``…``; the longest cut keeps n - 2
+            for i, count, first, each in (_code_steps if code else _cell_steps)(text[: n - 2]):
+                rise[i + 2] += first
+                ramp[i + 3] += each
+                ramp[i + count + 2] -= each
+                at += first + each * (count - 1)
+            rise[n] += whole - at
+        steps = (a + b for a, b in zip(rise, accumulate(ramp), strict=True))
+        self.bytes = list(accumulate(steps))[1 : top + 1]
 
     def cost(self, limit: int, bound: int) -> int | None:
-        """The row's bytes cut to ``limit`` characters, or None once they pass ``bound``."""
-        uncut = bisect.bisect_right(self.lengths, limit)
-        total = self.base + self.whole[uncut]
-        for k in reversed(self.keys[uncut:]):  # the longest cells first, so a cost past the bound stops soon
-            if total > bound:
-                return None
-            total += len(_cut_cell(self.sheet, k, limit).encode("utf-8"))
-        return total if total <= bound else None
+        """The row's bytes cut to ``limit`` characters, or None when they pass ``bound``."""
+        got = self.bytes[min(limit, len(self.bytes)) - 1]
+        return got if got <= bound else None
 
     def cheapest(self, bound: int) -> int | None:
-        """The fewest bytes any cut of the row takes, at most ``bound``, or None when no cut fits it; a
-        segment's cheapest length is its start, so only the breakpoints are costed."""
-        best: int | None = None
-        for limit in self.points:
-            got = self.cost(limit, bound if best is None else best)
-            if got is not None:
-                best = got
-        return best
+        """The fewest bytes any cut of the row takes, at most ``bound``, or None when no cut fits it."""
+        best = min(self.bytes)
+        return best if best <= bound else None
 
 
 def _cut_row(
@@ -460,25 +534,14 @@ def _cut_row(
     """Row ``r`` with each cell cut to the largest number of characters (:func:`_cut_cell`) whose rendered
     line fits ``room`` bytes, its line end included, with that number; None when no cut fits (B13 round 41
     C2022).  The search is on the rendered UTF-8 bytes, since escapes and the 3-byte ``…`` make a character's
-    cost uneven (B13 round 42 C2268).  Those bytes fall where a cell's ``…`` goes, so a cut of one character
-    is not the cheapest: the segments between breakpoints (:class:`_RowCuts`) are searched from the top, and
-    inside the first whose start fits, where the bytes only rise, the largest length that fits is found by
-    halving (B13 round 43 C2516, C2529).  Only a length rendered and seen to fit is kept."""
+    cost uneven (B13 round 42 C2268), and those bytes fall where a text's ``…`` goes, so a cut of one
+    character is not the cheapest: the lengths are read from the top in the row's costs (:class:`_RowCuts`,
+    B13 round 43 C2516, C2529).  Only a length rendered and seen to fit is kept."""
     costs = costs or _RowCuts(sheet, header, r)
-    points = costs.points
-    for i in range(len(points) - 1, -1, -1):
-        lo = points[i]
-        if costs.cost(lo, room) is None:
-            continue
-        hi = points[i + 1] - 1 if i + 1 < len(points) else lo
-        while lo < hi:
-            mid = (lo + hi + 1) // 2
-            if costs.cost(mid, room) is not None:
-                lo = mid
-            else:
-                hi = mid - 1
-        line = _cut_line(sheet, header, r, lo)
-        return (line, lo) if len(line.encode("utf-8")) + 1 <= room else None
+    for limit in range(len(costs.bytes), 0, -1):
+        if costs.bytes[limit - 1] <= room:
+            line = _cut_line(sheet, header, r, limit)
+            return (line, limit) if len(line.encode("utf-8")) + 1 <= room else None
     return None
 
 

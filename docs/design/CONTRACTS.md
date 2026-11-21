@@ -43177,7 +43177,7 @@ Amended 2026-11-20, §16.268 C2268: the later rows that fit uncut keep their byt
 length whose rendered row fits the rest, and a streamed summary's rows get the real room left (no flat 4,096), so the
 four-sheet book's streamed pages show all six rows.
 Amended 2026-11-21, §16.273 C2516 (with C2529): the largest length is searched allowing for the width dropping where
-a cut marker disappears, and the floor the later rows are reserved against is the cheapest breakpoint.
+a cut marker disappears, and the floor the later rows are reserved against is the row's cheapest cut.
 
 **The per-cell cuts stay, scaled with the cap** (C2045, makes worse True; `agentsync.convert.xlsx`; amends §16.258
 C1848). C1848's 600-character headers cell and 200-character first-row value applied at any cap, so thirty headers of
@@ -43882,8 +43882,8 @@ streamed, over 2,000 characters where 124 and 83 were) and
 `test_convert_page_cap.py::test_an_oversized_first_row_is_shown_with_its_cells_cut_c2022` (the streamed pages now
 show all six rows).
 Amended 2026-11-21, §16.273 C2516 (with C2529): the search allows for the row's bytes dropping where a cut marker
-disappears, walking the segments between the cells' lengths from the top, and the later rows are reserved against
-the cheapest breakpoint, not the cut at one character.
+disappears, reading the row's bytes at every length from the top, and the later rows are reserved against the
+cheapest cut, not the cut at one character.
 
 **The index's header formula names its 1,024-byte reserve and the 200-byte row** (C2314; ruling 153;
 `agentsync.convert.xlsx`; amends §16.263 C2045). `_index_body` cuts a headers cell to 600 characters or
@@ -44397,17 +44397,23 @@ cell cut short of its length ends in the 3-byte `…`, which goes once the lengt
 the row. A 20,008-character cell beside 400 cells of "ab" costs 2,412 bytes at one character and 2,013 at two, so a
 page with room for the second showed `first 0 of 2` (`[no row fits the page; ...]` streamed). `_table_lines` also
 reserved the later rows against the cut at one character, so a page that held the cheapest cut and row 2 showed row 1
-alone. A row's bytes are now summed from its cells' own (`_RowCuts`: the empty row's separators plus each cell, whole
-or cut), so no length costs a render of the whole line; the breakpoints are 1 and each length of the row's plain,
-formula and cached value texts, and between two of them the bytes only rise. `_cut_row` walks the segments from the
-top and halves inside the first whose start fits; `_table_lines`' floor is the cheapest breakpoint. Only a length
-rendered and seen to fit is kept. The emitter moves to 1.0.5 (rulings 167 and 168 together). Tests:
+alone. A row's bytes are now summed from its texts' own (`_RowCuts`: the empty row's separators plus each cell's
+plain text, or its formula's code span and cached value, whole or cut), for every length in one sweep: a text costs
+one whole render, and cut, each character adds a known number of bytes, so no length costs a render. The bytes fall
+only at 1 and each length of the row's plain, formula and cached value texts (a formula shorter than its value
+included: `=1` beside " abcdef" costs 18 bytes cut to one character and 17 to two), and between two of them never
+fall. `_cut_row` takes the largest length whose bytes fit; `_table_lines`' floor is the cheapest of them. A row of
+4,000 cells, each a whole length apart, renders its cut cells once, not once a length (100 seconds before). Only a
+length rendered and seen to fit is kept. The emitter moves to 1.0.5 (rulings 167 and 168 together). Tests:
 `test_convert_page_cap.py::test_a_cut_row_takes_a_longer_cut_that_costs_less_c2516`,
 `test_convert_page_cap.py::test_later_rows_are_reserved_against_the_cheapest_cut_c2516`,
 `test_convert_page_cap.py::test_a_cut_row_costing_less_than_one_character_is_shown_c2529` (full and streamed, row 1
 cut alone and row 1 cut with row 2 after it) and
 `test_convert_page_cap.py::test_a_wide_row_is_cut_without_rendering_each_length_c2516` (2,000 cells beside a
-30,000-character cell render the whole line once).
+30,000-character cell render their cut cells once),
+`test_convert_page_cap.py::test_a_row_of_many_cut_lengths_is_costed_in_one_sweep_c2516`,
+`test_convert_page_cap.py::test_a_formula_shorter_than_its_value_is_a_breakpoint_c2516` and
+`test_convert_page_cap.py::test_later_rows_are_reserved_against_a_formula_s_cheapest_cut_c2516`.
 
 **A record pandoc's runner names is one line before `_plain` reads it** (C2528 with C2518; ruling 167;
 `agentsync.convert.pandoc`; amends §16.268 C2299, C2252, §16.263 C2048; dated line at §16.42). `_first_cause` and
