@@ -1475,7 +1475,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (38, "bcbf100622816c98d3381e366c441e08fa5ffcc8f806874318145322fef0fa2c")
+PROMPT = (39, "b3b0307dd1c167485655578c51eab78e22f4bb6efee70fe4607a489b69de0271")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -1676,8 +1676,8 @@ stop's own cause, never both."""
 
 UNLOADED_CONFIG = (
     'or, if that file exists but does not load (the report\'s Configuration section says "loads: no:", with'
-    ' the colon), list no folders and do not parse it yourself: say "unknown: ~/agent-context/sources.toml'
-    ' does not load", followed by the reason the report gives'
+    " the colon), list no folders and do not parse it yourself: say \"unknown: <that config's path> does"
+    ' not load", followed by the reason the report gives'
 )
 """The finish's case for a sources.toml that exists but does not load, since v20 (B13 round 11 M28). Since
 v22 it keys on setup_report's own ``- loads: no: <error>``, colon included (B13 round 13 O44): v21's
@@ -1700,7 +1700,7 @@ line from step 2's install.out names a cause the report cannot check again (the 
 UNCHECKED_CONFIG = (
     'or, if the report\'s Configuration section says "loads: not checked" (the shell report, when agentsync'
     " could not run), then whatever the file holds, list no folders and do not parse it yourself: say"
-    ' "unknown: ~/agent-context/sources.toml was not checked", followed by the reason the report gives'
+    ' "unknown: <that config\'s path> was not checked", followed by the reason the report gives'
 )
 """The finish's case for a sources.toml the shell report could not check, since v21 (B13 round 12 N25, lane
 RB's words): with agentsync unable to run, the shell report prints ``- loads: not checked (<reason>)``, and
@@ -3422,7 +3422,9 @@ def test_readme_step3_runs_the_loop_then_the_report() -> None:
     )
     assert (
         'The steps a NEXT: line refers to (the agentsync-docs skill, its "Baseline questions" section and the'
-        " page rules) are written out in ~/agent-context/docs/AGENTS.md (CLAUDE.md for Claude Code)" in flat
+        " page rules) are written out in AGENTS.md (CLAUDE.md for Claude Code) in the folder step 2's docs"
+        " repo:"
+        " line names (~/agent-context/docs by default)" in flat
     )
     from agentsync import publish  # noqa: PLC0415
 
@@ -3455,12 +3457,13 @@ def test_readme_step3_runs_the_loop_then_the_report() -> None:
     # B13 round 8 J6: at that wait, and at any stop before step 2, sources.toml does not exist yet (step 1's
     # --list-folders installs nothing), so "read sources.toml" named a missing file; the "none" form says so.
     assert (
-        'the folders this Mac syncs, as full paths: the kind = "local" sources in'
-        " ~/agent-context/sources.toml that are not paused or retired, read after step 2 or, if setup stopped"
+        'the folders this Mac syncs, as full paths: the kind = "local" sources in the config step 2\'s'
+        " config: line named (~/agent-context/sources.toml by default; ~/.local/bin/agentsync status prints"
+        " the same config: line) that are not paused or retired, read after step 2 or, if setup stopped"
         " before step 2, as they are"
         ' (never the inbox or another kind = "inbox" folder), saying which of them this session added: those'
         ' for which a run of step 2 this session printed an "added source" line; or, if'
-        ' ~/agent-context/sources.toml does not exist yet or has no such kind = "local" source, "none: this'
+        ' that config does not exist yet or has no such kind = "local" source, "none: this'
         ' Mac syncs no folder" (if setup stopped before step 2, say'
         " at which step);"
         f" {UNCHECKED_CONFIG}; {UNLOADED_CONFIG} {UNKNOWN_FIRST}{REFUSED_CONFIG}"
@@ -3642,14 +3645,14 @@ def test_readme_report_step_after_any_failure() -> None:
     # other at a failed clone. The missing checkout is the third case, stated once, in the list.
     assert (
         '--report-only` Four cases have no report and no "## Not used" section: while you wait for my '
-        "folder answer in step 1 (also when step 2 says no folder is synced yet, as step 1 says); when step "
-        "1 stops (after at most that one rerun) because this prompt is not the installer's (either check: "
-        "the --version line does not end with this prompt's number, or the command says so); at step 1's "
-        "not-a-checkout, worktree and ownership stops, and at its Xcode and other-git-failure stops when the "
-        "installer there is not this prompt's version (step 1 says what to tell me); and when "
-        "~/src/agent-context-sync/scripts/install.sh does not exist (tell me "
-        "instead that setup stopped before the code was downloaded). Every other stop still ends with the "
-        "report. The report works out"
+        "folder answer in step 1 (also when step 2, or the first sync of step 3, says no folder is synced"
+        " yet, as step 1 says); when step 1 stops (after at most that one rerun) because this prompt is not"
+        " the installer's (either check: the --version line does not end with this prompt's number, or the"
+        " command says so); at step 1's not-a-checkout, worktree and ownership stops, and at its Xcode and"
+        " other-git-failure stops when the installer there is not this prompt's version (step 1 says what to"
+        " tell me); and when ~/src/agent-context-sync/scripts/install.sh does not exist (tell me instead that"
+        " setup stopped before the code was downloaded). Every other stop still ends with the report. The"
+        " report works out"
     ) in flat
     assert "Two cases have no report" not in flat
     # B13 round 11 M74: "as step 1's last sentence says" pointed at the add-source sentence; the rule is
@@ -3718,12 +3721,15 @@ def test_readme_prompt_carries_the_field_lines() -> None:
     assert flat2.index(INBOX_WHEN) < flat2.index(PERSONS_NEXT) < later
     assert "~/agent-context/inbox" not in block, "N3: no fixed path, the docs repo can be set by hand"
     assert "Outlook mail dragged out as .eml, a meeting transcript as .docx or .vtt" in inbox
-    assert "Only .eml, .pdf and Office files such as .docx carry a sensitivity label" in inbox
+    assert (
+        "Only .eml (or a .msg saved as MIME text), .pdf and Office files such as .docx carry a sensitivity"
+        in (inbox)
+    )
     assert "never empty it by hand" in inbox
     # B13 H6: a removed inbox file's page stays at its path as a deletion notice ([DELETED UPSTREAM], reaped
     # after tombstone_reap_days; tests/test_e2e.py::test_f_delete_writes_a_tombstone), and only the queued
     # purge removes it earlier. The v10 sentence said the page was removed.
-    assert "removing a file turns its page into a deletion notice and queues a purge" in inbox
+    assert "removing a file turns its page into a deletion notice and by default queues a purge" in inbox
     assert "removes its page" not in block
     assert 'If a sync stops on "click Allow", a macOS prompt is waiting for me' in _prompt_steps()[3]
     # The bring-back report (2026-10-06). S2: an unanswered folder question is never the agent's to answer.
@@ -3772,16 +3778,18 @@ def test_readme_prompt_carries_the_field_lines() -> None:
 
 
 INBOX_SENTENCE = (
-    'it is that folder, one of the kind = "inbox" sources in ~/agent-context/sources.toml; any other kind ='
-    ' "inbox" source there is a folder I added myself, not my inbox.'
+    'it is that folder, one of the kind = "inbox" sources in that config; any other kind = "inbox" source'
+    " there is a folder I added myself, not my inbox."
 )
 """What setup prompt v10's step 2 tells the agent to say the inbox is (since v38, "that folder": the one
 :data:`INBOX_WHEN` finds, B13 round 41 C2092)."""
 
 INBOX_WHEN = (
     "When it ends, whether or not it exited non-zero, unless its NEXT: line says the config does not load,"
-    ' find the kind = "inbox" source in ~/agent-context/sources.toml on the folder named inbox beside the'
-    " docs repo, matched as that folder, never by how its path is spelled"
+    ' find the kind = "inbox" source in the config its config: line names (~/agent-context/sources.toml'
+    " unless AGENTSYNC_CONFIG is set) on the folder its inbox: line names, the line right after its docs"
+    " repo: line (the folder named inbox beside the docs repo), matched as that folder, never by how its path"
+    " is spelled"
 )
 """When step 2 tells the agent to explain the inbox, since v23 (B13 round 14 Q8): before the non-zero clause,
 whose "go to step 3's report" v22's "Then tell me about my inbox" came after, and only once the install wrote
@@ -3798,10 +3806,19 @@ INBOX_LIVE = "If that source is not paused or retired, tell me about my inbox:"
 
 INBOX_HELD = (
     "If that source is paused or retired, tell me instead that files I drop there do not sync until I set its"
-    " state back to live, an edit of sources.toml that is mine, not yours."
+    " state back to live, an edit of that config that is mine, not yours."
 )
 """Step 2's v38 words for a kept inbox the sync skips: ``_run_source`` passes a paused source by, and a
 retired one is retired, so a dropped file never syncs (C2092)."""
+
+INBOX_OTHER_KIND = (
+    "If a source of another kind is on that folder (step 2 printed \"inbox: <path> is source '<id>' (<kind>,"
+    ' <state>), not an inbox source"), tell me that agentsync kept no inbox there: that folder is that'
+    " source, shown by its id, kind and state, synced as an ordinary folder while it is live, not as my drop"
+    " folder, so I have no drop folder; changing its kind is an edit of that config that is mine, not yours."
+)
+"""Step 2's v39 words for a source of another kind on the kept folder, which ``ensure_inbox`` leaves as it is
+and ``cli._ensure_inbox`` names (B13 round 42 C2212, from lane B's C2309 line; ruling 156)."""
 
 INBOX_NOT_ADDED = (
     'If no source is on that folder and step 2 printed "inbox: not added", tell me my inbox could not be'
@@ -3830,15 +3847,17 @@ def test_step2_tells_of_the_inbox_only_when_its_source_is_live_c2092(
 
     step2 = _prompt_steps()[2]
     held = step2.split(INBOX_WHEN, 1)[1]
-    assert held.index(INBOX_LIVE) < held.index(INBOX_HELD) < held.index(INBOX_NOT_ADDED), held
+    assert held.index(INBOX_LIVE) < held.index(INBOX_HELD) < held.index(INBOX_OTHER_KIND), held
+    assert held.index(INBOX_OTHER_KIND) < held.index(INBOX_NOT_ADDED), held
     assert "(a path may be stored resolved, such as /private/tmp for /tmp;" in held
-    assert "while that source syncs, the inbox line of ~/agent-context/docs/AGENTS.md names it)" in held
+    assert "while that source syncs, the inbox line of AGENTS.md in that docs repo names it)" in held
     assert "inbox on" not in step2 and 'has a kind = "inbox" source, tell me about my inbox' not in step2
     # "not paused or retired" is is_live: every state but those two is LIVE
     assert {s for s in SourceState if s not in (SourceState.PAUSED, SourceState.RETIRED)} == {
         SourceState.LIVE
     }
     kept = cfg.canonical_source_root(sample_config.docs_repo.parent / "inbox")
+    plain_text = sample_config.config_path.read_text(encoding="utf-8")
     for state in SourceState:
         source = cfg.SourceConfig(id="inbox", kind=SourceKind.INBOX, path=kept, state=state)
         assert source.is_live is (state not in (SourceState.PAUSED, SourceState.RETIRED)), state
@@ -3870,6 +3889,91 @@ def test_step2_tells_of_the_inbox_only_when_its_source_is_live_c2092(
     monkeypatch.setattr(cli, "ensure_inbox", refuse)
     cli._ensure_inbox(config)
     assert capsys.readouterr().err.startswith("inbox: not added: ")
+    monkeypatch.undo()
+
+    # B13 round 42 C2212: a kind = "local" source on the kept folder keeps no inbox there, and cli's own
+    # line, which step 2 quotes, names it by its id, kind and state
+    other = sample_config.config_path.parent / "other.toml"
+    other.write_text(plain_text, encoding="utf-8")
+    plain = cfg.load_config(other)
+    on = cfg.canonical_source_root(plain.docs_repo.parent / "inbox")
+    on.mkdir(parents=True, exist_ok=True)
+    cfg.append_to_config(other, f'\n[[source]]\nid = "dropbox"\nkind = "local"\npath = "{on}"\n')
+    capsys.readouterr()
+    config, added = cfg.ensure_inbox(other)
+    assert added is None and not [s for s in config.sources if s.kind is SourceKind.INBOX and s.path == on]
+    cli._ensure_inbox(cfg.load_config(other))
+    said = capsys.readouterr().err
+    assert "is source 'dropbox' (local, live), not an inbox source" in said, said
+
+
+def test_the_v39_prompt_reads_the_paths_and_folder_states_setup_printed_c2316_c2317_c2212_c2310() -> None:
+    """B13 round 42 ruling 156 (prompt v39). C2316: step 2 sent the agent to step 3 after a `no folder to sync
+    yet` NEXT that came with exit 0 (an inbox-only config, install.sh's exit 0 kept), and only step 2's words
+    asked the folder question; now, whatever the exit status, that NEXT or `no folder is synced yet` sends the
+    agent to step 1's last sentences and never to step 3, and step 1's trigger and the report exception read
+    "step 2, or the first sync of step 3". C2317: step 2 and step 3 read ~/agent-context's config and docs
+    whatever the installer used; they now read the config, docs repo and inbox lines it printed (status's
+    three lines, lane B; the config step's two, lane RB), ~/agent-context the example default only. C2212: a
+    source of another kind on the inbox folder is told as that source (lane B's C2309 line). C2310 with
+    C2319: the label sentence matches the README's, and a removed file queues a purge by default only."""
+    from agentsync import cli, cycle, loop  # noqa: PLC0415
+
+    block = _one_prompt_block()
+    flat = " ".join(block.split())
+    steps = _prompt_steps()
+    step2 = " ".join(steps[2].split())
+    # C2316
+    whatever = (
+        "Whatever step 2's exit status, if its NEXT: line says no folder is synced yet or no folder to sync"
+        " yet, do as step 1's last sentences say (ask me which folders, then run step 2 again with one"
+        " --source-local per folder), not its add-source or --list-folders re-run, and do not start step 3."
+    )
+    assert whatever in step2
+    assert step2.index(whatever) < step2.index(
+        "If it exits non-zero and its NEXT: line says it is not a step"
+    )
+    assert '(but after "no folder is synced yet"' not in flat
+    assert (
+        "If step 2, or the first sync of step 3, then says no folder is synced yet (that config held none)"
+        in (" ".join(steps[1].split()))
+    )
+    assert (
+        "(also when step 2, or the first sync of step 3, says no folder is synced yet, as step 1 says)"
+        in flat
+    )
+    assert 'f"no folder is synced yet: ' in inspect.getsource(loop)
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    assert 'next="no folder to sync yet: ' in script
+    # C2317: the paths setup printed, never ~/agent-context assumed
+    status = inspect.getsource(cli._status_lines)
+    for head in ('f"config: {config.config_path}"', 'f"docs repo: {config.docs_repo}"', 'f"inbox: {expand('):
+        assert head in status, head
+    assert 'say "docs repo: $(list_name "$repo")"\n\tsay "inbox: $(list_name "$inbox")"' in script
+    assert "~/agent-context/docs/AGENTS.md" not in flat and "under ~/agent-context/docs." not in flat
+    assert "~/agent-context/sources.toml unless AGENTSYNC_CONFIG is set" in step2
+    assert (
+        "are written out in AGENTS.md (CLAUDE.md for Claude Code) in the folder step 2's docs repo: line"
+        " names (~/agent-context/docs by default): read it, and write every page and question file under that"
+        " folder."
+    ) in " ".join(steps[3].split())
+    assert (
+        'the kind = "local" sources in the config step 2\'s config: line named (~/agent-context/sources.toml'
+        " by default; ~/.local/bin/agentsync status prints the same config: line) that are not paused or"
+        " retired"
+    ) in flat
+    assert 'say "unknown: <that config\'s path> was not checked"' in flat
+    assert 'say "unknown: <that config\'s path> does not load"' in flat
+    # C2212
+    assert " ".join(INBOX_OTHER_KIND.split()) in step2
+    # C2310 with C2319: the README's label formats, and the purge [governance] can turn off
+    readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
+    assert "Only `.eml`, a `.msg` saved as MIME text, `.pdf` and the Office formats" in readme
+    assert "by default queues a purge" in step2 and "deletion notice and queues a purge" not in flat
+    unless = "unless `archive = true` or `purge_on_upstream_delete = false` is set under `[governance]`"
+    assert f"turns its page into a tombstone and, {unless} in `sources.toml`, queues a purge." in readme
+    assert f"turns its page into a tombstone and, {unless}, queues a purge)" in _page("docs/deploy/README.md")
+    assert 'reason == "deleted-upstream" and self.gov.purge_on_upstream_delete' in inspect.getsource(cycle)
 
 
 def test_the_inbox_the_prompt_names_is_the_one_agentsync_keeps(sample_config: Any, tmp_path: Path) -> None:
@@ -4630,7 +4734,8 @@ UNREAD_CONFIG = (
     " --source-local. Otherwise ask only whether to add a folder from the list (none is needed)."
     " If you cannot ask me then, add none and go on to step 2 with no --source-local: as in the first"
     " exception, that is not a deviation, and your final message says I gave no answer, so no folder was"
-    " added. If step 2 then says no folder is synced yet (that config held none), this Mac syncs no folder"
+    " added. If step 2, or the first sync of step 3, then says no folder is synced yet (that config held"
+    " none), this Mac syncs no folder"
     " after all, so the folder question above applies as on a new Mac: ask me which folders from the list"
     " to sync. If you cannot ask me, do not choose them for me: log a deviation at step 1, stop and wait for"
     ' my answer exactly as in step 1. Run no --report-only and add no "## Not used" section. Your final'
@@ -8495,7 +8600,7 @@ def test_the_guides_give_the_speech_helpers_swift_floor() -> None:
     assert f"Where developer tools with Swift {floor} or later are installed" in it_request
     assert "this Mac's Swift {installed} is older than the Swift {needed}" in speech.TOOLS_TOO_OLD
     prompt = readme[readme.index("Set up agentsync on this Mac (setup prompt") :]
-    assert "Swift" not in prompt[: prompt.index("prompt v38, <agent> and a colon")], "the prompt stays v38"
+    assert "Swift" not in prompt[: prompt.index("prompt v39, <agent> and a colon")], "no Swift in the prompt"
 
 
 def test_the_records_page_says_purge_stops_over_a_lost_manifest() -> None:
@@ -12224,7 +12329,7 @@ def test_readme_step2_gives_the_agent_the_chmod_of_its_own_state() -> None:
     assert step2.count(STATE_CHMOD_IS_YOURS) == 1
     assert f"{FAIL_IS_MINE} {STATE_CHMOD_IS_YOURS} " in step2, "right after the [FAIL] rule it widens"
     assert (
-        f"{PERSONS_NEXT} it is an install.sh or agentsync command, a click for me or those chmods (but after"
+        f"{PERSONS_NEXT} it is an install.sh or agentsync command, a click for me or those chmods; otherwise"
         in step2
     )
     # B13 round 22 Z59, Z8: install.sh's status step names the chmods of any state check; Z81: a folder's NEXT

@@ -142,7 +142,8 @@ names a host other than github.com, step 1 of the setup prompt lists where git m
   converted. An Outlook `.msg` is converted like an `.eml`, but the label of a binary Outlook-format one is not read,
   so while a label rule is set it is not converted (one saved as MIME text is screened and read like an `.eml`);
   drag the message out as `.eml` instead. Files stay in the inbox: it is a mirror, not a queue, so never empty it by hand (removing a file turns its
-  page into a tombstone and queues a purge). Without IT this is the only route for mail and Teams messages: a tenant
+  page into a tombstone and, unless `archive = true` or `purge_on_upstream_delete = false` is set under
+  `[governance]`, queues a purge). Without IT this is the only route for mail and Teams messages: a tenant
   on Microsoft's default consent policy shows "Need admin approval" for any app that asks to read mail (measured on
   the corporate tenant, 2026-10-01).
 - **Check it:** `~/.local/bin/agentsync sync`, do what its `NEXT:` line says, then open
