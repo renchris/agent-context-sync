@@ -44062,6 +44062,10 @@ for one lane inside it, and says the rehearsal reads that section and, in a note
 in full; reading only the notes that have one would skip an item listed elsewhere (round 41 lane D's C2077). The
 rehearsal brief's own line is the lead's. Test: `test_every_result_note_ends_with_a_section_for_later_lanes_and_the_rehearsal_c2215`.
 
+Amended 2026-11-21, §16.274 C2465: the note carries the section after its Items and Corrections, and only a Landed or
+CI read-back section written after the land may follow it; the rehearsal reads from its heading to the next `## `
+heading. The test keeps its name.
+
 **The short-id rule names install.sh's own flags, and only a two-letter word's placeholder makes a report Private
 only** (C2261, C2262, C2312; docs only; ruling 149; amends §16.260 C2071). §16.260 said the agentsync report matches an
 initialism in capitals as written "as install.sh's flags h and H", while those are the shell's hold-value pairs and its
@@ -44249,6 +44253,22 @@ agentsync-pppc.mobileconfig`) before `P=`, so the tracked template stays as it i
 `tests/test_deploy_pack.py::test_the_mdm_guides_commands_quote_every_placeholder_c2527` and
 `::test_the_mdm_guides_fill_block_runs_from_the_checkout_root_c2527` (the block run in a copy of the layout, codesign
 stubbed, prints `ready`).
+
+**The result-note rule matches how lanes write their notes, and a lane never fetches** (C2465 with C2480, C2486;
+`docs/lanes/COMMON.md`; amends §16.269 C2215). C2215's rule said a note "ends with" the section for later lanes and the
+rehearsal, but it landed mid-round 42, and four of the five round 42 notes put a Landed or CI read-back section,
+written after the land, below theirs; the rehearsal found every section by its heading, so nothing was lost. The rule
+now says the note carries the section after its Items and Corrections, only a Landed or CI read-back section may
+follow it, and the rehearsal reads from its heading to the next `## ` heading. C2480's test half, the pin that no
+longer holds the round number, rode in the lead's round-start commit 7acb0255e. Round 42's lane RB ran `git fetch` in
+the operator checkout 11 times, six inside another land's gate, and lane RA polled with a fetch loop, while the brief
+banned a fetch only in a rehearsal probe: every worktree shares refs/remotes/origin/main and the land lock, and
+ship-land fetches again after its gate under `set -e`. A rule beside Landing says no lane fetches, pulls or runs remote
+update anywhere, ship-land's fetches are the only ones, trunk is read with the round's trunk.sh or lane-status.sh
+(ls-remote and cat-file, which write nothing), and a wait reads the local origin/main at most once a minute; the
+harvest's transcript scan is the lead's. Tests: `tests/test_deploy_pack.py`
+`::test_every_result_note_ends_with_a_section_for_later_lanes_and_the_rehearsal_c2215` and
+`::test_the_lane_brief_says_a_lane_never_fetches_c2486`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

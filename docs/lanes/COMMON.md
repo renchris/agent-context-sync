@@ -2196,6 +2196,16 @@ never to (round 35 C982). A land run in the background can end while you think i
 hours lost): while you wait, read its log, and check that your own worktree's path shows in `ps -ax -o command | grep
 '<worktree>/scripts/ship-land'`, since other lanes' lands look the same otherwise.
 
+No fetch (round 43 C2486): a lane never runs git fetch, pull or remote update, in the operator checkout or in any
+worktree of it, its own lane worktree included. Every worktree shares refs/remotes/origin/main, the object store and
+the land lock, and FETCH_HEAD is written in the checkout that fetched, so a lane's fetch races another lane's land
+(round 42: lane RB fetched in the operator checkout 11 times, six of them inside another land's gate). The only
+fetches are the ones `scripts/ship-land.sh` makes. To read trunk, run `bash
+~/.cache/agentsync-bring-back/b13/round<n>/tools/trunk.sh [<full sha>]` or that folder's lane-status.sh (git ls-remote
+and cat-file, which write nothing). To wait for another land, read the local `git log origin/main` (every ship-land
+fetch moves it for all worktrees) or trunk.sh <sha>, at most once a minute, never in a fetch loop. A STOP is reported
+and looked at, never fetched.
+
 Trunk (round 11 M87): ship-land checks trunk's CI before it pushes and stops on red (exit 6); since round 27 P140 it
 also reads trunk's runs once before the gate, so a trunk already red stops the land before a 35-minute gate. If trunk is red, do not
 edit failing tests outside your lane's files: message the lead and the lane that landed them with the run id and the
@@ -2292,7 +2302,9 @@ substring, or changes a second input beside the one it tests passes either way (
 Lane peers (round 20 Y80): once all five lanes are live, the lead messages every lane the five session ids. Send a
 seam note straight to the lane that owns the file, and copy the lead only when it changes another lane's scope.
 
-Result note: `~/.cache/agentsync-bring-back/b13/lanes/r43-<lane>.md`. It ends with a section headed exactly `For later
-lanes and the rehearsal`, which says `none` when the lane has nothing for a later lane or the rehearsal; a word for one
-lane, lane D included, goes inside that section, never under a heading of its own (C2215). The rehearsal reads each
-note's section, and where a note has none, its Items and Corrections in full.
+Result note: `~/.cache/agentsync-bring-back/b13/lanes/r43-<lane>.md`. It carries a section headed exactly `For later
+lanes and the rehearsal`, after its Items and Corrections, which says `none` when the lane has nothing for a later lane
+or the rehearsal; a word for one lane, lane D included, goes inside that section, never under a heading of its own
+(C2215). Only a Landed or CI read-back section, written after the land, may follow it (C2465). The rehearsal reads each
+note's section, from its heading to the next `## ` heading, and where a note has none, its Items and Corrections in
+full.

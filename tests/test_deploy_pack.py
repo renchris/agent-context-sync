@@ -508,14 +508,39 @@ def test_every_result_note_ends_with_a_section_for_later_lanes_and_the_rehearsal
     lanes = _page("docs/lanes/COMMON.md")
     # B13 round 43 C2480: the note's round number is not pinned, so the lead's round-start commit that moves
     # the path to the new round's notes keeps this test green.
+    # B13 round 43 C2465 with C2480: four of round 42's five notes put a Landed or CI read-back section,
+    # written after the land, below theirs, against "It ends with": the rule lets those follow it, and only
+    # those.
     sentence = re.escape(
-        "Result note: `~/.cache/agentsync-bring-back/b13/lanes/r@@-<lane>.md`. It ends with a section"
-        " headed exactly `For later lanes and the rehearsal`, which says `none` when the lane has nothing for"
-        " a later lane or the rehearsal; a word for one lane, lane D included, goes inside that section,"
-        " never under a heading of its own (C2215). The rehearsal reads each note's section, and where a note"
-        " has none, its Items and Corrections in full."
+        "Result note: `~/.cache/agentsync-bring-back/b13/lanes/r@@-<lane>.md`. It carries a section headed"
+        " exactly `For later lanes and the rehearsal`, after its Items and Corrections, which says `none`"
+        " when the lane has nothing for a later lane or the rehearsal; a word for one lane, lane D included,"
+        " goes inside that section, never under a heading of its own (C2215). Only a Landed or CI read-back"
+        " section, written after the land, may follow it (C2465). The rehearsal reads each note's section,"
+        " from its heading to the next `## ` heading, and where a note has none, its Items and Corrections in"
+        " full."
     ).replace("@@", r"\d+")
     assert re.search(sentence, lanes)
+    assert "It ends with a section headed exactly" not in lanes
+
+
+def test_the_lane_brief_says_a_lane_never_fetches_c2486() -> None:
+    """B13 round 43 C2486: round 42's lane RB ran `git fetch` in the operator checkout 11 times, six inside
+    another land's gate, and lane RA polled with a fetch loop for 3 hours, while the brief banned a fetch only
+    in a rehearsal probe. The rule sits beside Landing: no lane fetches anywhere, ship-land's fetches are the
+    only ones, trunk is read with trunk.sh or lane-status.sh, and a wait reads the local origin/main."""
+    lanes = _page("docs/lanes/COMMON.md")
+    landing = lanes.split(" Landing (round ", 1)[1].split(" Trunk (round 11 M87):", 1)[0]
+    assert (
+        "No fetch (round 43 C2486): a lane never runs git fetch, pull or remote update, in the operator"
+        " checkout or in any worktree of it, its own lane worktree included."
+    ) in landing
+    assert "The only fetches are the ones `scripts/ship-land.sh` makes." in landing
+    assert (
+        "To wait for another land, read the local `git log origin/main` (every ship-land fetch moves it for"
+        " all worktrees) or trunk.sh <sha>, at most once a minute, never in a fetch loop. A STOP is reported"
+        " and looked at, never fetched."
+    ) in landing
 
 
 def test_the_guides_say_when_to_dispatch_ci_and_how_to_find_your_own_land() -> None:
