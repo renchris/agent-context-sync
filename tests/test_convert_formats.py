@@ -754,6 +754,31 @@ def test_only_a_content_types_override_or_default_is_retyped_c2517(tmp_path: Pat
     assert notes == [POTX_MAIN, POTX_MAIN]
 
 
+def test_lxml_is_declared_and_the_xlsx_docstrings_name_the_formulas_sidecar_c2454() -> None:
+    """B13 round 43 C2454: C2303's converters import `lxml.etree` directly, but pyproject.toml did not name
+    lxml, which arrived only through python-pptx; and four xlsx docstrings listed the sidecars without C2300's
+    `.formulas.txt`. lxml is a declared dependency of its own, and each of those docstrings names the
+    formulas sidecar."""
+    import tomllib  # noqa: PLC0415
+
+    root = Path(__file__).resolve().parents[1]
+    importers = [
+        p.name
+        for p in sorted((root / "src" / "agentsync").rglob("*.py"))
+        if "from lxml import" in p.read_text()
+    ]
+    assert importers, "nothing imports lxml any more: drop the declaration with this test"
+    declared = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]["dependencies"]
+    assert any(re.match(r"lxml\b", dep) for dep in declared), (importers, declared)
+    docs = {
+        "_sidecar_name": xlsx_mod._sidecar_name.__doc__,
+        "_sheet_body": xlsx_mod._sheet_body.__doc__,
+        "XlsxConverter": xlsx_mod.XlsxConverter.__doc__,
+        "_convert_streaming": xlsx_mod.XlsxConverter._convert_streaming.__doc__,
+    }
+    assert [name for name, doc in docs.items() if ".formulas.txt" not in (doc or "")] == []
+
+
 @pytest.mark.parametrize("codec", ["utf-8", "utf-16-le"])
 def test_a_word_typed_potx_with_an_escaped_family_is_told_as_not_its_type_c2303(
     tmp_path: Path, codec: str

@@ -326,8 +326,9 @@ def _sheet_stem(number: int, width: int, title: str) -> str:
 
 
 def _sidecar_name(number: int, width: int, title: str, kind: str = "csv") -> str:
-    """Portable sidecar name for a sheet: its rows' ``.csv``, or its ``.comments.txt`` or ``.objects.txt``
-    list (B13 round 41 C2043), which never collides with the rows' CSV."""
+    """Portable sidecar name for a sheet: its rows' ``.csv``, its formulas' ``.formulas.txt`` (C2300), or its
+    ``.comments.txt`` or ``.objects.txt`` list (B13 round 41 C2043), which never collides with the rows'
+    CSV."""
     return f"{number:0{width}d}-{_ascii_slug(title, fallback='sheet')}.{kind}"
 
 
@@ -694,8 +695,9 @@ def _sheet_lists(
 def _sheet_body(
     sheet: _Sheet, *, total: int, width: int, cfg: ConvertConfig
 ) -> tuple[str, tuple[tuple[str, bytes], ...]]:
-    """Markdown for one sheet unit plus its sidecars: the rows' CSV when rows were capped or cut, and a
-    list's ``.comments.txt`` or ``.objects.txt`` when that list was cut.
+    """Markdown for one sheet unit plus its sidecars: the rows' CSV when rows were capped or cut, the
+    ``.formulas.txt`` when formulas were cut, and a list's ``.comments.txt`` or ``.objects.txt`` when that
+    list was cut.
 
     The comment and object sections are measured first: the table's budget is the cap less
     :data:`_SHEET_RESERVE` less their real bytes, up to a quarter of the cap, with no guess per item and no
@@ -990,7 +992,8 @@ class XlsxConverter:
     heading carries the used range; pivots/charts become stub lines.  Units: ``index`` (00-index: title,
     every sheet's name, used range, column headers, distinctive terms) then ``sheet:<n>`` (file_stem
     ``NN-<sheet name>``).  Files above ``xlsx_stream_threshold_bytes`` use read_only streaming and emit
-    ``summary`` units (schema + first ``max_rows_per_sheet`` rows) with a CSV sidecar.
+    ``summary`` units (schema + first ``max_rows_per_sheet`` rows) with a CSV sidecar, and a
+    ``.formulas.txt`` sidecar for formulas past the sample.
     """
 
     converter_id = "xlsx-openpyxl"
@@ -1079,7 +1082,8 @@ class XlsxConverter:
         return tuple(units)
 
     def _convert_streaming(self, src: Path) -> tuple[RenderedUnit, ...]:
-        """Read-only streaming path: index + one ``summary:<n>`` unit per sheet, each with a CSV sidecar."""
+        """Read-only streaming path: index + one ``summary:<n>`` unit per sheet, each with a CSV sidecar and,
+        when formulas are left over, a ``.formulas.txt`` sidecar."""
         wb = _load(src, data_only=True, read_only=True)
         wbf = _load(src, data_only=False, read_only=True)
         streamed: list[tuple[_Sheet, list[str], bytes, int]] = []

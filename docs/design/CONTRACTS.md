@@ -44509,6 +44509,15 @@ per codec: the title read, the staged file untouched) and
 `test_convert_formats.py::test_only_a_content_types_override_or_default_is_retyped_c2517` (a foreign-namespace and a
 non-Override element keep the template type, per codec).
 
+**lxml is a declared dependency, and the xlsx docstrings name the formulas sidecar** (C2454; `pyproject.toml`,
+`agentsync.convert.xlsx`). C2303's `content_types_tree` and `_decoded_deck_types` import `lxml.etree` directly, but
+`[project].dependencies` did not name lxml, which arrived only through python-pptx. It is declared (`"lxml>=5,<7"`,
+with a comment saying why) and locked, the locked version unchanged at 6.1.3; `cycle._CONVERTER_DISTS` is left as it
+is, so the capabilities digest (§16.45 R100) does not move. `_sidecar_name`, `_sheet_body`, `XlsxConverter` and
+`_convert_streaming` now name C2300's `.formulas.txt` beside the CSV and list sidecars; docstrings only, so xlsx's
+emitter does not move. Test:
+`test_convert_formats.py::test_lxml_is_declared_and_the_xlsx_docstrings_name_the_formulas_sidecar_c2454`.
+
 ### 16.274 Round 43: the prompt goes to v40 (only lines setup prints in every branch), CI polled every 60 seconds, and the guides (2026-11-21, wave B13 round 43 lane D)
 
 Round 43's lane D items (`docs/plans/bring-back-ocr.md`, "B13 round 43"; specs `round43/items/C<n>.md`, the verifier's

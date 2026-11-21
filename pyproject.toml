@@ -23,6 +23,8 @@ dependencies = [
   "truststore>=0.10.4",
   "pypdfium2>=5.13.0",
   "olefile>=0.47,<1",
+  # the converters import lxml.etree directly to parse [Content_Types].xml (B13 round 42 C2303, round 43 C2454)
+  "lxml>=5,<7",
 ]
 
 [project.scripts]
