@@ -142,7 +142,9 @@ def _ooxml_family(src: Path) -> str | None:
 
 
 def content_types_tree(types: bytes) -> Any | None:
-    """``[Content_Types].xml``'s root element, parsed only when the byte reads find nothing: at most
+    """``[Content_Types].xml``'s root element, parsed only when the byte reads find nothing (pptx's
+    ``_deck_types`` parses after its byte pass too, so an escaped override behind a decoy literal is retyped,
+    B13 round 43 C2517): at most
     :data:`_CONTENT_TYPES_MAX` bytes, with no entity, DTD or network resolution and no huge tree, so a
     character reference (``templa&#116;e``) reads as the value it stands for; None when it is too large or
     does not parse, and the caller's answer stands (B13 round 42 C2303)."""

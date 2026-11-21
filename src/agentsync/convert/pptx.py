@@ -378,6 +378,9 @@ def _shape_blocks(
 _CONTENT_TYPES = "[Content_Types].xml"
 _TEMPLATE_MAIN = b"application/vnd.openxmlformats-officedocument.presentationml.template.main+xml"
 _DECK_MAIN = b"application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"
+_CONTENT_TYPES_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
+"""The namespace of ``[Content_Types].xml``'s Override and Default elements, the only ones
+:func:`_decoded_deck_types` retypes (B13 round 43 C2517)."""
 
 
 def _template_as_deck(src: Path) -> io.BytesIO | None:
@@ -412,11 +415,15 @@ def _template_as_deck(src: Path) -> io.BytesIO | None:
 def _deck_types(types: bytes) -> bytes | None:
     """``[Content_Types].xml``'s bytes with the template main type replaced by the deck's, in the part's own
     encoding (UTF-8, or UTF-16 by its byte order mark); None when the part does not carry the template type
-    (:func:`_template_as_deck`, B13 round 33 C781)."""
+    (:func:`_template_as_deck`, B13 round 33 C781).  The byte or text replace is a first pass, never the
+    answer alone: a raw literal in a comment or processing instruction matched it while the real Override,
+    spelled ``templa&#116;e``, went to python-pptx unadapted, so :func:`_decoded_deck_types` reads what the
+    first pass left, and the first pass's bytes stand when it finds nothing (B13 round 43 C2517)."""
+    out, replaced = types, False
     if _TEMPLATE_MAIN in types:
-        return types.replace(_TEMPLATE_MAIN, _DECK_MAIN)
+        out, replaced = types.replace(_TEMPLATE_MAIN, _DECK_MAIN), True
     for bom, codec in ((codecs.BOM_UTF16_LE, "utf-16-le"), (codecs.BOM_UTF16_BE, "utf-16-be")):
-        if not types.startswith(bom):
+        if replaced or not types.startswith(bom):
             continue
         try:
             text = types[len(bom) :].decode(codec)
@@ -424,21 +431,22 @@ def _deck_types(types: bytes) -> bytes | None:
             return None
         template, deck = _TEMPLATE_MAIN.decode("ascii"), _DECK_MAIN.decode("ascii")
         if template in text:
-            return bom + text.replace(template, deck).encode(codec)
-    return _decoded_deck_types(types)
+            out, replaced = bom + text.replace(template, deck).encode(codec), True
+    return _decoded_deck_types(out) or (out if replaced else None)
 
 
 def _decoded_deck_types(types: bytes) -> bytes | None:
-    """:func:`_deck_types` when the bytes do not spell the template type: the part parsed safely
-    (:func:`content_types_tree`), each Override or Default whose decoded ContentType is the template's typed
+    """:func:`_deck_types` after its byte pass: the part parsed safely (:func:`content_types_tree`), each
+    content-types Override or Default (no other element) whose decoded ContentType is the template's, typed
     as the deck's, written again with its declaration in its own encoding and a UTF-16 part's byte order
     mark kept; None when no element carries it or the part does not parse (B13 round 42 C2303: a
     ``templa&#116;e`` spelling went to python-pptx unadapted and became a ``cannot read the deck`` stub)."""
-    from lxml import etree  # type: ignore[import-untyped]  # noqa: PLC0415 - only on this rare path
+    from lxml import etree  # type: ignore[import-untyped]  # noqa: PLC0415 - python-pptx's parser
 
     root = content_types_tree(types)
     template, deck = _TEMPLATE_MAIN.decode("ascii"), _DECK_MAIN.decode("ascii")
-    hits = [] if root is None else [el for el in root.iter() if el.get("ContentType") == template]
+    typed = (f"{{{_CONTENT_TYPES_NS}}}Override", f"{{{_CONTENT_TYPES_NS}}}Default")  # B13 round 43 C2517
+    hits = [] if root is None else [el for el in root.iter(*typed) if el.get("ContentType") == template]
     if root is None or not hits:
         return None
     for el in hits:

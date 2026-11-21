@@ -674,9 +674,10 @@ def test_a_potx_template_is_read_as_a_deck(tmp_path: Path) -> None:
         PptxConverter(CFG).convert(make_zip(tmp_path / "c.potx", {"x": b"y"}), name="c.potx")
 
 
-def _respelled_potx(tmp_path: Path, spelled: str, codec: str) -> Path:
+def _respelled_potx(tmp_path: Path, spelled: str, codec: str, *, before: str = "", inside: str = "") -> Path:
     """build_potx's template with its main type spelled ``spelled``, its ``[Content_Types].xml`` in
-    ``codec`` (a UTF-16 one with its byte order mark and declaration)."""
+    ``codec`` (a UTF-16 one with its byte order mark and declaration), ``before`` written just before
+    ``<Types`` and ``inside`` just before ``</Types>``."""
     import codecs  # noqa: PLC0415
 
     utf8 = build_potx(tmp_path / "plain.potx")
@@ -686,7 +687,8 @@ def _respelled_potx(tmp_path: Path, spelled: str, codec: str) -> Path:
             data = zin.read(info.filename)
             if info.filename == "[Content_Types].xml":
                 text = data.decode("utf-8").replace(POTX_MAIN, spelled)
-                assert spelled in text
+                assert spelled in text and text.count("<Types") == 1 and text.count("</Types>") == 1
+                text = text.replace("<Types", before + "<Types").replace("</Types>", inside + "</Types>")
                 if codec != "utf-8":
                     text = text.replace("encoding='UTF-8'", "encoding='UTF-16'")
                     bom = codecs.BOM_UTF16_LE if codec == "utf-16-le" else codecs.BOM_UTF16_BE
@@ -704,7 +706,7 @@ _ESCAPED = {
 
 
 @pytest.mark.parametrize("codec", ["utf-8", "utf-16-le", "utf-16-be"])
-@pytest.mark.parametrize("escaped", ["template", "family"])
+@pytest.mark.parametrize("escaped", ["template", "family", "decoy"])
 def test_a_potx_whose_type_holds_a_character_reference_is_read_as_a_deck_c2303(
     tmp_path: Path, codec: str, escaped: str
 ) -> None:
@@ -712,12 +714,44 @@ def test_a_potx_whose_type_holds_a_character_reference_is_read_as_a_deck_c2303(
     parser reads as the template type, went to python-pptx unadapted and became a `cannot read the deck`
     stub. When the bytes find nothing, the part is parsed (bounded, no entities, DTD or network) and an
     element whose decoded type is the template's is typed as a deck's, in the part's own encoding; the
-    staged file is not touched."""
-    template = _respelled_potx(tmp_path, _ESCAPED[escaped], codec)
+    staged file is not touched. Round 43 C2517 (`decoy`): the raw type in a comment before `<Types>` matched
+    the byte pass, which returned at once and left the escaped Override for python-pptx to refuse; the
+    parse now reads what the byte pass left."""
+    decoy = f"<!-- {POTX_MAIN} -->" if escaped == "decoy" else ""
+    template = _respelled_potx(tmp_path, _ESCAPED["template" if decoy else escaped], codec, before=decoy)
     before = template.read_bytes()
     u = _one(PptxConverter(CFG).convert(template, name=template.name))
     assert u.title == "Contoso Quarterly Template" and "## Contoso Quarterly Template" in u.body
     assert template.read_bytes() == before
+
+
+@pytest.mark.parametrize("codec", ["utf-8", "utf-16-le", "utf-16-be"])
+def test_only_a_content_types_override_or_default_is_retyped_c2517(tmp_path: Path, codec: str) -> None:
+    """B13 round 43 C2517: `_decoded_deck_types` retyped every element whose decoded ContentType was the
+    template's. Only an Override or Default in the content-types namespace is a type: an element of another
+    namespace, or another local name, carrying the same attribute keeps it, and the real Override is a
+    deck's."""
+    import codecs  # noqa: PLC0415
+
+    from lxml import etree  # type: ignore[import-untyped]  # noqa: PLC0415
+
+    from agentsync.convert import pptx as pptx_mod  # noqa: PLC0415
+
+    spelled = _ESCAPED["template"]
+    inside = f"<x:Note xmlns:x='urn:contoso:notes' ContentType='{spelled}'/><Note ContentType='{spelled}'/>"
+    template = _respelled_potx(tmp_path, spelled, codec, inside=inside)
+    u = _one(PptxConverter(CFG).convert(template, name=template.name))
+    assert u.title == "Contoso Quarterly Template"
+    adapted = pptx_mod._template_as_deck(template)
+    assert adapted is not None
+    with zipfile.ZipFile(adapted) as z:
+        types = z.read("[Content_Types].xml")
+    root = etree.fromstring(types.removeprefix(codecs.BOM_UTF16_BE) if codec == "utf-16-be" else types)
+    ns = "{http://schemas.openxmlformats.org/package/2006/content-types}"
+    typed = {el.get("PartName"): el.get("ContentType") for el in root.iter(f"{ns}Override")}
+    assert PPTX_MAIN in typed.values() and POTX_MAIN not in typed.values()
+    notes = [el.get("ContentType") for el in root.iter("{urn:contoso:notes}Note", f"{ns}Note")]
+    assert notes == [POTX_MAIN, POTX_MAIN]
 
 
 @pytest.mark.parametrize("codec", ["utf-8", "utf-16-le"])

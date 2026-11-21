@@ -37312,6 +37312,8 @@ Amended 2026-11-04, §16.234 C995: the one-shot re-read takes only a stub whose 
 (`_names_a_path`), and not a dataless one; a path-free stub with its retries used up gets none on any manifest.
 Amended 2026-11-20, §16.268 C2303: when the bytes find no template type, the part is parsed (bounded, no entities, DTD
 or network) and an element whose decoded type is the template's is typed as a deck's, so `templa&#116;e` reads too.
+Amended 2026-11-21, §16.273 C2517: the part is parsed after the byte pass whether or not it found the type, and only a
+content-types Override or Default is retyped, so a raw type in a comment no longer hides an escaped Override.
 
 **The test session warms the wheel pandoc once (C769, makes worse True, its lane E part; `tests/conftest.py`).** A
 `real_env` test's agentsync runs this venv's wheel pandoc, an x86_64 binary whose first start under Rosetta took
@@ -44030,6 +44032,9 @@ pptx's `_EMITTER_VERSION` stays at its one move this round (C2272's 1.0.3). Test
 `test_convert_formats.py::test_a_potx_whose_type_holds_a_character_reference_is_read_as_a_deck_c2303` (an escaped
 template and an escaped family token, UTF-8 and both UTF-16 orders, the staged file untouched) and
 `test_convert_formats.py::test_a_word_typed_potx_with_an_escaped_family_is_told_as_not_its_type_c2303`.
+Amended 2026-11-21, §16.273 C2517: the byte and UTF-16 paths are a first pass with no early return; the parse reads
+what they left, and their bytes stand when it finds nothing. Only an Override or Default in the content-types
+namespace is retyped.
 
 **A zero-byte row an older build settled with a type mismatch is read once more** (C2219, makes worse True for an
 unbounded re-read; ruling 155's one amendment of ruling 132; `agentsync.cycle`; amends §16.233 C930, §16.243 C1304,
@@ -44487,6 +44492,22 @@ _picture_options()>` with `_EMITTER_VERSION` set to 1.1.0 or 1.1.1 in a monkeypa
 `_legacy_keys` given a wrong separator order, the old test passes and the new one fails both legacy cases. No literal
 key is pinned: its hash covers every picture option and the fake helpers' identities, so it would move with any of
 them while the formula stays right.
+
+**A raw template type in a comment no longer hides an escaped Override** (C2517; `agentsync.convert.pptx`; amends
+§16.268 C2303, §16.221 C781). `_deck_types` returned as soon as the raw template type matched anywhere in
+`[Content_Types].xml` (the UTF-16 branch the same), so with the literal in a comment or processing instruction before
+`<Types>` and the real Override spelled `templa&#116;e`, only the comment was rewritten, `_decoded_deck_types` never
+ran, and python-pptx refused the deck (the verifier's probe at bd65e0e1). The byte and UTF-16 replace is a first pass
+with no early return; `_deck_types` returns `_decoded_deck_types(out) or (out if replaced else None)`, so a normal file,
+which has no template-typed element left after the byte pass, keeps the byte output unchanged, and the decoy file gets
+its real Override fixed. `_decoded_deck_types` retypes only `{...package/2006/content-types}Override` and `Default`
+(`_CONTENT_TYPES_NS`), never another element carrying a ContentType attribute. Measured: plain, raw, escaped-template
+and escaped-family templates in UTF-8 and both UTF-16 orders convert to the same page before and after, and only files
+that failed before convert now, so pptx's emitter stays 1.0.3. Hand-made files only. Tests:
+`test_convert_formats.py::test_a_potx_whose_type_holds_a_character_reference_is_read_as_a_deck_c2303` (a `decoy` case
+per codec: the title read, the staged file untouched) and
+`test_convert_formats.py::test_only_a_content_types_override_or_default_is_retyped_c2517` (a foreign-namespace and a
+non-Override element keep the template type, per codec).
 
 ### 16.274 Round 43: the prompt goes to v40 (only lines setup prints in every branch), CI polled every 60 seconds, and the guides (2026-11-21, wave B13 round 43 lane D)
 
