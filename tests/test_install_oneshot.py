@@ -4432,6 +4432,30 @@ def test_freecuts_comment_names_ruling_146s_two_residuals_as_report_cuts_does_c2
         assert words in " ".join(docstring.replace("``", "").split()), docstring
 
 
+def test_the_header_names_each_field_and_line_the_config_step_prints_c2439() -> None:
+    """B13 round 43 C2439: the header said the config line ends with kept=N added=M, while C2207 appends
+    inbox=not-added, and step 4's paragraph left out the `docs repo: <path>` and `inbox: <path>` lines C2317
+    prints and the setup prompt reads. Each field the step's log line can carry and each of those two lines
+    is named in the header comment, read from the code that writes them."""
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    lines = script.splitlines()
+    end = next(i for i, ln in enumerate(lines[1:], 1) if not ln.startswith("#"))
+    header = " ".join(" ".join(ln.lstrip("#") for ln in lines[:end]).split())
+    values = " ".join(re.findall(r'^\s*(?:\[.*\] \|\| )?FOLDER_COUNTS="([^"\n]*)"', script, re.M))
+    # a literal value is kept whole (inbox=not-added); a counted one is its name (kept=, added=)
+    words = {
+        m[0] + (m[1] if m[1].isalpha() or "-" in m[1] else "") for m in re.findall(r" ([a-z]+=)(\S*)", values)
+    }
+    assert words == {"kept=", "added=", "inbox=not-added"}, words
+    for word in words:
+        assert word in header, word
+    assert "kept=N added=M (then inbox=not-added" in header
+    printed = re.findall(r'^\tsay "((?:docs repo|inbox): )\$\(list_name ', script, re.M)
+    assert printed == ["docs repo: ", "inbox: "], printed
+    for head in printed:
+        assert f"`{head}<path>`" in header, head
+
+
 def test_the_typed_cuts_word_lists_are_the_shells_and_the_reports() -> None:
     """B13 round 32 C666: typed_note_cut's awk reads the fixed components, generic folders and home dirs from
     ENVIRON; each list is setup_report's set (generic_folder's and generic_home_dir's, which their own tests

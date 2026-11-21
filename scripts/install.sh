@@ -216,7 +216,8 @@
 # round 8 J17). A run with no --source-local over such a config keeps every source, updates agentsync, and runs status and a sync
 # (steps 4 to 6); --source-local adds to them. Step 4 says which it was, in counts: one line, "folders: kept
 # the N already synced (none added)", "folders: M added to the N already synced" or "folders: M added (none
-# was synced before)", and its log line ends with kept=N added=M.
+# was synced before)", and its log line carries kept=N added=M (then inbox=not-added when the inbox could not be
+# added).
 #
 # Friction log: --log-start and --log only append to $AGENTSYNC_FRICTION_LOG (default
 # ~/agent-context/setup/friction.md; the directory is made 0700 and the file 0600, under umask 077, and
@@ -310,7 +311,11 @@
 #      that step 6's sync would have cleared (field 2026-10-07: that run ended on a chmod no agent may run).
 #      With several folders the two lines every add-source call ends on are printed once: "docs repo ..."
 #      from the first call, printed beside "sources: ..." from the last, with the inbox line ("added inbox
-#      source ...") the first call prints
+#      source ...") the first call prints. After the folders line, the step prints `docs repo: <path>` and then
+#      `inbox: <path>`, the config's own docs repo and its inbox folder in list_name's spelling; the setup
+#      prompt's step 2 reads these two lines. Neither is printed in a dry run or when the installed agentsync
+#      cannot load the config within 10 s (config_folder_lines). These colon-form lines are apart from
+#      add-source's own `docs repo <path> (...)` line (B13 round 43 C2439)
 #   5. status: first the pandoc that status checks ([convert] pandoc_path, else the operator's native
 #      arm64 copy when there is one, else the one bundled with the tool: the one the converters run) is
 #      started once, as "pandoc --version", outside that check's 60 s. The bundled one is an Intel
@@ -423,7 +428,8 @@
 # wait; or list-folders alone, whose line ends with synced=N when it read the config: the folders already
 # synced, 0 included, or "synced=unreadable marks=<why>" when a config is there and it could not be read (why: no-tool, timeout,
 # older:<the name the installed agentsync lacks>, failed or failed:<the class of its error>); the config line ends with kept=N added=M when agentsync could count them: the folders
-# synced before the step and the ones it added), then the report step's line, then one "end" line (exit
+# synced before the step and the ones it added, then inbox=not-added when init or add-source printed `inbox: not
+# added` (alone when the counts are unknown)), then the report step's line, then one "end" line (exit
 # status, total seconds, the report included). The report is written while a provisional end line is the log's
 # last line, so it reads a
 # finished run; that line is then replaced by the report step's line and the final end line (when another
