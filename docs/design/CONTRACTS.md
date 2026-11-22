@@ -45358,6 +45358,17 @@ the tuple as the distributions the converters read files with, which lxml is too
 and an lxml upgrade does not open every source's re-read. The docstring says so, naming C2454; the tuple is kept.
 Test: `test_cycle.py::test_the_converter_libraries_docstring_names_lxml_as_left_out_c2655`.
 
+**The seed's curl reads no `.curlrc`** (C2715; `agentsync.convert.speech`). `_seed` ran `/usr/bin/curl` with HOME kept
+and no `--disable`, so a `.curlrc` holding `insecure` and `noproxy = "*"` took the fetch around git's proxy and
+accepted an untrusted certificate (the verifier's run against a local self-signed server: rc 7 through the closed
+proxy with no `.curlrc`, rc 0 with it, rc 7 again with `--disable` first), against "trusts and routes as git does",
+whose libcurl reads no `.curlrc`. `--disable` is now the first of `_CURL_FLAGS`, so it is curl's first argument, the
+only place curl reads it; HOME stays (swift and git need it) and CURL_HOME is not set, since newer curls also search
+XDG_CONFIG_HOME. The artifact's checksum gate and SwiftPM's own fallback are unchanged. Tests:
+`test_speech.py::test_the_seeds_curl_reads_no_curlrc_c2715` (a fake curl's argv opens `--disable` under a home holding
+a `.curlrc`), `test_speech.py::test_the_seeds_curl_is_the_systems_c2715` and the argv pin in
+`test_speech.py::test_behind_a_proxy_the_build_seeds_swiftpms_cache_with_the_checked_artifact`.
+
 ### 16.279 Round 44: the prompt goes to v41 (only what setup prints and this shell holds), ship-land's superseded-run lookup in its rate wait, dated lines in place of rewrites, and the guides (2026-11-22, wave B13 round 44 lane D)
 
 Reserved for round 44 lane D of B13.

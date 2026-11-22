@@ -934,7 +934,8 @@ def test_behind_a_proxy_the_build_seeds_swiftpms_cache_with_the_checked_artifact
     speech.build(cache)
     artifacts = cache / "speech" / "swiftpm" / "cache" / "artifacts"
     [call] = lines_of(curl.with_name("curl.calls"))
-    flags = "--fail --silent --show-error --location --proto =https --connect-timeout 30 --speed-limit 1024 "
+    flags = "--disable --fail --silent --show-error --location --proto =https --connect-timeout 30 "
+    flags += "--speed-limit 1024 "
     flags += "--speed-time 60 --output"
     assert re.fullmatch(rf"{flags} {re.escape(str(artifacts))}/\.seed-\S+ {re.escape(speech.NEMO_URL)}", call)
     assert dict(ln.split("=", 1) for ln in lines_of(curl.with_name("curl.env")))["HTTPS_PROXY"] == (
@@ -949,6 +950,27 @@ def test_behind_a_proxy_the_build_seeds_swiftpms_cache_with_the_checked_artifact
     ocr._helper_path(cache, speech.SPEECH).unlink()
     speech.build(cache)
     assert not curl.with_name("curl.calls").exists(), "a seeded artifact is not fetched again"
+
+
+def test_the_seeds_curl_reads_no_curlrc_c2715(
+    curl: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 44 C2715: the seed ran /usr/bin/curl with HOME kept and no ``--disable``, so a ``.curlrc``
+    holding ``insecure`` or ``noproxy = "*"`` took the fetch around git's proxy and its trust (the verifier's
+    run). ``--disable`` is curl's first argument, the only place curl reads it, right after /usr/bin/curl."""
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.contoso.example:8080")
+    (tmp_path / "home").mkdir()
+    (tmp_path / "home" / ".curlrc").write_text('insecure\nnoproxy = "*"\n')
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    speech.build(tmp_path / "cache")
+    [call] = lines_of(curl.with_name("curl.calls"))
+    assert call.split(" ")[0] == "--disable", call
+    assert speech._CURL_FLAGS[0] == "--disable" and speech._CURL_FLAGS.count("--disable") == 1
+
+
+def test_the_seeds_curl_is_the_systems_c2715() -> None:
+    """B13 round 44 C2715: argv[0] stays /usr/bin/curl, so ``--disable`` lands as its first argument."""
+    assert speech._CURL == "/usr/bin/curl"
 
 
 @pytest.mark.parametrize("curl_exit", ["0", "22"])

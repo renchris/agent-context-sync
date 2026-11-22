@@ -656,11 +656,15 @@ def _step(
 
 _CURL = "/usr/bin/curl"
 _CURL_FLAGS = (
+    "--disable",  # first, or curl reads the person's .curlrc anyway (B13 round 44 C2715)
     *("--fail", "--silent", "--show-error", "--location", "--proto", "=https"),
     *("--connect-timeout", "30", "--speed-limit", "1024", "--speed-time", "60"),
 )
 """HTTPS only, through redirects (GitHub serves releases from another host); a stall of a minute below
-1 KB/s ends the fetch rather than the build's twenty minutes."""
+1 KB/s ends the fetch rather than the build's twenty minutes.  ``--disable`` comes first, right after
+:data:`_CURL`, where curl reads it: the person's ``.curlrc`` (an ``insecure`` or a ``noproxy``) is never
+read, so only the flags and the environment the seed builds apply, and it trusts and routes as git does,
+whose libcurl reads no ``.curlrc`` (B13 round 44 C2715)."""
 _PROXIES = ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy")
 """The variables that route an https url through a proxy, for curl and git alike: both ignore HTTP_PROXY for
 an https url (measured with /usr/bin/curl 8.7.1: HTTP_PROXY at a closed port still fetched directly), and
