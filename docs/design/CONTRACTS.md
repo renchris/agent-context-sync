@@ -45278,6 +45278,15 @@ the agent to export the value or prefix install.sh with it; it writes no file; t
 unchanged. C2606's sentence for a usage error that still prints none is the prompt's (lane D, ruling 187). Test:
 `test_a_refused_agentsync_config_prints_one_next_line_for_the_person_c2728_c2610`.
 
+**install.sh and the CLI trim AGENTSYNC_CONFIG by one set** (C2699 with C2729; ruling 177). install.sh trims
+`CONFIG_BLANKS=$' \t\n\r\v\f'`, lane B's `paths.CONFIG_BLANKS` written out, never `[[:space:]]`, whose set the
+locale decides. Tests: `test_install_sh_trims_agentsync_config_by_paths_config_blanks_c2699_c2729` (the literal
+equals the constant), `test_install_sh_and_the_cli_read_one_agentsync_config_c2699_c2729` (space, tab, VT, FF, 0x1C,
+0x1F, U+0085, U+00A0, U+3000, leading and trailing, under C and en_US.UTF-8: step 2 names the file
+`paths.default_config_path()` reads, or refuses it naming the absolute path the CLI would read). bash 3.2's `%q`
+under UTF-8 backslashes a continuation byte of U+0085 or U+3000, so that refusal's export word is shell-quoted
+bytes, not UTF-8 text; it is left as it is.
+
 **A none is recorded by `--no-folder`** (C2658; ruling 178). `install.sh --no-folder` does a bare step 2's work,
 puts `--no-folder` in install.log's start-line `args=` (a word after `args=`, never in a `--source-local` re-run's
 words), exits 0 and ends on `NEXT: the person chose no folder, so this Mac syncs none of their folders: go on to the

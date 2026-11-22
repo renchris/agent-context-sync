@@ -9875,6 +9875,74 @@ def test_the_installer_reads_agentsync_config_as_the_cli_does_c2534(
         assert not (cwd / "cfg" / "sources.toml").exists()
 
 
+def test_install_sh_trims_agentsync_config_by_paths_config_blanks_c2699_c2729() -> None:
+    """B13 round 44 ruling 177, C2699 with C2729: install.sh trimmed AGENTSYNC_CONFIG by bash's
+    locale-dependent [[:space:]] and the CLI by str.strip()'s Unicode table, so a VT-to-0x1F or a U+0085 kept
+    on one side named another file. Both trim paths.CONFIG_BLANKS: install.sh's literal is that set."""
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    [literal] = re.findall(r"^CONFIG_BLANKS=\$'([^'\n]*)'$", script, re.M)
+    decoded = literal.encode("ascii").decode("unicode_escape")
+    assert decoded == paths.CONFIG_BLANKS == " \t\n\r\v\f", (literal, paths.CONFIG_BLANKS)
+    assert "[![:space:]]" not in script.split("CONFIG_BLANKS=", 1)[1].split("\nAPP_NAME=", 1)[0]
+
+
+_C2699_CHARS = [" ", "\t", "\v", "\f", "\x1c", "\x1f", "\u0085", "\u00a0", "\u3000"]
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize("where", ["leading", "trailing"])
+@pytest.mark.parametrize("ch", _C2699_CHARS, ids=[f"U+{ord(c):04X}" for c in _C2699_CHARS])
+def test_install_sh_and_the_cli_read_one_agentsync_config_c2699_c2729(
+    env: dict[str, str],
+    wheel: Path,
+    ch: str,
+    where: str,
+    locale: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """B13 round 44 ruling 177, C2699 with C2729: for each blank or near-blank around an absolute
+    AGENTSYNC_CONFIG, under LC_ALL=C and en_US.UTF-8, install.sh's step 2 names the file
+    paths.default_config_path() reads, or, where the value stays relative for both, refuses it naming the
+    absolute path the CLI would read from that folder: a trailing 0x1C or U+0085 kept by the shell alone no
+    longer splits the config in two."""
+    cwd = Path(env["HOME"]) / "Projects" / "Contoso"
+    cwd.mkdir(parents=True)
+    target = f"{env['HOME']}/agent-context/contoso.toml"
+    value = ch + target if where == "leading" else target + ch
+    monkeypatch.setenv("HOME", env["HOME"])
+    monkeypatch.setenv(paths.CONFIG_ENV, value)
+    monkeypatch.chdir(cwd)
+    want = paths.default_config_path()
+    run = {**env, "AGENTSYNC_CONFIG": value, "LC_ALL": locale, "LANG": locale}
+    # bytes: bash 3.2's %q under UTF-8 backslashes a continuation byte of U+0085 or U+3000, so the refusal's
+    # export word is shell-quoted bytes, not UTF-8 text
+    cp = subprocess.run(
+        [BASH32, str(INSTALL_SH), "--cwd", str(cwd), str(wheel)],
+        capture_output=True,
+        env=run,
+        stdin=subprocess.DEVNULL,
+        timeout=_install_bound(120),
+        check=False,
+    )
+    out, err = (b.decode("utf-8", "surrogateescape") for b in (cp.stdout, cp.stderr))
+    log = Path(env["STUB_LOG"])
+    said = [ln for ln in log.read_bytes().decode("utf-8").split("\n") if ln] if log.exists() else []
+    if value.strip(paths.CONFIG_BLANKS).startswith("/"):
+        assert cp.returncode == 2, out + err  # a first run with no folder
+        [init] = [c for c in said if c.startswith("agentsync init ")]
+        assert init == f"agentsync init --config {want}", (init, str(want))
+    else:
+        assert cp.returncode == 2 and said == [], out + err
+        m = re.search(r"export AGENTSYNC_CONFIG=(.+) and run the command again", err)
+        assert m, err
+        shown = subprocess.run(
+            [BASH32, "-c", 'eval "set -- $1"; printf %s "$1"', "_", m.group(1)],
+            capture_output=True,
+            check=True,
+        ).stdout.decode("utf-8", "surrogateescape")
+        assert shown == str(want), (shown, str(want))
+
+
 @pytest.mark.parametrize("value", ["rel.toml", "./cfg/sources.toml", "~nobody/contoso.toml"])
 def test_a_refused_agentsync_config_prints_one_next_line_for_the_person_c2728_c2610(
     env: dict[str, str], folder: Path, wheel: Path, value: str

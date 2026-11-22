@@ -207,8 +207,9 @@
 #   agent step      the step, logged step=agent, that installs the LaunchAgents: agent there is the LaunchAgent, and
 #                   "not a step for the agent" means the coding agent
 #
-# The config is $AGENTSYNC_CONFIG, else ~/agent-context/sources.toml. As agentsync reads it, the blanks around
-# the value are trimmed (a blank value is the default) and a leading ~ or ~/ is the home.
+# The config is $AGENTSYNC_CONFIG, else ~/agent-context/sources.toml. As agentsync reads it, the six ASCII
+# blanks around the value (space, tab, LF, CR, VT, FF: paths.CONFIG_BLANKS, in any locale) are trimmed (a blank
+# value is the default) and a leading ~ or ~/ is the home.
 #
 # Folders already synced: a re-run on a Mac that is set up asks for no folder. The person chose them once, and
 # they are in the config: the folder of each live local source (the inbox is agentsync's own folder and is
@@ -1758,10 +1759,14 @@ FOLDERS=()
 BAD_FOLDERS=()
 # The config as agentsync.paths.default_config_path reads AGENTSYNC_CONFIG: the blanks around it trimmed, a blank
 # value the default, and a leading ~ or ~/ the home, so step 2 and a later bare `agentsync sync` name one file. A
-# value still relative is made absolute after --cwd, and an install run refuses it (B13 round 43 C2534).
+# value still relative is made absolute after --cwd, and an install run refuses it (B13 round 43 C2534). The
+# blanks are paths.CONFIG_BLANKS, the six ASCII ones (space, tab, LF, CR, VT, FF) written out here, never
+# [[:space:]], whose set the locale decides, nor Python's str.strip() table, so no locale and no Unicode table
+# decides which file step 2 and a bare sync read (B13 round 44 ruling 177, C2699 with C2729).
+CONFIG_BLANKS=$' \t\n\r\v\f'
 CONFIG="${AGENTSYNC_CONFIG:-}"
-CONFIG="${CONFIG#"${CONFIG%%[![:space:]]*}"}"
-CONFIG="${CONFIG%"${CONFIG##*[![:space:]]}"}"
+CONFIG="${CONFIG#"${CONFIG%%[!"$CONFIG_BLANKS"]*}"}"
+CONFIG="${CONFIG%"${CONFIG##*[!"$CONFIG_BLANKS"]}"}"
 [ -n "$CONFIG" ] || CONFIG="$HOME/agent-context/sources.toml"
 case "$CONFIG" in
 \~) CONFIG="$HOME" ;;
