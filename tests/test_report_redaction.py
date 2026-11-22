@@ -3228,6 +3228,34 @@ def test_a_sharepoint_library_named_like_a_report_word_makes_both_reports_privat
 
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize("arm", ["id it", "folder IT/it", "folder IT/IT"])
+def test_a_two_letter_word_on_a_library_makes_both_reports_private_c2670(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+    arm: str,
+) -> None:
+    """B13 round 44 ruling 172, C2670: a source id `it`, or a folder `it` or `IT`, under library IT shares
+    its `<library-1>`, and the agentsync report marks that two-letter word short, so it is private only where
+    the placeholder shows; the shell exempted every `<library-N>` from the two-letter rule and stayed public,
+    and gave id `it` a `<source-1>` of its own, so a second id read one apart. The shell now registers a
+    library's own folded value whatever its length (hidden_by's library flag) and judges a `<library-N>` a
+    two-letter word that is no library landed on (lib_short); the library alone stays public."""
+    lead = "picked ~/Library/CloudStorage/OneDrive-SharedLibraries-Contoso/"
+    if arm == "id it":
+        folders, ids = ["IT/Birch Plans", "IT/Dune Files"], ["it", "qx7"]
+        said = [f"{lead}IT/Birch Plans", "it was the IT team, and source it is ok, and source qx7 too"]
+    else:
+        leaf = arm.rpartition("/")[2]
+        folders, ids = [f"IT/{leaf}"], None
+        said = [f"{lead}IT/{leaf}", "it was the IT team"]
+    shell, python, shell_private, python_private = _both_reports(
+        env, folders, said, locale, provider="OneDrive-SharedLibraries-Contoso", ids=ids
+    )
+    assert python_private is True, python
+    assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
 def test_both_reports_number_a_library_only_install_log_names_alike_c2471(
     env: dict[str, str],  # noqa: F811
     locale: str,

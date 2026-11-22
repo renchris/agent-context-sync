@@ -3692,10 +3692,21 @@ redaction_pairs() {
 	fuzzy_key() {
 		id_key "$(V="$1" CUT_SEP="$CUT_SEP" LC_ALL=C awk 'BEGIN { v = ENVIRON["V"]; gsub(ENVIRON["CUT_SEP"], "", v); printf "%s", v }')"
 	}
+	# PLACEHOLDER KEY: a two-letter word that is no library but lands on a <library-N> (a folder part `it` or
+	# `IT` under library IT, a source id `it`) is a short value there, as setup_report.Redactor.add marks it:
+	# where that placeholder shows, fallback_redaction makes the report private, the library alone never
+	# (B13 round 44 ruling 172, C2670). A subshell's variable never reaches it, so the mark is a file.
+	lib_short_mark() {
+		case "$1" in "<library-"*) ;; *) return 0 ;; esac
+		[ "${#2}" -eq 2 ] && two_letter_word "$(recase lower "$2")" || return 0
+		[ -z "${LIB_SHORT_FILE:-}" ] || printf '%s\n' "$1" >>"$LIB_SHORT_FILE"
+	}
+	# VALUE PLACEHOLDER [fuzzy] [lib]: lib for a library's own registration, whose folded value Python's _folded
+	# holds whatever its length, so a later id or folder `it` finds <library-N> (B13 round 44 ruling 172, C2670)
 	hidden_by() {
 		local low
 		low="$(recase lower "$1")"
-		case "$1" in [[:upper:]][[:upper:]]) ! two_letter_word "$low" || return 0 ;; esac
+		case "$1" in [[:upper:]][[:upper:]]) [ "${4:-}" = lib ] || ! two_letter_word "$low" || return 0 ;; esac
 		case "$folded_vals" in *$'\n'"$low"$'\t'*) ;; *) folded_vals+="$low"$'\t'"$2"$'\n' ;; esac
 		[ "${3:-}" = fuzzy ] && [ "${#1}" -ge 3 ] || return 0
 		case "$1" in */*) return 0 ;; esac
@@ -3738,6 +3749,7 @@ redaction_pairs() {
 				*$'\n'"$k"$'\t'*)
 					m="${folder_keys#*$'\n'"$k"$'\t'}"
 					m="${m%%$'\n'*}"
+					[ -n "$first" ] || lib_short_mark "$m" "$k"
 					;;
 				*)
 					new=1
@@ -3763,7 +3775,7 @@ redaction_pairs() {
 				else
 					short_pair "$part" "$m"
 				fi
-				hidden_by "$part" "$m" fuzzy
+				hidden_by "$part" "$m" fuzzy ${first:+${new:+lib}}
 			done
 		done
 	}
@@ -3956,6 +3968,7 @@ redaction_pairs() {
 			x="$(recase lower "$1")"
 			case "$folded_vals" in *$'\n'"$x"$'\t'*) x="${folded_vals#*$'\n'"$x"$'\t'}" ph="${x%%$'\n'*}" ;; esac
 		fi
+		[ -z "$ph" ] || lib_short_mark "$ph" "$k" # an id `it` on library IT (C2670)
 	}
 	# ID PLACEHOLDER KEY: a source id's pairs, as written (flag w), then the 2-character case decided by KEY, the
 	# separator-free fuzzy key id_known leaves in k, as setup_report.Redactor.add tests len(_norm(value)) == 2:
@@ -6928,11 +6941,18 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	local used="${2:-}" folder_item in_list="" whole="" skip_generic="" skip_agent="" proj="" v p fl
 	local low org_item apps="" heads e email="" inword="" inword_ex="" ag="one made of coding-agent product words (Copilot, GitHub Copilot)"
 	[ -n "$used" ] || used=" ~ <tmp> <user> <name> <org-[0-9] <link-[0-9] <mdmhost> <proxy-[0-9] <library-[0-9] <folder-[0-9] <source-[0-9] <path> <label> <remote> <value> "
-	local pairs generic=" " shown
-	pairs="$(redaction_pairs 2>/dev/null)" || {
+	local pairs generic=" " shown lib_short="" ls_file
+	# the <library-N> a two-letter word that is no library landed on (redaction_pairs' lib_short_mark): there
+	# the two-letter rule holds as for a folder; for the library alone it never does (B13 round 44 C2670)
+	ls_file="$(tmp_make)"
+	pairs="$(LIB_SHORT_FILE="$ls_file" redaction_pairs 2>/dev/null)" || {
+		rm -f "$ls_file"
 		redact_failed
 		return 1
 	}
+	lib_short="$(cat "$ls_file" 2>/dev/null || true)"
+	rm -f "$ls_file"
+	lib_short_has() { case $'\n'"$lib_short"$'\n' in *$'\n'"$1"$'\n'*) return 0 ;; esac; return 1; }
 	# The <folder-N> item's clauses, each only where the report shows what it explains (B13 round 11 M3, as
 	# round 10 L1 for the items): step 1's list where one of its folders was registered; the whole-word rule
 	# where a configured name every drive has (a pair of flag w) has its placeholder in the body; the list-only
@@ -7184,7 +7204,7 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 		esac
 		# a two-letter folder part or source id that is a two-letter word, where its placeholder is shown (C2071)
 		report_word "$low" || output_word "$low" || {
-			[ "${#low}" -eq 2 ] && case "$p" in "<org-"* | "<library-"*) false ;; esac && two_letter_word "$low" &&
+			[ "${#low}" -eq 2 ] && case "$p" in "<org-"*) false ;; "<library-"*) lib_short_has "$p" ;; esac && two_letter_word "$low" &&
 				[ -n "${3:-}" ] && LC_ALL=C grep -qF -- "$p" "$3" 2>/dev/null
 		} || continue
 		say "Private only: one of your folder or organization names is also a word this report prints, so where its"
