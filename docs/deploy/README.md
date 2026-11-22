@@ -52,7 +52,10 @@ git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context
 The script is safe to re-run and never prompts. It installs uv and agentsync, writes `sources.toml` with one live
 `kind = "local"` source per folder (on a re-run it adds only folders not yet there, through `agentsync add-source`),
 runs `agentsync status` and a first sync, and ends with one `NEXT:` line: the loop's next step, the same line
-`~/.local/bin/agentsync status` prints. It exits 2 when it created `sources.toml` and has no folder to sync (its
+`~/.local/bin/agentsync status` prints, except on a re-run over a config that holds no source but the inbox (a paused
+or retired folder still counts as one), where status names the missing agentsync-docs skill: install.sh then ends,
+exit 0, on its own `no folder is synced yet: list them with install.sh --list-folders, ...` line in place of status's
+(B13 round 43 C2401; with the skill already current, status's own no-folder line is printed unchanged). It exits 2 when it created `sources.toml` and has no folder to sync (its
 `NEXT:` names `--list-folders`) and 1 on a `[FAIL]` line. It builds no launcher and installs no LaunchAgent. Every
 work session then starts with `~/.local/bin/agentsync sync` and does what its `NEXT:` line says.
 

@@ -988,6 +988,28 @@ def test_the_mdm_guides_commands_quote_every_placeholder_c2527() -> None:
     assert '--keychain-profile "$PROFILE" --wait' in page
 
 
+def test_the_deploy_guide_names_the_no_folder_re_runs_own_next_c2661() -> None:
+    """B13 round 44 C2661: docs/deploy/README.md said install.sh always ends on the same NEXT status prints,
+    but since round 43 C2401 a re-run over a config with no source but the inbox, where status names the
+    missing skill, ends exit 0 on install.sh's own `no folder is synced yet: list them with ...` line. The
+    guide names that exception and its condition, held to install.sh's own case pattern and literal."""
+    script = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    [(pattern, words)] = re.findall(
+        r'if \[ "\$HAVE_SOURCES" -eq 0 \] && \[ "\$EXIT_RC" -eq 0 \]; then\n\s*case "\$next" in\n'
+        r'\s*"([^"]+)"\*\)\n\s*next="(no folder is synced yet: list them with) \$SELF --list-folders,',
+        script,
+    )
+    assert pattern == "the agentsync-docs skill is missing or out of date"
+    guide = " ".join((DEPLOY / "README.md").read_text(encoding="utf-8").split())
+    assert (
+        "the same line `~/.local/bin/agentsync status` prints, except on a re-run over a config that holds no"
+        " source but the inbox (a paused or retired folder still counts as one), where status names the"
+        f" missing agentsync-docs skill: install.sh then ends, exit 0, on its own `{words} install.sh"
+        " --list-folders, ...` line in place of status's (B13 round 43 C2401; with the skill already current,"
+        " status's own no-folder line is printed unchanged)."
+    ) in guide
+
+
 def test_the_it_requests_commands_quote_every_placeholder_c2726() -> None:
     """B13 round 44 C2726: it-request.md's Entra block passed `--id <app-client-id>` bare three times, which
     the shell reads as input from a file named `app-client-id`; `bash -n` refused the block before any
