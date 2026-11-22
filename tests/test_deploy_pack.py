@@ -4127,11 +4127,16 @@ def test_the_v40_prompt_reads_only_lines_setup_prints_in_every_branch_c2406_c240
 def test_the_readme_lists_every_refresh_verdict_curate_reports_ruling_164() -> None:
     """B13 round 43 ruling 164 (lane B's c8e54894d): curate reports a page a unit-removed tombstone names a
     successor for as SOURCE-SUPERSEDED, and README's refresh-queue paragraph listed only STALE, SOURCE-DELETED
-    and SOURCE-UNREADABLE. It lists every source verdict, each held to curate's own list."""
+    and SOURCE-UNREADABLE. It lists every source verdict, each held to curate's own list. B13 round 44 C2725:
+    the paragraph said the queue is one awk pass, but KISS K09b retired that script and curate's Python port
+    runs it; it says so, its time is the awk script's, and a dated line records the correction."""
     from agentsync import curate  # noqa: PLC0415
 
     readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
-    [listed] = re.findall(r"The refresh queue is one awk pass .*? separately because each needs", readme)
+    # B13 round 44 C2725: anchored on words that do not change with the implementation; no awk claim
+    [listed] = re.findall(r"The refresh queue is one pass .*? separately because each needs", readme)
+    assert "awk pass" not in listed and "curate.refresh_queue" in listed and callable(curate.refresh_queue)
+    assert "**CORRECTED (2026-11-22, B13 round 44):** this said the queue is one awk pass" in readme
     verdicts = set(re.findall(r"`([A-Z-]+)`", listed))
     assert curate.SOURCE_SUPERSEDED == "SOURCE-SUPERSEDED" and set(curate.VERDICTS) >= verdicts
     assert verdicts == {"STALE", "SOURCE-DELETED", "SOURCE-SUPERSEDED", "SOURCE-UNREADABLE"}, verdicts
