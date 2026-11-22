@@ -969,9 +969,9 @@ def test_pppc_profile_passes_plutil_lint() -> None:
     assert proc.returncode == 0, proc.stdout + proc.stderr
 
 
-def _mdm_sh_blocks() -> list[str]:
-    """The ```sh blocks of docs/deploy/mdm/README.md, in page order."""
-    page = (DEPLOY / "mdm" / "README.md").read_text(encoding="utf-8")
+def _mdm_sh_blocks(name: str = "mdm/README.md") -> list[str]:
+    """The ```sh blocks of docs/deploy/<name> (the MDM guide by default), in page order."""
+    page = (DEPLOY / name).read_text(encoding="utf-8")
     return re.findall(r"^```sh\n(.*?)^```$", page, re.M | re.S)
 
 
@@ -986,6 +986,26 @@ def test_the_mdm_guides_commands_quote_every_placeholder_c2527() -> None:
             bare = re.sub(r"\"[^\"]*\"|'[^']*'", "", line)
             assert not re.search(r"<[A-Za-z]", bare), line
     assert '--keychain-profile "$PROFILE" --wait' in page
+
+
+def test_the_it_requests_commands_quote_every_placeholder_c2726() -> None:
+    """B13 round 44 C2726: it-request.md's Entra block passed `--id <app-client-id>` bare three times, which
+    the shell reads as input from a file named `app-client-id`; `bash -n` refused the block before any
+    command ran. As C2527's guard for the MDM guide: every `<...>` in a command block sits inside quotes, and
+    the block names the placeholder once, in a quoted variable, which it_request's open fields still read."""
+    blocks = _mdm_sh_blocks("it-request.md")
+    assert blocks
+    for block in blocks:
+        for line in block.splitlines():
+            if line.lstrip().startswith("#"):
+                continue
+            bare = re.sub(r"\"[^\"]*\"|'[^']*'", "", line)
+            assert not re.search(r"<[A-Za-z]", bare), line
+    [entra] = [b for b in blocks if "az ad sp create" in b]
+    assert entra.count("<app-client-id>") == 1 and 'APP_CLIENT_ID="<app-client-id>"' in entra
+    assert entra.count('--id "$APP_CLIENT_ID"') == 3
+    bash = subprocess.run(["/bin/bash", "-n"], input=entra, capture_output=True, text=True, check=False)
+    assert bash.returncode == 0, bash.stderr
 
 
 @on_macos

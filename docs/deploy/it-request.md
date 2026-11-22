@@ -106,9 +106,10 @@ From the CLI, using standard `az` verbs (trim the file first):
 
 ```sh
 az rest --method POST --url https://graph.microsoft.com/v1.0/applications --body @entra-app.json
-az ad sp create --id <app-client-id>
-az ad sp update --id <app-client-id> --set appRoleAssignmentRequired=true
-az ad app permission admin-consent --id <app-client-id>
+APP_CLIENT_ID="<app-client-id>"
+az ad sp create --id "$APP_CLIENT_ID"
+az ad sp update --id "$APP_CLIENT_ID" --set appRoleAssignmentRequired=true
+az ad app permission admin-consent --id "$APP_CLIENT_ID"
 ```
 
 ## Delegated permissions, per source kind
