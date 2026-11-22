@@ -44558,6 +44558,9 @@ only). Tests: `test_install_oneshot.py::test_the_installer_reads_agentsync_confi
 section's last commit landed, so round 41's strict xfail on
 `test_both_reports_cut_a_folder_step_1_listed_but_not_configured_ruling_142` stays, §16.261's C2060 paragraph and lane
 D's C2259 caveat are unchanged, and no lane writes an equivalent change another way.
+Amended 2026-11-22, §16.279 C2682: the record of decision 1476293d00a3, the strict xfail and §16.261's C2060
+paragraph is §16.266's C2060 paragraph, which this one restates; what this section adds is ruling 161 and lane D's
+C2259 caveat, both unchanged while the decision is open.
 
 ### 16.272 Round 43: the inbox's state decided once, a unit-removed tombstone naming its successor, and a waiting recording told and rolled back as waiting (2026-11-21, wave B13 round 43 lane B)
 
@@ -45473,6 +45476,12 @@ the eTag above is not in a current page's front matter, its `the words above say
 new words. The c2220 test asserts the §15 C2532 line's words and round 42's passages, and `1 KB, sits outside the cap`
 only against config.py's comment. Test:
 `tests/test_convert_page_cap.py::test_the_cap_bounds_the_guarded_body_and_the_words_say_the_front_matter_is_outside_c2220`.
+
+**§16.271's C2469 paragraph cites the record it restates** (C2682; ruling 186; docs; amends §16.271 C2469). §16.271's
+C2469 paragraph repeats §16.266's C2060 paragraph nearly word for word (difflib 0.902), both on the operator's open
+class C decision 1476293d00a3. Ruling 186 keeps another round's words, so neither is rewritten: a dated line under
+§16.271's paragraph names §16.266's C2060 paragraph as the record and what §16.271 adds, ruling 161 and lane D's C2259
+caveat. When C2060 is built, each paragraph takes its own dated line.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
