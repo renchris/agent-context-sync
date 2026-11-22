@@ -1010,6 +1010,29 @@ def test_the_deploy_guide_names_the_no_folder_re_runs_own_next_c2661() -> None:
     ) in guide
 
 
+def test_the_guides_install_log_row_names_inbox_not_added_and_no_report_reads_it_c2663() -> None:
+    """B13 round 44 C2663 (makes worse True for a reader): install.log's config line ends with
+    `inbox=not-added` when init or add-source said the inbox was not added (C2207, widened by C2440), but the
+    guide's install.log row named only `kept=N added=M`. The row names every field install.sh adds to that
+    line, and says no report reads the note: the report's `inbox:` line reads the disk, which settles the same
+    fact (CONTRACTS C2207), so setup_report never reads it."""
+    script = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    words = re.findall(r'FOLDER_COUNTS="(?:\$FOLDER_COUNTS)? ?([^"]*)"', script)
+    fields = {w.split("=")[0] + "=" for line in words for w in line.split() if "=" in w}
+    assert fields == {"kept=", "added=", "inbox="}, words
+    assert ' inbox=not-added"' in script
+    [row] = [
+        line
+        for line in _page("docs/deploy/setup-feedback.md").splitlines()
+        if "~/agent-context/setup/install.log` |" in line
+    ]
+    assert (
+        "`config` with `kept=N added=M`" in row and "then `inbox=not-added` (since B13 round 42 C2207" in row
+    )
+    assert "No report reads it: Configuration's `inbox:` line reads the disk (CONTRACTS C2207)" in row
+    assert "inbox=" not in (ROOT / "src" / "agentsync" / "setup_report.py").read_text(encoding="utf-8")
+
+
 def test_the_it_requests_commands_quote_every_placeholder_c2726() -> None:
     """B13 round 44 C2726: it-request.md's Entra block passed `--id <app-client-id>` bare three times, which
     the shell reads as input from a file named `app-client-id`; `bash -n` refused the block before any
