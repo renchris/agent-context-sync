@@ -5611,22 +5611,37 @@ typed_note_cut() {
 		if (wr[k] != "cwd" && t !~ /[\/\\\047"]/) return v
 		return cut(t, wr[k] == "provider") substr(v, length(t) + 1)
 	}
-	function qheads(l,    out, a, q, k, c, e, sp, st, j, b, kk) {
+	# B13 round 44 ruling 173 (C2666; privacy; amending ruling 158): any one-word head, not only one right
+	# after a quote, as setup_report._quoted_value_end reads it: a head with no word character or `-` before it
+	# and a `\047` or `"` anywhere earlier on the line has its value run to the nearest quote after it of a kind
+	# that stands before it (a `"` not taken by a backslash), or the line\047s end, split and cut as above; a
+	# value that opens with a quote of its own (`\047`, `"`, `$\047`) or a printf %q word holding an escaped
+	# blank keeps the one-word read, and so does a head with no quote before it
+	function qheads(l,    out, pos, h, n, k, q, e, b, x, pre, rest, sp, st, j, c, kk) {
 		if (nwh == 0) return l
-		out = ""
-		while (1) {
-			k = 0
-			for (a = 1; a < length(l); a++) {
-				q = substr(l, a, 1)
-				if ((q == "\047" || q == "\"") && (k = whead(l, a + 1))) break
+		out = ""; pos = 1; h = 1; n = length(l)
+		while (h <= n) {
+			if (!(k = whead(l, h)) || (h > 1 && substr(l, h - 1, 1) ~ /[A-Za-z0-9_-]/)) { h++; continue }
+			b = h + length(wh[k])
+			if (h > 1 && ((q = substr(l, h - 1, 1)) == "\047" || q == "\"")) {
+				e = h # ruling 158: the quote right before the head wraps it; its close, else past the line\047s end
+				while (e <= n && substr(l, e, 1) != q) e += (q == "\"" && substr(l, e, 1) == "\\") ? 2 : 1
+				if (e > n) e = n + 1
+			} else {
+				pre = substr(l, 1, h - 1); rest = substr(l, b)
+				if ((!index(pre, "\047") && !index(pre, "\"")) || rest ~ /^(\047|"|[$]\047)/ ||
+					rest ~ /^([^ \t\n\r\f\013\\\047"]|\\[^ \t])*\\[ \t]/) { h = b; continue }
+				e = n + 1
+				for (j = 1; j <= 2; j++) {
+					q = (j == 1) ? "\047" : "\""
+					if (!index(pre, q)) continue
+					x = b
+					while (x <= n && substr(l, x, 1) != q) x += (q == "\"" && substr(l, x, 1) == "\\") ? 2 : 1
+					if (x <= n && x < e) e = x
+				}
 			}
-			if (!k) break
-			e = a + 1 # the closing quote, else past the line\047s end
-			while (e <= length(l) && substr(l, e, 1) != q) e += (q == "\"" && substr(l, e, 1) == "\\") ? 2 : 1
-			if (e > length(l)) e = length(l) + 1
-			b = a + 1 + length(wh[k])
 			sp = substr(l, b, e - b); st = 1
-			out = out substr(l, 1, b - 1)
+			out = out substr(l, pos, b - pos)
 			for (j = 2; j <= length(sp); j++) {
 				c = substr(sp, j - 1, 1)
 				if ((c == " " || c == "\t") && (kk = whead(sp, j))) {
@@ -5634,9 +5649,9 @@ typed_note_cut() {
 					k = kk; st = j + length(wh[kk]); j = st - 1
 				}
 			}
-			out = out hvcut(k, substr(sp, st)); l = substr(l, e)
+			out = out hvcut(k, substr(sp, st)); pos = e; h = e
 		}
-		return out l
+		return out substr(l, pos)
 	}
 	function slcut(l,    k) {
 		ncw = 0 # this line\047s `debug: cwd ` values; the last is the cwd the next line compares with (C2029)
