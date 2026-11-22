@@ -511,17 +511,28 @@ def test_every_result_note_ends_with_a_section_for_later_lanes_and_the_rehearsal
     # B13 round 43 C2465 with C2480: four of round 42's five notes put a Landed or CI read-back section,
     # written after the land, below theirs, against "It ends with": the rule lets those follow it, and only
     # those.
+    # B13 round 44 C2681 with C2615, C2620 and C2625: lane E's round 43 note headed its section "For
+    # later rounds" (the third miss), so the fallback reads every section above Landed, an Items entry a
+    # later lane needs is repeated or pointed to inside the section, and the lead checks each heading.
     sentence = re.escape(
         "Result note: `~/.cache/agentsync-bring-back/b13/lanes/r@@-<lane>.md`. It carries a section headed"
         " exactly `For later lanes and the rehearsal`, after its Items and Corrections, which says `none`"
         " when the lane has nothing for a later lane or the rehearsal; a word for one lane, lane D included,"
         " goes inside that section, never under a heading of its own (C2215). Only a Landed or CI read-back"
-        " section, written after the land, may follow it (C2465). The rehearsal reads each note's section,"
-        " from its heading to the next `## ` heading, and where a note has none, its Items and Corrections in"
-        " full."
+        " section, written after the land, may follow it (C2465). An item under Items that a later lane or"
+        " the rehearsal needs is repeated inside that section, or pointed to there by its id (round 44"
+        " C2625). The rehearsal reads each note's section, from its heading to the next `## ` heading, and"
+        " where a note has none, every section of the note above its Landed or CI read-back section, so no"
+        " closing section is skipped (round 44 C2681)."
     ).replace("@@", r"\d+")
     assert re.search(sentence, lanes)
     assert "It ends with a section headed exactly" not in lanes
+    assert "its Items and Corrections in full." not in lanes
+    check = re.escape(
+        "exactly one line `## For later lanes and the rehearsal`, only a Landed (or Land) or CI read-back"
+        " heading after it, and a section that is not empty (`none` or at least one line)"
+    )
+    assert re.search(check, lanes)
 
 
 def test_the_lane_brief_says_a_lane_never_fetches_c2486() -> None:

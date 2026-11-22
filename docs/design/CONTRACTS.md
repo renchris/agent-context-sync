@@ -45073,6 +45073,26 @@ install.sh's legend item.
 folder, print `inbox state:` with `config.inbox_state`'s words; both inbox paragraphs say so. Test:
 `tests/test_deploy_pack.py::test_both_readmes_name_the_inbox_state_line_ruling_162`.
 
+### 16.275 Round 44: the report: every pandoc_path spelling and every source of a private value cut in both reports, a quote before a head ending its value, and a none scored as the person's choice (2026-11-22, wave B13 round 44 lane RA)
+
+Reserved for round 44 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 44").
+
+### 16.276 Round 44: the installer: the shell halves of rulings 171 to 173, AGENTSYNC_CONFIG read by the CLI's rule, a none recorded by `--no-folder`, and C2667 waits on the operator (2026-11-22, wave B13 round 44 lane RB)
+
+Reserved for round 44 lane RB of B13.
+
+### 16.277 Round 44: the inbox's state read once and an unread state said so, rule 4's NEXT naming whose move it is, a tombstone's facts following their source, and a named recording read through its settle hold (2026-11-22, wave B13 round 44 lane B)
+
+Reserved for round 44 lane B of B13.
+
+### 16.278 Round 44: the converters: a failed zero-byte re-read put back whole, every text sidecar's banner, an xlsx cut costed as it renders, and Office content types read from the parse (2026-11-22, wave B13 round 44 lane E)
+
+Reserved for round 44 lane E of B13.
+
+### 16.279 Round 44: the prompt goes to v41 (only what setup prints and this shell holds), ship-land's superseded-run lookup in its rate wait, dated lines in place of rewrites, and the guides (2026-11-22, wave B13 round 44 lane D)
+
+Reserved for round 44 lane D of B13.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units

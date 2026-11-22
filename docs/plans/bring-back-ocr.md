@@ -3390,6 +3390,102 @@ two ways (an author `Ana): forged` gives `A1 (Ana): forged): x`, and a pivot nam
 its slots run, the lead reads trunk with `round44/tools/trunk.sh`, never a fetch in the operator checkout (C1470, C1661,
 C2066). The stop rule names Codex and Gemini: a clean round without Gemini goes to the operator before the loop closes.
 
+### B13 round 44: v40 rehearsal, cross-lane review, harvest, Codex beside Claude; Gemini not run (2026-11-22)
+
+Run `wf_573586e9-b71` on `d1b028b4` (BASE `7acb0255`), codex-only, 150 agents with no errors after one resume: 40
+skeptic slots and Codex's verify slot first died on one account's weekly limit and re-ran on the resume, and the other
+110 replayed from cache. 134 raw findings, 133 after dedupe, 118 confirmed (2 turns, 45 wrongs and 71 small, as the
+finders classed them; the verifiers' headers class them 32 wrong and 86 small, both turns among the small), 15 refuted
+(C2612, C2617, C2624, C2629, C2633, C2665, C2675, C2676, C2683, C2684, C2689, C2693, C2696, C2730, C2732). All six
+rehearsal scenarios passed on v40 at `d1b028b4`. The stop rule is not met (2 turns and 45 wrongs). The two turns are the
+prompt opening the config path the report cuts (C2727, with C2656 and C2717) and a relative or `~user` AGENTSYNC_CONFIG
+refused with no NEXT: line (C2728, with C2610 and C2606). Thirteen items need prompt words, the turn C2727 with C2656
+and C2717 among them, and C2658's corrected fix adds one: step 2 read sources.toml over the `inbox state:` line (C2718,
+C2731, C2657) and named no other live inbox (C2608), a none to the which-folders question had no recorded form (C2604,
+with C2658's `--no-folder`), step 3's `nothing to draft yet` NEXT did not say whose move it is (C2659), a step 2 that
+printed no NEXT: line left the agent no path (C2606), and line 614's wrap changes no word but must ride the version
+(C2619, C2634, C2664), so the prompt goes to v41. Thirteen items are data integrity, 11 of them privacy (C2666, C2668,
+C2637, C2609, C2716, C2713, C2698, C2669, C2670, C2671, C2667; the other two C2703 and C2723), and the turns and wrongs
+share six root causes: a report cut a value from one source or one spelling and the other printed it (C2716 with C2713
+and C2697, C2698, C2668, C2669, C2637, C2609, C2666, and C2667 behind the operator's open decision); a setting was read
+two ways (C2728, C2699 with C2729, C2727); a reader believed one source over the one that knows (C2718, C2608, C2636
+with C2644, C2602 with C2719, C2630, C2707, C2601, C2700); a derived fact went stale when its source changed (C2646 with
+C2706, C2704, C2645 with C2705, C2703, C2720); a twin was not moved with its fix (C2710 with C2652 and C2721, C2711,
+C2723 with C2712, C2708, C2722 with C2709, C2714); and a tool's words did not run as written (C2724, C2726). Codex gave
+32 opinions, none disputed. Gemini did not run (C2688; the allow rule for `~/.claude/scripts/agy-review.sh` is the
+operator's, backlog `8ed9dae0fbc0`, now a sixth round without it). The lead's triage (`round44/triage.md`) placed every
+item once.
+
+Lead rulings for round 44 (in `lanes/COMMON43.md`, mirrored in `docs/lanes/COMMON.md`): (171) every spelling a printer
+can write of a configured pandoc_path is cut in both reports, bash's UTF-8 `%q` word and every TOML spelling included,
+completing ruling 157; (172) every place a private value comes from is read by both reports, under one skip rule and to
+one verdict (the shell lists ~/Library/CloudStorage as Python does, Python registers install.log's CloudStorage parts,
+both register an outside-home inbox's parent, an unloaded config's ids and paths are cut), completing ruling 159; (173)
+a quote that opens anywhere before a path head ends that head's value at the nearest same-kind quote after it, amending
+ruling 158, lanes RA and RB landing the halves of rulings 171 to 173 in one run; (174) C2667 is built only on the
+operator's "Allow it" on class C decision `1476293d00a3` (or a packet the lead files to replace it), from round 41's
+text rebased onto trunk by lane RB itself, rulings 150 and 161 standing; (175) a zero-byte re-read row that fails puts
+back its page, its books and its counters through lane B's `_put_back`, completing ruling 166; (176) every text sidecar
+opens with the banner line and an empty line and a reader drops only those, with no BANNER_VERSION bump, amending
+§16.274's C2415; (177) install.sh and the CLI trim AGENTSYNC_CONFIG by one set of six ASCII blanks, and its refusal
+prints one NEXT: line saying the fix is the person's, not a step for the agent; (178) a none is recorded by install.sh's
+`--no-folder`, never inferred from an exit code, and the report scores it as the person's choice; (179) every reader of
+step 2's lines says what install.sh prints on that run, completing ruling 163; (180) the inbox's state is read from
+`config.inbox_state` before anything that claims it, and an unread state reads `not read (<why>)`, completing ruling
+162; (181) rule 4's `nothing to draft yet` says the move is the operator's and names an inbox only when one is read, and
+rule 5 points only at lines status prints, completing ruling 163; (182) a tombstone's successor, unit-removed flag and
+title follow what they derive from, a nullable `unit_removed` column reversing round 43's call 1 and C2672's committed
+title its call 16, completing ruling 164; (183) a file a person names is read whatever its settle hold, and every
+waiting recording stub is rendered again once, completing ruling 165; (184) an xlsx cut is costed as it renders and a
+list-sidecar record parses one way, xlsx moving to 1.0.6, completing rulings 167 and 168; (185) the Office type check
+and the .potx retype read the parsed content types, the byte read only a fallback; (186) a change to another round's
+CONTRACTS or COMMON.md text is a dated line beside it, never a rewrite and never a second copy, restoring ruling 74;
+(187) the setup prompt reads only what setup prints and what this shell holds and goes to v41 in lane D's one commit,
+after lanes RB and B land the lines it quotes, as ruling 170 took it to v40. The triage's 14 calls, each drafted one way
+so nothing waits (convictions 60 to 80), are filed as one class B packet with their courses kept: decision a2c3d66d991d.
+Once every course is on origin/main, the packet is marked with `cc-decide action`, so its expiry fires nothing, and its
+evidence cites a sha only once `git merge-base --is-ancestor` puts it on origin/main (C2494).
+
+C2667 (round 43's C2469, round 42's C2263, round 41's C2060) is still gated on the operator's open class C decision
+`1476293d00a3`: lane RB reads `cc-decide list --open` for it, and for any packet the lead files to replace it, at start
+and before its last land, builds it only on "Allow it", rebasing `round41/scratch-RB/refused-1-full.txt` onto trunk
+itself since round 42's rebase no longer applies, in a commit of its own the joint run never waits for, and otherwise
+leaves round 41's strict xfail in place, §16.276 saying C2667 stays unbuilt (ruling 174). Its verifier asks again for a
+fresh class C packet (ceiling permission) in that one's place, its Allow naming the port onto trunk with C2667's three
+porting points and its receipt a `git apply --check` at origin/main with the 4 tests passing in both locales. Of the
+residuals that opened round 44's harvest, the quote wrapping a whole command before a head is C2666, built under ruling
+173; lane RB's Python-side findings are C2668, C2669 and C2670, built under ruling 172; lane E's list-sidecar record
+read two ways is C2711 with C2694, built under ruling 184; and `--cwd=is not a folder this run can enter: <name>` was
+refuted again (C2665: install.sh never writes that line), so nothing covers it.
+
+Convergence: confirmed as before, then 123, then 118; turns as before, then 0, then 2; wrongs as before, then 34, then
+45 (the finders' count; 32 by the verifiers' headers).
+
+Lanes (`--account auto`, CONTRACTS §16.275 to §16.279, plain `scripts/ship-land.sh`, scratch under `round44/`): RA 18
+(the Python halves and both-reports rows of rulings 171 to 173 first, sent to lane RB; ruling 172's registrations,
+ruling 178's scoring, ruling 179's Loop line and C2631's inbox words), RB 15 (both halves of rulings 171 to 173 landed
+in one run on lane RA's branch, ruling 172's CloudStorage listing, ruling 177's trim and NEXT and ruling 178's
+`--no-folder` before lane D's v41 commit, and C2667 only on the operator's word), B 22 (paths.CONFIG_BLANKS,
+inbox_state's `not read` words, C2611's not-added line, ruling 181's NEXT and parse_convert_options in one early commit,
+sent to lanes RA, RB and D first, then rulings 182 and 183 and the CLI clusters), E 16 (rulings 175, 176, 184 and 185
+and the conversion clusters), D 23 (the v41 prompt commit after lanes RB's and B's printed lines land, ruling 186's
+dated lines, ship-land's superseded-run lookup and the guides). Triage placed 27 in D; as round 43's call 21 did, this
+lead commit carries C2681 with C2615, C2620 and C2625 (the result-note rule in `docs/lanes/COMMON.md`, and lane E's
+section added to `r43-E.md` in the lead's cache), so D builds 23 and stays one lane with the five reserved sections. No
+other lane passes 22. Moved in triage: C2667 from the lead to RB, gated; and C2606 from D to RB, merged with C2610 and
+C2728. The lead holds 20 more: round 45's kit (C2614, C2621, C2623, C2635, C2685), the brief
+(C2686, C2607, C2626, C2616, C2627, C2628, C2678), the lead's reads and closes (C2687, C2688), the record (C2674, C2690,
+C2691, C2695), the round 41 and 42 leftovers (C2692) and validate-bash.sh's false `git restore` deny, fired to
+claude-infrastructure (C2622). The specs cite `d1b028b4`'s line numbers, and the kept lessons in `lanes/COMMON43.md` and
+`docs/lanes/COMMON.md` now say so. Round 45 rehearses v41, with v40's block (`5cf1b540`) as scenario C's first old copy.
+
+Corrections to round 43's record (C2674, C2678; dated 2026-11-22). "B13 round 43 landed" says packet 767198a7eec3's
+courses are all on origin/main; two were not taken as drafted: call 5 (C2470, recorded not built with lane E's measured
+reason) and call 21 (split: C2480's test pin in `7acb0255`, C2465, C2486 and C2480's brief half in lane D's
+`89a8c7bd`), and call 16 was not built as drafted. The packet now carries that evidence. The no-fetch rule
+(`docs/lanes/COMMON.md` "No fetch", round 43 C2486) reached the lanes only through lane D's commit: lanes B and E each
+fetched 4 times and lane RB 9 times during their lands; round 45's lane briefs point at the rule.
+
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be
