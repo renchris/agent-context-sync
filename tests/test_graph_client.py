@@ -842,3 +842,14 @@ def test_offline_stays_transient_network_error(
     assert not isinstance(ei.value, graph_errors.NetworkPolicyError)
     assert (ei.value.status, ei.value.code) == (0, "network")
     assert len(sleeps) == 3
+
+
+def test_a_content_length_of_non_ascii_digits_is_no_declared_size_c2677(
+    client: GraphClient, tmp_path: Path
+) -> None:
+    """B13 round 44 C2677: ``Content-Length: ²`` passed str.isdigit() and int() raised ValueError
+    mid-download; only ASCII digits are a declared size, so the body is read and counted as it comes."""
+    response = httpx.Response(200, headers=[(b"Content-Length", b"\xb2")], content=b"abc")
+    size, digest = client._stream_to(response, tmp_path / "out.bin", None, f"{BASE}/x")
+    assert (size, digest) == (3, hashlib.sha256(b"abc").hexdigest())
+    assert (tmp_path / "out.bin").read_bytes() == b"abc"

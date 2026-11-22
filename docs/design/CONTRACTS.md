@@ -45248,6 +45248,17 @@ each named inside a 600-second window: the fetch, the converter run and a row th
 `test_a_waiting_recording_stub_is_rendered_again_once_c2647` (`STUB_RENDER` patched to 6 and the label to
 `REFUSED`: `# [WAITING]` after one sync, no commit after the next).
 
+**Every isdigit() that feeds int() takes ASCII digits only** (C2677). A superscript `²` passes `str.isdigit()`
+and `int()` raises ValueError on it (an Arabic-Indic digit reads as a number nobody wrote): ruling 169 guarded
+`_drift_since` alone. `isascii() and` now stands before `isdigit()` at `cycle._highest_recorded_run` and
+`_newest_run_trailer` (git's `Agentsync-Run` trailers, whose try catches only AgentSyncError),
+`cycle._Cycle._root_since` and `loop._root_since` (the `scope_root:` meta), `loop._progress` (the
+`recording_progress:` meta), `ops/lock.LockInfo.parse` (the pid and boot time) and `graph/client._stream_to`
+(`Content-Length`), each keeping its default and range checks, with no new import; setup_report's six sites are
+lane RA's. Tests: `test_every_isdigit_that_feeds_int_takes_ascii_digits_only_c2677`,
+`test_lockinfo_parse_rejects_malformed` (a superscript pid, an Arabic-Indic boot time),
+`test_a_content_length_of_non_ascii_digits_is_no_declared_size_c2677`.
+
 **The [convert] options record is parsed one way** (C2714; ruling 169 completed; dated line at §16.272 C2504).
 `_drift_since` and the report's `_convert_changed_run` each split the meta value their own way: a matching
 fingerprint before a 4301-digit run id raised int()'s ValueError in the sync, and `garbage 9` read as an edit in

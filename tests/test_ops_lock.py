@@ -83,9 +83,13 @@ def test_lockinfo_render_parse_roundtrip() -> None:
         "4242 -1 2026-09-29T10:00:00Z poll",
         "4242 1789594110 not-a-time poll",
         "\x00\x00garbage",
+        "\u00b2 1789594110 2026-09-29T10:00:00Z poll",  # B13 round 44 C2677: isdigit() but not int()
+        "4242 \u0667 2026-09-29T10:00:00Z poll",
     ],
 )
 def test_lockinfo_parse_rejects_malformed(text: str) -> None:
+    """B13 round 44 C2677: a superscript or Arabic-Indic digit passes str.isdigit() and int() raised on it
+    (a superscript two) or read it (an Arabic-Indic seven): only ASCII digits are a pid or a boot time."""
     assert LockInfo.parse(text) is None
 
 

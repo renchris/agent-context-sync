@@ -699,7 +699,7 @@ class GraphClient:
         """Write the body to a tmp file beside ``dest``, fsync, rename; enforce ``max_bytes``."""
         encoded = response.headers.get("Content-Encoding", "identity").lower() not in ("", "identity")
         declared_s = response.headers.get("Content-Length", "")
-        declared = int(declared_s) if declared_s.isdigit() and not encoded else None
+        declared = int(declared_s) if declared_s.isascii() and declared_s.isdigit() and not encoded else None
         if max_bytes is not None and declared is not None and declared > max_bytes:
             raise BudgetExhaustedError(
                 f"{redact_url(url)}: {declared} bytes exceeds the remaining budget of {max_bytes} bytes"

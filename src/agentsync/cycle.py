@@ -1051,7 +1051,7 @@ def _highest_recorded_run(config: Config) -> int:
     try:
         if gitops.head_sha(repo) is not None:
             out = gitops.run_git(repo, "log", "--format=%(trailers:key=Agentsync-Run,valueonly)").stdout
-            high = max([high, *(int(v) for v in out.split() if v.isdigit())])
+            high = max([high, *(int(v) for v in out.split() if v.isascii() and v.isdigit())])
     except AgentSyncError:
         pass
     folder = config.layout.changelog_dir
@@ -1110,7 +1110,7 @@ def _newest_run_trailer(repo: Path) -> int:
         ).stdout
     except AgentSyncError:
         return 0
-    return max((int(v) for v in out.split() if v.isdigit()), default=0)
+    return max((int(v) for v in out.split() if v.isascii() and v.isdigit()), default=0)
 
 
 _OCR_KEPT_CONVERTERS = frozenset({ImageConverter.converter_id, RecordingConverter.converter_id})
@@ -4878,7 +4878,7 @@ class _Cycle:
     def _root_since(self, src: SourceConfig) -> int:
         """The run ``_note_roots`` recorded for ``src`` (this run when there is no readable record)."""
         since = (self.manifest.get_meta(_SCOPE_ROOT_META + src.id) or "").partition(":")[0]
-        return int(since) if since.isdigit() else self.run_id
+        return int(since) if since.isascii() and since.isdigit() else self.run_id
 
     def _process_batch(
         self, src: SourceConfig, arm: SourceArm, rows: Sequence[ItemRow], budget: ByteBudget, acc: _SourceAcc

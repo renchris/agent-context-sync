@@ -87,7 +87,7 @@ class LockInfo:
         if len(parts) != 4:
             return None
         pid_s, boot_s, started_at, label = parts
-        if not (pid_s.isdigit() and boot_s.isdigit()):
+        if not (pid_s.isascii() and pid_s.isdigit() and boot_s.isascii() and boot_s.isdigit()):
             return None
         pid, boot = int(pid_s), int(boot_s)
         if pid <= 0 or _parse_iso(started_at) is None:

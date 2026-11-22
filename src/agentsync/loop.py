@@ -559,7 +559,7 @@ def _progress(value: str | None) -> tuple[int, int] | None:
     """``(done_ms, total_ms)`` of a ``recording_progress:`` meta value; None when it is missing, empty,
     malformed or has no length."""
     parts = (value or "").split()
-    if len(parts) != 2 or not all(p.isdigit() for p in parts):
+    if len(parts) != 2 or not all(p.isascii() and p.isdigit() for p in parts):
         return None
     done, total = int(parts[0]), int(parts[1])
     return (min(done, total), total) if total > 0 else None
@@ -1026,7 +1026,7 @@ def _missed(manifest: Manifest, source_id: str) -> int:
 def _root_since(manifest: Manifest, source_id: str) -> int:
     """The run the source's current root was first walked in (manifest meta ``scope_root:<id>``), else 0."""
     since = (manifest.get_meta(_SCOPE_ROOT_META + source_id) or "").partition(":")[0]
-    return int(since) if since.isdigit() else 0
+    return int(since) if since.isascii() and since.isdigit() else 0
 
 
 def _missed_below(manifest: Manifest, source_id: str, gone: Sequence[str]) -> tuple[int, int]:

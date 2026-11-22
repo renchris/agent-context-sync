@@ -5929,6 +5929,29 @@ def test_a_convert_record_is_parsed_one_way_c2714(
     assert "reread_options" not in _run_record(config)
 
 
+def test_every_isdigit_that_feeds_int_takes_ascii_digits_only_c2677(
+    tmp_path: Path, meetings: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 44 C2677: a superscript ``²`` passes str.isdigit() and int() raised ValueError on it, in the
+    run-trailer readers (whose try catches only AgentSyncError), the scope-root record and the recording
+    progress; ruling 169's ``isascii() and isdigit()`` now guards each, so such a value is unrecorded."""
+    config = config_with(tmp_path, meetings)
+    assert run(config).exit_code == 0
+    repo = config.docs_repo
+    before = cycle_mod._highest_recorded_run(config)
+    for value in ("3", "\u00b2"):  # the newest commit's trailer is the superscript
+        gitops.run_git(repo, "commit", "-q", "--allow-empty", "-m", f"by hand\n\nAgentsync-Run: {value}")
+    assert cycle_mod._newest_run_trailer(repo) == 0
+    assert cycle_mod._highest_recorded_run(config) == max(before, 3)
+    with Manifest(config.state_paths.db) as m:
+        m.set_meta(cycle_mod._SCOPE_ROOT_META + "contoso", "\u00b2:/x")
+        assert loop_mod._root_since(m, "contoso") == 0
+        stub = SimpleNamespace(manifest=m, run_id=7)
+        assert cycle_mod._Cycle._root_since(stub, SimpleNamespace(id="contoso")) == 7  # type: ignore[arg-type]
+    assert loop_mod._progress("\u00b2 3") is None and loop_mod._progress("1 3") == (1, 3)
+    assert run(config, mode=CycleMode.DRY_RUN).exit_code == 0
+
+
 def test_parse_convert_options_takes_the_shape_the_cycle_writes_c2714() -> None:
     """C2714's parser: the cycle's own ``<16 hex> <run>`` and a longer digest read; nothing else does."""
     assert parse_convert_options("0123456789abcdef 7") == ("0123456789abcdef", 7)
