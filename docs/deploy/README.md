@@ -131,7 +131,7 @@ names a host other than github.com, step 1 of the setup prompt lists where git m
   is set back to live. If a source of another kind is already on that folder, setup keeps no inbox there and says so
   (`inbox: <path> is source '<id>' (<kind>, <state>), not an inbox source`): the folder syncs as that source while it
   is live. If the folder cannot be made (a file already has the name, for example), `agentsync init` and
-  `agentsync add-source` print `inbox: not added: …` and still exit 0. Drag in exports,
+  `agentsync add-source` print `inbox: not added: …` and still exit 0. When no live inbox source sits on that folder, `agentsync status` and step 2 print an `inbox state:` line after the `inbox:` line, saying what is there instead (`paused <folder>`, `retired <folder>` or `not added (<reason>)`). Drag in exports,
   attachments, PDFs or emails (drag a message out of Outlook to save it as `.eml`; save a meeting transcript as
   `.docx` or `.vtt`), and they are converted once they stop changing (`quiescence_s`). Teams messages go in as
   `.teams.json` files in the `agentsync.teams-month/1` shape (`TEAMS_MONTH_SCHEMA` in `src/agentsync/model.py`),

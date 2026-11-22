@@ -4181,6 +4181,24 @@ def test_the_exit_0_no_folder_next_is_named_as_status_s_c2457_c2464() -> None:
     ) in contracts
 
 
+def test_both_readmes_name_the_inbox_state_line_ruling_162() -> None:
+    """B13 round 43 ruling 162 (lane B's 94d93f459, lane RB's 7d11d0403): status and step 2 keep `inbox:` byte
+    for byte and, when no live inbox source sits on the kept folder, print `inbox state:` with
+    config.inbox_state's words; both READMEs' inbox paragraphs say so, held to the constant and the shell's
+    line."""
+    from agentsync import config  # noqa: PLC0415
+
+    assert config.INBOX_STATE_LINE == "inbox state: "
+    assert 'say "inbox state: $(list_name "$state")"' in SCRIPTS[0].read_text(encoding="utf-8")
+    sentence = (
+        "When no live inbox source sits on that folder, `agentsync status` and step 2 print an `inbox state:`"
+        " line after the `inbox:` line, saying what is there instead (`paused <folder>`, `retired <folder>`"
+        " or `not added (<reason>)`)."
+    )
+    for page in ("README.md", "docs/deploy/README.md"):
+        assert sentence in _page(page), page
+
+
 def test_the_guide_and_contracts_quote_the_reinstall_tickers_words_c2423() -> None:
     """B13 round 43 C2423 (lane RB's 88a60a073): the bare-lock reinstall ticker reads `reinstalling once the
     lock is free`, and the guide and two contracts quoted the old `reinstalling after the lock is free`; RB
@@ -12042,10 +12060,18 @@ def test_the_guide_names_the_late_listing_and_the_local_work_line() -> None:
         "`--list-folders` runs printed into install.out (both reports), except a generic name such as "
         "`Documents`" in page
     )
+    # B13 round 43 C2471 (ruling 159, lane RB's 96058b25d): the shell report numbers a library too
     assert (
-        "in the agentsync report, a `OneDrive-SharedLibraries-` entry at depth 2, which is a `<library-N>`"
-        in page
-    )
+        "in both reports (the shell fallback report since B13 round 43 C2471, ruling 159), a"
+        " `OneDrive-SharedLibraries-` entry at depth 2, the folder right under a"
+        " `OneDrive-SharedLibraries-<org-N>` folder, which is a `<library-N>`, numbered apart from the"
+        " folders"
+    ) in page
+    assert (
+        'say_item "- <library-N>: a SharePoint library, the folder right under a'
+        " OneDrive-SharedLibraries-<org-N> folder in CloudStorage; numbered apart from the folders, as"
+        " agentsync's own report numbers it\""
+    ) in SCRIPTS[0].read_text(encoding="utf-8")
     assert 'shared = provider.startswith("OneDrive-SharedLibraries-")' in inspect.getsource(
         setup_report._add_listed
     )
@@ -14208,7 +14234,8 @@ def test_the_folder_row_names_c2060s_gap_only_while_its_strict_xfail_stands_c225
     guide = (ROOT / "docs" / "deploy" / "setup-feedback.md").read_text(encoding="utf-8")
     folders = next(line for line in guide.splitlines() if line.startswith("| `<library-N>`, `<folder-N>`,"))
     caveat = (
-        "which is a `<library-N>`; in the shell fallback report, a folder step 1 listed and no source"
+        "the shell legend naming it only when its body shows one; in the shell fallback report, a folder step"
+        " 1 listed and no source"
         " configures, spelled in install.out with an escaped byte (a control character, DEL, a tab or a"
         " backspace, printed with a backslash), is not yet cut, while the agentsync report cuts it (CONTRACTS"
         " §16.261 C2060, unbuilt, B13 round 42 C2259); every configured source id"

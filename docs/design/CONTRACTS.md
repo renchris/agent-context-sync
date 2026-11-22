@@ -45061,6 +45061,18 @@ quotes the new ticker, and §16.41's W31 bullet and §16.141's W31 paragraph tak
 `tests/test_deploy_pack.py::test_the_guide_and_contracts_quote_the_reinstall_tickers_words_c2423`, held to install.sh's
 ticker.
 
+**The guide's `<library-N>` row covers the shell report** (C2471, lane RB's 96058b25d; ruling 159;
+`docs/deploy/setup-feedback.md`). The row said only the agentsync report makes a `OneDrive-SharedLibraries-` entry at
+depth 2 a `<library-N>`; since lane RB's C2471 the shell fallback report numbers it too, on a counter of its own, and
+names it in its legend only when its body shows one. The row says both reports. Test:
+`tests/test_deploy_pack.py::test_the_guide_names_the_late_listing_and_the_local_work_line`, held to
+install.sh's legend item.
+
+**Both READMEs name the `inbox state:` line** (ruling 162; lane B's 94d93f459, lane RB's 7d11d0403; `README.md`,
+`docs/deploy/README.md`). Status and step 2 keep `inbox: <path>` and, only when no live inbox source sits on the kept
+folder, print `inbox state:` with `config.inbox_state`'s words; both inbox paragraphs say so. Test:
+`tests/test_deploy_pack.py::test_both_readmes_name_the_inbox_state_line_ruling_162`.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units

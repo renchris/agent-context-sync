@@ -58,7 +58,7 @@ paused or retired, setup leaves it that way, and files dropped there do not sync
 live. If a source of another kind is already on that folder, setup keeps no inbox there and says so (`inbox: <path>
 is source '<id>' (<kind>, <state>), not an inbox source`): the folder syncs as that source while it is live. If the
 folder cannot be made (a file already has the name, for example), `agentsync init` and `agentsync add-source` print
-`inbox: not added: …` and still exit 0. Drop Outlook mail in the inbox by dragging
+`inbox: not added: …` and still exit 0. When no live inbox source sits on that folder, `agentsync status` and step 2 print an `inbox state:` line after the `inbox:` line, saying what is there instead (`paused <folder>`, `retired <folder>` or `not added (<reason>)`). Drop Outlook mail in the inbox by dragging
 a message out as `.eml`, and a meeting transcript as `.docx` or `.vtt`. Teams messages go in as `.teams.json`
 files in the `agentsync.teams-month/1` shape (`TEAMS_MONTH_SCHEMA` in `src/agentsync/model.py`), one file per
 channel or chat and month, written by your own export script under the
