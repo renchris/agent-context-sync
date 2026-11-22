@@ -24,7 +24,7 @@ from agentsync.frontmatter import (
     split_frontmatter,
     validate_mirror_frontmatter,
 )
-from agentsync.manifest import ItemRow, Manifest, TombstoneRow
+from agentsync.manifest import ItemRow, Manifest, TombstoneRow, redacted_path
 from agentsync.model import (
     ChangeOp,
     ConversionResult,
@@ -696,6 +696,144 @@ def test_a_carried_unit_removed_change_still_counts_m_c2507(env: Env) -> None:
     back = env.manifest.run_changes(later)
     assert [(c.op, c.unit_removed) for c in back] == [(ChangeOp.DELETED, False)], back
     assert gitops.commit_subject(back, ["src"]) == "sync: 0a 0m 0r 1d src"
+
+
+def test_a_unit_removed_change_carried_through_two_crashed_runs_still_counts_m_c2704(env: Env) -> None:
+    """B13 round 44 C2704 with C2648 (ruling 182): run_changes derived unit_removed by joining the tombstone
+    the SAME run wrote, so a change carried a second time (recorded under run R1, carried into R2, carried
+    again into R3) found no tombstone of its run and read d. The flag is stored in a nullable
+    run_changes.unit_removed column, added on open with no schema bump, and read when not NULL; a row an older
+    build wrote (NULL) is derived by the kept join, and an upstream deletion still reads d."""
+    item = env.observe("vol:1", "book.xlsx")
+    env.publish(item, workbook("Q3", "Q4"))
+    q4 = "mirror/src/book.xlsx.d/02-q4.md"
+    ch = env.publish(item, workbook("Q3"))
+    env.manifest.record_run_changes(env.run_id, ch)
+    run = env.run_id
+    for _crash in range(2):  # each next cycle carries the crashed run's changes into its own
+        later = env.manifest.begin_run(CycleMode.POLL, host="test", pid=1)
+        env.manifest.record_run_changes(later, env.manifest.run_changes(run))
+        env.manifest.clear_run_changes(run)
+        run = later
+    carried = env.manifest.run_changes(run)
+    assert [(c.op, c.path, c.unit_removed) for c in carried if c.path == q4] == [(ChangeOp.DELETED, q4, True)]
+    assert gitops.commit_subject(carried, ["src"]).endswith(" 0d src"), carried
+    # an older build's row (no flag stored) is still derived by the same-run join
+    env.manifest._db.execute("UPDATE run_changes SET unit_removed = NULL WHERE run_id = ?", (run,))
+    assert [c.unit_removed for c in env.manifest.run_changes(run) if c.path == q4] == [False]
+    older = env.manifest.begin_run(CycleMode.POLL, host="test", pid=1)
+    gone = env.observe("vol:2", "Contoso notes.docx")
+    env.publish(gone, result(unit("# Notes\n\nbody\n", title="Notes")))
+    deleted = env.pub.tombstone(
+        "src", "vol:2", reason="deleted-upstream", run_id=older, today=TODAY, last_commit="f" * 40
+    )
+    env.manifest.record_run_changes(older, deleted)
+    later = env.manifest.begin_run(CycleMode.POLL, host="test", pid=1)
+    env.manifest.record_run_changes(later, env.manifest.run_changes(older))
+    assert [(c.op, c.unit_removed) for c in env.manifest.run_changes(later)] == [(ChangeOp.DELETED, False)]
+
+
+def test_a_superseded_tombstone_drops_its_successor_when_the_item_goes_c2646(env: Env) -> None:
+    """B13 round 44 C2646 with C2706 (ruling 182): Publisher.tombstone kept an item's existing tombstones as
+    they were, so a whole stub a workbook's pages replaced still named the index page after the workbook was
+    deleted upstream, and curate called a page citing it SOURCE-SUPERSEDED. tombstone() runs
+    _successors_again before its guard: the stub drops its successor in place, one M change, its deleted_at,
+    reap_after and last_commit kept, and its body no longer says the source still exists (C2613)."""
+    item = env.observe("vol:7", "contoso-clip.xlsx")
+    env.publish(item, result(unit()))
+    stub = "mirror/src/contoso-clip.xlsx.md"
+    env.publish(item, workbook("Q3", "Q4"))
+    first = "mirror/src/contoso-clip.xlsx.d/00-index.md"
+    kept = env.manifest.get_tombstone(stub)
+    assert kept is not None and parse_mirror_page(env.text(stub))[0].superseded_by == first
+    ch = env.pub.tombstone(
+        "src", "vol:7", reason="deleted-upstream", run_id=env.run_id, today="2026-10-02", last_commit="e" * 40
+    )
+    fm, body = parse_mirror_page(env.text(stub))
+    assert fm.status is PageStatus.DELETED and fm.superseded_by is None and first not in body, fm
+    assert "still exists" not in body, body
+    assert (ChangeOp.MODIFIED, stub) in [(c.op, c.path) for c in ch], ch
+    assert env.manifest.get_tombstone(stub) == kept  # deleted_at, reap_after, last_commit and reason kept
+    out = env.manifest.output_by_path(stub)
+    assert out is not None and out.page_sha256 == sha(env.text(stub))
+    assert env.pub.rerender_tombstone(out) is None, "the re-render derives the same page"
+    got = curate._queue_row(env.repo, f"topics/contoso.md\t{stub}\t{'a' * 64}".encode())
+    assert got is not None and got.line() == f"SOURCE-DELETED\ttopics/contoso.md\t{stub}\t(unit-removed)", got
+
+
+def test_a_superseded_tombstone_body_names_its_successor_c2613(env: Env) -> None:
+    """B13 round 44 C2613 (ruling 182; makes worse True for a superseded status, which failed the mirror
+    lint's required fields and dropped the page from every reader that finds tombstones by status: deleted):
+    the page keeps status: deleted, reason:, superseded_by: and its `# [NO LONGER PRODUCED]` heading, and only
+    its body's first sentence names the live page that replaced it; the other reasons keep the tombstone
+    sentence."""
+    item = env.observe("vol:7", "contoso-clip.xlsx")
+    env.publish(item, result(unit()))
+    stub = "mirror/src/contoso-clip.xlsx.md"
+    env.publish(item, workbook("Q3"))
+    first = "mirror/src/contoso-clip.xlsx.d/00-index.md"
+    row = env.manifest.get_tombstone(stub)
+    assert row is not None
+    fm, body = parse_mirror_page(env.text(stub))
+    assert fm.status is PageStatus.DELETED and fm.reason == "unit-removed" and fm.superseded_by == first
+    lines = body.splitlines()
+    assert lines[2].startswith("# [NO LONGER PRODUCED] "), lines[:3]
+    assert lines[4] == (
+        f"This page was replaced by {first} on {row.deleted_at}: its source still exists, and agentsync now "
+        "mirrors it there. This body was cleared so no search hit here can be mistaken for current content; "
+        f"the path stays until {row.reap_after} so citations still resolve."
+    ), lines[4]
+    assert body.lower().count("this page is") <= 1, body
+    assert lints.lint_mirror_frontmatter(env.repo, [stub]) == [], "the mirror lint still passes it"
+
+
+def test_a_repaired_tombstone_keeps_its_committed_title_c2672(env: Env) -> None:
+    """B13 round 44 C2672 (ruling 182, reversing round 43's not-built call 16): _repair_outputs titled a
+    damaged tombstone page item.name, so a removed sheet's page ``Q4`` came back titled ``book.xlsx``. It
+    reads the committed tombstone's own source_title at HEAD, else the page's at last_commit or the newest
+    commit holding it live, else item.name; a hidden item takes its redacted path first, with no git read."""
+    repo = env.repo
+    gitops.ensure_repo(repo)
+
+    def commit(message: str) -> None:
+        gitops.run_git(repo, "add", "-A")
+        gitops.run_git(repo, "commit", "-q", "-m", message)
+
+    item = env.observe("vol:1", "book.xlsx")
+    env.publish(item, workbook("Q3", "Q4"))
+    commit("sheets")
+    q4 = "mirror/src/book.xlsx.d/02-q4.md"
+    want = parse_mirror_page(env.text(q4))[0].source_title
+    assert want and want != "book.xlsx", want
+    env.publish(item, workbook("Q3"))
+    commit("q4 removed")
+
+    def repaired() -> str | None:
+        (repo / q4).write_text("damaged\n", encoding="utf-8")
+        cycle._repair_outputs(env.config, env.manifest, env.run_id)
+        return parse_mirror_page(env.text(q4))[0].source_title
+
+    assert repaired() == want  # HEAD holds the tombstone
+    gitops.run_git(repo, "rm", "-q", q4)
+    commit("tombstone gone from HEAD")
+    tomb = env.manifest.get_tombstone(q4)
+    assert tomb is not None and tomb.last_commit, tomb
+    assert repaired() == want  # the page at the tombstone's last_commit
+    env.manifest._db.execute("UPDATE tombstones SET last_commit = NULL WHERE output_path = ?", (q4,))
+    assert repaired() == want  # the newest commit holding the page live
+    env.manifest.set_redacted("src", "vol:1")
+    assert repaired() == redacted_path("book.xlsx")  # hidden: the redacted path, never the committed title
+
+
+def test_a_repaired_tombstone_with_no_history_takes_the_item_name_c2672(env: Env) -> None:
+    """C2672's last fallback: with no git history the title is the item's name."""
+    item = env.observe("vol:1", "book.xlsx")
+    env.publish(item, workbook("Q3", "Q4"))
+    env.publish(item, workbook("Q3"))
+    q4 = "mirror/src/book.xlsx.d/02-q4.md"
+    (env.repo / q4).write_text("damaged\n", encoding="utf-8")
+    cycle._repair_outputs(env.config, env.manifest, env.run_id)
+    assert parse_mirror_page(env.text(q4))[0].source_title == "book.xlsx"
 
 
 def test_rename_moves_the_page_with_op_r(env: Env) -> None:

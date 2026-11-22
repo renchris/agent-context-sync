@@ -193,6 +193,7 @@ from agentsync.publish import (
     read_needs_download,
     render_tombstone,
     sidecar_rel,
+    source_still_exists,
     superseded_page,
 )
 from agentsync.text import plural
@@ -1665,6 +1666,49 @@ def _deletion_notice(page: Path) -> bool:
     return head.startswith(b"---\n") and (b"\nstatus: deleted\n" in front or b"\nstatus: archived\n" in front)
 
 
+def _content_commit_at(repo: Path, output_path: str) -> str | None:
+    """The newest commit on ``output_path`` whose page there is not a tombstone (``status: deleted``),
+    read-only; None when history holds none."""
+    proc = gitops.run_git(repo, "log", "--format=%H", "--", output_path, check=False)
+    if proc.returncode != 0:
+        return None
+    for sha in proc.stdout.split():
+        blob = gitops.file_at(repo, sha, output_path)
+        if blob is None:
+            continue
+        try:
+            status = parse_frontmatter(blob.decode("utf-8", "replace"))[0].get("status")
+        except FrontmatterError:
+            status = None
+        if status != PageStatus.DELETED.value:
+            return sha
+    return None
+
+
+def _committed_title(repo: Path, output_path: str, last_commit: str | None) -> str | None:
+    """The ``source_title`` a damaged tombstone page committed, read from git (B13 round 44 C2672, ruling
+    182, reversing round 43's "needs a manifest field"): the committed tombstone's own at HEAD (only when its
+    front matter parses and says ``status: deleted``), else the page's at ``last_commit`` or, with none, at
+    the newest commit whose page there is not a tombstone (:func:`_content_commit_at`); None when neither
+    holds one.  Never called for a hidden item, whose title is its redacted path."""
+    for rev, tomb in (("HEAD", True), (last_commit or _content_commit_at(repo, output_path), False)):
+        if rev is None:
+            continue
+        blob = gitops.file_at(repo, rev, output_path)
+        if blob is None:
+            continue
+        try:
+            fm = parse_frontmatter(blob.decode("utf-8", "replace"))[0]
+        except FrontmatterError:
+            continue
+        if tomb and fm.get("status") != PageStatus.DELETED.value:
+            continue
+        title = fm.get("source_title")
+        if isinstance(title, str) and title.strip():
+            return title
+    return None
+
+
 def _repair_outputs(
     config: Config,
     manifest: Manifest,
@@ -1704,9 +1748,17 @@ def _repair_outputs(
                     path = repo / out.output_path
                     if t is not None and (not path.is_file() or _sha256_file(path) != out.page_sha256):
                         hidden = manifest.is_redacted(src.id, stable_id)
+                        # the title the page committed, never the item's name for a removed unit (Q4, not
+                        # book.xlsx); the redacted path first for a hidden item, with no git read for it (B13
+                        # round 44 C2672, ruling 182)
+                        title = (
+                            redacted_path(item.rel_path)
+                            if hidden
+                            else _committed_title(repo, out.output_path, t.last_commit) or item.name
+                        )
                         text = render_tombstone(
                             t,
-                            title=redacted_path(item.rel_path) if hidden else item.name,
+                            title=title,
                             source_kind=src.kind.value,
                             source_path=redacted_path(item.rel_path) if hidden else item.rel_path,
                             durable_id=manifest.durable_id(src.id, stable_id),
@@ -1715,6 +1767,7 @@ def _repair_outputs(
                             superseded_by=superseded_page(
                                 t, [o.output_path for o in outs if o.status is not OutputStatus.TOMBSTONE]
                             ),
+                            source_exists=source_still_exists(item),
                         )
                         _write_atomic(path, text)
                         # the row takes the page it now holds, as _rerender_tombstones' does, so the next
@@ -3278,21 +3331,8 @@ class _Cycle:
 
     def _content_commit(self, output_path: str) -> str | None:
         """The newest commit on ``output_path`` whose page there is not a tombstone (``status: deleted``),
-        read-only; None when history holds none."""
-        proc = gitops.run_git(self.repo, "log", "--format=%H", "--", output_path, check=False)
-        if proc.returncode != 0:
-            return None
-        for sha in proc.stdout.split():
-            blob = gitops.file_at(self.repo, sha, output_path)
-            if blob is None:
-                continue
-            try:
-                status = parse_frontmatter(blob.decode("utf-8", "replace"))[0].get("status")
-            except FrontmatterError:
-                status = None
-            if status != PageStatus.DELETED.value:
-                return sha
-        return None
+        read-only; None when history holds none (:func:`_content_commit_at`)."""
+        return _content_commit_at(self.repo, output_path)
 
     def _replace_output(self, new: OutputRow) -> None:
         """Store ``new`` in place of its item's output row at the same path."""

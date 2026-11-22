@@ -8197,6 +8197,12 @@ derived, no column), ruling 164's at §16.267's C2205 paragraph, and C2455's at 
 §16.300.25's help-flag bullet (argparse's answer on the running Python), and C2409's at §15's curate
 ``VERDICTS``."""
 
+_ROUND_44_B_PARAGRAPH_AMENDS = (
+    ("16.12", "**Identity across safe-saves (security-governance-02/03,", "§16.277 C2704"),
+)
+"""Round 44 lane B's dated line no claim of §16.277 holds alone: C2704's at §16.12's run_changes table (the
+flag stored in a nullable column, the join kept for an older build's rows)."""
+
 _ROUND_42_E_PARAGRAPH_AMENDS = (
     ("16.42", "`subprocess` reports a child a signal stopped as the negative signal", "§16.268 C2252"),
     ("15", "max_page_bytes: int = 1_000_000 # hard cap before a unit is split", "§16.268 C2220, C2306"),
@@ -8456,6 +8462,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_40_RA_PARAGRAPH_AMENDS,
         *_REVIEW_BACKTEST_PARAGRAPH_AMENDS,
         *_ROUND_43_B_PARAGRAPH_AMENDS,
+        *_ROUND_44_B_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")

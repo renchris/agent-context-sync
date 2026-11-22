@@ -684,20 +684,41 @@ def superseded_page(row: TombstoneRow, live_paths: Iterable[str]) -> str | None:
     return min((p for p in live_paths if p != row.output_path), default=None)
 
 
+def source_still_exists(item: ItemRow | None) -> bool:
+    """Whether a ``unit-removed`` tombstone's body may say its source still exists: the item has a row that is
+    not a tombstone.  One answer for every path that renders the body (``Publisher.tombstone``'s and
+    ``write_pages``' kept tombstones, ``rerender_tombstone`` and ``cycle._repair_outputs``), so a removed unit
+    of an item deleted upstream, moved out of scope or retired never claims a source that went (B13 round 44
+    C2613, ruling 182)."""
+    return item is not None and item.state is not RowState.TOMBSTONE
+
+
 def _tombstone_body(
-    row: TombstoneRow, title: str, *, archived: bool = False, superseded_by: str | None = None
+    row: TombstoneRow,
+    title: str,
+    *,
+    archived: bool = False,
+    superseded_by: str | None = None,
+    source_exists: bool = True,
 ) -> str:
     path = shlex.quote(row.output_path)
+    first: str | None = None  # the body's first sentence, when it is not the tombstone one
     if row.reason == _UNIT_REMOVED:
-        # the source is still there: a neutral heading, never "deleted upstream" (B13 round 42 C2205)
+        # the source is still there: a neutral heading, never "deleted upstream" (B13 round 42 C2205); a
+        # replaced whole page names its live successor in the body's first sentence, the front matter kept
+        # (status: deleted, reason:, superseded_by:), and says its source still exists only while the item is
+        # not a tombstone (B13 round 44 C2613, ruling 182; makes worse True for a superseded status)
         heading = "NO LONGER PRODUCED"
+        what = "its source no longer contains this part"
         if superseded_by:
-            what = (
-                "this page is no longer part of its source's mirror (its source still exists; its current "
-                f"pages start at {superseded_by})"
+            still = ": its source still exists, and agentsync now mirrors it there" if source_exists else ""
+            first = (
+                f"This page was replaced by {superseded_by} on {row.deleted_at}{still}. This body was "
+                "cleared so no search hit here can be mistaken for current content; the path stays until "
+                f"{row.reap_after} so citations still resolve."
             )
-        else:
-            what = "its source no longer contains this part (the source itself still exists)"
+        elif source_exists:
+            what += " (the source itself still exists)"
     elif row.reason == "moved":
         heading, what = "MOVED OUT OF SCOPE", "its source moved out of this source's scope (it still exists)"
     elif row.reason.startswith("retired:"):
@@ -713,9 +734,12 @@ def _tombstone_body(
         "",
         f"# [{heading}] {title}",
         "",
-        f"This page is a tombstone: {what} and agentsync recorded the "
-        f"removal on {row.deleted_at}. The body was replaced so no search hit here can be mistaken for "
-        f"current content. The path stays until {row.reap_after} so citations still resolve.",
+        first
+        or (
+            f"This page is a tombstone: {what} and agentsync recorded the "
+            f"removal on {row.deleted_at}. The body was replaced so no search hit here can be mistaken for "
+            f"current content. The path stays until {row.reap_after} so citations still resolve."
+        ),
         "",
     ]
     if archived:
@@ -755,11 +779,13 @@ def render_tombstone(
     durable_id: str | None = None,
     archived: bool = False,
     superseded_by: str | None = None,
+    source_exists: bool = True,
 ) -> str:
     """Return the full tombstone page text for a tombstone row (deterministic from the row).
 
     ``superseded_by`` (a ``unit-removed`` row's): the page that replaced it (:func:`superseded_page`),
-    in the frontmatter's ``superseded_by`` and the body.
+    in the frontmatter's ``superseded_by`` and the body's first sentence.  ``source_exists``
+    (:func:`source_still_exists`): a ``unit-removed`` body says its source still exists only when True.
 
     ``durable_id`` (extension) is the item's durable key (``Manifest.durable_id``) the page names instead of
     the row's current id, so tombstone and live pages of one item carry the same ``stable_id``.
@@ -778,7 +804,9 @@ def render_tombstone(
         source_title=clean_title,
         superseded_by=superseded_by,
     )
-    body = _tombstone_body(row, clean_title, archived=archived, superseded_by=superseded_by)
+    body = _tombstone_body(
+        row, clean_title, archived=archived, superseded_by=superseded_by, source_exists=source_exists
+    )
     return render_mirror_page(_with_trust(fm), body)
 
 
@@ -1647,6 +1675,7 @@ class Publisher:
             durable_id=durable_id,
             archived=archived,
             superseded_by=superseded_page(row, live_paths),
+            source_exists=source_still_exists(self._manifest.get_item(out.source_id, out.stable_id)),
         )
         self._manifest.add_tombstone(row)
         self._write_text(path, text)
@@ -1734,13 +1763,22 @@ class Publisher:
         return self._tombstone_again(out, archived=archived)
 
     def _tombstone_again(
-        self, out: OutputRow, *, archived: bool, live_paths: Sequence[str] | None = None
+        self,
+        out: OutputRow,
+        *,
+        archived: bool,
+        live_paths: Sequence[str] | None = None,
+        source_exists: bool | None = None,
     ) -> OutputRow | None:
         """Render the tombstone page of ``out`` again from its row and its own frontmatter (a removed unit's
         title is its unit's, not the item's name); the updated row, or None when there is no tombstone, its
         page does not parse or the text is unchanged.  ``superseded_by`` is derived from the item's live
         pages (``live_paths``, else the manifest's), never the page's own, so a page that moved or went is
-        never named (B13 round 43 C2510, ruling 164: storing it froze a stale path)."""
+        never named (B13 round 43 C2510, ruling 164: storing it froze a stale path).  ``source_exists`` is
+        :func:`source_still_exists` of the item's row unless the caller knows better (``tombstone`` is turning
+        the item into one)."""
+        if source_exists is None:
+            source_exists = source_still_exists(self._manifest.get_item(out.source_id, out.stable_id))
         if live_paths is None:
             live_paths = [
                 o.output_path
@@ -1763,6 +1801,7 @@ class Publisher:
             durable_id=fm.stable_id,
             archived=archived,
             superseded_by=superseded_page(row, live_paths),
+            source_exists=source_exists,
         )
         if text == current:
             return None
@@ -1771,11 +1810,15 @@ class Publisher:
             out, rendered_sha256=_sha256_text(split_frontmatter(text)[1]), page_sha256=_sha256_text(text)
         )
 
-    def _successors_again(self, rows: list[OutputRow]) -> list[MirrorChange]:
+    def _successors_again(
+        self, rows: list[OutputRow], *, source_exists: bool | None = None
+    ) -> list[MirrorChange]:
         """Re-render, in ``rows`` (an item's output rows about to be stored), each kept ``unit-removed`` whole
         tombstone whose ``superseded_by`` the item's live pages there no longer give, so it never names a page
-        that moved or went (B13 round 43 C2510, ruling 164).  Its row takes the new digests in place; one M
-        change each."""
+        that moved or went (B13 round 43 C2510, ruling 164), nor one of an item deleted upstream, moved out of
+        scope or retired (``tombstone``, with ``source_exists`` False; B13 round 44 C2646 with C2706).  Its
+        row takes the new digests in place, its deleted_at, reap_after and last_commit kept; one M change
+        each."""
         live = [r.output_path for r in rows if r.status is not OutputStatus.TOMBSTONE]
         changes: list[MirrorChange] = []
         for n, out in enumerate(rows):
@@ -1784,7 +1827,7 @@ class Publisher:
             tomb = self._manifest.get_tombstone(out.output_path)
             if tomb is None or tomb.reason != _UNIT_REMOVED:
                 continue
-            new = self._tombstone_again(out, archived=False, live_paths=live)
+            new = self._tombstone_again(out, archived=False, live_paths=live, source_exists=source_exists)
             if new is not None:
                 rows[n] = new
                 changes.append(MirrorChange(ChangeOp.MODIFIED, out.output_path, out.source_id, out.stable_id))
@@ -1997,7 +2040,8 @@ class Publisher:
     ) -> list[MirrorChange]:
         """Replace every output page of the item by a tombstone stub (``[DELETED UPSTREAM] <title>``,
         ``status: deleted``, the ``git show <last_commit>:<path>`` recovery line); add ``tombstones`` rows
-        with reap_after = today + tombstone_reap_days; set the item row state tombstone. Returns op D changes.
+        with reap_after = today + tombstone_reap_days; set the item row state tombstone. Returns op D changes,
+        and an M for each kept superseded tombstone it renders again with no successor (C2646).
 
         ``archive`` (extension, ``[governance] archive``): for reason ``deleted-upstream`` only, first copy
         each page's last full content and sidecars to ``archive/<path under mirror/>``, which reaping never
@@ -2030,6 +2074,10 @@ class Publisher:
             )
             changes.append(change)
             rows.append(row)
+        # the item's live pages went: a kept unit-removed whole tombstone drops its successor in place, one M
+        # change, before the guard, since an item whose pages were all tombstones already makes no other
+        # change (B13 round 44 C2646 with C2706, ruling 182)
+        changes += self._successors_again(rows, source_exists=False)
         if changes:
             self._manifest.replace_outputs(source_id, stable_id, rows)
         if item is not None and item.state is not RowState.TOMBSTONE:

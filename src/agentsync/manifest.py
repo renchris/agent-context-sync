@@ -1292,6 +1292,11 @@ def _read_meta(conn: sqlite3.Connection, key: str) -> str | None:
     return None if row is None else str(row[0])
 
 
+def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    """Whether ``table`` has ``column`` (PRAGMA table_info)."""
+    return any(row[1] == column for row in conn.execute(f"PRAGMA table_info({table})").fetchall())
+
+
 def _write_meta(conn: sqlite3.Connection, key: str, value: str) -> None:
     conn.execute(
         "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -1504,6 +1509,7 @@ class Manifest:
                 conn.execute("ROLLBACK")
                 raise
             self._ensure_aliases()
+            self._ensure_run_changes_flag()
             _log.info("created manifest %s at schema version %s", self._path, applied[-1] if applied else 0)
             return
         if "meta" not in tables:
@@ -1516,6 +1522,7 @@ class Manifest:
             tables = _user_tables(conn)
         if not {"item_aliases", "redacted_items", "run_changes"} <= tables:
             self._ensure_aliases()
+        self._ensure_run_changes_flag()
         if "schema_migrations" not in tables:
             # A version-1 manifest created before the migrations ledger existed: record its baseline.
             conn.execute(_MIGRATIONS_TABLE_SQL.strip())
@@ -1589,6 +1596,13 @@ class Manifest:
     def _ensure_aliases(self) -> None:
         for statement in _split_sql(ALIASES_SQL):
             self._db.execute(statement)
+
+    def _ensure_run_changes_flag(self) -> None:
+        """Add ``run_changes.unit_removed`` (a nullable INTEGER) when it is missing, on the additive path with
+        no schema-version bump: an older build names its columns in both its INSERT and its SELECT, so it
+        keeps working and its rows read NULL (B13 round 44 C2704 with C2648, ruling 182)."""
+        if not _has_column(self._db, "run_changes", "unit_removed"):
+            self._db.execute("ALTER TABLE run_changes ADD COLUMN unit_removed INTEGER")
 
     @classmethod
     def migrate(cls, db_path: Path) -> list[int]:
@@ -2884,10 +2898,20 @@ class Manifest:
             ).fetchone()
             start = int(r[0]) + 1
             self._db.executemany(
-                "INSERT INTO run_changes (run_id, seq, op, path, source_id, stable_id, prev_path) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO run_changes "
+                "(run_id, seq, op, path, source_id, stable_id, prev_path, unit_removed) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 [
-                    (run_id, start + n, c.op.value, c.path, c.source_id, c.stable_id, c.prev_path)
+                    (
+                        run_id,
+                        start + n,
+                        c.op.value,
+                        c.path,
+                        c.source_id,
+                        c.stable_id,
+                        c.prev_path,
+                        int(c.unit_removed),
+                    )
                     for n, c in enumerate(changes)
                 ],
             )
@@ -2895,10 +2919,13 @@ class Manifest:
     def run_changes(self, run_id: int) -> list[MirrorChange]:
         """The mirror changes recorded for ``run_id``, in production order.
 
-        ``unit_removed`` is derived, never stored: a D change is one when the tombstone on its path was
-        written by the same run with reason ``unit-removed``, which add_tombstone writes in the transaction
-        that records the change.  So a run carried after a crash counts a removed unit m, never d, with no
-        schema change an older build would refuse (B13 round 43 C2507 with C2444, ruling 164)."""
+        ``unit_removed`` is the stored flag (``run_changes.unit_removed``, written by
+        :meth:`record_run_changes`), so a unit-removed change carried through two crashed runs still reads m
+        (B13 round 44 C2704 with C2648, ruling 182).  A row an older build wrote holds NULL there and is
+        derived as before: a D change whose path's tombstone was written by the same run with reason
+        ``unit-removed``, which add_tombstone writes in the transaction that records the change (B13 round 43
+        C2507 with C2444, ruling 164); that join is kept, never loosened."""
+        flag = "rc.unit_removed" if _has_column(self._db, "run_changes", "unit_removed") else "NULL"
         return [
             MirrorChange(
                 ChangeOp(r[0]),
@@ -2906,10 +2933,14 @@ class Manifest:
                 str(r[2]),
                 str(r[3]),
                 r[4],
-                unit_removed=r[0] == ChangeOp.DELETED.value and r[5] == UNIT_REMOVED_REASON,
+                unit_removed=(
+                    bool(r[6])
+                    if r[6] is not None
+                    else r[0] == ChangeOp.DELETED.value and r[5] == UNIT_REMOVED_REASON
+                ),
             )
             for r in self._db.execute(
-                "SELECT rc.op, rc.path, rc.source_id, rc.stable_id, rc.prev_path, t.reason "
+                f"SELECT rc.op, rc.path, rc.source_id, rc.stable_id, rc.prev_path, t.reason, {flag} "
                 "FROM run_changes rc LEFT JOIN tombstones t "
                 "ON t.output_path = rc.path AND t.deleted_run = rc.run_id "
                 "WHERE rc.run_id = ? ORDER BY rc.seq",

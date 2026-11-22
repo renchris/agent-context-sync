@@ -4924,7 +4924,9 @@ created on open (no `MANIFEST_SCHEMA_VERSION` bump; an older build ignores them)
 alias_id, stable_id, origin)` (`manifest.ALIASES_SQL`), `redacted_items(source_id, stable_id)` and
 `run_changes(run_id, seq, op, path, source_id, stable_id, prev_path)` (Amended 2026-11-21, §16.272 C2507: no
 `unit_removed` column; `Manifest.run_changes` derives it for a D change from the tombstone on the same path written
-by the same run with reason `unit-removed`). `Manifest.rekey` records every retired id;
+by the same run with reason `unit-removed`; Amended 2026-11-22, §16.277 C2704: a nullable `unit_removed INTEGER`
+column, added on open with no version bump, holds the flag `record_run_changes` writes, and the join derives it only
+for an older build's NULL). `Manifest.rekey` records every retired id;
 the **durable key** (the item's first id) is what page frontmatter `stable_id` and the shard's `stable_id` carry,
 so a same-content safe-save or a volume-UUID change moves no committed byte (§5.1 "nothing volatile" now holds for
 local sources). New `Manifest` methods: `durable_id`, `aliases_of`, `resolve_alias`, `forget_item`,
@@ -43799,6 +43801,9 @@ Amended 2026-11-21, §16.272 C2507, C2445, C2409, C2510: a run carried after a c
 the same run's `unit-removed` tombstone, so it still counts M; the CHANGELOG's path line prints the counted letter
 and ` (part no longer produced)`; curate reads `reason:` and `superseded_by:` (SOURCE-SUPERSEDED); and a re-render,
 like repair, takes `superseded_by` from the item's live pages, never the page itself, repair recording its digests.
+Amended 2026-11-22, §16.277 C2613, C2646: the body's first sentence for a page with a successor reads `This page was
+replaced by <superseded_by> on <deleted_at>: its source still exists, and agentsync now mirrors it there.`, the
+`still exists` clause only while the item is not a tombstone; the heading and front matter are unchanged.
 
 **A re-planned recording stub says the wait it is in now** (C2245; ruling 155). `_recording_defer`'s stub
 branch, which `_replan_recording_stubs` reaches in an interactive sync, moved a recording's `no converter` row
@@ -44599,6 +44604,14 @@ True); repair still titles the page with the item's name, as before (C2510). Tes
 `test_a_cited_page_a_sync_replaced_is_superseded_not_deleted_c2409`,
 `test_a_superseded_tombstone_names_the_items_live_page_in_both_paths_c2510`.
 
+Amended 2026-11-22, §16.277 C2704, C2648, C2646, C2706, C2672: `run_changes` stores `unit_removed` in a nullable
+column added on open (no version bump), read when not NULL, so a change carried through two crashed runs still
+reads m, the same-run join kept for an older build's rows (amending "no schema change"); `Publisher.tombstone`
+runs `_successors_again` before its guard, so a kept superseded tombstone drops its successor when the item is
+deleted upstream, moved out of scope or retired; and repair titles a tombstone from its committed `source_title`,
+the item's name only as the last fallback: the "as before" was a not-built reason ("needs a manifest field") that
+git's history disproves.
+
 **A recording that waits is told, counted and rolled back as waiting** (C2508 with C2443, C2511, C2407, C2413;
 ruling 165). `_replan_recording_stubs`' per-row savepoint (C2249) rolled back a raising row's manifest writes but
 not the waiting page `replan_waiting_recording` had written, so the run committed a page its row no longer had,
@@ -45149,6 +45162,33 @@ draft over a mirror with no converted page whether or not topic pages exist, and
 inbox source), `test_nothing_to_draft_names_only_an_inbox_that_is_read_c2602` (live, paused, retired, a live inbox
 elsewhere named as the root guide names it, not added),
 `test_an_empty_draft_over_an_empty_mirror_is_rule_4_beside_topic_pages_c2707`.
+
+**A tombstone's successor, unit-removed flag and title follow what they derive from** (C2646 with C2706, C2704
+with C2648, C2613, C2672; ruling 182; dated lines at §16.272 C2507 and §16.267 C2205). `Publisher.tombstone` kept
+an item's existing tombstones as they were, so a whole stub a workbook's pages replaced still named the index page
+after the workbook went, and curate called a page citing it SOURCE-SUPERSEDED; it adds
+`self._successors_again(rows, source_exists=False)` to its changes after its loop and before the `if changes:`
+guard, so the kept unit-removed whole tombstone drops its successor in place, one M change, its deleted_at,
+reap_after and last_commit kept (C2646 with C2706). `run_changes` derived the flag from a tombstone the same run
+wrote, so a change carried a second time read d; it gains a nullable `unit_removed INTEGER` column, added on open
+by `Manifest._ensure_run_changes_flag` with no schema version bump (an older build names its columns in its INSERT
+and SELECT), written by `record_run_changes` and read when not NULL, the same-run join kept, never loosened, for an
+older build's rows (C2704 with C2648). The unit-removed body names a live successor, `This page was replaced by
+<superseded_by> on <deleted_at>: its source still exists, and agentsync now mirrors it there. This body was cleared
+so no search hit here can be mistaken for current content; the path stays until <reap_after> so citations still
+resolve.`, and with no successor `its source no longer contains this part`, each `still exists` clause printed only
+while `publish.source_still_exists(item)` (a row that is not a tombstone), derived alike in `tombstone()`,
+`_tombstone_again` and `_repair_outputs`; `status: deleted`, `deleted_at:`, `reason:`, `superseded_by:` and the `#
+[NO LONGER PRODUCED]` heading are kept (C2613, makes worse True for a superseded status). `_repair_outputs` titled a
+repaired tombstone with the item's name, so a removed sheet's page `Q4` came back as `book.xlsx`; it reads
+`cycle._committed_title`: the committed tombstone's own `source_title` at HEAD, else the page's at `last_commit` or
+at `_content_commit_at`'s commit, else `item.name`, the redacted path first whenever the item is hidden, with no
+git read for it (C2672, reversing round 43's call 16). Tests:
+`test_a_superseded_tombstone_drops_its_successor_when_the_item_goes_c2646`,
+`test_a_unit_removed_change_carried_through_two_crashed_runs_still_counts_m_c2704` (an older build's NULL and a
+deleted-upstream control), `test_a_superseded_tombstone_body_names_its_successor_c2613`,
+`test_a_repaired_tombstone_keeps_its_committed_title_c2672`,
+`test_a_repaired_tombstone_with_no_history_takes_the_item_name_c2672`.
 
 **The [convert] options record is parsed one way** (C2714; ruling 169 completed; dated line at §16.272 C2504).
 `_drift_since` and the report's `_convert_changed_run` each split the meta value their own way: a matching
