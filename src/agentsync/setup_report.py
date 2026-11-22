@@ -4279,8 +4279,14 @@ def loop_stage(
     return "synced" if synced else "installed"
 
 
-_KEPT_WHOLE_RE = re.compile(f"({re.escape(AGENTSYNC_BIN)}|{re.escape(INSTALL_SH)})")
-"""The two fixed paths :func:`loop_next_text` keeps whole (B13 round 42 C2211 with C2216)."""
+_KEPT_INBOX = "(~/agent-context/inbox)"
+"""The default inbox in rule 4's ``the inbox (...)`` clause, :data:`_OWN_INBOX_TYPED` in its brackets: a fixed
+agentsync location no person chose, kept whole on the Loop line (B13 round 44 ruling 181, C2631)."""
+_KEPT_WHOLE = (AGENTSYNC_BIN, INSTALL_SH, _KEPT_INBOX)
+_KEPT_WHOLE_RE = re.compile("(" + "|".join(map(re.escape, _KEPT_WHOLE)) + ")")
+"""The fixed paths :func:`loop_next_text` keeps whole (B13 round 42 C2211 with C2216), and since B13 round 44
+C2631 the default inbox in its brackets (:data:`_KEPT_INBOX`), where ``loop_next_text`` printed
+``(inbox)``."""
 
 
 def loop_next_text(line: str) -> str:
@@ -17068,6 +17074,11 @@ beside the docs repo's files named in words (B13 round 9 K43)."""
 _STATE_SHOWN = "the docs repo's _sync/STATE.md"
 """How the Loop line names the docs repo's ``_sync/STATE.md``: a bare ``_sync/STATE.md`` says nothing of what
 it is relative to (B13 round 7 H36)."""
+_INBOX_SHOWN = "the inbox folder beside the docs repo"
+"""Rule 4's ``the inbox (<folder>)`` clause as the Loop line says it when the folder is not the default inbox
+(B13 round 44 ruling 181, C2631): its path, cut by :func:`loop_next_text` to its last part, read ``(inbox)``,
+and a path with a blank kept the rest in clear; the Configuration section's ``- docs repo:`` line says where
+that is. The default one stays ``~/agent-context/inbox`` (:data:`_KEPT_INBOX`)."""
 
 
 def _eval_by_name(line: str, config: Config) -> str:
@@ -17086,6 +17097,11 @@ def _eval_by_name(line: str, config: Config) -> str:
     from agentsync import loop  # noqa: PLC0415 - lazy: the report must import even if it is broken
 
     docs = expand(config.docs_repo)
+    # B13 round 44 ruling 181 (C2631): rule 4's inbox beside the docs repo, the default kept whole, any other
+    # in words, before loop_next_text shortens the paths
+    inbox = loop._shown(docs.parent / "inbox")
+    if f"({inbox})" != _KEPT_INBOX:
+        line = line.replace(f"the inbox ({inbox})", _INBOX_SHOWN)
     line = line.replace(loop._shown(docs / loop._EVAL_DIR), _EVAL_SHOWN)
     line = line.replace(loop._shown(docs / loop._AGENTS_MD), _AGENTS_SHOWN)
     line = line.replace(loop._shown(docs / loop._STATE_MD), _STATE_SHOWN)  # B13 round 6 G42, round 7 H36

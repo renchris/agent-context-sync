@@ -12669,6 +12669,35 @@ def test_the_loop_line_says_install_shs_no_folder_next_on_an_inbox_only_config_c
         )
 
 
+@pytest.mark.parametrize("docs", [None, "Wombat Ledger/kb docs"])
+def test_the_loop_line_names_rule_4s_inbox_whole_or_in_words_c2631(
+    fake_mac: dict[str, Path], docs: str | None
+) -> None:
+    """B13 round 44 ruling 181 (C2631): rule 4's NEXT names the inbox beside the docs repo by its path
+    (`... or the inbox (~/agent-context/inbox) is the operator's choice ...`), and loop_next_text cut every
+    path to its last part, so the Loop line read `the inbox (inbox)`, and a docs repo with a blank kept the
+    rest of its path in clear. The default inbox is kept whole; any other reads `the inbox folder beside the
+    docs repo`, never `(inbox)` and never its path."""
+    cfg = fake_mac["config"]
+    if docs is not None:
+        moved = Path.home() / docs
+        (moved.parent / "inbox").mkdir(parents=True)
+        body = cfg.read_text(encoding="utf-8") + inbox_source_table("inbox-moved", moved.parent / "inbox")
+        cfg.write_text(f"[agentsync]\ndocs_repo = {toml_string(str(moved))}\n" + body, encoding="utf-8")
+    config = load_config(cfg)
+    # the writer's own words (lane B's rule 4), never a copy
+    step = f"NEXT: {loop._nothing_to_draft(config, online=0)}"
+    assert f"or the inbox ({loop._shown(expand(config.docs_repo).parent / 'inbox')})" in step, step
+    hooks = setup_report.ReportHooks(loop_next=lambda _config: [step])
+    line = setup_report._loop_line(setup_report._Run(cfg, hooks, 60.0))
+    assert "(inbox)" not in line, line
+    if docs is None:
+        assert "or the inbox (~/agent-context/inbox) is the operator's choice" in line, line
+    else:
+        assert f"or {setup_report._INBOX_SHOWN} is the operator's choice" in line, line
+        assert "Ledger" not in line and "kb docs" not in line, line
+
+
 def test_install_sh_prints_the_reports_no_folder_next_c2601() -> None:
     """B13 round 44 ruling 179 (C2601 with C2638): install.sh's literal is
     :data:`setup_report.NO_FOLDER_NEXT`, its own path and re-run arguments in place of the placeholders, so

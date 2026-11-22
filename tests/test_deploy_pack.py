@@ -7170,7 +7170,8 @@ def test_the_loop_line_paragraph_names_every_path_the_report_shows_in_words() ->
     replaced = re.findall(
         r"line\.replace\([^,]+, (_[A-Z]+_SHOWN)\)", inspect.getsource(setup_report._eval_by_name)
     )
-    assert set(replaced) == {"_EVAL_SHOWN", "_AGENTS_SHOWN", "_STATE_SHOWN"}
+    # B13 round 44 C2631 (ruling 181): rule 4's inbox beside a moved docs repo, in words
+    assert set(replaced) == {"_EVAL_SHOWN", "_AGENTS_SHOWN", "_STATE_SHOWN", "_INBOX_SHOWN"}
     page = _page("docs/deploy/setup-feedback.md")
     para = page[
         page.index("The outcome judges only the install.") : page.index("The run type is computed too")

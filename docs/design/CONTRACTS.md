@@ -45353,6 +45353,17 @@ folder`, every other Configuration line kept; `_inbox_line` is unchanged. Test:
 `test_setup_report.py::test_an_inbox_link_into_a_folder_this_account_cannot_search_reads_not_read_c2644` (a link
 into a mode-000 folder, skipped as root; measured to fail with lane B's guard taken out).
 
+**The Loop line names rule 4's inbox whole or in words** (C2631; ruling 181; lane B's NEXT, §16.277). Rule 4's
+`nothing to draft yet` NEXT names the inbox beside the docs repo by its path (`... or the inbox
+(~/agent-context/inbox) is the operator's choice ...`), and `loop_next_text` cut every path to its last part, so the
+Loop line read `the inbox (inbox)`, and a docs repo with a blank kept the rest of its path in clear. `_eval_by_name`
+replaces `the inbox (<the folder beside the docs repo>)` by `_INBOX_SHOWN`, `the inbox folder beside the docs repo`
+(the Configuration section's `- docs repo:` line says where), unless it is the default, whose bracket `_KEPT_INBOX`,
+`(~/agent-context/inbox)`, joins `_KEPT_WHOLE_RE` and is kept whole; never `(inbox)` and never a non-default path. A
+live inbox source elsewhere, which the NEXT names as the root guide does, is cut as any configured folder is. Test:
+`test_setup_report.py::test_the_loop_line_names_rule_4s_inbox_whole_or_in_words_c2631` (the default docs repo, and
+one moved under a folder holding a blank with its own live inbox, the NEXT from lane B's `loop._nothing_to_draft`).
+
 ### 16.276 Round 44: the installer: the shell halves of rulings 171 to 173, AGENTSYNC_CONFIG read by the CLI's rule, a none recorded by `--no-folder`, and C2667 waits on the operator (2026-11-22, wave B13 round 44 lane RB)
 
 Lane RB built round 44's installer items on lane RA's branch (rulings 171 to 173 land as one run: lane RA's Python
