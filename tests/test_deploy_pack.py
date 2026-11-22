@@ -738,6 +738,32 @@ def test_the_kit_note_gives_the_rehearsal_form_of_the_no_lock_no_remove_rule_c20
     assert lanes.count("no probe runs rm in any form") == 1
 
 
+def test_ruling_166_keeps_its_words_and_a_dated_line_records_call_5s_decline_c2673() -> None:
+    """B13 round 44 C2673: ruling 166 still described C2470's v2 pass as built, and §16.273 said C2470 is not
+    built "by the lead's ruling" with no record of it. As C2069 did for ruling 138, the ruling keeps its
+    words and a dated line right after its last sentence, before ruling 167, records the decline; §16.273's
+    C2470 paragraph points at it."""
+    lanes = " ".join(_page("docs/lanes/COMMON.md").split())
+    words = (
+        "`.drawio` stubs whose reason starts with conversion failed but not converter unavailable, v1's "
+        "set and token unchanged (C2470)."
+    )
+    line = (
+        "(2026-11-22) The lead declines call 5 of packet 767198a7eec3: C2470 is not built, so this "
+        "sentence's v2 pass does not exist. The reason is lane E's own measurement (e-z1, r43-E.md), not a "
+        "verifier's: only builds from f94ee8693 to 18ba64ffa stored a `conversion failed` stub for a "
+        "zero-byte `.drawio`, and the field build 4a42af93 has no diagram converter. The plan's round 43 "
+        "entry and §16.273's C2470 sentence point here (round 44 C2673)."
+    )
+    assert lanes.index(words) < lanes.index(line) < lanes.index("(167) A record stays one record")
+    assert lanes.index(line) - lanes.index(words) == len(words) + 1, "right after ruling 166's last sentence"
+    contracts = " ".join(CONTRACTS.read_text(encoding="utf-8").split())
+    assert (
+        "Amended 2026-11-22, §16.279 C2673: `by the lead's ruling` above is the dated line right after "
+        "ruling 166 in `docs/lanes/COMMON.md`"
+    ) in contracts
+
+
 def test_ruling_138_keeps_its_words_and_a_dated_line_names_the_packet_that_records_it_c2069() -> None:
     """B13 round 41 C2069: ruling 138 said the lead records its exception on packet 8ac14056ab04's call 3 as a
     dated recheck, but that packet had closed before round 40's triage, and the exception is in packet

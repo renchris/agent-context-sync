@@ -1951,7 +1951,10 @@ left unset (C2442). Each probed row gets a `zero-bytes-v1:<source>:<stable_id>` 
 when no qualifying row is left unmarked, out-of-scope rows included, and the row markers then go (C2512, moved from
 lane B). Ruling 155's amendment of ruling 132 extends once to a one-shot `zero-bytes-v2:<source>` pass for zero-byte
 `.drawio` stubs whose reason starts with conversion failed but not converter unavailable, v1's set and token
-unchanged (C2470).
+unchanged (C2470). (2026-11-22) The lead declines call 5 of packet 767198a7eec3: C2470 is not built, so this sentence's
+v2 pass does not exist. The reason is lane E's own measurement (e-z1, r43-E.md), not a verifier's: only builds from
+f94ee8693 to 18ba64ffa stored a `conversion failed` stub for a zero-byte `.drawio`, and the field build 4a42af93 has
+no diagram converter. The plan's round 43 entry and §16.273's C2470 sentence point here (round 44 C2673).
 (167) A record stays one record from its writer to its last reader, and a page line is flattened before it is
 escaped, completing ruling 152 (lane E; data integrity for C2519; C2519 with C2530, C2452, C2531, C2528 with C2518).
 pandoc spaces out every str.splitlines separator but LF in each chosen record, the exit branch's first cause and

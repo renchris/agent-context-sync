@@ -44818,6 +44818,9 @@ field install holds while adding a second token and mark set to every source. Te
 Amended 2026-11-22, §16.278 C2703 (with C2650): the failing row's page is no longer committed ahead of its manifest
 row; before each row's savepoint the pass keeps its page files, its books and `read again`'s two counters, and puts
 them back through `_put_back` on a raise, as `_replan_recording_stubs` does (C2508), the token still unset.
+Amended 2026-11-22, §16.279 C2673: `by the lead's ruling` above is the dated line right after ruling 166 in
+`docs/lanes/COMMON.md`, which records the lead's decline of call 5 of packet 767198a7eec3; the measure is lane E's own
+(e-z1, r43-E.md), not a verifier's.
 
 **A legacy picture piece is migrated only into the revision it holds** (C2515; `agentsync.convert.recording`; amends
 §16.268 C2296). `_stored_piece` tried every `_legacy_keys()` key whenever the running key
@@ -45482,6 +45485,15 @@ C2469 paragraph repeats §16.266's C2060 paragraph nearly word for word (difflib
 class C decision 1476293d00a3. Ruling 186 keeps another round's words, so neither is rewritten: a dated line under
 §16.271's paragraph names §16.266's C2060 paragraph as the record and what §16.271 adds, ruling 161 and lane D's C2259
 caveat. When C2060 is built, each paragraph takes its own dated line.
+
+**Ruling 166's C2470 sentence and §16.273's "by the lead's ruling" point at the decline** (C2673; ruling 186;
+`docs/lanes/COMMON.md`, `tests/test_deploy_pack.py`; amends §16.273 C2470). Ruling 166 still described C2470's
+`zero-bytes-v2:<source>` pass as built, no record held the lead's strike that r43-E.md names, and §16.273 said "by the
+lead's ruling" with nothing to point at. A dated line right after ruling 166's last sentence, before ruling 167, records
+the lead's decline of call 5 of packet 767198a7eec3 and lane E's measured reason (e-z1), the ruling's words kept as
+ruling 138's C2069 line keeps them; §16.273's C2470 paragraph takes a dated line pointing at it. The actioned packet's
+JSON is not edited by hand; the plan's half is the lead's (C2674). Test:
+`tests/test_deploy_pack.py::test_ruling_166_keeps_its_words_and_a_dated_line_records_call_5s_decline_c2673`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
