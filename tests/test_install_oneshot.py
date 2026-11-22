@@ -24139,7 +24139,10 @@ def test_the_shell_report_redacts_the_mdm_host_as_mdmhost(tmp_path: Path, login:
 
 SHELL_HELPER_FNS = re.compile(
     r"(?ms)^(?:generic_folder|generic_home_dir|agent_words_name|id_key|listed_folder_lines"
-    r"|config_path_values|agentsync_dir_values)\(\) \{\n.*?^\}$|" + _REPORT_CUTS_BLOCK
+    r"|config_path_values|agentsync_dir_values|py_strip|cloud_listing|cloud_listed)\(\) \{\n.*?^\}$|"
+    # B13 round 44: the [convert]/[agentsync] values' strip (C2698) and the CloudStorage listing (C2669)
+    + r"^CLOUD_ORDER_AWK='.*?'$|"
+    + _REPORT_CUTS_BLOCK
 )
 
 
@@ -26082,8 +26085,9 @@ def test_section_3s_branch_remedy_names_a_commit_as_the_keep_does(tmp_path: Path
 
 
 def test_the_shell_report_registers_the_folders_step_1s_list_printed(env: dict[str, str]) -> None:
-    """B13 round 8 J69, the shell twin: the shell report never lists CloudStorage, so an unconfigured folder
-    that step 1's list showed and the agent quoted printed in clear beside the configured one's <folder-N>.
+    """B13 round 8 J69, the shell twin: the shell report never listed CloudStorage (it does since B13 round 44
+    C2669), so an unconfigured folder that step 1's list showed and the agent quoted printed in clear beside
+    the configured one's <folder-N>.
     It registers the folders install.out's --list-folders runs printed, read from the file, whatever mark the
     list put before one (B13 round 9 K45: a folder inside a synced one stayed in clear)."""
     home = Path(env["HOME"])
@@ -26113,7 +26117,9 @@ def test_the_shell_report_registers_the_folders_step_1s_list_printed(env: dict[s
     # the legend names the source it was read from (B13 round 9 K3)
     legend = " ".join(text.split("\n## Redaction\n", 1)[1].split("\n\n")[0].split())
     assert "sources.toml, install.log or step 1's folder list in install.out name" in legend, legend
-    # a run that is not a list names no folder of its own
+    # a run that is not a list names no folder of its own; the folder gone from disk, since the shell report
+    # lists CloudStorage too and would name it from there (B13 round 44 C2669)
+    (cs / "OneDrive-Contoso" / "Northwind Merger").rmdir()
     out.write_text(out.read_text().replace(" --list-folders", " --source-local x"))
     assert install_sh(env, "--report-only").returncode == 0
     assert "not Northwind Merger" in report_path(env).read_text(), "only a list run's paths are read"
@@ -26271,7 +26277,10 @@ def test_the_folder_legend_names_a_project_folder_only_where_one_is_shown(
     so does the <source-N> item."""
     home = Path(env["HOME"])
     cloud = _cloud(env) / "OneDrive-Contoso" / "Project Alpha"
-    cloud.mkdir(parents=True)
+    # only where it is the one configured: the shell report lists CloudStorage, which would number an
+    # unconfigured one on disk first, as the agentsync report does (B13 round 44 C2669)
+    if state == "cloud only":
+        cloud.mkdir(parents=True)
     roadmap = home / "Projects" / "Contoso Roadmap"
     roadmap.mkdir(parents=True)
     (roadmap / "notes").mkdir()

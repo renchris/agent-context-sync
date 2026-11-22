@@ -124,7 +124,9 @@ show in clear. A listing that finishes before the report reaches its friction se
 there) is still used: the report is then not private
 for this reason, its Environment line reads `- redaction: the CloudStorage listing finished after 3.0s and was used
 for redaction`, and the Configuration line's count of folders named only with coding-agent words still says `could
-not list ~/Library/CloudStorage`. The shell fallback report never lists CloudStorage, so it never prints this line.
+not list ~/Library/CloudStorage`. The shell fallback report lists CloudStorage as the agentsync report does (depth 2
+and 3, within 3 seconds, in the same order) and prints this line too when its listing did not finish and install.out
+holds no folder list; it never uses a listing that finishes late.
 
 Both reports are Private only, too, when a legal or records hold's reason or owner is one word that report also
 prints (an owner `Page`; since B13 round 26 E72 also a two-letter one either report prints, while `HR` stays
@@ -218,7 +220,7 @@ words) is yours to remove. The CLI always redacts.
   install.out, then configured folders elsewhere, then, in both reports, agentsync's own folders that
   sources.toml moves from their defaults, and last a listing that finished after its 3-second bound but in
   time for the report, so no earlier number moves; the shell fallback report: that run's `--source-local` folders,
-  then sources.toml, then install.log, then install.out's step 1 list), so an added folder, a listing past its
+  then sources.toml, then install.log, then the CloudStorage listing, then install.out's step 1 list), so an added folder, a listing past its
   3-second bound (step 1's list then stands in its place) or a fallback report gives a folder another number,
   between two sessions or between step 2's and step 3's report of one. Since prompt v11 each name carries a role that tells it apart: identify the folder
   by that role, not by the placeholder's number. A part written before v11 may give a placeholder alone: trust

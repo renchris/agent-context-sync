@@ -2185,6 +2185,7 @@ def _both_reports(
     cwd: Path | None = None,
     config_body: str | None = None,
     texts_out: list[str] | None = None,
+    vanish: bool = False,
 ) -> tuple[list[str], list[str], bool, bool]:
     """Each of ``said``, a friction row of its own, as the shell report and this checkout's agentsync report
     print it, with ``folders`` configured under ``provider`` (ids ``ids``, else s<n>), install.sh under
@@ -2194,7 +2195,8 @@ def _both_reports(
     configured (C2060); ``config``, sources.toml's place, read through AGENTSYNC_CONFIG relative to ``cwd``
     when it is relative, both reports run from ``cwd`` and install.sh with ``--cwd`` (C2063 with C2083),
     holding ``config_body`` in place of the tables, none at all when it is ``""``; ``texts_out`` takes the two
-    whole reports."""
+    whole reports; ``vanish``, each ``listed`` folder gone from disk once step 1 listed it, so only
+    install.out's list names it (B13 round 44: both reports list CloudStorage, C2669)."""
     lib = _cloud(env) / provider
     lib.mkdir(parents=True, exist_ok=True)
     tables = []
@@ -2218,6 +2220,8 @@ def _both_reports(
             0,
             3,
         )
+        for name in listed if vanish else []:
+            (lib / name).rmdir()
     rows = "".join(
         f"2026-10-10T00:00:{n % 60:02d}Z | step 1 | deviation | {ln} | -\n" for n, ln in enumerate(said)
     )
@@ -3039,12 +3043,14 @@ def test_both_reports_cut_a_folder_step_1_listed_but_not_configured_ruling_142(
 ) -> None:
     """B13 round 41 ruling 142's listed-only arm (C2060's case; privacy): `_both_reports` configured every
     name it tested, so a folder step 1 listed but the config does not name, spelled with escaped bytes, was
-    never a case. Each name is on disk and listed by `--list-folders -a`, one other plain folder configured, a
-    0x1E name among them (step 1 spells it `\\n`): no fragment of a name, each raw split word and safe_text's
-    apart, in either report, both reports one line and one verdict."""
+    never a case. Each name is listed by `--list-folders -a`, one other plain folder configured, a 0x1E name
+    among them (step 1 spells it `\\n`): no fragment of a name, each raw split word and safe_text's apart, in
+    either report, both reports one line and one verdict. Since B13 round 44 C2669 both reports list
+    CloudStorage, which gives a folder on disk its own bytes, so each name is gone from disk once listed
+    (`vanish`): install.out's list alone names it, the case C2060's decode is for."""
     said = [ln for n, name in enumerate(names) for ln in _hostile_lines(n, name, locale, home=env["HOME"])]
     shell, python, shell_private, python_private = _both_reports(
-        env, ["Juniper Notes"], said, locale, shell=_R142_SHELL, listed=names
+        env, ["Juniper Notes"], said, locale, shell=_R142_SHELL, listed=names, vanish=True
     )
     assert len(python) == len(said), (len(python), len(said))
     leaks = [ln for ln in [*python, *shell] for f in _fragments(names) if f in ln]
@@ -3225,6 +3231,62 @@ def test_a_sharepoint_library_named_like_a_report_word_makes_both_reports_privat
     )
     assert python_private is private, python
     assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+def test_both_reports_number_a_cloudstorage_folder_on_disk_alike_c2669(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+) -> None:
+    """B13 round 44 ruling 172, C2669: a folder on disk under ~/Library/CloudStorage, neither configured nor
+    listed by step 1, that a friction line quotes: the agentsync report lists CloudStorage at depth 2-3 and
+    numbers it, the shell report printed it in clear and stayed public. The shell lists it as Python does, in
+    Python's order (provider, each depth-2 name then its depth-3 names, each level by its bytes), so a
+    sibling `Kestrel Quarry B` (a blank sorts before `/`) and a nested name read the same numbers in both."""
+    cs = _cloud(env) / "OneDrive-Contoso"
+    for d in ("Kestrel Quarry/Zephyr Plans", "Kestrel Quarry B/Alder Notes", "Kestrel Quarry/Birch Files"):
+        (cs / d).mkdir(parents=True)
+    said = [
+        "picked ~/Library/CloudStorage/OneDrive-Contoso/Kestrel Quarry/Zephyr Plans",
+        "the person named the Kestrel Quarry folder, then Kestrel Quarry B and Alder Notes and Birch Files",
+    ]
+    shell, python, shell_private, python_private = _both_reports(env, ["Q3 Launch"], said, locale)
+    assert not any(w in ln for ln in python for w in ("Kestrel", "Zephyr", "Alder", "Birch")), python
+    assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
+
+
+@pytest.mark.parametrize("listed", [False, True], ids=["no list", "a list run"])
+def test_an_unfinished_cloudstorage_listing_makes_the_shell_report_private_c2669(
+    env: dict[str, str],  # noqa: F811
+    tmp_path: Path,
+    listed: bool,
+) -> None:
+    """B13 round 44 ruling 172, C2669: a CloudStorage listing that runs out of its 3 s, with no folder list of
+    step 1 in install.out, makes the shell report private only, as the agentsync report's listing_unread
+    does; with a list run in install.out, its folders stand in the listing's place and the report stays
+    public. A find that never returns stands in for a provider macOS keeps waiting."""
+    cs = _cloud(env) / "OneDrive-Contoso"
+    (cs / "Kestrel Quarry" / "Zephyr Plans").mkdir(parents=True)
+    if listed:
+        assert install_sh(env, "--list-folders", "-a").returncode in (0, 3)
+    slow = tmp_path / "slowbin"
+    slow.mkdir()
+    (slow / "find").write_text(
+        '#!/bin/bash\ncase " $* " in *CloudStorage*" -print0 "*) sleep 30 ;; esac\nexec /usr/bin/find "$@"\n',
+        encoding="utf-8",
+    )
+    (slow / "find").chmod(0o755)
+    friction_path(env).parent.mkdir(parents=True, exist_ok=True)
+    friction_path(env).write_text(
+        "Attempt: 2026-10-10T00:00:00Z\nPrompt: v15\n"
+        "2026-10-10T00:00:01Z | step 1 | deviation | the person named a folder | -\n",
+        encoding="utf-8",
+    )
+    cp = install_sh({**env, "PATH": f"{slow}:{env['PATH']}"}, "--report-only")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    text = report_path(env).read_text(encoding="utf-8")
+    said = "Private only: the listing of ~/Library/CloudStorage for redaction did not finish"
+    assert (said in text) is not listed, [ln for ln in text.splitlines() if "Private" in ln]
 
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])

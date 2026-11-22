@@ -12268,7 +12268,9 @@ def test_the_guide_names_step_1s_folder_list_as_a_redaction_source() -> None:
     """B13 round 9 K69: since round 8 J69 both reports register the folders step 1's `--list-folders` runs
     printed into install.out (the agentsync report after its CloudStorage listing, the shell report after
     install.log), and a listing that did not finish with no such list makes the agentsync report Private
-    only; the guide gave one Private-only cause and neither registration order had the list."""
+    only; the guide gave one Private-only cause and neither registration order had the list. Since B13 round
+    44 C2669 the shell report lists CloudStorage too, before install.out's list, with the same Private-only
+    line."""
     from agentsync import setup_report  # noqa: PLC0415
 
     source = inspect.getsource(setup_report)
@@ -12281,12 +12283,19 @@ def test_the_guide_names_step_1s_folder_list_as_a_redaction_source() -> None:
     assert installer.index("printed into install.out") > installer.index('"$SETUP_LOG" 2>/dev/null |')
     page = _page("docs/deploy/setup-feedback.md")
     assert f"(`{line.group(1)} ...`)" in page
-    assert "The shell fallback report never lists CloudStorage, so it never prints this line." in page
+    # B13 round 44 C2669: the shell report lists CloudStorage too, before install.out's list
+    assert "The shell fallback report lists CloudStorage as the agentsync report does" in page
+    listing = installer.index("done < <(cloud_listed | LC_ALL=C sed 1d)")
+    assert installer.index("done < <(listed_folder_lines)", listing) - listing < 2000, (
+        "the list right after it"
+    )
     assert (
         "then the CloudStorage listing, then the folders step 1's `--list-folders` runs printed into "
         "install.out, then configured folders elsewhere" in page
     )
-    assert "then sources.toml, then install.log, then install.out's step 1 list)" in page
+    assert (
+        "then sources.toml, then install.log, then the CloudStorage listing, then install.out's step 1 list)"
+    ) in page
 
 
 def test_the_first_sync_row_names_every_clause_the_summary_adds() -> None:

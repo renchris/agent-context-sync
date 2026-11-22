@@ -17673,6 +17673,10 @@ only (`Redactor.private_only`: a Private only line, the private Send line, no li
 built: registering the names of a step 1 friction line in the shell, since the prompt has not logged the folder
 question since v6. Tests: `test_a_listing_that_did_not_finish_takes_step_1s_list_or_makes_the_report_private`,
 `test_the_shell_report_registers_the_folders_step_1s_list_printed`.
+Amended 2026-11-22, §16.276 C2669: the shell report lists ~/Library/CloudStorage too, as `cloud_folder_names` does
+(depth 2 and 3, hidden names pruned, no link followed, 3 s in all, Python's order, at most 2000), before
+install.out's list; a listing that ran out of time registers nothing and, with no list in install.out, makes the
+shell report private only with the agentsync report's line.
 
 **Small fixes** (J43, J75). `_HELD_PATH_NORMS` spells `agentcontextsync.git` as `_norm` keeps the dot (test:
 `test_an_organisation_named_like_agentsyncs_paths_leaves_them_whole`); six comments say a generic proxy host is
@@ -18876,6 +18880,9 @@ not finish ...`. The guide gave only the word-named cause and neither registrati
 the second cause for the agentsync report only (the shell report never lists CloudStorage) and the list in both
 orders, standing in for a listing past its bound. Test: `test_the_guide_names_step_1s_folder_list_as_a_redaction_source`
 (reads the line and the order from both reports' source).
+Amended 2026-11-22, §16.276 C2669: the shell report lists CloudStorage now, so the guide names the second cause for
+both reports and the shell order `then sources.toml, then install.log, then the CloudStorage listing, then
+install.out's step 1 list`.
 
 **The first-sync row names every clause the Summary adds** (K82). After its converted, deferred and read-again
 counts, `_first_sync_line` adds up to four parts from install.out's line of the same sync (§16.58 F8, §16.63 G35,

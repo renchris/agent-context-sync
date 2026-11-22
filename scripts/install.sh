@@ -3261,6 +3261,69 @@ config_shown() { # PATH
 	r="${r#--cwd }"
 	case "$r" in *"<path>"*) printf '%s' "$r" ;; esac
 }
+# The agentsync report's CloudStorage listing (setup_report.cloud_folder_names), for the shell report's pairs:
+# every folder at depth 2 and 3 under each ~/Library/CloudStorage provider, names only (find reads directory
+# entries; no file is opened), hidden ones pruned, no link followed (no -L), each provider under with_timeout
+# within 3 s in all, as the agentsync report's _LISTING_S bounds its own. Line 1 is `ok`, or `unread` when a
+# find ran out of time (a denied folder is listed as far as it can be, as os.scandir's OSError leaves it out);
+# then each path, NUL-separated as find wrote it, one a line with each backslash doubled and a newline as \n
+# (printf %b reads it back, every other byte as it is), in Python's order:
+# provider, then each depth-2 name followed by its depth-3 names, each level sorted by its bytes (LC_ALL=C), a
+# name before any longer name it starts, at most 2000 (_LISTING_MAX). An unread listing lists nothing, as the
+# agentsync report registers none (B13 round 44 ruling 172, C2669).
+# shellcheck disable=SC2016 # an awk program: awk reads its $ fields
+CLOUD_ORDER_AWK='BEGIN { for (i = 1; i < 256; i++) ord[sprintf("%c", i)] = i }
+	function hex(s,    i, o) { o = ""; for (i = 1; i <= length(s); i++) o = o sprintf("%02x", ord[substr(s, i, 1)]); return o }
+	function unesc(s,    o, i, ch) { # the name as find wrote it: \\ a backslash, \n a newline
+		o = ""
+		for (i = 1; i <= length(s); i++) { ch = substr(s, i, 1); if (ch == "\\") { ch = substr(s, ++i, 1); if (ch == "n") ch = "\n" } o = o ch }
+		return o
+	}
+	index($0, cs) == 1 {
+		n = split(unesc(substr($0, length(cs) + 1)), c, "/")
+		if (n < 2 || n > 3) next
+		k = hex(c[1]) " " hex(c[2]); if (n == 3) k = k " " hex(c[3])
+		print k "\t" $0
+	}'
+cloud_listing() {
+	local cs="$HOME/Library/CloudStorage" e t deadline rc unread="" tmp tab=$'\t'
+	tmp="$(tmp_make)" || {
+		printf 'unread\n'
+		return 0
+	}
+	deadline=$((SECONDS + 3))
+	if [ -d "$cs" ] && [ ! -L "$cs" ]; then
+		for e in "$cs"/*; do
+			[ -d "$e" ] && [ ! -L "$e" ] || continue
+			t=$((deadline - SECONDS))
+			if [ "$t" -le 0 ]; then
+				unread=1
+				break
+			fi
+			rc=0
+			with_timeout "$t" find "$e" -mindepth 1 -maxdepth 2 -name '.*' -prune -o -type d -print0 >>"$tmp" 2>/dev/null || rc=$?
+			[ "$rc" -ne 143 ] && [ "$rc" -ne 124 ] || unread=1
+		done
+	fi
+	if [ -n "$unread" ]; then
+		printf 'unread\n'
+	else
+		printf 'ok\n'
+		(
+			LC_ALL=C
+			while IFS= read -r -d '' e; do
+				e="${e//\\/\\\\}"
+				printf '%s\n' "${e//$'\n'/\\n}"
+			done <"$tmp"
+		) | LC_ALL=C awk -v cs="$cs/" "$CLOUD_ORDER_AWK" |
+			LC_ALL=C sort -t "$tab" -k1,1 | LC_ALL=C cut -f 2- | LC_ALL=C awk 'NR <= 2000'
+	fi
+	rm -f "$tmp"
+}
+# The listing as cloud_listing writes it: the report's own copy when write_fallback_report made one, else a new one
+cloud_listed() {
+	if [ -n "${CLOUD_LISTED_FILE:-}" ] && [ -f "$CLOUD_LISTED_FILE" ]; then cat "$CLOUD_LISTED_FILE"; else cloud_listing; fi
+}
 redaction_pairs() {
 	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x links walked lk
 	local cfg_cut tilde port k ph b auth sep tail rw keys key m sp top raw folder_keys=$'\n' FUZZY lib_n=0
@@ -3321,12 +3384,31 @@ redaction_pairs() {
 			LC_ALL=C grep -oE -e "--source-local \\\$'([^'\\\\]|\\\\.)*'" | LC_ALL=C sed "s/\\\\'/'/g" | LC_ALL=C sort -u)
 	fi
 	# The folders step 1's lists printed into install.out (the agent saw them and may quote one), as the Python
-	# report registers them: read from the file, never by listing CloudStorage (B13 round 8 J69). A path is
+	# report registers them: read from the file, after the CloudStorage listing above (B13 round 8 J69; round 44
+	# C2669). A path is
 	# "$cs/<provider>/<name>[/<name>]", with a mark and a space before a folder the config syncs, one inside such a
 	# folder or one that holds one: SYNCED_MARK, INSIDE_MARK, CONTAINS_MARK (B13 round 9 K45). Kept apart from the
 	# configured ones: a listed name that every drive has or that is coding-agent product words only is not
 	# registered, as in the Python report (B13 round 9 K1, K47).
+	# Before them, the CloudStorage listing, where the agentsync report registers its own (B13 round 44 ruling
+	# 172, C2669: the shell report printed a folder on disk that neither list named, which the agentsync report
+	# numbers); printf %b gives back each name's escaped backslash and newline
+	local -a clisted=()
+	local cshown=""
 	while IFS= read -r line; do
+		printf -v line '%b' "$line"
+		clisted+=("$line")
+		# a TAB, LF or CR a space, as config_path_values reads them, so a configured folder's listed twin takes
+		# its key and number, and the fuzzy match reads the space as any run of blanks (C2669)
+		listed+=("${line//[$'\t\n\r']/ }")
+	done < <(cloud_listed | LC_ALL=C sed 1d)
+	# a row of step 1's list that spells a listed folder (its escaped form: a control byte, a backslash) is that
+	# folder, which the agentsync report decodes to the same name: skipped, so it takes no second number (C2669)
+	if [ "${#clisted[@]}" -gt 0 ] && command -v list_plain >/dev/null 2>&1; then
+		cshown="$(for line in "${clisted[@]}"; do printf '%s\n' "${line//$'\n'/$LIST_RS}"; done | list_plain 2>/dev/null)" || cshown=""
+	fi
+	while IFS= read -r line; do
+		case $'\n'"$cshown"$'\n' in *$'\n'"$line"$'\n'*) continue ;; esac
 		listed+=("$line")
 	done < <(listed_folder_lines)
 	emit_pair() { # VALUE PLACEHOLDER [w] [utf8]: the pair and its printf %q form; with utf8, %q in UTF-8 too
@@ -7215,6 +7297,13 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	# and a one-word hold reason or owner that is such a word, where the body cut it (redact_stream's flag h,
 	# HOLD_WORD_SHOWN, the count of distinct words cut), as the agentsync report says it (B13 round 25 D80), in
 	# the plural at two or more words (B13 round 30 C339, as C133 made the agentsync report's)
+	# a CloudStorage listing that did not finish, with no folder list of step 1 in install.out in its place, as
+	# the agentsync report's listing_unread says it (B13 round 8 J69; round 44 ruling 172, C2669)
+	if [ "$(cloud_listed | LC_ALL=C sed -n 1p)" = unread ] && [ -z "$(listed_folder_lines)" ]; then
+		say "Private only: the listing of ~/Library/CloudStorage for redaction did not finish and install.out holds"
+		say "no folder list of step 1, so a folder name may show in clear."
+		PRIVATE_ONLY=1
+	fi
 	if [ "${HOLD_WORD_SHOWN:-0}" -ge 2 ] 2>/dev/null; then
 		say "Private only: hold reasons or owners are also words this report prints, so where <value> stands in the"
 		say "report's own text they can be read back."
@@ -7496,8 +7585,10 @@ write_fallback_report() { # RC WHY
 		AGENT_KEPT_FILE="$tmp.agent"
 		HOLD_WORD_FILE="$tmp.hold"
 		REDACT_FAILED_FILE="$tmp.redact"
-		export AGENT_KEPT_FILE HOLD_WORD_FILE REDACT_FAILED_FILE
-		rm -f "$AGENT_KEPT_FILE" "$HOLD_WORD_FILE" "$REDACT_FAILED_FILE"
+		CLOUD_LISTED_FILE="$tmp.cloud" # the CloudStorage listing, made once for every reader of the pairs (C2669)
+		export AGENT_KEPT_FILE HOLD_WORD_FILE REDACT_FAILED_FILE CLOUD_LISTED_FILE
+		rm -f "$AGENT_KEPT_FILE" "$HOLD_WORD_FILE" "$REDACT_FAILED_FILE" "$CLOUD_LISTED_FILE"
+		cloud_listing >"$CLOUD_LISTED_FILE" 2>/dev/null || rm -f "$CLOUD_LISTED_FILE"
 		fallback_body "$1" "$2" "$friction" | strip_run_pids | agent_protect | redact_stream | agent_restore |
 			scrub_exclude_lists >"$tmp"
 		AGENT_KEPT=""
@@ -7518,9 +7609,10 @@ write_fallback_report() { # RC WHY
 			fallback_redaction "$LINK_FIELDS" "$used" "$tmp"
 			[ -n "$PRIVATE_ONLY" ] || printf '\n%s\n' "$LINK"
 		} >>"$tmp"
+		rm -f "$CLOUD_LISTED_FILE"
 		[ ! -f "$REDACT_FAILED_FILE" ] || exit 1
 	) 2>/dev/null || {
-		rm -f "$tmp" "$tmp.redact"
+		rm -f "$tmp" "$tmp.redact" "$tmp.cloud"
 		return 1
 	}
 	mv -f "$tmp" "$REPORT_PATH" || { # no temp file stays beside the report (B13 round 11 M84)
