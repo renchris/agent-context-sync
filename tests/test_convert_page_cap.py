@@ -882,6 +882,81 @@ def test_later_rows_are_reserved_against_a_formula_s_cheapest_cut_c2516() -> Non
     assert lines[2:] == ["| 2 | … `=1` |", "| 3 | x |"]
 
 
+def _row_sheet(cells: list[tuple[str | None, str]]) -> xlsx._Sheet:
+    """Row 1 of ``cells``, each (formula or None, cached or plain value), shown as the converter shows it (B13
+    round 44 C2710)."""
+    sheet = xlsx._Sheet(number=1, title="Contoso", hidden=False)
+    for c, (formula, value) in enumerate(cells, start=1):
+        key = (1, c)
+        if formula is None:
+            sheet.plain[key], sheet.shown[key] = value, _common._cell(value)
+        elif value:
+            sheet.formula[key] = formula
+            sheet.values[key] = sheet.plain[key] = value
+            sheet.shown[key] = f"{_common._cell(value)} {xlsx._code(formula)}"
+        else:
+            sheet.formula[key] = sheet.plain[key] = formula
+            sheet.shown[key] = xlsx._code(formula)
+    sheet.bounds = (1, 1, 1, len(cells))
+    return sheet
+
+
+def _rendered_cuts(sheet: xlsx._Sheet, header: list[str]) -> tuple[list[int], list[int]]:
+    """Row 1's costed bytes at each cut length and the rendered cut line's bytes at the same lengths."""
+    costs = xlsx._RowCuts(sheet, header, 1).bytes
+    return costs, [_line_bytes(xlsx._cut_line(sheet, header, 1, n)) for n in range(1, len(costs) + 1)]
+
+
+_EXACT_PIECES = (
+    "\r\n", "\r", "\n", "\r\r\n", "\r\n\n", "|", "`", "``", "```", " ", "  ", "\t", "\\", "a", "=", "B2", "é",
+    "€", "😀",
+)  # fmt: skip
+
+
+def test_a_cut_row_is_costed_exactly_as_it_renders_at_every_length_c2710() -> None:
+    """B13 round 44 C2710 with C2652 and C2721 (ruling 184): `_code` renders a CRLF as one space (C2531), but
+    `_CODE_RUNS` put the CR and the LF in its one-byte ASCII run, so each CRLF in a formula's cut was costed
+    two bytes: an overcharge `_cut_row` takes as no fit. The costing is exact now at every length, over plain
+    and formula texts (with and without a cached value) holding CRLF, CR, LF, CR CR LF, pipes, backtick runs,
+    blanks, tabs, backslashes and 2-, 3- and 4-byte characters, so an undercharge fails here too."""
+    import random  # noqa: PLC0415
+
+    rng = random.Random(44_2710)
+
+    def text() -> str:
+        return "".join(rng.choice(_EXACT_PIECES) for _ in range(rng.randint(1, 9)))
+
+    for _ in range(600):
+        cells: list[tuple[str | None, str]] = []
+        for _c in range(rng.randint(1, 3)):
+            shape = rng.randrange(3)
+            cells.append((None, text()) if shape == 0 else ("=" + text(), text() if shape == 2 else ""))
+        sheet = _row_sheet(cells)
+        header = ["Row", *(xlsx._col_letter(c) for c in range(1, len(cells) + 1))]
+        costs, rendered = _rendered_cuts(sheet, header)
+        assert costs == rendered, cells
+    for formula in ("=A1\r\nB2+C3", "=\r\n\r\nX\r\nYY", "=1\r\r\n+2", "=``\r\n|é€😀\r\n"):
+        costs, rendered = _rendered_cuts(_row_sheet([(formula, "")]), ["Row", "A"])
+        assert costs == rendered, formula
+
+
+def test_a_crlf_formula_row_whose_cheapest_cut_fills_the_room_is_shown_c2710() -> None:
+    """B13 round 44 C2710 with C2652 (ruling 184): the verifier's probe 2, one CRLF formula beside 40 cells
+    of "a" and six blanks, renders in 179 bytes at length 7 and was costed 180, so `cheapest(179)` and
+    `_cut_row` at 179 found no cut and `_table_lines` dropped the row. It is shown within the header plus
+    179 bytes."""
+    sheet = _row_sheet([("=A1\r\n+B1+C1+D1", ""), *[(None, "a" + " " * 6)] * 40])
+    header = ["Row", *(xlsx._col_letter(c) for c in range(1, 42))]
+    costs = xlsx._RowCuts(sheet, header, 1)
+    assert costs.cheapest(179) == 179
+    fitted = xlsx._cut_row(sheet, header, 1, 179)
+    assert fitted is not None and fitted[1] == 7 and _line_bytes(fitted[0]) == 179
+    lines = xlsx._gfm_table(header, [])
+    budget = sum(_line_bytes(x) for x in lines[:2]) + 179
+    table, shown, cut = xlsx._table_lines(sheet, [1], sheet.shown, budget, 10)
+    assert (shown, cut) == (1, [(1, 7)]) and table[2] == fitted[0]
+
+
 def _reserve_book(path: Path, *, lists: bool) -> Path:
     """6,000 rows under a 200-character title, a formula with no cached value, a long cell cut on row 3, and
     with ``lists`` three comments and a chart."""

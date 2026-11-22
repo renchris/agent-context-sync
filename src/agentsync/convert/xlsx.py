@@ -34,7 +34,7 @@ from agentsync.model import RenderedUnit, UnitKind
 from agentsync.text import plural
 
 _EMITTER_VERSION = (
-    "1.0.5"  # B13 round 43 rulings 167 and 168: C2516, C2529, C2519, C2530, C2452, C2531, C2476
+    "1.0.6"  # B13 round 44 ruling 184: C2710, C2652, C2721, C2711, C2694 (1.0.5: round 43's rulings 167, 168)
 )
 _INDEX_TERM_LIMIT = 400  # distinct terms kept on 00-index (most frequent first, then listed sorted)
 _TERM_MAX_CHARS = 80  # a text cell up to this long is one term; longer text contributes its words
@@ -112,6 +112,15 @@ def _record_escape(text: str) -> str:
     ``\\r`` and ``\\t``, nothing stripped, so a comment never writes a second record (one that reads as
     another cell's) and un-escaping gives its text back byte for byte (B13 round 42 C2301)."""
     return text.translate(_RECORD_ESCAPES)
+
+
+def _record_field(text: str, delimiter: str) -> str:
+    """``text`` as :func:`_record_escape` writes it, then each ``delimiter`` backslashed, for a field a record
+    delimits: a comment's author ends at its first unescaped ``)`` before ``: ``, and a quoted chart title or
+    pivot name at its first unescaped ``"``.  A backslash is already doubled, so the escape stays invertible:
+    undoing each backslash escape gives the field back byte for byte, and no author or name can move where
+    the next field starts (B13 round 44 C2711 with C2694, ruling 184)."""
+    return _record_escape(text).replace(delimiter, "\\" + delimiter)
 
 
 def _code(text: str) -> str:
@@ -246,7 +255,7 @@ def _build_sheet(number: int, ws: Any, wsf: Any) -> _Sheet:
             text = _WS_RE.sub(" ", raw).strip()  # the page's line only
             who = f" ({_escape_line(author)})" if author else ""
             sheet.comments.append(f"- {_ref(*key)}{who}: {_escape_line(text)}")
-            whole_who = f" ({_record_escape(author_raw)})" if author else ""
+            whole_who = f" ({_record_field(author_raw, ')')})" if author else ""
             sheet.comments_whole.append(f"{_ref(*key)}{whole_who}: {_record_escape(raw)}")
         if not vtext.strip() and formula is None:
             continue
@@ -291,7 +300,9 @@ def _build_sheet(number: int, ws: Any, wsf: Any) -> _Sheet:
         title = _WS_RE.sub(" ", title_raw).strip()
         where = f" at {w}" if (w := _anchor_ref(chart)) else ""
         kind = type(chart).__name__
-        named, whole = (f' "{_label(title)}"', f' "{_record_escape(title_raw)}"') if title else ("", "")
+        named, whole = (
+            (f' "{_label(title)}"', f' "{_record_field(title_raw, chr(34))}"') if title else ("", "")
+        )
         sheet.labels_cut |= len(title) > _LABEL_CHARS
         sheet.objects.append(
             f"- [chart {i}: {kind}{named}{where} — no markdown form; open the workbook to view]"
@@ -312,7 +323,8 @@ def _build_sheet(number: int, ws: Any, wsf: Any) -> _Sheet:
         sheet.objects.append(
             f"- [pivot table: {_label(name)}{at} — no markdown form; open the workbook to view]"
         )
-        sheet.objects_whole.append(f"pivot table: {_record_escape(name_raw)}{whole_at}")
+        # the name quoted and the location its last field, so a name holding ` at ` reads one way (C2711)
+        sheet.objects_whole.append(f'pivot table: "{_record_field(name_raw, chr(34))}"{whole_at}')
     for i, image in enumerate(getattr(wsf, "_images", []), start=1):
         where = _anchor_ref(image)
         sheet.objects.append(f"- [image {i}" + (f" at {where}" if where else "") + "]")
@@ -435,8 +447,12 @@ _CELL_RUNS = re.compile(
     r"(\r\n?|[\n\x0b])|([ \t\f]+)|(\s)|((?:(?![\s\\|])[\x00-\x7f])+)|((?:(?!\s)[\\|\x80-\u07ff])+)"
     r"|((?:(?!\s)[\u0800-\uffff])+)|([\U00010000-\U0010ffff]+)"
 )
+# A code span's runs: backticks, then non-space runs by UTF-8 width as above, and last a CR with an optional
+# LF, which :func:`_code` renders as one space, so a CRLF costs one byte and not two (B13 round 44 C2710 with
+# C2652 and C2721, ruling 184); the ASCII run takes no CR, and a lone LF stays one byte in it.
 _CODE_RUNS = re.compile(
-    r"(`+)|([^`|\x80-\U0010ffff]+)|([|\x80-\u07ff]+)|([\u0800-\uffff]+)|([\U00010000-\U0010ffff]+)"
+    r"(`+)|([^`|\r\x80-\U0010ffff]+)|([|\x80-\u07ff]+)|([\u0800-\uffff]+)|([\U00010000-\U0010ffff]+)"
+    r"|(\r\n?)"
 )
 
 
@@ -477,6 +493,9 @@ def _code_steps(text: str) -> Iterator[tuple[int, int, int, int]]:
         at, count = m.start(), m.end() - m.start()
         kind = m.lastindex
         assert kind is not None  # every alternative is a group
+        if kind == 6:  # a CR or a CRLF: one space in _code, so a CRLF's LF adds nothing (C2710)
+            yield at, count, 1, 0
+            continue
         if kind != 1:
             yield at, count, kind - 1, kind - 1
             continue

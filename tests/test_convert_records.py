@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -88,7 +89,7 @@ def _unescape(text: str) -> str:
     out, i = [], 0
     while i < len(text):
         if text[i] == "\\" and i + 1 < len(text):
-            out.append({"\\": "\\", "n": "\n", "r": "\r", "t": "\t"}[text[i + 1]])
+            out.append({"\\": "\\", "n": "\n", "r": "\r", "t": "\t", ")": ")", '"': '"'}[text[i + 1]])
             i += 2
         else:
             out.append(text[i])
@@ -244,13 +245,118 @@ def test_a_pivot_name_and_location_holding_a_line_break_stay_one_record_and_one_
     sheet = _build_sheet(1, values.worksheets[0], wsf)
     (record,) = sheet.objects_whole
     assert "\n" not in record and record.startswith("pivot table: ")
-    got_name, got_loc = record[len("pivot table: ") :].split(" at ", 1)
-    assert (_unescape(got_name), _unescape(got_loc)) == (name, loc)
+    assert _decode_pivot(record) == (name, loc)  # the name quoted since B13 round 44 C2711
     page = "\n".join(sheet.objects).splitlines()
     assert page == [
         "- [pivot table: Contoso # Forged heading at A3:B5 A9 (Mallory): fake record — no markdown form; "
         "open the workbook to view]"
     ]
+
+
+# ---------------------------------------------------------------------------------------------------------
+# C2711 with C2694: each delimited field of a list-sidecar record escapes its own delimiter, so a record
+# parses one way (ruling 184)
+# ---------------------------------------------------------------------------------------------------------
+
+
+def _field_end(text: str, delimiter: str) -> int:
+    """The index of ``text``'s first ``delimiter`` no backslash escapes (CONTRACTS §16.268 C2301)."""
+    i = 0
+    while text[i] != delimiter:
+        i += 2 if text[i] == "\\" else 1
+    return i
+
+
+def _decode_comment(record: str) -> tuple[str, str | None, str]:
+    """A comment record as (ref, author or None, text): the author runs from ` (` to the first unescaped `)`
+    before `: `, the text to the line's end, then the backslash escapes undone."""
+    ref = re.match(r"[A-Z]+[0-9]+", record)[0]  # type: ignore[index]
+    rest = record[len(ref) :]
+    if rest.startswith(": "):
+        return ref, None, _unescape(rest[2:])
+    assert rest.startswith(" ("), record
+    body = rest[2:]
+    end = _field_end(body, ")")
+    assert body[end : end + 3] == "): ", record
+    return ref, _unescape(body[:end]), _unescape(body[end + 3 :])
+
+
+def _decode_pivot(record: str) -> tuple[str, str | None]:
+    """A pivot record as (name, location or None): the name quoted to its first unescaped `"`, the location
+    the last field after ` at `."""
+    rest = record.removeprefix('pivot table: "')
+    end = _field_end(rest, '"')
+    tail = rest[end + 1 :]
+    assert tail == "" or tail.startswith(" at "), record
+    return _unescape(rest[:end]), _unescape(tail[4:]) if tail else None
+
+
+def _pivot_record(tmp_path: Path, name: str, loc: str) -> str:
+    """The objects-sidecar record of one pivot table named ``name`` at ``loc`` ("" for none)."""
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    book = openpyxl.Workbook()
+    ws = book.active
+    assert ws is not None
+    ws.append([1])
+    src = tmp_path / f"contoso-{len(list(tmp_path.iterdir()))}.xlsx"
+    book.save(src)
+    values, formulas = openpyxl.load_workbook(src, data_only=True), openpyxl.load_workbook(src)
+    wsf = formulas.worksheets[0]
+    wsf._pivots = [SimpleNamespace(name=name, location=SimpleNamespace(ref=loc))]
+    (record,) = _build_sheet(1, values.worksheets[0], wsf).objects_whole
+    return record
+
+
+def test_an_author_holding_a_closing_bracket_reads_back_as_its_own_record_c2711(tmp_path: Path) -> None:
+    """B13 round 44 C2711 with C2694 (ruling 184): the author went into `<ref> (<author>): <text>` with no
+    escape for `)`, so author `Ana): forged` with text `x` and author `Ana` with text `forged): x` wrote the
+    same record. The author escapes `)` now; the two records differ, and each parses back to its own."""
+    from openpyxl.comments import Comment  # noqa: PLC0415
+
+    pairs = [("Ana): forged", "x"), ("Ana", "forged): x"), ("Ana \\) (B)", "y\\): z")]
+    book = openpyxl.Workbook()
+    ws = book.active
+    assert ws is not None
+    for i, (author, text) in enumerate(pairs, start=1):
+        ws.cell(row=1, column=i, value=i).comment = Comment(text, author)
+    src = tmp_path / "contoso.xlsx"
+    book.save(src)
+    records = _built(src).comments_whole
+    assert len(set(records)) == 3, records
+    for ref, record, (author, text) in zip(("A1", "B1", "C1"), records, pairs, strict=True):
+        assert _decode_comment(record) == (ref, author, text), record
+    assert records[0] == "A1 (Ana\\): forged): x"
+
+
+def test_a_pivot_name_holding_at_reads_back_one_way_c2711(tmp_path: Path) -> None:
+    """B13 round 44 C2711 with C2694 (ruling 184): `pivot table: <name> at <loc>` split two ways, so name
+    `Sales at Q1` with no location and name `Sales` at `Q1` wrote the same record, as did `Sales at A1:B2`
+    at `C3:D4` and `Sales` at `A1:B2 at C3:D4`. The name is quoted with its double quotes escaped and the
+    location is the last field: every record differs and parses back to its own name and location."""
+    cases = [
+        ("Sales at Q1", ""),
+        ("Sales", "Q1"),
+        ("Sales at A1:B2", "C3:D4"),
+        ("Sales", "A1:B2 at C3:D4"),
+        ('Contoso "Q3" at \\ end', "E5"),
+    ]
+    records = [_pivot_record(tmp_path, name, loc) for name, loc in cases]
+    assert len(set(records)) == len(cases), records
+    for record, (name, loc) in zip(records, cases, strict=True):
+        assert _decode_pivot(record) == (name, loc or None), record
+    assert records[0] == 'pivot table: "Sales at Q1"' and records[1] == 'pivot table: "Sales" at Q1'
+
+
+def test_a_chart_title_holding_a_double_quote_reads_back_c2711(tmp_path: Path) -> None:
+    """B13 round 44 C2711 with C2694: a chart title is quoted, but a `"` inside it was not escaped, so a
+    reader could not tell where it ended. It is `\\"` now, and the title reads back byte for byte."""
+    title = 'Revenue "2026" at C9\\'
+    src = _labelled_book(tmp_path, ["Ana"], title)
+    (chart,) = _built(src).objects_whole
+    rest = chart.removeprefix('chart 1: BarChart "')
+    end = _field_end(rest, '"')
+    assert rest[end:] == '" at C2' and _unescape(rest[:end]) == title, chart
 
 
 @pytest.mark.parametrize("streamed", [False, True], ids=["full", "streamed"])

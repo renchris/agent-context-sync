@@ -43908,6 +43908,12 @@ sidecar, the skip for bytes that already start with the banner gone. A reader dr
 line 2 when it is empty; that gives back every sidecar written from now on byte for byte, a source opening with the
 banner or an empty line included, and an older sidecar written under the skip keeps its source's line 2. A sidecar
 written under the skip is rewritten when its source next changes: `BANNER_VERSION` does not move.
+Amended 2026-11-22, §16.278 C2711 (with C2694): each delimited field escapes its own delimiter. A comment's author
+escapes `)` as `\)`, a chart title and a pivot name are quoted with each `"` escaped as `\"`, and a pivot's location
+is the record's last field, after ` at `: `<ref> (<author>): <text>`, `chart <n>: <kind> "<title>" at <anchor>`,
+`pivot table: "<name>" at <location>`. The decoder: the author runs from ` (` to the first unescaped `)` before `: `
+and the text to the line's end; a quoted field runs to its first unescaped `"`; then `\\`, `\n`, `\r`, `\t`, `\)`
+and `\"` are undone. xlsx's `_EMITTER_VERSION` is 1.0.6.
 
 **git's settings for the seed are read as NUL-ended records** (C2304; ruling 152; `agentsync.convert.speech`; amends
 §16.54 Q52). `_git_config` split `git config --type=path --get-urlmatch http <NEMO_URL>`'s output with
@@ -44737,6 +44743,10 @@ cut alone and row 1 cut with row 2 after it) and
 `test_convert_page_cap.py::test_a_row_of_many_cut_lengths_is_costed_in_one_sweep_c2516`,
 `test_convert_page_cap.py::test_a_formula_shorter_than_its_value_is_a_breakpoint_c2516` and
 `test_convert_page_cap.py::test_later_rows_are_reserved_against_a_formula_s_cheapest_cut_c2516`.
+Amended 2026-11-22, §16.278 C2710 (with C2652, C2721): a CRLF in a formula, which `_code` renders as one space
+(C2531), was costed two bytes, the CR and the LF each in `_CODE_RUNS`' one-byte ASCII run, so a row whose cheapest
+real cut filled the room was dropped; a CR with an optional LF is now `_CODE_RUNS`' last run, costed one byte, and
+the costing equals the rendered cut's bytes at every length.
 
 **A record pandoc's runner names is one line before `_plain` reads it** (C2528 with C2518; ruling 167;
 `agentsync.convert.pandoc`; amends §16.268 C2299, C2252, §16.263 C2048; dated line at §16.42). `_first_cause` and
@@ -45246,6 +45256,40 @@ no change recorded for it yet, is not known and stays on disk. Tests:
 failing sync, the failing row's page in HEAD and on disk has its manifest `page_sha256` and says `not-ooxml`, and
 `read again` is 1) and `test_convert_family.py::test_the_zero_byte_pass_keeps_what_the_recording_replan_keeps_c2703`
 (the twins take the same snapshot and put it back the same way).
+
+**A CRLF in a cut formula is costed as it renders** (C2710 with C2652 and C2721; ruling 184; `agentsync.convert.xlsx`;
+amends §16.273 C2516). Since C2531 `_code` renders a CRLF as one space, but `_CODE_RUNS` put the CR and the LF in its
+one-byte ASCII run and `_code_steps` charged each a byte, so every CRLF in a formula's cut was costed two bytes. An
+overcharge is a lost row, never an overflow: `_cut_row` renders only the first length whose cost fits and gives up
+if that render does not, so the verifier's probe 2 (one formula `=A1<CR><LF>+B1+C1+D1` beside 40 cells of `a` and
+six blanks) renders in 179 bytes at length 7, was costed 180, and `_table_lines` showed no row at the header plus
+179 bytes. `_CODE_RUNS` now takes a CR with an optional LF as its last run, the ASCII run no longer taking a CR, so
+kinds 1 to 5 keep their numbers; `_code_steps` charges that run one byte and a CRLF's LF nothing. A cut that ends
+between the two is a lone CR, one space, so the cost is exact at every length, never under (an undercharge would drop
+rows the other way), and a `<CR><CR><LF>` splits as `str.replace` reads it, two spaces. `_cell_steps` already read
+`\r\n?` as one run. Tests: `test_convert_page_cap.py::test_a_cut_row_is_costed_exactly_as_it_renders_at_every_length_c2710`
+(600 seeded rows of plain and formula texts, with and without a cached value, holding CRLF, CR, LF, CR CR LF, pipes,
+backtick runs, blanks, tabs, backslashes and 2-, 3- and 4-byte characters, the costed bytes equal to the rendered
+line's at every length) and
+`test_convert_page_cap.py::test_a_crlf_formula_row_whose_cheapest_cut_fills_the_room_is_shown_c2710` (probe 2's row
+within the header plus 179 bytes, cut at 7).
+
+**A list-sidecar record parses one way** (C2711 with C2694; ruling 184; `agentsync.convert.xlsx`; amends §16.268
+C2301). `_record_escape` escaped backslash, LF, CR and tab only, so author `Ana): forged` with text `x` and author
+`Ana` with text `forged): x` both wrote `A1 (Ana): forged): x`; a pivot record `pivot table: <name> at <location>`
+read two ways when the name held ` at ` (`Sales at Q1` with no location against `Sales` at `Q1`; `Sales at A1:B2` at
+`C3:D4` against `Sales` at `A1:B2 at C3:D4`), and a chart title's own `"` ended its quotes. `_record_field` escapes
+each delimited field's own delimiter after `_record_escape`, a backslash being already doubled, so the escape stays
+invertible: the author escapes `)`, a chart title and a pivot name are quoted with `"` escaped, and the location is
+the last field. C2301's dated line states the decoder. The comment text and every page line keep their form, and the
+ref stays generated, so no record passes for another cell's (C2301's aim). No agentsync code reads these records; a
+sidecar already written takes the form when its file next changes. xlsx's `_EMITTER_VERSION` moves once, to 1.0.6,
+for this and the CRLF cost above; no `_REREAD_BELOW` moves. Tests:
+`test_convert_records.py::test_an_author_holding_a_closing_bracket_reads_back_as_its_own_record_c2711` (both
+colliding authors and an author holding `\)`), `test_convert_records.py::test_a_pivot_name_holding_at_reads_back_one_way_c2711`
+(both colliding pairs and a name holding `"`), `test_convert_records.py::test_a_chart_title_holding_a_double_quote_reads_back_c2711`
+and `test_convert_records.py::test_a_pivot_name_and_location_holding_a_line_break_stay_one_record_and_one_line_c2452`,
+each read back through the stated decoder.
 
 ### 16.279 Round 44: the prompt goes to v41 (only what setup prints and this shell holds), ship-land's superseded-run lookup in its rate wait, dated lines in place of rewrites, and the guides (2026-11-22, wave B13 round 44 lane D)
 
