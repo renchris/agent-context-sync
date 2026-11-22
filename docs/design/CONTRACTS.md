@@ -43541,6 +43541,8 @@ optional `SharedLibraries-` for `_org_of` and the email branch, so the folder re
 `OneDrive-SharedLibraries-<org-N>`. This report numbers that library `<library-N>` where the shell numbers it
 `<folder-N>`, a separate mismatch, so the C2071 both-reports test holds the shell equal for that provider only on lines
 with no folder or library number. Tests: the C2071 tests in both files.
+Amended 2026-11-21, §16.271 C2471: the shell report numbers that library `<library-N>` too, from its own counter, the
+first registration winning across folders and libraries, so the C2071 test holds the shell equal for every provider.
 
 **The inbox is one folder, and Configuration says what sits on it** (C2318, C2207; ruling 151, this file's half).
 The overlap pairing asks agentsync's own same-folder rule (`cli._same_folder`, lane B's `paths.same_folder`), so
@@ -43664,6 +43666,8 @@ not added`, the config step's log line ends `inbox=not-added`. The pins at `test
 `test_install_sh_full_run_is_idempotent` moved in the same commit. Test:
 `test_install_oneshot.py::test_a_file_named_inbox_is_not_called_an_ensured_inbox_c2207` (the real agentsync, a file
 named inbox, with and without `--source-local`, then the folder back).
+Amended 2026-11-21, §16.271 C2440: the note also ends `inbox=not-added` when init or add-source prints `inbox:
+<path> is source '<id>' (<kind>, <state>), not an inbox source`, another kind's source on the folder.
 
 **A no-folder NEXT with exit 0 is pinned to the prompt's step 2** (C2316's exit-0 case; ruling 156; tests only).
 install.sh's exit 0 over a config holding the inbox alone stays (an inbox-only Mac is a valid setup); lane D's v39
@@ -44415,7 +44419,112 @@ the sync lock to be free`, round 42 C2222's test), so C2502 needs no report chan
 
 ### 16.271 Round 43: the installer: a source id and a folder take Python's number and length rule, another build's render gets every cut, and C2469 waits on the operator (2026-11-21, wave B13 round 43 lane RB)
 
-Reserved for round 43 lane RB of B13.
+Round 43's lane RB items (`docs/plans/bring-back-ocr.md`, "B13 round 43"; specs `round43/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's rulings 157 to 163 settle it). A dated line this round writes in another
+section reads `Amended <date>, §16.271 C<n>: ...`.
+
+**The shell halves of rulings 157 and 158** (C2432, C2430, C2496, C2436, C2466, C2468; privacy; `scripts/install.sh`;
+landed with lane RA's Python halves, §16.270, in one run). `redaction_pairs` reads `[convert] pandoc_path` (a basic or
+literal string) through `agentsync_dir_values`' TABLE KEY form and, for a value under the home or its `pwd -P` form,
+pairs the raw, `~/`, `debug_path`, `~/'...'`, `~/"..."` and `'\''` spellings with flag c, so doctor's pandoc lines
+read `~/<path>` in the shell report too, and `/opt/homebrew` stays (C2432). Every configured value is normalised as
+pathlib reads it (`//` and `/./` collapse, a leading `//` of two slashes kept, `..` kept) before its cuts are derived,
+the raw spelling kept as one more pair. With a docs repo outside the home, `<its parent>/inbox` is registered whole
+after the four own folders, never for a default inbox nor under a `/` parent (C2430). The cf loop keeps a printf-%q
+`\x` whose x is not `"` inside the token and ends it at `\"` or a line-final `\` (C2496); the not-kept free-text arm
+gives back trailing blanks and tabs through `CUT_FREE_CUT_TRAIL` (C2436); a head right after `'` or `"` runs to its
+closing quote or the line's end, split at a later head after a blank, each piece cut by its own head's rule (C2466);
+and `foreign_home_cut` runs before the head cuts, as Python cuts other homes first (C2468). Tests:
+`test_report_redaction.py::test_both_reports_cut_a_configured_pandoc_path_in_every_spelling_c2432`,
+`test_both_reports_cut_the_inbox_beside_a_docs_repo_outside_the_home_c2430`,
+`test_both_reports_register_no_inbox_beside_a_docs_repo_under_the_root_c2430`, the C2290 config-token rows, the
+`_r142_lines` rows (each head form, quoted heads, a `/Volumes/<org>/Users` path) and
+`test_install_oneshot.py::test_the_shell_free_text_cut_gives_back_the_blank_before_a_quote_c2436`.
+
+**A source id and a folder take Python's number and length rule** (C2471, C2501 with C2433, C2434; ruling 159;
+privacy; dated line at §16.265 C2288). One `id_known` helper (an org key, a fuzzy key of 3 or more characters, a
+folded value) serves the configured, vanished and hold-scope id loops; the vanished and hold-scope loops skip an id
+under 2 characters before they count and number only on a miss, and the vanished add-back folder loop runs before the
+hold-scope loop, as the Python report registers (C2501, C2433). For source ids only, the 2-character test reads the
+separator-free key, so `q-3`, `a-b`, `q-x` and `i-t` are cut alike in both locales; `short_pair` and its folder callers
+are unchanged, and so is setup_report.py (C2434: moving Python to a raw length stopped it cutting `Q-3`, which undid
+ruling 149). A OneDrive-SharedLibraries library is `<library-N>` in the shell report too, from its own counter at the
+configured, listed depth-2 and vanished cloud roots, the first registration winning across folders and libraries, its
+legend item printed only when shown; a library on disk that only install.log's words name is a library too, a
+two-character library is matched in any case (Python's two-letter-word rule never applies to a library), and the
+shell's private-only check reads `<library-` as it reads `<folder-`; the C2071 carve-out is gone (C2471). Tests:
+`test_report_redaction.py::test_both_reports_number_a_hold_scope_another_value_hides_alike_c2433_c2501`,
+`test_both_reports_number_a_vanished_id_and_its_folder_before_a_hold_scope_c2433_c2501`, the `q-3`, `a-b`, `q-x` and
+`i-t` rows of the C2287 and C2312 tests, and
+`test_both_reports_number_a_sharepoint_library_and_a_same_name_folder_alike_c2471`,
+`test_both_reports_cut_a_two_letter_sharepoint_library_in_any_case_c2471`,
+`test_both_reports_number_a_library_only_install_log_names_alike_c2471` and
+`test_a_sharepoint_library_named_like_a_report_word_makes_both_reports_private_c2471`.
+
+**Another build's render gets every cut this build makes, or gives way** (C2498, C2499, C2500; ruling 160; privacy).
+freecut and its inputs are one shared awk program, `FREECUT_AWK`, and `report_provider_lines`, run only for another
+build's render, joins `write_report`'s fallback chain: where freecut would change a line of the render (as the recut
+leaves it), the shell report takes its place (C2498, option A). The scan reads to the end of its input: an early exit
+on the first find made `report_words_cut` die of SIGPIPE on a render of about 96 KB or more, which pipefail read as
+nothing found. `report_config_lines` reads a value after `| ` as empty only when another debug head follows, through
+`DBCELL_AWK`, shared with `dbval` (C2499). `report_words_cut`'s not-a-folder block ports `_quoted_cut`'s end-of-line
+branch through `closeq`, cutting only a non-empty unknown name and keeping its opening quote (C2500); two rows in
+branches the spec keeps unchanged differ from `_redact_lines` by design and are pinned as such. This checkout's own
+render (other=0) stays byte for byte. Tests:
+`test_report_redaction.py::test_another_builds_render_gives_way_exactly_where_the_free_text_cut_changes_a_line_c2498`,
+`test_another_builds_large_render_gives_way_on_its_first_provider_word_c2498`,
+`test_install_oneshot.py::test_another_builds_render_of_a_free_text_provider_word_falls_back_c2498`,
+`test_report_redaction.py::test_the_config_guard_reads_an_empty_cell_as_both_reports_do_c2499` and
+`test_the_recut_ends_a_quoted_name_at_its_quote_only_at_its_lines_end_c2500`.
+
+**The inbox's state, decided once, is printed after its line** (C2440, C2410's installer half; ruling 162; dated line at
+§16.266 C2207). Step 2 keeps `inbox: <path>` byte for byte and, only when no live inbox source sits there, prints
+`inbox state: <words>` right after it, the words `config.inbox_state` gives when the installed build has it and the
+same words answered inline (samefile, then a lexical match) when it does not; on any failure the bare `inbox:` line
+stands alone (C2410). install.log's `inbox=not-added` also fires on another kind's `is source '<id>' (<kind>,
+<state>), not an inbox source` line (C2440; the verifier's pattern matched none of the CLI's real lines, as
+` (<kind>, <state>)` follows the quoted id). Tests:
+`test_install_oneshot.py::test_step_2_prints_the_inbox_state_after_the_inbox_line_c2410` (five states, four builds) and
+`test_another_kinds_source_on_the_inbox_folder_logs_inbox_not_added_c2440`.
+
+**A lock no sync recorded is booked as one** (C2540's installer half). install.sh books
+`waited-for-an-unrecorded-holder` on the probe's empty-body busy lock or on `cli.LOCK_WAITED_UNRECORDED_MARK`, read
+before `cli.LOCK_WAITED_MARK`, which an older build's sync still prints and which still books `waited-for-the-lock`.
+Test: `test_install_oneshot.py::test_a_lock_wait_on_an_unrecorded_holder_the_probe_missed_is_booked_as_one_c2540`
+(each grep literal built from the CLI's constant).
+
+**No reader calls a Mac synced while no folder is** (C2401, C2463; ruling 163, and ruling 170's lines). A bare step 2
+re-run over an inbox-only config keeps exit 0 and, in place of the skill-missing NEXT and after the `[FAIL]`,
+held-listing and doctor checks, ends `NEXT: no folder is synced yet: list them with <install.sh> --list-folders,
+choose the folders to sync, then run: <install.sh> --source-local "<folder>" (one --source-local per folder)`; a
+first run that creates the config still ends `no folder to sync yet` with exit 2 (C2401). `config_failed` prints
+`config_folder_lines`' `docs repo:` and `inbox:` lines before its failure whenever the config loads, and nothing when
+it does not or in a dry run (C2463: the finder's say-nothing clause hid a drop folder init had already made). Tests:
+`test_install_oneshot.py::test_a_bare_rerun_over_an_inbox_only_config_says_no_folder_is_synced_yet_c2401` and
+`test_a_refused_step_2_names_its_docs_repo_and_inbox_when_the_config_loads_c2463`.
+
+**The installer's smaller words** (C2534, C2423, C2437, C2473, C2439, C2506, C2541; C2423's dated lines at §16.41 H33
+and §16.141 W31 are §16.274's, written by lane D). `AGENTSYNC_CONFIG` is trimmed and its `~` and `~/` expanded as `paths.default_config_path` reads it, and an
+install run (the dry run included) with a relative value stops with a usage error naming the absolute path to export;
+`--report-only` and `--list-folders` still read a relative value from the `--cwd` folder, and step 3's commands are
+unchanged (C2534: adding `--config` to them broke the README's exact allow rules). The empty-body reinstall ticker
+reads `agentsync: reinstalling once the lock is free, still running, <N>s` (C2423). The shell legend declares the
+relative `--source-local` divergence within 115 columns (C2437); freecut's comment names ruling 146's two residuals
+(C2473); the header's config-step lines name what the step prints and logs (C2439); the dead `folders_seen` goes
+(C2506); and `--report-only` with a custom `AGENTSYNC_SETUP_REPORT` names the bring-back.md beside it (C2541, a test
+only). Tests: `test_install_oneshot.py::test_the_installer_reads_agentsync_config_as_the_cli_does_c2534`,
+`test_the_reinstall_waits_for_a_running_background_sync_and_holds_its_lock`,
+`test_freecuts_comment_names_ruling_146s_two_residuals_as_report_cuts_does_c2473`,
+`test_the_header_names_each_field_and_line_the_config_step_prints_c2439`,
+`test_every_local_of_redaction_pairs_is_read_apart_from_its_own_write_c2506`,
+`test_report_only_names_the_bring_back_beside_a_custom_report_not_the_default_c2541` and
+`test_report_redaction.py::test_the_second_kept_divergence_is_pinned_in_both_reports_c2265`.
+
+**C2469 stays unbuilt** (ruling 161; privacy). The operator's class C decision 1476293d00a3 on round 41's C2060 edit
+(decode a step 1 list spelling back to the folder name's bytes so the shell report cuts it) was still open when this
+section's last commit landed, so round 41's strict xfail on
+`test_both_reports_cut_a_folder_step_1_listed_but_not_configured_ruling_142` stays, §16.261's C2060 paragraph and lane
+D's C2259 caveat are unchanged, and no lane writes an equivalent change another way.
 
 ### 16.272 Round 43: the inbox's state decided once, a unit-removed tombstone naming its successor, and a waiting recording told and rolled back as waiting (2026-11-21, wave B13 round 43 lane B)
 
