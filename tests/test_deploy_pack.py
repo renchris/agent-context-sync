@@ -14085,6 +14085,49 @@ def test_both_guides_say_setup_keeps_an_inbox_with_each_case_it_meets_c2258() ->
     assert 'say "config: $CONFIG exists"' in install and 'exists (inbox ensured)"' not in install
 
 
+def test_the_guides_configuration_rows_and_path_legend_follow_the_report_c2459(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """B13 round 43 C2459 (ruling 169): the guide's `[convert]` row said `max_page_bytes` alone shows its
+    number, while `_convert_line` shows every number option's, `ocr` and `recordings` by name and
+    `pandoc_path` by name only; held to the line it prints for every option set. With lane RA's C2438 and
+    C2525 words: the `<path>` row's provider part ends at ` | ` and ` · ` too, as the report's legend says,
+    and the `inbox:` row names the stored-form match and the not-a-folder answer."""
+    import dataclasses  # noqa: PLC0415
+    import types  # noqa: PLC0415
+
+    from agentsync import config, setup_report  # noqa: PLC0415
+
+    monkeypatch.setattr(setup_report, "_convert_changed_run", lambda c: 0)
+    default = config.ConvertConfig()
+    changed = {
+        f.name: (
+            not v if isinstance(v, bool) else v + 1 if isinstance(v, int) else Path("/opt/contoso/pandoc")
+        )
+        for f in dataclasses.fields(config.ConvertConfig)
+        if isinstance(v := getattr(default, f.name), (bool, int)) or f.name == "pandoc_path"
+    }
+    line = setup_report._convert_line(types.SimpleNamespace(convert=dataclasses.replace(default, **changed)))
+    numbers = [n for n, v in changed.items() if isinstance(v, int) and not isinstance(v, bool)]
+    assert sorted(numbers) == ["max_page_bytes", "max_rows_per_sheet", "xlsx_stream_threshold_bytes"]
+    for name in numbers:
+        assert f"{name} {changed[name]}" in line, line
+    assert "/opt/contoso" not in line and "pandoc_path" in line and " ocr" in line and "recordings" in line
+    guide = _feedback_page()
+    convert = next(ln for ln in guide.splitlines() if ln.startswith("| Configuration: `[convert]` |"))
+    assert (
+        "each number option (`xlsx_stream_threshold_bytes`, `max_rows_per_sheet`, `max_page_bytes`) with its"
+        " number, `ocr` and `recordings` by name, and `pandoc_path` by its name only, never its value"
+    ) in convert
+    path_row = next(ln for ln in guide.splitlines() if ln.startswith("| `<path>` |"))
+    assert "`, stored as `, ` \\| ` or ` · ` (a table cell's or a Summary field's end)" in path_row
+    legend = " ".join(setup_report._LEGEND["path"].split())
+    assert '", stored as ", " | " or " · " (a table cell\'s or a Summary field\'s end)' in legend
+    inbox = next(ln for ln in guide.splitlines() if ln.startswith("| Configuration: `inbox:` |"))
+    assert "matched as that folder in the form setup stores it" in inbox
+    assert "a file or a dangling link on that name reads `not added (<folder> is not a folder)`" in inbox
+
+
 def test_the_guide_reads_the_configurations_inbox_and_convert_lines_c2207_c2210() -> None:
     """B13 round 42, the guide's words for lane RA's two new Configuration lines: `inbox:` names what sits on
     the folder setup keeps for the inbox, matched by identity (C2207, ruling 151), and `[convert]` names the
@@ -14170,7 +14213,8 @@ def test_the_guide_gives_rulings_146_to_148s_cuts_counts_and_second_divergence_c
     flat = " ".join(guide.split())
     assert (
         "the provider part running across blanks to the next `/` and each path word after that, or else to a"
-        " quote, a backtick, `):`, `, stored as `, a blank before a path of its own or the line's end, a"
+        " quote, a backtick, `):`, `, stored as `, ` \\| ` or ` · ` (a table cell's or a Summary field's"
+        " end), a blank before a path of its own or the line's end, a"
         " generic first word such as `Personal` judged with those words only when a `/` follows them (B13"
         " round 42 ruling 146, C2285 with C2235 and C2271)"
     ) in row

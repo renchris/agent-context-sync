@@ -43520,6 +43520,8 @@ name only; then, from the manifest meta `convert_options`, `; changed in run N: 
 converter options are read again`, which an older manifest leaves out. Lane RA's finding: the pandoc probe line printed
 a configured `pandoc_path` under the home in clear; `_add_pandoc_cut` registers it as a whole-path cut. Test:
 `test_the_configuration_names_a_convert_setting_and_the_run_it_changed_in_c2210_c2221`.
+Amended 2026-11-21, §16.274 C2459: `_convert_line` shows each number option (`xlsx_stream_threshold_bytes`,
+`max_rows_per_sheet`, `max_page_bytes`) with its number, `ocr` and `recordings` by name, `pandoc_path` by name only.
 
 Amended 2026-11-21, §16.270 C2521, C2504, C2522, C2497, C2431: the clause reads `; changed in run N: local and inbox
 pages made under other converter options are read again, but a meeting recording's pages keep the cap they were made
@@ -44266,6 +44268,8 @@ Configuration lines: `inbox:`, what sits on the folder setup keeps for the inbox
 table of setup-feedback.md gives each line's forms. Test:
 `test_the_guide_reads_the_configurations_inbox_and_convert_lines_c2207_c2210`, held to `setup_report._inbox_line` and
 `_convert_line`.
+Amended 2026-11-21, §16.274 C2459: the `[convert]` row gives each number option with its number, `ocr` and
+`recordings` by name and `pandoc_path` by name only, as `_convert_line` has always shown them.
 
 **Setup prompt v39: the paths and folder states setup printed, never a default assumed** (C2316, C2317, C2212, C2310,
 C2319; ruling 156; amends §16.43 H6). v38's step 2 sent the agent to step 3 whenever `install.sh` exited 0, while an
@@ -44922,6 +44926,18 @@ dated line names the two lines, when to drop them and when not (C2415; no code c
 the injection guard and move every sidecar digest). docs/plans/bring-back-ocr.md:3166's line is the lead's. Test:
 `tests/test_deploy_pack.py::test_the_cap_and_sidecar_dated_lines_say_what_the_page_and_sidecar_hold_c2477_c2415`, held to
 the guard's own bytes.
+
+**The guide's Configuration rows and `<path>` legend in lane RA's words** (C2459; ruling 169;
+`docs/deploy/setup-feedback.md`; amends §16.265 C2210, §16.269 C2210). From lane RA's C2438 with C2458 (60f8dd8be) and
+C2525 (1a1b12515). The
+`[convert]` row, §16.265's C2210 paragraph and §16.269's guide paragraph said `max_page_bytes` alone shows its number,
+while `_convert_line` shows every number option's (`xlsx_stream_threshold_bytes`, `max_rows_per_sheet`,
+`max_page_bytes`), `ocr` and `recordings` by name, and `pandoc_path` by name only (C2459); the row says so and the two
+paragraphs take dated lines. The `<path>` row's provider-part end adds lane RA's ` | ` and ` · ` (a table cell's or a
+Summary field's end), and the `inbox:` row says the folder is matched in the form setup stores it, printed as typed,
+and that a file or a dangling link on the name reads `not added (<folder> is not a folder)` whatever sources.toml
+lists. Test: `tests/test_deploy_pack.py::test_the_guides_configuration_rows_and_path_legend_follow_the_report_c2459`,
+held to `_convert_line`'s output and the report's legend.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
