@@ -114,13 +114,16 @@ past 70, the slowest green on af21e633, 8793 tests and pytest's step 78:07, and 
 4041089d's first, and its rerun was green at 67:28; 1faa3f3a, round 42's base, took 74:47, 8791 tests and pytest's
 step 74:19; the seven after it, from 60835dd7 to 87ec6fee, took 59:30 to 78:52, six past 60 and five past 70, all green
 on attempt 1, the slowest on 62a72e6c, 8972 tests and pytest's step 78:19; bd65e0e1, round 43's base, took 72:55, 8973
-tests and pytest's step 72:23; one run took 34 on a runner loaded 5 to 8 per core), plus any wait for a macOS runner,
-counted from
+tests and pytest's step 72:23; the ten after it, from 7acb0255 to 5affa1ab, took 69:10 to 79:30, all past 60 and nine
+past 70, all green on attempt 1, the slowest on 5affa1ab, 9282 tests and pytest's step 79:07; d1b028b4, round 44's
+base, took 72:31, 9282 tests and pytest's step 72:26; one run took 34 on a runner loaded 5 to 8 per core), plus any wait
+for a macOS runner, counted from
 the run appearing to its job starting (one waited 63 minutes, on ef12f28f, another 50, one 21, on d8385ef6, one 25, on
 820c69dd, one 16, on 0c6b1207, one 38, on 19b1f575, one 36, on 63a12d0c, one 31, on c2ab2d12, one 22, on 877a47ab, one
 17, on 5bf1911e, one 16, on c6d8227c, one 50, on 293c8081, one 39, on 4d3ba971's rerun, counted from the rerun's start,
 one 32, on 526fa1e2, one 52, on ffefbe0f, one 31, on 10845acb, one 29, on 4041089d's rerun, counted from the
-rerun's start, one 26, on c72c736b, one 25, on 60835dd7, and earlier ones 48 and 46); the job's limit is 100
+rerun's start, one 26, on c72c736b, one 25, on 60835dd7, one 55, on dea3fabc, one 16, on bb3cf651, and earlier ones
+48 and 46); the job's limit is 100
 minutes (`timeout-minutes` in ci.yml), and a wait does not count against it.
 
 A loop that prints nothing has read nothing: an empty list is not green. If ship-land's line says `no CI run for
