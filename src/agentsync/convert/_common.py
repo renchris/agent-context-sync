@@ -86,6 +86,10 @@ def _check_ooxml_container(src: Path) -> None:
 
 
 _CONTENT_TYPES_MAX = 1 << 20
+_CONTENT_TYPES_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
+"""The namespace of ``[Content_Types].xml``'s Override and Default elements, the only ones that type a part:
+:func:`_ooxml_family` reads its families from them and pptx's ``_decoded_deck_types`` retypes them (B13
+round 43 C2517; one copy, here, since round 44 C2708)."""
 _MAIN_TYPE_RE = re.compile(
     # whitespace around the "=" is XML's too (B13 round 29 C222)
     rb"\bContentType\s*=\s*[\"']application/vnd\.(?:openxmlformats-officedocument\."
@@ -120,7 +124,14 @@ def _ooxml_family(src: Path) -> str | None:
     mark is decoded first and read as its UTF-8 twin is (B13 round 34 C827); near the cap the twins can
     differ, in either direction, since UTF-16 takes 2 bytes for an ASCII character and UTF-8 takes 3 for a
     CJK one (B13 round 35 C964).  One that does not decode is None; a UTF-16 part with no mark, or UTF-32,
-    cannot be told."""
+    cannot be told.
+
+    The parse decides: the families are read from the decoded ContentType of each content-types-namespace
+    Override and Default (:func:`content_types_tree`), so a main-type literal in a comment, a processing
+    instruction or any other element never counts, and a type spelled with a character reference does.  The
+    byte regex over the part is the fallback, only when the part does not parse (B13 round 44 C2708 with
+    C2653, ruling 185: a Word literal in a comment told a ``.potx`` whose real Override was escaped as a
+    Word document, a cached, never-retried ``not the type its name says`` stub)."""
     try:
         with zipfile.ZipFile(src) as zf:
             info = zf.getinfo("[Content_Types].xml")
@@ -131,23 +142,23 @@ def _ooxml_family(src: Path) -> str | None:
                 types = types.decode("utf-16").encode("utf-8")
     except Exception:  # KeyError, BadZipFile, OSError, an encrypted member, a compression zipfile lacks
         return None
-    families = {_FAMILY_OF[m[1] or m[2]] for m in _MAIN_TYPE_RE.finditer(types)}
-    if not families:  # a character reference in a type: read it decoded (B13 round 42 C2303)
-        tree = content_types_tree(raw)  # its own bytes, which its declaration names
-        values = [] if tree is None else [el.get("ContentType") or "" for el in tree.iter()]
-        for value in values:
-            if m := _MAIN_TYPE_VALUE_RE.fullmatch(value):
+    tree = content_types_tree(raw)  # its own bytes, which its declaration names
+    if tree is None:  # over the cap or unparseable: the byte read stands
+        families = {_FAMILY_OF[m[1] or m[2]] for m in _MAIN_TYPE_RE.finditer(types)}
+    else:  # decoded, and only the elements that type a part (B13 round 44 C2708 with C2653)
+        families = set()
+        for el in tree.iter(f"{{{_CONTENT_TYPES_NS}}}Override", f"{{{_CONTENT_TYPES_NS}}}Default"):
+            if m := _MAIN_TYPE_VALUE_RE.fullmatch(el.get("ContentType") or ""):
                 families.add(_FAMILY_OF[(m[1] or m[2]).encode("ascii")])
     return families.pop() if len(families) == 1 else None
 
 
 def content_types_tree(types: bytes) -> Any | None:
-    """``[Content_Types].xml``'s root element, parsed only when the byte reads find nothing (pptx's
-    ``_deck_types`` parses after its byte pass too, so an escaped override behind a decoy literal is retyped,
-    B13 round 43 C2517): at most
-    :data:`_CONTENT_TYPES_MAX` bytes, with no entity, DTD or network resolution and no huge tree, so a
-    character reference (``templa&#116;e``) reads as the value it stands for; None when it is too large or
-    does not parse, and the caller's answer stands (B13 round 42 C2303)."""
+    """``[Content_Types].xml``'s root element, the first read of :func:`_ooxml_family` and pptx's
+    ``_deck_types``, whose byte reads are only the fallback for a part this returns None for (B13 round 44
+    C2708, C2722, ruling 185): at most :data:`_CONTENT_TYPES_MAX` bytes, with no entity, DTD or network
+    resolution and no huge tree, so a character reference (``templa&#116;e``) reads as the value it stands
+    for; None when it is too large or does not parse (B13 round 42 C2303)."""
     if len(types) > _CONTENT_TYPES_MAX:
         return None
     from lxml import etree  # type: ignore[import-untyped]  # noqa: PLC0415 - python-pptx's parser

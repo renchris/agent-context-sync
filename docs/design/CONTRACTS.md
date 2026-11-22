@@ -37329,6 +37329,10 @@ Amended 2026-11-20, §16.268 C2303: when the bytes find no template type, the pa
 or network) and an element whose decoded type is the template's is typed as a deck's, so `templa&#116;e` reads too.
 Amended 2026-11-21, §16.273 C2517: the part is parsed after the byte pass whether or not it found the type, and only a
 content-types Override or Default is retyped, so a raw type in a comment no longer hides an escaped Override.
+Amended 2026-11-22, §16.278 C2722 (with C2709): a template part that parses is re-serialized by lxml in memory, its
+template-typed Override and Default retyped and its declaration in its own encoding, so the UTF-8 bytes are no longer
+replaced as bytes for it; only a part over 1 MiB or one that does not parse is still retyped by the literal replace
+above, the UTF-16 one decoded and encoded again in its own byte order.
 
 **The test session warms the wheel pandoc once (C769, makes worse True, its lane E part; `tests/conftest.py`).** A
 `real_env` test's agentsync runs this venv's wheel pandoc, an x86_64 binary whose first start under Rosetta took
@@ -44125,6 +44129,10 @@ template and an escaped family token, UTF-8 and both UTF-16 orders, the staged f
 Amended 2026-11-21, §16.273 C2517: the byte and UTF-16 paths are a first pass with no early return; the parse reads
 what they left, and their bytes stand when it finds nothing. Only an Override or Default in the content-types
 namespace is retyped.
+Amended 2026-11-22, §16.278 C2708 (with C2653, C2722, C2709): the parse comes first and decides, on the part's own
+bytes; the byte and UTF-16 reads are only the fallback for a part `content_types_tree` returns None for.
+`_ooxml_family` reads its families from content-types Override and Default elements alone, never from a comment or
+another element, and `_deck_types` retypes only those.
 
 **A zero-byte row an older build settled with a type mismatch is read once more** (C2219, makes worse True for an
 unbounded re-read; ruling 155's one amendment of ruling 132; `agentsync.cycle`; amends §16.233 C930, §16.243 C1304,
@@ -44836,6 +44844,11 @@ that failed before convert now, so pptx's emitter stays 1.0.3. Hand-made files o
 per codec: the title read, the staged file untouched) and
 `test_convert_formats.py::test_only_a_content_types_override_or_default_is_retyped_c2517` (a foreign-namespace and a
 non-Override element keep the template type, per codec).
+Amended 2026-11-22, §16.278 C2722 (with C2709): the byte pass no longer runs first. `_decoded_deck_types` parses the
+original bytes and answers three ways: parsed with hits, only those Overrides and Defaults retyped; parsed with none,
+None; not parsed, `_deck_types`' literal byte and UTF-16 replace. A normal template's in-memory part is re-serialized
+by lxml rather than keeping the byte output, and a literal template type in a comment or on another element keeps its
+spelling; an over-cap or unparseable part is still retyped by a literal replace.
 
 **lxml is a declared dependency, and the xlsx docstrings name the formulas sidecar** (C2454; `pyproject.toml`,
 `agentsync.convert.xlsx`). C2303's `content_types_tree` and `_decoded_deck_types` import `lxml.etree` directly, but
@@ -45290,6 +45303,41 @@ colliding authors and an author holding `\)`), `test_convert_records.py::test_a_
 (both colliding pairs and a name holding `"`), `test_convert_records.py::test_a_chart_title_holding_a_double_quote_reads_back_c2711`
 and `test_convert_records.py::test_a_pivot_name_and_location_holding_a_line_break_stay_one_record_and_one_line_c2452`,
 each read back through the stated decoder.
+
+**The Office type check reads the parsed content types, the bytes only a fallback** (C2708 with C2653; ruling 185;
+`agentsync.convert._common`; amends §16.268 C2303). `_ooxml_family` matched `_MAIN_TYPE_RE` over the raw part,
+comments included, and parsed only when the bytes found nothing, so a `.potx` whose real Override was spelled
+`presentation&#109;l` and which carried `<!-- ContentType="...wordprocessingml.document.main+xml" -->` was told a Word
+document: `PptxConverter` raised `not-ooxml: a Word document, not a deck (not the type its name says)`, a cached,
+never-retried stub, though the deck converted with the guard bypassed (the verifier's probe at d1b028b4); the same
+guard serves pandoc's `.docx` and xlsx. It now parses first (`content_types_tree`) and takes families only from
+`{...package/2006/content-types}Override` and `Default` elements, `len(families) == 1` kept; the byte regex runs only
+when the part does not parse (over `_CONTENT_TYPES_MAX` the zip member is already None, as before), so a Word package
+named `.potx` with a malformed part is still `not the type its name says`. A part that parses with a main type only in
+a comment or another element has no family and passes, as python-pptx and openpyxl read only those two elements.
+`_CONTENT_TYPES_NS` moves to `_common.py`, and pptx imports it. Tests:
+`test_convert_family.py::test_a_main_type_literal_in_a_comment_never_decides_the_family_c2708` (a decoy per codec: a
+`.potx` and a `.pptx` with a Word literal, an `.xlsx` with a deck literal, a `.docx` through pandoc with a workbook
+literal, each real type escaped, in UTF-8 and both UTF-16 orders, each converting) and
+`test_convert_family.py::test_a_content_types_part_that_does_not_parse_is_read_by_its_bytes_c2708`.
+
+**The .potx retype reads the parse, a literal replace only for a part it cannot read** (C2722 with C2709, makes worse
+True for a parse-only rule; ruling 185; `agentsync.convert.pptx`; amends §16.221 C781 and §16.273 C2517).
+`_deck_types` replaced every literal template type before it parsed, so a foreign `<x:Note>` or an un-namespaced
+`<Note>` spelled literally was retyped beside the Override, against C2517's "only a content-types Override or Default
+is retyped" (the verifier's 2-by-2-by-3 matrix: 6 of 6 literal Notes retyped, the shipped test checking only the
+escaped spelling). Restricting the byte replace to attributes needs the parse, and a parse-only rule makes things
+worse: a part over 1 MiB or one lxml refuses would go to python-pptx unadapted, a `cannot read the deck` stub where
+C781 adapts it today. `_decoded_deck_types` now runs on the original bytes and answers three ways: parsed with hits,
+only the template-typed content-types Overrides and Defaults retyped; parsed with none, None, and python-pptx's error
+stands; not parsed, `_deck_types` falls back to today's literal byte and UTF-16 replace. A normal template's in-memory
+`[Content_Types].xml` is re-serialized by lxml (C781's and C2517's byte sentences take dated lines); python-pptx reads
+the same Default and Override values, and measured plain, raw, escaped and decoy templates in UTF-8 and both UTF-16
+orders convert to the same page before and after (one body sha256 for all ten), so pptx's `_EMITTER_VERSION` stays
+1.0.4. Tests: `test_convert_formats.py::test_a_literal_template_type_outside_an_override_keeps_its_spelling_c2709`
+(the Override literal and escaped, both Notes literal and escaped, in UTF-8, UTF-16 LE and BE: the Override the
+deck's, both Notes and a comment the template's, the title read, the staged file untouched) and
+`test_convert_formats.py::test_an_over_cap_or_unparseable_template_part_is_still_retyped_by_its_bytes_c2722`.
 
 ### 16.279 Round 44: the prompt goes to v41 (only what setup prints and this shell holds), ship-land's superseded-run lookup in its rate wait, dated lines in place of rewrites, and the guides (2026-11-22, wave B13 round 44 lane D)
 

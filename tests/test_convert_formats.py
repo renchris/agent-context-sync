@@ -754,6 +754,75 @@ def test_only_a_content_types_override_or_default_is_retyped_c2517(tmp_path: Pat
     assert notes == [POTX_MAIN, POTX_MAIN]
 
 
+@pytest.mark.parametrize("codec", ["utf-8", "utf-16-le", "utf-16-be"])
+@pytest.mark.parametrize("notes", ["literal", "escaped"])
+@pytest.mark.parametrize("override", ["literal", "escaped"])
+def test_a_literal_template_type_outside_an_override_keeps_its_spelling_c2709(
+    tmp_path: Path, codec: str, notes: str, override: str
+) -> None:
+    """B13 round 44 C2722 with C2709 (ruling 185): `_deck_types` replaced every literal template type in the
+    part before it parsed, so a foreign `<x:Note>` or an un-namespaced `<Note>` spelled literally was retyped
+    too, against C2517's "only a content-types Override or Default". The parse runs on the original bytes
+    now: the Override is the deck's whichever its spelling, both Notes and a comment keep the template's,
+    the title is read and the staged file is not touched."""
+    import codecs  # noqa: PLC0415
+
+    from lxml import etree  # type: ignore[import-untyped]  # noqa: PLC0415
+
+    from agentsync.convert import pptx as pptx_mod  # noqa: PLC0415
+
+    spell = {"literal": POTX_MAIN, "escaped": _ESCAPED["template"]}
+    inside = (
+        f"<x:Note xmlns:x='urn:contoso:notes' ContentType='{spell[notes]}'/>"
+        f"<Note ContentType='{spell[notes]}'/>"
+        f"<!-- ContentType='{POTX_MAIN}' -->"
+    )
+    template = _respelled_potx(tmp_path, spell[override], codec, inside=inside)
+    before = template.read_bytes()
+    u = _one(PptxConverter(CFG).convert(template, name=template.name))
+    assert u.title == "Contoso Quarterly Template"
+    assert template.read_bytes() == before
+    adapted = pptx_mod._template_as_deck(template)
+    assert adapted is not None
+    with zipfile.ZipFile(adapted) as z:
+        types = z.read("[Content_Types].xml")
+    root = etree.fromstring(types.removeprefix(codecs.BOM_UTF16_BE) if codec == "utf-16-be" else types)
+    ns = "{http://schemas.openxmlformats.org/package/2006/content-types}"
+    typed = [el.get("ContentType") for el in root.iter(f"{ns}Override")]
+    assert PPTX_MAIN in typed and POTX_MAIN not in typed
+    assert [el.get("ContentType") for el in root.iter("{urn:contoso:notes}Note", f"{ns}Note")] == [
+        POTX_MAIN
+    ] * 2
+    assert [c.text for c in root.iter(etree.Comment)] == [f" ContentType='{POTX_MAIN}' "]
+
+
+@pytest.mark.parametrize("codec", ["utf-8", "utf-16-le", "utf-16-be"])
+def test_an_over_cap_or_unparseable_template_part_is_still_retyped_by_its_bytes_c2722(codec: str) -> None:
+    """B13 round 44 C2722 (ruling 185, makes worse True for a parse-only rule): a part `content_types_tree`
+    cannot read, over 1 MiB or malformed, is still retyped by today's literal replace in its own encoding
+    (C781), never sent to python-pptx unadapted; a part that parses with no template-typed Override or
+    Default is None."""
+    import codecs  # noqa: PLC0415
+
+    from agentsync.convert import _common  # noqa: PLC0415
+    from agentsync.convert import pptx as pptx_mod  # noqa: PLC0415
+
+    bom = {"utf-8": b"", "utf-16-le": codecs.BOM_UTF16_LE, "utf-16-be": codecs.BOM_UTF16_BE}[codec]
+    ns = "http://schemas.openxmlformats.org/package/2006/content-types"
+    head = f"<?xml version='1.0' encoding='{'UTF-8' if codec == 'utf-8' else 'UTF-16'}'?><Types xmlns='{ns}'>"
+    override = f"<Override PartName='/ppt/presentation.xml' ContentType='{POTX_MAIN}'/>"
+    pad = f"<!--{'x' * (_common._CONTENT_TYPES_MAX + 1)}-->"
+    for body in (head + override + pad + "</Types>", head + override + "</Types><"):
+        part = bom + body.encode(codec)
+        assert _common.content_types_tree(part) is None
+        out = pptx_mod._deck_types(part)
+        assert out is not None and out.startswith(bom)
+        text = out[len(bom) :].decode(codec)
+        assert PPTX_MAIN in text and POTX_MAIN not in text
+    parsed_no_hit = bom + (head + f"<!-- ContentType='{POTX_MAIN}' --></Types>").encode(codec)
+    assert pptx_mod._deck_types(parsed_no_hit) is None
+
+
 def test_lxml_is_declared_and_the_xlsx_docstrings_name_the_formulas_sidecar_c2454() -> None:
     """B13 round 43 C2454: C2303's converters import `lxml.etree` directly, but pyproject.toml did not name
     lxml, which arrived only through python-pptx; and four xlsx docstrings listed the sidecars without C2300's

@@ -184,6 +184,81 @@ def test_a_package_whose_content_types_are_utf_16_still_converts_under_its_own_n
     assert "Contoso Quarterly Template" in PptxConverter(CFG).convert(template, name=template.name)[0].body
 
 
+_ESCAPED_FAMILY = {
+    "presentationml": "presentation&#109;l",
+    "spreadsheetml": "spreadsheet&#109;l",
+    "wordprocessingml": "wordprocessing&#109;l",
+}
+_DECOY_OF = {
+    "potx": _WORD_MAIN,
+    "pptx": _WORD_MAIN,
+    "xlsx": "application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml",
+    "docx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml",
+}
+
+
+def _decoyed(text: str, decoy: str, codec: str) -> str:
+    """``text`` with every family word escaped (``presentation&#109;l``), so no byte read finds the real main
+    type, ``decoy``'s literal in a comment before ``<Types``, and a UTF-16 declaration for a UTF-16 part."""
+    for word, escaped in _ESCAPED_FAMILY.items():
+        text = text.replace(word + ".", escaped + ".")
+    if codec != "utf-8":
+        text = re.sub(r"encoding=(['\"])UTF-8\1", r"encoding=\1UTF-16\1", text, flags=re.IGNORECASE)
+    return text.replace("<Types", f'<!-- ContentType="{decoy}" --><Types', 1)
+
+
+@pytest.mark.parametrize("codec", ["utf-8", *_BOMS])
+@pytest.mark.parametrize("kind", ["potx", "pptx", "xlsx", "docx"])
+def test_a_main_type_literal_in_a_comment_never_decides_the_family_c2708(
+    tmp_path: Path, codec: str, kind: str
+) -> None:
+    """B13 round 44 C2708 with C2653 (ruling 185): `_ooxml_family` read the raw bytes first, comments
+    included, and parsed only when they found nothing, so a `.potx` whose real Override was spelled
+    `presentation&#109;l` and which held a Word literal in a comment was told a Word document: a cached,
+    never-retried `not the type its name says` stub. The parse decides now, from content-types Override and
+    Default elements only, so each codec's decoy (a Word literal in a template or deck, a deck literal in a
+    workbook, a workbook literal in a Word document read by pandoc) converts."""
+    from test_convert_builders import build_xlsx_rich  # noqa: PLC0415
+
+    build = {
+        "potx": build_potx,
+        "pptx": build_pptx_rich,
+        "xlsx": build_xlsx_rich,
+        "docx": word_package,
+    }[kind]
+    src = _types_in(
+        build(tmp_path / f"Contoso {kind}.{kind}"), codec, lambda t: _decoyed(t, _DECOY_OF[kind], codec)
+    )
+    family = {"potx": "presentation", "pptx": "presentation", "xlsx": "spreadsheet", "docx": "word"}[kind]
+    assert common_mod._ooxml_family(src) == family
+    converter = {"potx": PptxConverter, "pptx": PptxConverter, "xlsx": XlsxConverter, "docx": PandocConverter}
+    units = converter[kind](CFG).convert(src, name=src.name)
+    body = "\n".join(u.body for u in units)
+    assert {"potx": "Contoso Quarterly Template", "docx": "Contoso notes"}.get(kind, "") in body and body
+
+
+@pytest.mark.parametrize("codec", ["utf-8", *_BOMS])
+def test_a_content_types_part_that_does_not_parse_is_read_by_its_bytes_c2708(
+    tmp_path: Path, codec: str
+) -> None:
+    """B13 round 44 C2708 (ruling 185): the byte regex is the fallback for a part that does not parse, so a
+    Word package named `.potx` whose `[Content_Types].xml` is malformed is still told as not its type; a part
+    that parses, with a main type only in a comment, has no family."""
+    broken = _types_in(word_package(tmp_path / "Contoso broken.potx"), codec, lambda t: t + "<")
+    assert common_mod.content_types_tree(zipfile.ZipFile(broken).read("[Content_Types].xml")) is None
+    assert common_mod._ooxml_family(broken) == "word"
+    with pytest.raises(UnreadableSourceError, match="not the type its name says"):
+        PptxConverter(CFG).convert(broken, name=broken.name)
+    only_comment = _types_in(
+        word_package(tmp_path / "Contoso comment.docx"),
+        codec,
+        lambda t: t.replace(_WORD_MAIN, "application/xml").replace(
+            "<Types", f'<!-- ContentType="{_WORD_MAIN}" --><Types'
+        ),
+    )
+    assert common_mod._ooxml_family(only_comment) is None
+
+
 @pytest.mark.parametrize("codec", list(_BOMS))
 def test_a_utf_16_content_types_part_that_does_not_decode_is_no_family(tmp_path: Path, codec: str) -> None:
     """The decode stays inside the read's try: an odd-length part behind the mark cannot be told."""

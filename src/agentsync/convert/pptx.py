@@ -20,6 +20,7 @@ from typing import Any, BinaryIO
 
 from agentsync.config import ConvertConfig
 from agentsync.convert._common import (
+    _CONTENT_TYPES_NS,
     _FULL_TEXT_SIDECAR,
     _cap_body,
     _cell,
@@ -378,9 +379,6 @@ def _shape_blocks(
 _CONTENT_TYPES = "[Content_Types].xml"
 _TEMPLATE_MAIN = b"application/vnd.openxmlformats-officedocument.presentationml.template.main+xml"
 _DECK_MAIN = b"application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"
-_CONTENT_TYPES_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
-"""The namespace of ``[Content_Types].xml``'s Override and Default elements, the only ones
-:func:`_decoded_deck_types` retypes (B13 round 43 C2517)."""
 
 
 def _template_as_deck(src: Path) -> io.BytesIO | None:
@@ -394,7 +392,9 @@ def _template_as_deck(src: Path) -> io.BytesIO | None:
     The part may be UTF-16 (ECMA-376 Part 2 allows it; python-pptx reads it): one with a UTF-16 byte order
     mark is decoded, its type replaced, and encoded again in UTF-16 in the same byte order with one mark, so
     its own ``encoding="UTF-16"`` declaration stays true and only the content type changes; the UTF-8 bytes
-    are replaced as bytes, as before (B13 round 33 C781)."""
+    are replaced as bytes, as before (B13 round 33 C781).  That literal replace is :func:`_deck_types`'
+    fallback since B13 round 44 C2722, for a part that does not parse: one that parses is re-serialized by
+    lxml with only its template-typed Override and Default retyped."""
     with zipfile.ZipFile(src) as zin:
         try:
             types = zin.read(_CONTENT_TYPES)
@@ -415,15 +415,24 @@ def _template_as_deck(src: Path) -> io.BytesIO | None:
 def _deck_types(types: bytes) -> bytes | None:
     """``[Content_Types].xml``'s bytes with the template main type replaced by the deck's, in the part's own
     encoding (UTF-8, or UTF-16 by its byte order mark); None when the part does not carry the template type
-    (:func:`_template_as_deck`, B13 round 33 C781).  The byte or text replace is a first pass, never the
-    answer alone: a raw literal in a comment or processing instruction matched it while the real Override,
-    spelled ``templa&#116;e``, went to python-pptx unadapted, so :func:`_decoded_deck_types` reads what the
-    first pass left, and the first pass's bytes stand when it finds nothing (B13 round 43 C2517)."""
-    out, replaced = types, False
+    (:func:`_template_as_deck`, B13 round 33 C781).
+
+    The parse decides, on the original bytes (:func:`_decoded_deck_types`, B13 round 44 C2722 with C2709,
+    ruling 185): a part that parses with a template-typed content-types Override or Default has those, and
+    only those, retyped, every comment, processing instruction and other element keeping its spelling; one
+    that parses with none is None, and python-pptx's own error stands.  Only a part :func:`content_types_tree`
+    cannot read (over :data:`_CONTENT_TYPES_MAX`, a DTD, malformed) is retyped by today's literal replace, the
+    UTF-8 bytes as bytes and a UTF-16 part decoded and encoded again (C781): a parse-only rule sent those to
+    python-pptx unadapted as ``cannot read the deck`` stubs (makes worse True).  The byte pass once ran first
+    and its output was parsed, so a literal in a comment or a foreign element was retyped too (C2517's
+    decoy, then C2709)."""
+    parsed, retyped = _decoded_deck_types(types)
+    if parsed:
+        return retyped
     if _TEMPLATE_MAIN in types:
-        out, replaced = types.replace(_TEMPLATE_MAIN, _DECK_MAIN), True
+        return types.replace(_TEMPLATE_MAIN, _DECK_MAIN)
     for bom, codec in ((codecs.BOM_UTF16_LE, "utf-16-le"), (codecs.BOM_UTF16_BE, "utf-16-be")):
-        if replaced or not types.startswith(bom):
+        if not types.startswith(bom):
             continue
         try:
             text = types[len(bom) :].decode(codec)
@@ -431,24 +440,27 @@ def _deck_types(types: bytes) -> bytes | None:
             return None
         template, deck = _TEMPLATE_MAIN.decode("ascii"), _DECK_MAIN.decode("ascii")
         if template in text:
-            out, replaced = bom + text.replace(template, deck).encode(codec), True
-    return _decoded_deck_types(out) or (out if replaced else None)
+            return bom + text.replace(template, deck).encode(codec)
+    return None
 
 
-def _decoded_deck_types(types: bytes) -> bytes | None:
-    """:func:`_deck_types` after its byte pass: the part parsed safely (:func:`content_types_tree`), each
-    content-types Override or Default (no other element) whose decoded ContentType is the template's, typed
+def _decoded_deck_types(types: bytes) -> tuple[bool, bytes | None]:
+    """Whether ``types`` parses safely (:func:`content_types_tree`), and if it does, its bytes with each
+    content-types Override or Default (no other element) whose decoded ContentType is the template's typed
     as the deck's, written again with its declaration in its own encoding and a UTF-16 part's byte order
-    mark kept; None when no element carries it or the part does not parse (B13 round 42 C2303: a
-    ``templa&#116;e`` spelling went to python-pptx unadapted and became a ``cannot read the deck`` stub)."""
+    mark kept, or None when no such element carries it (B13 round 42 C2303: a ``templa&#116;e`` spelling
+    went to python-pptx unadapted and became a ``cannot read the deck`` stub; round 44 C2722: three answers,
+    so :func:`_deck_types` falls back to its literal replace only for a part that did not parse)."""
     from lxml import etree  # type: ignore[import-untyped]  # noqa: PLC0415 - python-pptx's parser
 
     root = content_types_tree(types)
+    if root is None:
+        return False, None
     template, deck = _TEMPLATE_MAIN.decode("ascii"), _DECK_MAIN.decode("ascii")
     typed = (f"{{{_CONTENT_TYPES_NS}}}Override", f"{{{_CONTENT_TYPES_NS}}}Default")  # B13 round 43 C2517
-    hits = [] if root is None else [el for el in root.iter(*typed) if el.get("ContentType") == template]
-    if root is None or not hits:
-        return None
+    hits = [el for el in root.iter(*typed) if el.get("ContentType") == template]
+    if not hits:
+        return True, None
     for el in hits:
         el.set("ContentType", deck)
     tree = root.getroottree()
@@ -457,7 +469,7 @@ def _decoded_deck_types(types: bytes) -> bytes | None:
     out: bytes = etree.tostring(tree, xml_declaration=True, encoding=encoding, standalone=standalone)
     if types.startswith(codecs.BOM_UTF16_BE) and out.startswith(codecs.BOM_UTF16_LE):  # lxml writes LE
         out = codecs.BOM_UTF16_BE + out[2:].decode("utf-16-le").encode("utf-16-be")
-    return out
+    return True, out
 
 
 class PptxConverter:
