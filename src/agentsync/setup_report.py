@@ -2927,7 +2927,7 @@ def read_install_runs(log: Path) -> list[InstallRun]:
                 run_id=run_id,
                 started=parse_time(fields.get("start", {}).get("at", "")),
                 rc=int(rc_text) if re.fullmatch(r"-?\d+", rc_text) else None,
-                seconds=int(secs) if secs.isdigit() else None,
+                seconds=int(secs) if secs.isascii() and secs.isdigit() else None,  # B13 round 44 C2677
                 steps=steps,
                 simulated=any(_SIMULATED_RE.search(ln) for ln in lines),
                 lines=tuple(lines),
@@ -2957,7 +2957,7 @@ def _labelled(line: str, runs: Sequence[InstallRun]) -> str:
 def _count(fields: dict[str, str] | None, key: str) -> int | None:
     """The whole number install.sh logged as ``key=N`` on a step's line; None when it logged none."""
     value = (fields or {}).get(key, "")
-    return int(value) if value.isdigit() and len(value) <= 6 else None
+    return int(value) if value.isascii() and value.isdigit() and len(value) <= 6 else None  # C2677
 
 
 def synced_before(runs: Sequence[InstallRun]) -> int | None:
@@ -7542,7 +7542,7 @@ def _closing_stopped(v: dict[str, str] | None) -> str | None:
     hand-edited or garbled value is never echoed (B13 round 28 I27: no report read it, so a later report
     showed the run as a plain exit 0 and its report step as plain done)."""
     raw = (v or {}).get("closing_status", "")
-    if not raw.isdigit() or not 128 < int(raw) < 128 + 65:
+    if not (raw.isascii() and raw.isdigit()) or not 128 < int(raw) < 128 + 65:  # B13 round 44 C2677
         return None
     return _exited(128 - int(raw)).removeprefix("was ")
 
@@ -7553,7 +7553,7 @@ def _rc_words(rc: str) -> str:
     line names it but with no bracket of its own, so a caller's bracket never nests one and install.log's
     number stays (B13 round 31 C516, C514; ruling 58). Standing alone a signal reads as R81's ``stopped by
     SIGKILL (signal 9)`` (:func:`_closing_stopped`)."""
-    if rc.isdigit() and 128 < int(rc) < 128 + 65:
+    if rc.isascii() and rc.isdigit() and 128 < int(rc) < 128 + 65:  # B13 round 44 C2677
         try:
             return f"stopped by {signal.Signals(int(rc) - 128).name}, rc {rc}"
         except ValueError:  # no such signal on this Mac: the number alone
@@ -15744,6 +15744,7 @@ def _signal_lock(c: Config | None, runs: Sequence[InstallRun]) -> bool:
             step.get("result") == "failed"
             and _rc_words(step.get("rc", "")).startswith("stopped by ")
             and at is not None
+            and secs.isascii()  # B13 round 44 C2677: `²` is a digit int() refuses
             and secs.isdigit()
             and at <= began <= at + timedelta(seconds=int(secs) + 1)
         ):
@@ -16907,7 +16908,8 @@ def _reread_since(r: _Run, run: InstallRun) -> list[str]:
         return []
     step = run.step("first-sync") or {}
     at = parse_time(step.get("at", "")) if step.get("result") != "skipped" else None
-    seconds = int(step["seconds"]) if step.get("seconds", "").isdigit() else 0
+    secs = step.get("seconds", "")
+    seconds = int(secs) if secs.isascii() and secs.isdigit() else 0  # B13 round 44 C2677
 
     def own(started: datetime) -> bool:
         return at is not None and at <= started <= at + timedelta(seconds=seconds + 1)

@@ -29223,6 +29223,35 @@ def test_no_report_module_assigns_a_module_level_name_twice_c2640() -> None:
         assert not [n for n, k in names.items() if k > 1], (module.__name__, names.most_common(3))
 
 
+def test_a_non_ascii_digit_in_install_log_is_no_number_c2677(fake_mac: dict[str, Path]) -> None:
+    """B13 round 44 C2677 (ruling 169's pattern): `str.isdigit()` is true of `²`, which `int()` refuses, so a
+    run-number or seconds reader that guards int() with isdigit() alone raised on one damaged install.log
+    field. Each of setup_report's six readers puts `isascii() and` first and reads `²` as no number: an end
+    line's `seconds=²`, a step's `kept=²`, a `closing_status=²`, an rc of `²`, and a stopped first sync's
+    `seconds=²` read by the lock check and by the re-read count."""
+    log = fake_mac["setup"] / "install.log"
+    run = "2026-11-22T10:00:00Z run=20261122T100000Z-9"
+    log.write_text(
+        f"{run} start install.sh compat=40 commit=0123456789ab kind=checkout source=- args=\n"
+        f"{run} step=config seconds=1 rc=0 result=done kept=\u00b2\n"
+        f"{run} step=first-sync seconds=\u00b2 rc=137 result=failed\n"
+        f"{run} end rc=0 seconds=\u00b2\n",
+        encoding="utf-8",
+    )
+    [parsed] = setup_report.read_install_runs(log)
+    assert parsed.seconds is None, parsed
+    assert setup_report._count(parsed.step("config"), "kept") is None
+    assert setup_report._closing_stopped({"closing_status": "\u00b2"}) is None
+    assert "\u00b2" in setup_report._rc_words("\u00b2")
+    lock = expand(load_config(fake_mac["config"]).state_paths.lock)
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.write_text("999999 1 2026-11-22T10:00:01Z sync\n", encoding="utf-8")  # pid boot started_at label
+    assert setup_report._signal_lock(load_config(fake_mac["config"]), [parsed]) is False
+    r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 60.0)
+    r.facts.runs_read = ((5, datetime(2026, 11, 22, 10, 0, 1, tzinfo=UTC), 2),)
+    assert setup_report._reread_since(r, parsed) == [], "the stopped sync's own run, its seconds read as 0"
+
+
 def test_a_config_cut_runs_to_its_path_tokens_end_c2290() -> None:
     """B13 round 42 C2290 (ruling 147; privacy; makes worse True for a boundary-only match): the whole-config
     cut replaced the literal alone, so `sources.toml-PrivateBackup` printed its suffix after the cut, and a

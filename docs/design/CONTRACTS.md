@@ -45316,6 +45316,14 @@ earlier paths. Tests: `test_setup_report.py::test_an_earlier_runs_bring_back_lin
 `test_install_oneshot.py::test_the_real_report_of_a_stopped_copy_invites_no_bring_back`, whose not-stopped report now
 holds `EARLIER_BRING_BACK` and no `bring back: ~/agent-context/bring-back.md`.
 
+**A non-ASCII digit in install.log is no number** (C2677, setup_report's six sites; ruling 169's pattern; lane B
+guards the other modules). `str.isdigit()` is true of `²`, which `int()` refuses, so a reader that guarded `int()`
+with `isdigit()` alone raised on one damaged install.log field. `read_install_runs` (an end line's `seconds=`),
+`_count` (a step's `key=N`), `_closing_stopped` (`closing_status=`), `_rc_words` (an rc), `_signal_lock` and
+`_reread_since` (a first sync's `seconds=`) put `isascii() and` first, each keeping its default and range checks, with
+no new helper or import. Test: `test_setup_report.py::test_a_non_ascii_digit_in_install_log_is_no_number_c2677`
+(each site measured to fail alone with its guard taken out).
+
 ### 16.276 Round 44: the installer: the shell halves of rulings 171 to 173, AGENTSYNC_CONFIG read by the CLI's rule, a none recorded by `--no-folder`, and C2667 waits on the operator (2026-11-22, wave B13 round 44 lane RB)
 
 Lane RB built round 44's installer items on lane RA's branch (rulings 171 to 173 land as one run: lane RA's Python
