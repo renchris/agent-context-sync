@@ -8691,21 +8691,27 @@ def _convert_changed_run(c: Config) -> int:
     with no such key, a value this build cannot parse, or any read error (the line must print even then).
     B13 round 43 C2504 with C2522 (ruling 169): read as the cycle writes it, two fields and ASCII digits;
     ``"0123abcd ²"`` passed ``isdigit`` and raised in ``int``, so the whole Configuration section read
-    ``This section failed``, and a three-field value was taken."""
+    ``This section failed``, and a three-field value was taken. B13 round 44 C2714 (completing ruling
+    169): read through :func:`agentsync.manifest.parse_convert_options`, the one parser the cycle's
+    ``_drift_since`` reads it with too, so a fingerprint that is no hex digest (``garbage 9``) or a run id
+    past 18 digits reads as unrecorded in both, where the report named a run the cycle never recorded; a
+    ValueError still reads 0."""
     db = expand(c.state_paths.db)
     try:
+        from agentsync.manifest import parse_convert_options  # noqa: PLC0415 - lazy, as the doctor reads are
+
         if not db.is_file():
             return 0
         conn = _open_manifest_ro(db, 1.0)
         if conn is None:
             return 0
         try:
-            stored = (_meta_on(conn, _CONVERT_OPTIONS_META) or "").split()
+            parsed = parse_convert_options(_meta_on(conn, _CONVERT_OPTIONS_META))
         finally:
             conn.close()
-    except (OSError, sqlite3.Error):
+    except (OSError, sqlite3.Error, ValueError, ImportError):
         return 0
-    return int(stored[1]) if len(stored) == 2 and stored[1].isascii() and stored[1].isdigit() else 0
+    return parsed[1] if parsed is not None else 0
 
 
 def _meta_on(conn: sqlite3.Connection, key: str) -> str | None:

@@ -29125,7 +29125,17 @@ def test_a_malformed_options_meta_leaves_configuration_whole_c2504_c2522(fake_ma
     cfg = load_config(fake_mac["config"])
     db = Path(str(cfg.state_paths.db)).expanduser()
     db.parent.mkdir(parents=True, exist_ok=True)
-    for value in ("0123abcd \u00b2", "0123abcd 7 extra", "0123abcd \u0667"):
+    # B13 round 44 C2714: lane B's one parser, so a non-hex fingerprint and a run id past 18 digits read as
+    # the cycle reads them, unrecorded
+    for value in (
+        "0123abcd \u00b2",
+        "0123abcd 7 extra",
+        "0123abcd \u0667",
+        "garbage 9",
+        "x " + "1" * 4301,
+        "0123abcd " + "1" * 4301,
+        "0123abcd " + "1" * 19,
+    ):
         m = manifest_mod.Manifest(db)
         try:
             m.set_meta(setup_report._CONVERT_OPTIONS_META, value)

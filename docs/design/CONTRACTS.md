@@ -45337,6 +45337,14 @@ is not built (ruling 178): a no-folder run before a later run that ended 0 still
 `test_setup_report.py::test_a_none_is_read_from_install_log_and_scored_as_the_persons_choice_c2605` (both stopped
 forms, a SOURCE before the flag, a bare exit 2, a usage error and a `--no-folders` word that is no flag).
 
+**The `[convert]` record is read by one parser** (C2714, the report half; lane B's `manifest.parse_convert_options`,
+§16.277). `_convert_changed_run` read the `convert_options` meta by its own two-field, ASCII-digit rule, so a value
+the cycle reads as unrecorded (a fingerprint that is no hex digest, `garbage 9`) named run 9 here. It reads the meta
+through `parse_convert_options`, imported lazily as the doctor reads are, and returns its run or 0; a ValueError or
+an ImportError still reads 0. Test: the rows added to
+`test_setup_report.py::test_a_malformed_options_meta_leaves_configuration_whole_c2504_c2522` (`garbage 9`, `x `
+and a 4301-digit run, a fingerprint with a 4301-digit and a 19-digit run: each prints `- [convert]: default`).
+
 ### 16.276 Round 44: the installer: the shell halves of rulings 171 to 173, AGENTSYNC_CONFIG read by the CLI's rule, a none recorded by `--no-folder`, and C2667 waits on the operator (2026-11-22, wave B13 round 44 lane RB)
 
 Lane RB built round 44's installer items on lane RA's branch (rulings 171 to 173 land as one run: lane RA's Python
