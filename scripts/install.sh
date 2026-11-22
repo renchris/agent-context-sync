@@ -3037,7 +3037,13 @@ config_path_values() {
 # read as TOML strings: a basic one "..." unescaped as config_path_values unescapes it, a literal one '...' as it
 # stands (B13 round 23 A41: the docs_repo reader took "..." only and undid no escape). A TAB in a value is a
 # space, which the pair format carries. Given TABLE KEY, that table's first KEY alone, read the same way: the
-# [convert] table's pandoc_path, which redaction_pairs cuts (B13 round 43 ruling 157, C2432).
+# [convert] table's pandoc_path, which redaction_pairs cuts (B13 round 43 ruling 157, C2432). Every spelling
+# tomllib reads is read (B13 round 44 ruling 171, C2698): the table header bare or quoted (["convert"],
+# ['convert']), the key bare or quoted, a dotted key at the top level (convert.pandoc_path, any part quoted), a
+# one-line inline table (convert = { pandoc_path = "..." }), and a multi-line """...""" (its escapes, a
+# line-ending backslash joining the next line) or '''...''', its newline right after the opening quotes
+# dropped as TOML drops it, read to its close, each inner newline a space. The value is as written (raw): the
+# caller trims it as Python's str.strip() does (py_strip) before reading it as a path.
 agentsync_dir_values() {
 	[ -f "$CONFIG" ] || return 0
 	T="${1:-agentsync}" K="${2:-state_dir|docs_repo|cache_dir|log_dir}" LC_ALL=C awk '
@@ -3052,30 +3058,124 @@ agentsync_dir_values() {
 			if (c < 65536) return sprintf("%c%c%c", 224 + int(c / 4096), 128 + int(c / 64) % 64, 128 + c % 64)
 			return sprintf("%c%c%c%c", 240 + int(c / 262144), 128 + int(c / 4096) % 64, 128 + int(c / 64) % 64, 128 + c % 64)
 		}
-		/^[[:space:]]*\[/ { t = ($0 ~ ("^[[:space:]]*\\[[[:space:]]*" ENVIRON["T"] "[[:space:]]*\\]")); next }
-		t && match($0, "^[[:space:]]*(" ENVIRON["K"] ")[[:space:]]*=[[:space:]]*") {
-			k = $0; sub(/^[[:space:]]*/, "", k); sub(/[[:space:]=].*$/, "", k)
-			v = substr($0, RLENGTH + 1); q = substr(v, 1, 1); v = substr(v, 2); out = ""; ok = 0
-			if (q == "\047") {
-				if ((i = index(v, "\047")) > 0) { out = substr(v, 1, i - 1); ok = 1 }
-			} else if (q == "\"") {
-				x = "0123456789ABCDEFabcdef"
-				while (v != "") {
-					c = substr(v, 1, 1); v = substr(v, 2)
-					if (c == "\"") { ok = 1; break }
-					if (c != "\\") { out = out c; continue }
-					e = substr(v, 1, 1); v = substr(v, 2)
-					if (e ~ /^[tnrbf]$/) out = out " "
-					else if (e == "u" && match(v, "^[" x "][" x "][" x "][" x "]") ||
-						e == "U" && match(v, "^[" x "][" x "][" x "][" x "][" x "][" x "][" x "][" x "]")) {
-						c = hex(substr(v, 1, RLENGTH)); v = substr(v, RLENGTH + 1)
-						out = out (c == 9 || c == 10 || c == 13 ? " " : utf8(c))
-					} else out = out e
+		function ws(    c) { while ((c = substr(src, 1, 1)) == " " || c == "\t") src = substr(src, 2) }
+		# a basic string body from src, up to the closing quote run CL: sets got (1 when closed) and returns the
+		# text; with ml, a backslash at the end of src joins the next line (TOML line-ending backslash)
+		function basic(cl, ml,    out, c, e, x) {
+			out = ""; got = 0; x = "0123456789ABCDEFabcdef"
+			while (src != "") {
+				if (substr(src, 1, length(cl)) == cl) { src = substr(src, length(cl) + 1); got = 1; return out }
+				c = substr(src, 1, 1); src = substr(src, 2)
+				if (c != "\\") { out = out c; continue }
+				if (src == "" && ml) { joining = 1; return out }
+				e = substr(src, 1, 1); src = substr(src, 2)
+				if (e ~ /^[tnrbf]$/) out = out " "
+				else if (e == "u" && match(src, "^[" x "][" x "][" x "][" x "]") ||
+					e == "U" && match(src, "^[" x "][" x "][" x "][" x "][" x "][" x "][" x "][" x "]")) {
+					c = hex(substr(src, 1, RLENGTH)); src = substr(src, RLENGTH + 1)
+					out = out (c == 9 || c == 10 || c == 13 ? " " : utf8(c))
+				} else out = out e
+			}
+			return out
+		}
+		function literal(cl,    i) {
+			if ((i = index(src, cl)) > 0) { got = 1; i = substr(src, 1, i - 1); src = substr(src, index(src, cl) + length(cl)); return i }
+			got = 0; i = src; src = ""; return i
+		}
+		# one key part from src: a bare one, "basic" or \047literal\047; "" when none
+		function keypart(    m) {
+			ws()
+			if (substr(src, 1, 1) == "\"") { src = substr(src, 2); m = basic("\"", 0); return got ? m : "" }
+			if (substr(src, 1, 1) == "\047") { src = substr(src, 2); m = literal("\047"); return got ? m : "" }
+			if (match(src, /^[A-Za-z0-9_-]+/)) { m = substr(src, 1, RLENGTH); src = substr(src, RLENGTH + 1); return m }
+			return ""
+		}
+		# a dotted key path from src as parts joined by \001 (no part holds it): sets np
+		function keypath(    p, k) {
+			p = ""; np = 0
+			while ((k = keypart()) != "") {
+				p = (np ? p "\001" : "") k; np++
+				ws()
+				if (substr(src, 1, 1) != ".") break
+				src = substr(src, 2)
+			}
+			return p
+		}
+		# a string value from src for key name KEY; a multi-line one that does not close here is read on later
+		# lines (mlq is its quote run, mlk its key)
+		function value(key,    q, v) {
+			ws()
+			q = substr(src, 1, 3)
+			if (q == "\"\"\"" || q == "\047\047\047") {
+				src = substr(src, 4); joining = 0
+				v = (q == "\"\"\"") ? basic(q, 1) : literal(q)
+				if (got) { emit(key, v); return }
+				mlq = q; mlk = key; mlv = v; return
+			}
+			q = substr(src, 1, 1)
+			if (q == "\"") { src = substr(src, 2); v = basic("\"", 0); if (got) emit(key, v) }
+			else if (q == "\047") { src = substr(src, 2); v = literal("\047"); if (got) emit(key, v) }
+		}
+		function emit(key, v) {
+			gsub(/[\t\n]/, " ", v)
+			if (v != "" && !(key in seen)) { seen[key] = 1; print key "\t" v }
+		}
+		BEGIN { nk = split(ENVIRON["K"], ks, "|"); for (i = 1; i <= nk; i++) want[ks[i]] = 1; root = 1 }
+		mlq != "" {
+			src = $0
+			if (mlv == "" && !started) { started = 1 } # the newline right after the opening quotes is dropped
+			else if (joining) { ws() } else mlv = mlv " "
+			if (joining) { sub(/^[ \t]*/, "", src); if (src == "") next }
+			joining = 0
+			v = (mlq == "\"\"\"") ? basic(mlq, 1) : literal(mlq)
+			mlv = mlv v
+			if (got) { emit(mlk, mlv); mlq = ""; started = 0 }
+			next
+		}
+		{
+			src = $0; ws()
+			if (substr(src, 1, 1) == "[") {
+				root = 0; t = 0
+				if (substr(src, 2, 1) == "[") next # an array of tables
+				src = substr(src, 2); p = keypath(); ws()
+				t = (np == 1 && p == ENVIRON["T"] && substr(src, 1, 1) == "]")
+				next
+			}
+			p = keypath(); ws()
+			if (np == 0 || substr(src, 1, 1) != "=") next
+			src = substr(src, 2)
+			if (t && np == 1 && (p in want)) { value(p); next }
+			if (root && np == 2 && index(p, ENVIRON["T"] "\001") == 1 && (substr(p, length(ENVIRON["T"]) + 2) in want)) {
+				value(substr(p, length(ENVIRON["T"]) + 2)); next
+			}
+			if (root && np == 1 && p == ENVIRON["T"]) { # a one-line inline table
+				ws()
+				if (substr(src, 1, 1) != "{") next
+				src = substr(src, 2)
+				while (src != "") {
+					p = keypath(); ws()
+					if (np == 0 || substr(src, 1, 1) != "=") break
+					src = substr(src, 2); ws()
+					if (np == 1 && (p in want) && (substr(src, 1, 1) == "\"" || substr(src, 1, 1) == "\047")) value(p)
+					else { depth = 0; while (src != "" && !(depth == 0 && (substr(src, 1, 1) == "," || substr(src, 1, 1) == "}"))) {
+						c = substr(src, 1, 1); if (c == "{" || c == "[") depth++; else if (c == "}" || c == "]") depth--; src = substr(src, 2) } }
+					ws()
+					if (substr(src, 1, 1) != ",") break
+					src = substr(src, 2)
 				}
 			}
-			gsub(/\t/, " ", out)
-			if (ok && out != "" && !(k in seen)) { seen[k] = 1; print k "\t" out }
 		}' "$CONFIG" 2>/dev/null || true
+}
+# VALUE: as Python's str.strip() reads it, the whitespace str.isspace() names trimmed from both ends, matched on
+# its UTF-8 bytes under LC_ALL=C so no locale decides it (B13 round 44 ruling 171, C2698)
+py_strip() {
+	V="$1" LC_ALL=C awk 'BEGIN {
+		v = ENVIRON["V"]
+		w = "([\t\n\v\f\r\034\035\036\037 ]|\302[\205\240]|\341\232\200|\342\200[\200-\212]|\342\200[\250\251\257]|\342\201\237|\343\200\200)"
+		while (match(v, "^" w)) v = substr(v, RLENGTH + 1)
+		while (match(v, w "$")) v = substr(v, 1, RSTART - 1)
+		printf "%s", v
+	}'
 }
 # Each legal or records hold's reason and owner as agentsync reads them, as setup_report._hold_values gives them
 # (B13 round 24 B51, the shell twin of round 23 A8): [governance] hold_reason and hold_owner of the config, in
@@ -3632,7 +3732,8 @@ redaction_pairs() {
 		if [ -n "$cfg_cut" ]; then
 			add_pair "$CONFIG" "$cfg_cut" c
 			case "$CONFIG" in "$HOME"/*) add_pair "$tilde/${CONFIG#"$HOME"/}" "$cfg_cut" c ;; esac
-			add_pair "$(debug_path "$CONFIG")" "$cfg_cut" c
+			add_pair "$(LC_ALL=C && debug_path "$CONFIG")" "$cfg_cut" c
+			add_pair "$(LC_ALL=en_US.UTF-8 && debug_path "$CONFIG")" "$cfg_cut" c # as a UTF-8 run writes it (C2671)
 		fi
 	fi
 	# a configured [convert] pandoc_path strictly under this home (as HOME gives it, or pwd -P) reads as the config
@@ -3642,7 +3743,13 @@ redaction_pairs() {
 	# ruling 157, C2432)
 	# (as written, and as pathlib reads it: a // or /./ in it is one /, which every printer writes)
 	while IFS=$'\t' read -r k v; do
-		raw="$v"
+		# as written, for the echo pairs, its blanks off both ends (a multi-line value's closing newline is one, a
+		# pair ending in a blank ate the one after the path, and the agentsync report keeps a padded echo's lead);
+		# then as config._str strips it, then pathlib (C2698)
+		raw="${v%"${v##*[! ]}"}"
+		raw="${raw#"${raw%%[! ]*}"}"
+		v="$(py_strip "$v")"
+		[ -n "$v" ] || continue
 		v="$(path_norm "$v")"
 		u="$v"
 		case "$u" in \~) u="$HOME" ;; \~/*) u="$HOME/${u#\~/}" ;; esac
@@ -3654,10 +3761,22 @@ redaction_pairs() {
 		tilde='~' cfg_cut="$(config_shown "$HOME/$rw")"
 		[ -n "$cfg_cut" ] || continue
 		x="'" sep="'\\''"
-		for w in "$raw" "$v" "$HOME/$rw" ${hp:+"$hp/$rw"} "$tilde/$rw" "$(debug_path "$HOME/$rw")" "$tilde/'$rw'" "$tilde/\"$rw\"" \
+		# debug_path as a C run and a UTF-8 run write it, bash 3.2's %q following the locale (C2671)
+		for w in "$raw" "$v" "$HOME/$rw" ${hp:+"$hp/$rw"} "$tilde/$rw" "$(LC_ALL=C && debug_path "$HOME/$rw")" \
+			"$(LC_ALL=en_US.UTF-8 && debug_path "$HOME/$rw")" "$tilde/'$rw'" "$tilde/\"$rw\"" \
 			"$tilde/'${rw//$x/$sep}'"; do
 			add_pair "$w" "$cfg_cut" c
 		done
+		# the reader made a TAB a space (the pair format), so a TAB at a blank, as doctor and debug_path write it
+		# ($'..\t..', escaped, never a raw TAB in a pair), is registered too; flag c matches a raw TAB at a blank
+		# (redact_stream's tsp) (B13 round 44 ruling 171, C2671)
+		case "$rw" in *" "*)
+			t="$HOME/${rw// /$'\t'}"
+			for w in "$(LC_ALL=C && debug_path "$t")" "$(LC_ALL=en_US.UTF-8 && debug_path "$t")"; do
+				case "$w" in *$'\t'*) ;; *) add_pair "$w" "$cfg_cut" c ;; esac
+			done
+			;;
+		esac
 	done < <(agentsync_dir_values convert pandoc_path)
 	for w in ${loose[@]+"${loose[@]}"}; do # only as the argument: a short relative name is also a common word
 		v="$(printf '%q' "$w")"
@@ -3875,7 +3994,7 @@ redaction_pairs() {
 	own_state="" own_docs="" own_cache="" own_logs=""
 	# each as pathlib reads it (path_norm), as doctor and status print it and the Python report registers it
 	while IFS=$'\t' read -r k v; do
-		v="$(path_norm "$v")"
+		v="$(path_norm "$(py_strip "$v")")" # as config._str strips it, then pathlib (C2698)
 		case "$k" in state_dir) own_state="$v" ;; docs_repo) own_docs="$v" ;; cache_dir) own_cache="$v" ;; log_dir) own_logs="$v" ;; esac
 	done < <(agentsync_dir_values)
 	beside="${own_docs:-$HOME/agent-context/docs}"
@@ -4827,11 +4946,20 @@ redact_stream() {
 	# the names step 1's list gave and every configured path, so the cut tells a listed-only placeholder (C2062)
 	allcfg="$({ [ -f "$CONFIG" ] && config_path_values; } </dev/null 2>/dev/null)" || allcfg=""
 	listed="$(listed_folder_names </dev/null 2>/dev/null | LC_ALL=C sed -n 's/^keep	//p')" || listed=""
-	LC_ALL=C sed -E "s/\\\$'([^'\\\\]|\\\\.)*'?/<path>/g" |
+	# a config or pandoc path pair (flag c) written as a $'..' word (debug_path under LC_ALL=C, a TAB in the
+	# path under either locale) takes its own cut, ~/<path>, before every other $'..' word is <path>, as the
+	# agentsync report's alias for it matches first (B13 round 44 ruling 171, C2671)
+	REDACT_PAIRS="$pairs" LC_ALL=C awk 'BEGIN {
+			n = split(ENVIRON["REDACT_PAIRS"], L, "\n")
+			for (i = 1; i <= n; i++) if (split(L[i], f, "\t") >= 3 && f[3] == "c" && index(f[1], "$\047")) { m++; v[m] = f[1]; p[m] = f[2] }
+		}
+		{ for (i = 1; i <= m; i++) { s = $0; o = ""; while ((j = index(s, v[i])) > 0) { o = o substr(s, 1, j - 1) p[i]; s = substr(s, j + length(v[i])) } $0 = o s } print }' |
+		LC_ALL=C sed -E "s/\\\$'([^'\\\\]|\\\\.)*'?/<path>/g" |
 		LC_ALL=C sed -E "s/(^|[^A-Za-z0-9_-])(purge (--queue --forget )?id=)[^<[:space:]\`'\"][^[:space:]\`'\"]*/\\1\\2<its id>/g" |
 		LC_ALL=C sed -E -f <(gov_value_sed) | hold_cut |
 		REDACT_PAIRS="$pairs" REPO_SLUG="$(repo_slug)" \
 		FIXED_PHRASES="$FIXED_CAPS_PHRASES|$FIXED_VALUE_PHRASES" AGENTSYNC_VERBS="$AGENTSYNC_VERBS" CUT_SEP="$CUT_SEP" LC_ALL=C awk "$SEP_RUN_AWK"'
+	function tsp(x) { gsub(/\t/, " ", x); return x } # each TAB a space, one byte for one (C2671)
 	# The line is kept as pieces, plain text or a placeholder (held): a later pair never matches inside a
 	# placeholder an earlier one wrote ("<name>" stays whole beside a folder named "name"), as in the Python
 	# report, which replaces in one pass. A held piece ends in ">" or "~", or is followed by no word character,
@@ -5110,7 +5238,10 @@ redact_stream() {
 				for (j = 1; j <= m; j++) { seg[j] = tx[j]; held[j] = th[j] }
 				continue
 			}
-			if ((k in lv) ? !index(low, lv[k]) : !index($0, v)) continue # every plain piece is a piece of the input line
+			# a flag-c pair with a blank matches a TAB or a space at each blank (tsp: the line with each TAB a space,
+			# byte for byte), as doctor prints a TAB in a configured pandoc_path raw (B13 round 44 ruling 171, C2671)
+			tb = (f[3] == "c" && index(v, " ") > 0)
+			if ((k in lv) ? !index(low, lv[k]) : !index(tb ? tsp($0) : $0, v)) continue # every plain piece is a piece of the input line
 			n = length(v); word = (f[3] == "w" || f[3] == "i" || f[3] == "h" || f[3] == "H"); tail = (f[3] == "t"); alnum = (f[3] == "e"); m = 0
 			arg = (f[3] == "a") # a --source-local argument: only where it ends, never a prefix of a longer one (B13 round 22 Z77)
 			# a home under /Users/: it ends only where STOP (setup_report._CUT_BYTES) ends a component, a `/` or the
@@ -5129,7 +5260,7 @@ redact_stream() {
 			for (j = 1; j <= ns; j++) {
 				if (held[j]) { keep(seg[j], 1); at += length(seg[j]); continue }
 				s = seg[j]; acc = ""
-				while ((i = (k in lv) ? index(tolower(s), lv[k]) : index(s, v)) > 0) {
+				while ((i = (k in lv) ? index(tolower(s), lv[k]) : index(tb ? tsp(s) : s, v)) > 0) {
 					pre = (i > 1) ? substr(s, i - 1, 1) : substr(acc, length(acc), 1)
 					post = substr(s, i + n, 1)
 					nn = n
