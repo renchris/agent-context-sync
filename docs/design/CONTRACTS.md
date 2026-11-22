@@ -45324,6 +45324,19 @@ with `isdigit()` alone raised on one damaged install.log field. `read_install_ru
 no new helper or import. Test: `test_setup_report.py::test_a_non_ascii_digit_in_install_log_is_no_number_c2677`
 (each site measured to fail alone with its guard taken out).
 
+**A none is install.sh's record, scored as the person's choice** (C2605; ruling 178, lane RA's scoring; install.sh's
+`--no-folder` is lane RB's, §16.276). v40's no-folder flow was scored `failed at step 2`, then `worked with help`,
+from the exit code alone. `compute_outcome` reads install.log, never the agent's words: a last install run whose start
+line's `args=` holds the word `--no-folder` (`InstallRun.chose_no_folder`, `_NO_FOLDER_ARG_RE`; a SOURCE may come
+first) is `stopped at step 1 (the person chose no folder)` (`NO_FOLDER_CHOSEN`); a last run that is v40's no-folder
+first run (`InstallRun.no_folder_first_run`: config `result=done note=created...`, first sync `result=skipped
+note=no-sources`, no failed step, `end rc=2`) with a step 1 deviation logged at or after its start is `stopped at step
+1 (no folder answer came)` (`NO_FOLDER_UNANSWERED`); a bare exit 2 with neither, and a usage error's 2 (no config step
+logged), stay `failed at step 2`. Neither is ever `fully one command`: setup is unfinished. C2605's retried_runs skip
+is not built (ruling 178): a no-folder run before a later run that ended 0 still counts as a retry. Test:
+`test_setup_report.py::test_a_none_is_read_from_install_log_and_scored_as_the_persons_choice_c2605` (both stopped
+forms, a SOURCE before the flag, a bare exit 2, a usage error and a `--no-folders` word that is no flag).
+
 ### 16.276 Round 44: the installer: the shell halves of rulings 171 to 173, AGENTSYNC_CONFIG read by the CLI's rule, a none recorded by `--no-folder`, and C2667 waits on the operator (2026-11-22, wave B13 round 44 lane RB)
 
 Lane RB built round 44's installer items on lane RA's branch (rulings 171 to 173 land as one run: lane RA's Python

@@ -2859,6 +2859,15 @@ def read_friction(path: Path) -> Friction | None:
 # ---------------------------------------------------------------------------------------------------------
 
 
+_NO_FOLDER_ARG_RE = re.compile(r"(?:^|\s)--no-folder(?=\s|$)")
+"""install.sh's ``--no-folder`` as a word of its start line's ``args=`` (B13 round 44 ruling 178, C2605): the
+recorded words, space-separated, a SOURCE first when one was given."""
+NO_FOLDER_CHOSEN = "the person chose no folder"
+"""The stopped outcome's why and note for a last install run that logged ``--no-folder`` (ruling 178)."""
+NO_FOLDER_UNANSWERED = "no folder answer came"
+"""The stopped outcome's why and note for a no-folder first run with a later step 1 deviation (ruling 178)."""
+
+
 @dataclasses.dataclass(frozen=True, slots=True)
 class InstallRun:
     """One scripts/install.sh run from install.log."""
@@ -2881,6 +2890,28 @@ class InstallRun:
         """The last step with ``result=failed`` (the report step excluded)."""
         failed = [(k, v) for k, v in self.steps if v.get("result") == "failed" and k != "report"]
         return failed[-1] if failed else None
+
+    @property
+    def chose_no_folder(self) -> bool:
+        """Whether install.sh logged ``--no-folder`` on this run's start line, the person's none to the folder
+        question (B13 round 44 ruling 178, C2605): a word of ``args=``, never inferred from an exit code."""
+        return _NO_FOLDER_ARG_RE.search(self.args) is not None
+
+    @property
+    def no_folder_first_run(self) -> bool:
+        """Whether this is the run v40 prescribes before the folder answer (B13 round 44 C2605's predicate): a
+        bare step 2 that made the config (``config result=done note=created...``), skipped its first sync for
+        no source (``first-sync result=skipped note=no-sources``), failed no step and ended 2. A usage
+        error's 2 logs no config step and is never one."""
+        config, first = self.step("config") or {}, self.step("first-sync") or {}
+        return (
+            self.rc == 2
+            and config.get("result") == "done"
+            and config.get("note", "").startswith("created")
+            and first.get("result") == "skipped"
+            and first.get("note") == "no-sources"
+            and self.failed_step() is None
+        )
 
     @property
     def display_id(self) -> str:
@@ -3959,6 +3990,28 @@ def compute_outcome(
                 ),
                 version,
             )
+    # B13 round 44 ruling 178 (C2605): a none is install.sh's record, never an exit code read alone. A last
+    # run that logged --no-folder stopped at step 1 by the person's choice; v40's no-folder first run (ended
+    # 2) with a step 1 deviation logged after it stopped there waiting for an answer that never came. A bare
+    # exit 2 with neither, and a usage error's 2, stay failed
+    if last is not None and last.chose_no_folder:
+        return Outcome("stopped", FOLDER_QUESTION_STEP, (NO_FOLDER_CHOSEN,), version, NO_FOLDER_CHOSEN)
+    if (
+        last is not None
+        and last.no_folder_first_run
+        and attempt is not None
+        and last.started is not None
+        and any(
+            e.kind == "deviation"
+            and e.step == FOLDER_QUESTION_STEP
+            and e.at is not None
+            and e.at >= last.started
+            for e in attempt.events
+        )
+    ):
+        return Outcome(
+            "stopped", FOLDER_QUESTION_STEP, (NO_FOLDER_UNANSWERED,), version, NO_FOLDER_UNANSWERED
+        )
     if last is not None and last.rc == 0:
         why: list[str] = []
         if attempt is None:

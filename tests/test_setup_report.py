@@ -14227,6 +14227,68 @@ def install_run(start: str, rc: int | None, *, status_failed: bool = False) -> s
     return "\n".join(lines) + "\n"
 
 
+def _no_folder_run(start: str, args: str, rc: int, *, first: bool = True) -> str:
+    """One install.sh run as install.log has it for B13 round 44 ruling 178 (C2605): a bare step 2 that
+    made the config and skipped its first sync for no source (``first``), else a usage error that logged no
+    step."""
+    run = f"run={re.sub('[-:]', '', start)}-88"
+    lines = [
+        f"{start} {run} start install.sh compat=40 commit=0123456789ab kind=checkout source=- args={args}"
+    ]
+    if first:
+        lines += [
+            f"{start} {run} step=config seconds=1 rc=0 result=done note=created",
+            f"{start} {run} step=status seconds=6 rc=0 result=done",
+            f"{start} {run} step=first-sync seconds=0 rc=0 result=skipped note=no-sources",
+            f"{start} {run} step=report seconds=2 rc=0 result=done note=agentsync",
+        ]
+    lines.append(f"{start} {run} end rc={rc} seconds=9")
+    return "\n".join(lines) + "\n"
+
+
+@pytest.mark.parametrize(
+    ("logged", "deviation", "want"),
+    [
+        # the person's none, recorded by install.sh's --no-folder (exit 0)
+        (_no_folder_run("2026-11-22T10:00:00Z", "--no-folder", 0), False, ("stopped", 1, "chose no folder")),
+        (_no_folder_run("2026-11-22T10:00:00Z", "/w.whl --no-folder", 0), True, ("stopped", 1, "chose")),
+        # v40's no-folder first run, then a step 1 deviation: the answer never came
+        (_no_folder_run("2026-11-22T10:00:00Z", "", 2), True, ("stopped", 1, "no folder answer came")),
+        # a bare exit 2 with neither, and a usage error's 2, stay failed
+        (_no_folder_run("2026-11-22T10:00:00Z", "", 2), False, ("failed", 2, "exited 2")),
+        (_no_folder_run("2026-11-22T10:00:00Z", "--bogus", 2, first=False), True, ("failed", 2, "exited 2")),
+        # a word that only holds --no-folder is no flag
+        (_no_folder_run("2026-11-22T10:00:00Z", "--no-folders", 2), False, ("failed", 2, "exited 2")),
+    ],
+)
+def test_a_none_is_read_from_install_log_and_scored_as_the_persons_choice_c2605(
+    tmp_path: Path, logged: str, deviation: bool, want: tuple[str, int, str]
+) -> None:
+    """B13 round 44 ruling 178 (C2605): v40's no-folder flow was scored `failed at step 2` and then `worked
+    with help` from the exit code alone. compute_outcome reads install.log, never the agent's words: a last
+    run whose start line logs `--no-folder` is `stopped at step 1 (the person chose no folder)`; the no-folder
+    first run (config `created`, first sync skipped `no-sources`, no failed step, `end rc=2`) followed by a
+    step 1 deviation is `stopped at step 1 (no folder answer came)`; a bare exit 2 with neither, and a usage
+    error's 2, stay failed."""
+    log = tmp_path / "install.log"
+    log.write_text(logged, encoding="utf-8")
+    rows = (
+        "2026-11-22T10:00:30Z | step 1 | deviation | waiting for the folder answer | -\n" if deviation else ""
+    )
+    friction = tmp_path / "friction.md"
+    friction.write_text(
+        f"Attempt: 2026-11-22T09:59:00Z\nPrompt: v40\n2026-11-22T09:59:30Z | step 1 | end\n{rows}",
+        encoding="utf-8",
+    )
+    att = setup_report.read_friction(friction).latest
+    outcome = setup_report.compute_outcome(att, setup_report.read_install_runs(log))
+    kind, step, words = want
+    assert (outcome.kind, outcome.step) == (kind, step), outcome
+    assert words in " ".join((*outcome.why, outcome.note)), outcome
+    if kind == "stopped":
+        assert outcome.text.startswith("stopped at step 1 (") and "fully one command" not in outcome.text
+
+
 def test_the_outcome_of_a_status_fail_stop_names_the_status_step(tmp_path: Path) -> None:
     """B13 round 13 O33: a run that exited 1 on doctor's [FAIL] lines read ``install.sh exited 1`` with no
     step: no step logged ``result=failed``. Its status step (``doctor`` in older logs) logged
