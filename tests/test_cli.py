@@ -3905,6 +3905,46 @@ def test_status_says_the_inbox_state_on_a_line_of_its_own_c2410(
         assert not lines[at + 1].startswith("inbox: not added")  # install.sh's INBOX_NOT_ADDED grep
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a mode-000 folder")
+def test_status_keeps_its_lines_over_an_inbox_link_it_cannot_search_c2644(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 44 C2644 with C2636 (ruling 180): an inbox name that links into a folder this account cannot
+    search made inbox_state's is_dir raise PermissionError, and status replaced its config, docs repo, inbox
+    and lock lines with one ``cannot read the state`` line. inbox_state now reads such an entry as ``not read
+    (<why>)``, no path in the words and never ``is not a folder`` (os.path.isdir's false answer for a link to
+    a real folder), so status keeps every line and says the state is unread."""
+    home = tmp_path / "home"
+    home.mkdir()
+    cfg = home / "sources.toml"
+    cfg.write_text(f"[agentsync]\ndocs_repo = {toml_string(str(home / 'docs'))}\n", encoding="utf-8")
+    monkeypatch.setenv(paths.CONFIG_ENV, str(cfg))
+    assert cli.main(["init"]) == cli.EXIT_OK
+    folder = home / "inbox"
+    folder.rmdir()
+    locked = tmp_path / "locked"
+    (locked / "target").mkdir(parents=True)
+    folder.symlink_to(locked / "target")
+    locked.chmod(0)
+    try:
+        config = load_config(cfg)
+        assert inbox_state(config) == (folder, "not read (Permission denied)")
+        capsys.readouterr()
+        cli.main(["status"])
+        lines = capsys.readouterr().out.splitlines()
+    finally:
+        locked.chmod(0o700)
+    assert not any("cannot read the state" in line for line in lines), lines
+    at = lines.index(f"config: {cfg}")
+    assert lines[at : at + 4] == [
+        f"config: {cfg}",
+        f"docs repo: {home / 'docs'}",
+        f"inbox: {folder}",
+        f"{INBOX_STATE_LINE}not read (Permission denied)",
+    ], lines[at : at + 4]
+    assert lines[at + 4].startswith("lock: "), lines[at + 4]
+
+
 def test_status_shows_the_policy_and_a_broken_policy_fails(
     initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -10753,20 +10793,26 @@ def test_ensure_inbox_words_a_failure_by_its_cause(
     """B13 round 42 C2207: the warning printed the raw exception (``[Errno 17] File exists: ...``), which
     named no fix. A file or a dangling link on the name says to move it aside; any other OSError gives its own
     words and the path, never that advice, which would be wrong for it; every case stays a warning (exit
-    0)."""
+    0). B13 round 44 C2611: the advice said "is a file" for a dangling link too; every entry that is not a
+    folder now reads inbox_state's own ``is not a folder``, the advice kept."""
     box = initialised.source("inbox")
     assert box.path is not None
     cfg = initialised.config_path
     cfg.write_text(cfg.read_text(encoding="utf-8").removesuffix(inbox_source_table("inbox", box.path)))
     config = load_config(cfg)
     typed = paths.expand(config.docs_repo).parent / "inbox"
-    advice = f"inbox: not added: {typed} is a file, not a folder; move it aside and run step 2 again\n"
+    advice = f"inbox: not added: {typed} is not a folder; move it aside and run step 2 again\n"
     box.path.rmdir()
     box.path.write_text("a file, not a folder", encoding="utf-8")
     assert cli._ensure_inbox(config) is config
-    assert capsys.readouterr().err == advice
+    assert capsys.readouterr().err == advice  # a file
     box.path.unlink()
     box.path.symlink_to(box.path.parent / "gone")  # a dangling link
+    assert cli._ensure_inbox(config) is config
+    said = capsys.readouterr().err
+    assert said == advice and "is a file" not in said, said
+    box.path.unlink()
+    os.mkfifo(box.path)  # a fifo
     assert cli._ensure_inbox(config) is config
     assert capsys.readouterr().err == advice
     box.path.unlink()

@@ -1299,6 +1299,30 @@ def _write_meta(conn: sqlite3.Connection, key: str, value: str) -> None:
     )
 
 
+_HEX_DIGITS = frozenset("0123456789abcdef")
+_RUN_ID_DIGITS = 18
+"""The most ASCII digits a ``convert_options`` run id may hold: int() of it never meets Python's 4300-digit
+limit and the value stays inside SQLite's int64."""
+
+
+def parse_convert_options(value: str | None) -> tuple[str, int] | None:
+    """The ``convert_options`` manifest meta as the cycle writes it, ``"<fingerprint> <run id>"``, read one
+    way by every reader (cycle._Cycle._drift_since and setup_report._convert_changed_run; B13 round 44 C2714,
+    completing ruling 169): ``(fingerprint, run)``, or None unless the value splits into exactly two fields,
+    the fingerprint is 1 to 64 lowercase hex digits (its shape only, so a later build's longer digest still
+    reads as a fingerprint) and the run id is 1 to 18 ASCII digits (never int()'s 4300-digit ValueError, never
+    past int64).  None is unrecorded: the cycle writes its own record again, and the report names no run."""
+    fields = (value or "").split()
+    if len(fields) != 2:
+        return None
+    fingerprint, run = fields
+    if not 1 <= len(fingerprint) <= 64 or not set(fingerprint) <= _HEX_DIGITS:
+        return None
+    if not 1 <= len(run) <= _RUN_ID_DIGITS or not (run.isascii() and run.isdigit()):
+        return None
+    return fingerprint, int(run)
+
+
 def _stored_version(conn: sqlite3.Connection, key: str, db_path: Path) -> int:
     raw = _read_meta(conn, key)
     if raw is None:

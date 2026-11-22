@@ -135,6 +135,7 @@ from agentsync.manifest import (
     OutputRow,
     cursor_fingerprint,
     migration_backups,
+    parse_convert_options,
     redacted_path,
 )
 from agentsync.model import (
@@ -5034,11 +5035,13 @@ class _Cycle:
         nothing; a dry run writes nothing (B13 round 41 C2021)."""
         if self._drift_run is None:
             mine = _convert_fingerprint(self.config)
-            stored = (self.manifest.get_meta(_CONVERT_OPTIONS_META) or "").split()
-            # the run id as the cycle writes it, ASCII digits only: any other value is unrecorded and written
-            # again, never a ValueError in the sync (B13 round 43 C2504 with C2522, ruling 169)
-            if len(stored) == 2 and stored[0] == mine and stored[1].isascii() and stored[1].isdigit():
-                self._drift_run = int(stored[1])
+            # read as the cycle writes it, by the one parser the report reads too: any other value (a third
+            # field, a fingerprint that is not hex, a run id that is not 1 to 18 ASCII digits) is unrecorded
+            # and written again, never a ValueError in the sync (B13 round 43 C2504 with C2522, ruling 169;
+            # B13 round 44 C2714)
+            stored = parse_convert_options(self.manifest.get_meta(_CONVERT_OPTIONS_META))
+            if stored is not None and stored[0] == mine:
+                self._drift_run = stored[1]
                 # the edit's own hashes, refilled by a later cycle with the same fingerprint when the edit's
                 # run could not take them (the OCR helper failing then) or the record is another run's: they
                 # equal what the edit's run would have stored (B13 round 43 C2447, ruling 169)
@@ -5047,7 +5050,7 @@ class _Cycle:
                     if not any(have.values()) and any(self._drift_hashes().values()):
                         self._store_edit_hashes(self._drift_run)
             else:
-                self._drift_run = self.run_id if len(stored) == 2 else 0
+                self._drift_run = self.run_id if stored is not None else 0
                 if not self.dry:
                     self.manifest.set_meta(_CONVERT_OPTIONS_META, f"{mine} {self._drift_run}")
                     if self._drift_run:  # the edit's own hashes, stored with it (C2270)

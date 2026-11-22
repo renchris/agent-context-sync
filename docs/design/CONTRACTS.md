@@ -43722,6 +43722,11 @@ The prompt's words (v39) and the installer's config line are lanes D's and RB's.
 `test_ensure_inbox_words_a_failure_by_its_cause`,
 `test_status_names_the_inbox_folder_this_config_keeps_beside_the_config_and_docs_repo`.
 
+Amended 2026-11-22, §16.277 C2611: anything on the name that is not a folder (a file, a link to one, a dangling
+link, a fifo) reads `inbox: not added: <path> is not a folder; move it aside and run step 2 again`,
+`config.inbox_state`'s own words, since `is a file` misnamed a dangling link; the advice and install.sh's `^inbox:
+not added` grep are unchanged.
+
 **The options re-read dates a page by the run that converted it, and keeps a down converter's pages
 waiting** (C2270, C2243 with C2291, C2292, C2246, C2297; ruling 154; data integrity for C2243 and C2292; amends
 §16.262 C2021).
@@ -44564,6 +44569,10 @@ source on PATH as `created` with that one line (C2441). Tests:
 kind, a file, a dangling link, no source), `test_status_line_matches_the_kept_inbox_by_identity_c2411`, and the
 three add-source inbox-first tests, each now asserting one line and `--json`'s `created`.
 
+Amended 2026-11-22, §16.277 C2644, C2636: an entry `inbox_state` cannot read (a link into a folder this account
+cannot search, a privacy refusal under CloudStorage) reads `not read (<why>)`, the OSError's words with no path and
+never `is not a folder`, so status keeps every line and prints `inbox state: not read (<why>)`.
+
 **A unit-removed tombstone is a change that names its successor, wherever it is read** (C2507 with C2444,
 C2445, C2409, C2510; ruling 164). `run_changes` kept no `unit_removed`, so a run carried after a crash
 (`_carry_crashed_changes` reads only `Manifest.run_changes`) counted a removed unit `d`. `Manifest.run_changes`
@@ -44630,6 +44639,14 @@ empty draft. A draft that holds a question is the operator's to confirm, as befo
 `test_an_empty_mirror_asks_for_no_draft_c2424`, `test_only_online_files_say_they_wait_for_a_download_c2424`,
 `test_a_file_in_the_inbox_is_enough_to_draft_c2424`.
 
+Amended 2026-11-22, §16.277 C2630, C2603, C2602, C2649, C2719, C2707: the opening `nothing to draft yet: <why>`
+stays, and the move is the operator's: `; adding a folder that holds documents (`~/.local/bin/agentsync add-source
+"<folder>"`) or putting files in a synced folder or the inbox (<inbox>) is the operator's choice, not a step for the
+agent: show them this line; session done`, the inbox clause only for an inbox that is read; online-only files read
+`<N> online-only file(s) wait(s) for a later sync to download it/them; nothing for the agent to do now; session
+done`; rule 4 takes an empty draft over an empty mirror whether or not topic pages exist, and rule 5 runs only once
+`docs_waits` returned its line.
+
 **A [convert] edit's tests fail without their fix, and the record is read as the cycle writes it** (C2446, C2447,
 C2448, C2504 with C2522; ruling 169). The C2270 test's bump run kept the build, so it never looked for re-reads
 and passed without the fix: it patches `_build_digest` beside `BANNER_VERSION` and proves `_drift_targets` ran
@@ -44645,6 +44662,10 @@ is unrecorded and written again, as `setup_report._convert_changed_run` reads it
 C2522). Tests: `test_a_banner_bump_after_an_options_edit_reads_no_page_again_c2270` (OCR up, and down in the
 edit's run), `test_an_options_edit_with_a_converter_that_cannot_start_keeps_its_pages_waiting_c2292`,
 `test_a_convert_record_with_a_non_ascii_digit_is_unrecorded_c2504`.
+
+Amended 2026-11-22, §16.277 C2714: both readers take `manifest.parse_convert_options`: exactly two fields, a 1 to
+64 lowercase hex fingerprint and a 1 to 18 ASCII digit run id, anything else unrecorded (the cycle writes `<mine>
+0` and opens nothing; the report names no run).
 
 **The CLI's and the tests' own words** (C2455, C2456, C2449, C2514). The C2295 test and contract fixed one Python
 patch's answer for `-hello` and `status -vhy`: they print the page on 3.11.16 and 3.12.13 and are a usage error on
@@ -45083,7 +45104,61 @@ Reserved for round 44 lane RB of B13.
 
 ### 16.277 Round 44: the inbox's state read once and an unread state said so, rule 4's NEXT naming whose move it is, a tombstone's facts following their source, and a named recording read through its settle hold (2026-11-22, wave B13 round 44 lane B)
 
-Reserved for round 44 lane B of B13.
+Round 44's lane B items (`docs/plans/bring-back-ocr.md`, "B13 round 44"; specs `round44/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's rulings 175 to 177 and 180 to 183 settle it). A dated line this round
+writes reads `Amended 2026-11-22, §16.277 C<n>`.
+
+**The sync and step 2 trim AGENTSYNC_CONFIG by one named set** (C2729's CLI half; ruling 177).
+`paths.default_config_path` trimmed `$AGENTSYNC_CONFIG` with `str.strip()`, Python's Unicode whitespace (U+0085,
+0x1C to 0x1F, U+00A0, U+3000), while install.sh trims bash's locale-dependent `[[:space:]]`, so step 2 and a later
+bare sync could read different files. `paths.CONFIG_BLANKS` names the six ASCII blanks (space, tab, LF, CR, VT, FF)
+and `default_config_path` strips only those; install.sh trims the same literal set (lane RB's half, its parity test
+pinned to this constant). Test: `test_default_config_path_trims_only_the_six_ascii_blanks_c2729`.
+
+**An inbox entry that cannot be read is said as unread** (C2644 with C2636; ruling 180; dated line at §16.272
+C2410). A link on the inbox name into a folder this account cannot search made `inbox_state`'s `is_dir` raise
+PermissionError, and status replaced its config, docs repo, inbox and lock lines with one `cannot read the state`
+line. `config.inbox_state` guards its one read of the entry and returns `not read (<why>)` on an OSError, the
+words carrying no path and never `is not a folder` (os.path.isdir would call a link to a real folder this account
+only cannot search not a folder, a false line: makes worse True for that fix); status keeps `inbox: <folder>` and
+prints `inbox state: not read (Permission denied)` and every other line. `cli._ensure_inbox` keeps its own
+OSError words for that entry. Test: `test_status_keeps_its_lines_over_an_inbox_link_it_cannot_search_c2644`
+(skipped as root).
+
+**The inbox's not-added line names what is there** (C2611; dated line at §16.267 C2309). `cli._ensure_inbox`
+printed `is a file, not a folder` for a dangling link too; it reads `inbox: not added: <path> is not a folder; move
+it aside and run step 2 again` for a file, a link to one, a dangling link or a fifo. Test:
+`test_ensure_inbox_words_a_failure_by_its_cause` (a file, a dangling link and a fifo).
+
+**Rule 4's `nothing to draft yet` says whose move it is and names an inbox only when one is read** (C2630 with
+C2603, C2602 with C2649 and C2719, C2707; ruling 181; dated line at §16.272 C2424). The step opened its move on a
+bare `add a folder` with a `<folder>` the agent would fill in, named `~/agent-context/inbox` whether or not a live
+inbox source sat there (a paused, retired or unadded inbox is never read, so following it changed nothing), and
+offered a folder move while only online-only files waited; and with a topic page beside an empty draft over an
+empty mirror, rule 4 was skipped and rule 5 pointed at WAITING ON YOU lines `docs_waits` had dropped. The step
+keeps `loop.NOTHING_TO_DRAFT` and its why, then reads `; adding a folder that holds documents
+(`~/.local/bin/agentsync add-source "<folder>"`) or putting files in a synced folder or the inbox (<inbox>) is the
+operator's choice, not a step for the agent: show them this line; session done`. `loop._inbox_clause` names the
+folder `inbox_state` answers only when its words start `config.INBOX_LIVE`, else a live inbox source elsewhere as
+the root guide names it (`config.live_inbox`, the one helper `Publisher.root_guide` now reads too; several read
+`an inbox folder (<a> or <b>)`), else no clause; an OSError or an unread entry drops it. Online-only files read
+`nothing to draft yet: <N> online-only file(s) wait(s) for a later sync to download it/them; nothing for the agent
+to do now; session done`. One `loop._draft_suppressed` serves `docs_waits` and `next_step`: rule 4 takes an empty
+draft over a mirror with no converted page whether or not topic pages exist, and rule 5 runs only once
+`docs_waits` returned its line. Tests: the three C2424 tests (the empty-mirror one asserting no inbox clause with no
+inbox source), `test_nothing_to_draft_names_only_an_inbox_that_is_read_c2602` (live, paused, retired, a live inbox
+elsewhere named as the root guide names it, not added),
+`test_an_empty_draft_over_an_empty_mirror_is_rule_4_beside_topic_pages_c2707`.
+
+**The [convert] options record is parsed one way** (C2714; ruling 169 completed; dated line at §16.272 C2504).
+`_drift_since` and the report's `_convert_changed_run` each split the meta value their own way: a matching
+fingerprint before a 4301-digit run id raised int()'s ValueError in the sync, and `garbage 9` read as an edit in
+the current run while the report said run 9. `manifest.parse_convert_options(value)` returns `(fingerprint, run)`
+only for exactly two fields, a fingerprint of 1 to 64 lowercase hex digits (its shape, so a later build's longer
+digest still reads) and a run id of 1 to 18 ASCII digits, else None; `_drift_since` reads None as unrecorded (writes
+`<mine> 0`, opens nothing), and lane RA's `_convert_changed_run` takes it (its half). Tests:
+`test_a_convert_record_is_parsed_one_way_c2714` (`x` and the cycle's own fingerprint before 4301 digits, `garbage
+9`, a hex fingerprint before `²`, 19 digits, three fields), `test_parse_convert_options_takes_the_shape_the_cycle_writes_c2714`.
 
 ### 16.278 Round 44: the converters: a failed zero-byte re-read put back whole, every text sidecar's banner, an xlsx cut costed as it renders, and Office content types read from the parse (2026-11-22, wave B13 round 44 lane E)
 

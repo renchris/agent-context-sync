@@ -22,6 +22,7 @@ import unicodedata
 from datetime import UTC, datetime, timedelta
 from errno import EDEADLK
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -41,7 +42,15 @@ from agentsync.config import (
 from agentsync.cycle import HYDRATION_REFUSED, LISTING_HELD, NETWORK_POLICY_FAILED, RECORDING_WAITS, run_cycle
 from agentsync.errors import DatalessRefusedError
 from agentsync.manifest import Manifest
-from agentsync.model import SYNC_OUTPUT_END, ConversionStatus, CycleMode, PassKind, RowState, Verdict
+from agentsync.model import (
+    SYNC_OUTPUT_END,
+    ConversionStatus,
+    CycleMode,
+    PassKind,
+    RowState,
+    SourceKind,
+    Verdict,
+)
 from agentsync.ops import doctor
 from agentsync.ops.doctor import CheckResult, Severity
 from agentsync.paths import expand
@@ -2603,13 +2612,22 @@ def test_status_line_matches_the_kept_inbox_by_identity_c2411(tmp_path: Path, fo
     assert " · inbox on · " in loop.status_line(config)
 
 
-def _nothing_to_draft(config: Config, why: str) -> str:
-    inbox = loop._shown(config.docs_repo.parent / "inbox")
+def _nothing_to_draft(config: Config, why: str, inbox: str | None = None) -> str:
+    """Rule 4's NEXT over an empty mirror (B13 round 44 C2630 with C2603, ruling 181): the opening kept, the
+    move the operator's, and ``or the inbox (<inbox>)`` only for an inbox that is read (C2602)."""
+    if why.endswith(("download it", "download them")):
+        return f"NEXT: {loop.NOTHING_TO_DRAFT}: {why}; nothing for the agent to do now; session done"
+    clause = f" or the inbox ({inbox})" if inbox is not None else ""
     return (
-        f"NEXT: {loop.NOTHING_TO_DRAFT}: {why}: add a folder that holds documents (`{BIN} add-source "
-        f'"<folder>"`), or put files in a synced folder or the inbox ({inbox}), then run `{BIN} sync`; '
-        "session done"
+        f"NEXT: {loop.NOTHING_TO_DRAFT}: {why}; adding a folder that holds documents (`{BIN} add-source "
+        f'"<folder>"`) or putting files in a synced folder{clause} is the operator\'s choice, not a step for '
+        "the agent: show them this line; session done"
     )
+
+
+_EMPTY_WHY = (
+    "the synced folders hold no converted document yet (no file, only empty subfolders, or files not read)"
+)
 
 
 def test_an_empty_mirror_asks_for_no_draft_c2424(tmp_path: Path) -> None:
@@ -2620,12 +2638,12 @@ def test_an_empty_mirror_asks_for_no_draft_c2424(tmp_path: Path) -> None:
     root = tmp_path / "Contoso Gamma"
     (root / "Gamma Empty").mkdir(parents=True)
     config = _synced(tmp_path, root)
-    why = (
-        "the synced folders hold no converted document yet (no file, only empty subfolders, or files not "
-        "read)"
-    )
+    why = _EMPTY_WHY
+    assert not [s for s in config.sources if s.kind is SourceKind.INBOX]  # no inbox: no inbox clause (C2602)
     step = loop.next_step(config)
     assert step.rule == 4 and _lines(config)[0] == _nothing_to_draft(config, why), step
+    assert "the operator's choice, not a step for the agent" in step.step, step  # C2630 with C2603
+    assert "the inbox (" not in step.step and ": add a folder" not in step.step, step
     root_eval = config.docs_repo / "_eval"
     _write(root_eval / "questions.md", "status: draft\n")
     _write(root_eval / "answers.md", "status: draft\n")
@@ -2634,6 +2652,74 @@ def test_an_empty_mirror_asks_for_no_draft_c2424(tmp_path: Path) -> None:
     assert step.rule == 4 and _lines(config) == [_nothing_to_draft(config, why)], _lines(config)
     _eval(config, "draft", "draft")  # a draft that holds a question is the operator's to confirm
     assert loop.next_step(config).rule == 5
+
+
+@pytest.mark.parametrize("case", ["live", "paused", "retired", "elsewhere", "not-added"])
+def test_nothing_to_draft_names_only_an_inbox_that_is_read_c2602(tmp_path: Path, case: str) -> None:
+    """B13 round 44 C2602 with C2649 and C2719 (ruling 181): rule 4's ``nothing to draft yet`` named
+    ``~/agent-context/inbox`` whatever sat there, so a paused or retired inbox source, or none, was offered as
+    a drop folder no sync reads, and a live inbox elsewhere was never named. The clause names the folder
+    inbox_state answers only when a live inbox source sits on it, else a live inbox source elsewhere as the
+    root guide names it (config.live_inbox, the one helper both read), else nothing."""
+    root = tmp_path / "Contoso Gamma"
+    (root / "Gamma Empty").mkdir(parents=True)
+    config = _synced(tmp_path, root)
+    kept = config.docs_repo.parent / "inbox"
+    want: str | None = None
+    if case == "elsewhere":
+        drop = tmp_path / "Contoso Drop"
+        drop.mkdir()
+        cfg = config.config_path
+        cfg.write_text(
+            cfg.read_text(encoding="utf-8") + inbox_source_table("contoso-drop", drop), encoding="utf-8"
+        )
+        config = load_config(cfg)
+        want = publish._display_path(drop)
+    elif case != "not-added":
+        config, box = ensure_inbox(config.config_path)
+        assert box is not None
+        if case == "live":
+            want = loop._shown(kept)
+        else:
+            cfg = config.config_path
+            head = f'id = "{box.id}"\n'
+            extra = 'retired_reason = "moved"\n' if case == "retired" else ""
+            cfg.write_text(
+                cfg.read_text(encoding="utf-8").replace(head, head + f'state = "{case}"\n{extra}'),
+                encoding="utf-8",
+            )
+            config = load_config(cfg)
+    assert run_cycle(config, mode=None).exit_code == 0  # a live inbox is listed: rule 3 passes
+    step = loop.next_step(config)
+    assert step.rule == 4 and step.step.startswith(f"{loop.NOTHING_TO_DRAFT}: "), step
+    assert _lines(config)[0] == _nothing_to_draft(config, _EMPTY_WHY, want), _lines(config)
+    if want is None:
+        assert "inbox" not in step.step, step
+    if case == "elsewhere":  # the root guide names the same folder
+        manifest: Any = None  # root_guide reads the config alone
+        assert want in publish.Publisher(config, manifest).root_guide(), want
+
+
+def test_an_empty_draft_over_an_empty_mirror_is_rule_4_beside_topic_pages_c2707(tmp_path: Path) -> None:
+    """B13 round 44 C2707 (ruling 181): with a hand-written topic page, an empty draft over a mirror with no
+    converted page skipped rule 4 (``not pages``) and reached rule 5, which pointed at WAITING ON YOU lines
+    docs_waits had dropped. One _draft_suppressed serves both, so rule 4 takes the empty draft whether or not
+    topic pages exist, and rule 5 runs only once docs_waits returned its line."""
+    root = tmp_path / "Contoso Gamma"
+    (root / "Gamma Empty").mkdir(parents=True)
+    config = _synced(tmp_path, root)
+    _hand_written(config, 1)
+    root_eval = config.docs_repo / "_eval"
+    _write(root_eval / "questions.md", "status: draft\n")
+    _write(root_eval / "answers.md", "status: draft\n")
+    assert loop.docs_waits(config) == []
+    step = loop.next_step(config)
+    assert step.rule == 4 and _lines(config) == [_nothing_to_draft(config, _EMPTY_WHY)], _lines(config)
+    _eval(config, "draft", "draft")  # a draft holding a question: its wait, then rule 5
+    step = loop.next_step(config)
+    assert step.rule == 5 and len(step.waits) == 1 and step.waits[0].startswith("the baseline questions"), (
+        step
+    )
 
 
 def test_only_online_files_say_they_wait_for_a_download_c2424(

@@ -63,7 +63,7 @@ from agentsync.arm_local import (
     files_below,
     split_empty,
 )
-from agentsync.config import Config, SourceConfig, canonical_source_root
+from agentsync.config import INBOX_LIVE, Config, SourceConfig, canonical_source_root, inbox_state, live_inbox
 from agentsync.convert import NO_CONVERTER_PREFIX
 from agentsync.convert.recording import RecordingConverter
 from agentsync.cycle import (
@@ -92,6 +92,7 @@ from agentsync.manifest import Manifest, ManifestBusyError, ManifestNotCurrentEr
 from agentsync.model import LintFinding, PassKind, RowState, SourceKind, Verdict
 from agentsync.ops import launchd
 from agentsync.paths import DocsLayout, expand, same_folder
+from agentsync.publish import _display_path
 from agentsync.text import plural
 
 _log = logging.getLogger(__name__)
@@ -1712,7 +1713,10 @@ def next_step(
     questions = _eval_status(eval_dir / "questions.md")
     answers = _eval_status(eval_dir / "answers.md")
     confirmed = questions == "confirmed" and answers == "confirmed"
-    waits += docs_waits(config)  # the baseline draft's, also status's when the state cannot be read (D11)
+    draft_waits = docs_waits(
+        config
+    )  # the baseline draft's, also status's when the state cannot be read (D11)
+    waits += draft_waits
     if skill_state(docs) != "current":
         return done(
             f"the agentsync-docs skill is missing or out of date: run `{BIN} sync` (it writes the skill; "
@@ -1757,18 +1761,26 @@ def next_step(
     pages = curate.iter_topic_pages(config.layout)
     # Rules 4-6: the baseline comes before the first curated page. With no converted page in the mirror (the
     # synced folders hold no file, only empty subfolders, or files not read yet) there is nothing to draft
-    # from, and an empty draft is not one to confirm (B13 round 43 C2424, ruling 163).
-    if not pages and (questions is None or _empty_draft(eval_dir)) and not _has_converted_page(config.layout):
-        return done(_nothing_to_draft(docs, online=sum(files.online.values())), 4)
+    # from, and an empty draft is not one to confirm (B13 round 43 C2424, ruling 163).  An empty draft over an
+    # empty mirror takes this step whether or not topic pages exist, as docs_waits drops its wait by the same
+    # _draft_suppressed: rule 5 never points at a WAITING ON YOU line nothing prints (B13 round 44 C2707).
+    converted = _has_converted_page(config.layout)
+    if (not pages and questions is None and not converted) or (
+        questions is not None
+        and not confirmed
+        and _draft_suppressed(eval_dir, config.layout, converted=converted)
+    ):
+        return done(_nothing_to_draft(config, online=sum(files.online.values())), 4)
     if not pages and questions is None:
         return done(
             f"draft the baseline questions: follow step 1 (Draft) of {_baseline(docs)}, "
             f"then run `{BIN} sync`",
             4,
         )
-    if questions is not None and not confirmed:
-        # The draft's wait is among ``waits``, so there is one line or more; no place word, since install.sh
-        # prints the waits above the NEXT and status below it (§16.51 Q74; B13 round 5 F10, F41).
+    if questions is not None and not confirmed and draft_waits:
+        # The draft's wait is among ``waits`` (docs_waits returned it, the guard: B13 round 44 C2707), so
+        # there is one line or more and the step never points at lines nothing prints; no place word, since
+        # install.sh prints the waits above the NEXT and status below it (§16.51 Q74; B13 round 5 F10, F41).
         seen = "the WAITING ON YOU line" if len(waits) == 1 else "the WAITING ON YOU lines"
         return done(f"stop: the operator confirms the baseline questions (see {seen}); session done", 5)
     has_before = any(eval_dir.glob("results-*-before.md"))
@@ -1866,24 +1878,59 @@ def _page_status(path: Path) -> str | None:
     return None
 
 
-def _nothing_to_draft(docs: Path, *, online: int) -> str:
-    """Rule 4's step while the mirror holds no converted page: why, from what next_step holds, and the move
-    (B13 round 43 C2424, ruling 163)."""
+def _draft_suppressed(eval_dir: Path, layout: DocsLayout, *, converted: bool | None = None) -> bool:
+    """True when the baseline draft is the empty one over a mirror with no converted page: nothing to draft
+    from, so docs_waits prints no wait and next_step's rule 4 says ``nothing to draft yet`` in place of rule
+    5, the one test both read (B13 round 44 C2707). ``converted`` is :func:`_has_converted_page`'s answer when
+    the caller already has it."""
+    if not _empty_draft(eval_dir):
+        return False
+    return not (_has_converted_page(layout) if converted is None else converted)
+
+
+def _inbox_clause(config: Config) -> str:
+    """The inbox rule 4's ``nothing to draft yet`` may name (B13 round 44 C2602 with C2649 and C2719, ruling
+    181): the folder :func:`config.inbox_state` answers only when its words say a live inbox source sits
+    there, else a live inbox source elsewhere as the root guide names it (:func:`config.live_inbox`, one
+    helper for both), else nothing, since a file put in a paused, retired, other-kind or unadded inbox is
+    never read.  An OSError drops it, and so does an entry that could not be read."""
+    try:
+        folder, words = inbox_state(config)
+        if words.startswith(INBOX_LIVE):
+            return f" or the inbox ({_shown(folder)})"
+        if words.startswith("not read"):
+            return ""
+        live = live_inbox(config)
+    except OSError:
+        return ""
+    if isinstance(live, Path):
+        return f" or the inbox ({_display_path(live)})"
+    if live:
+        return f" or an inbox folder ({' or '.join(_display_path(path) for path, _ in live)})"
+    return ""
+
+
+def _nothing_to_draft(config: Config, *, online: int) -> str:
+    """Rule 4's step while the mirror holds no converted page: why, from what next_step holds, and whose move
+    it is (B13 round 43 C2424, ruling 163).  The opening stays ``nothing to draft yet: <why>`` (every reader
+    matching :data:`NOTHING_TO_DRAFT` still does); adding a folder or putting files in one is the operator's
+    choice, not a step for the agent, so the line says that and asks the agent to show it (B13 round 44 C2630
+    with C2603, ruling 181); the inbox is named only when one is read (:func:`_inbox_clause`); online-only
+    files offer no folder move, as they arrive with a later sync."""
     if online:
         one = online == 1
-        why = (
-            f"{plural(online, 'online-only file')} {'waits' if one else 'wait'} for a later sync to download "
-            f"{'it' if one else 'them'}"
+        return (
+            f"{NOTHING_TO_DRAFT}: {plural(online, 'online-only file')} {'waits' if one else 'wait'} for a "
+            f"later sync to download {'it' if one else 'them'}; nothing for the agent to do now; session done"
         )
-    else:
-        why = (
-            "the synced folders hold no converted document yet (no file, only empty subfolders, or files not "
-            "read)"
-        )
-    inbox = _shown(docs.parent / "inbox")
+    why = (
+        "the synced folders hold no converted document yet (no file, only empty subfolders, or files not "
+        "read)"
+    )
     return (
-        f'{NOTHING_TO_DRAFT}: {why}: add a folder that holds documents (`{BIN} add-source "<folder>"`), or '
-        f"put files in a synced folder or the inbox ({inbox}), then run `{BIN} sync`; session done"
+        f'{NOTHING_TO_DRAFT}: {why}; adding a folder that holds documents (`{BIN} add-source "<folder>"`) '
+        f"or putting files in a synced folder{_inbox_clause(config)} is the operator's choice, not a step "
+        "for the agent: show them this line; session done"
     )
 
 
@@ -1898,7 +1945,7 @@ def docs_waits(config: Config) -> list[str]:
     confirmed = questions == "confirmed" and answers == "confirmed"
     if questions is None or confirmed:
         return []
-    if _empty_draft(eval_dir) and not _has_converted_page(config.layout):
+    if _draft_suppressed(eval_dir, config.layout):
         return []  # nothing to draft from yet: next_step says so in place of a wait (B13 round 43 C2424)
     # Where the two files are, not only their names: whoever confirms them did not write them (v9 rehearsal,
     # 2026-10-07). "up to", "all of them if there are fewer": the skill drafts fewer than 10 for a small

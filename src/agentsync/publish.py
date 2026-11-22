@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from agentsync import gitops, governance, policy, skill, slug
-from agentsync.config import Config, SourceConfig, canonical_source_root
+from agentsync.config import Config, SourceConfig, live_inbox
 from agentsync.convert import NO_CONVERTER_ID, NO_CONVERTER_PREFIX, NO_CONVERTER_VERSION
 from agentsync.convert.image import ImageConverter
 from agentsync.convert.recording import RecordingConverter
@@ -65,7 +65,6 @@ from agentsync.model import (
     UnitKind,
     counted_op,
 )
-from agentsync.paths import expand, same_folder
 from agentsync.text import plural
 
 log = logging.getLogger(__name__)
@@ -1051,25 +1050,14 @@ class Publisher:
         line.  It names the live inbox source on the folder :func:`config.ensure_inbox` keeps (``inbox``
         beside the docs repo, matched by folder identity: its id and spelling may differ), else the only live
         inbox source; with several and none on that folder it lists them all by id, since no one of them is
-        the inbox."""
-        inboxes = sorted(
-            (
-                (s.path, s.id)
-                for s in self._config.sources
-                if s.kind is SourceKind.INBOX and s.is_live and s.path is not None
-            ),
-            key=lambda pair: pair[1],
-        )
-        kept = canonical_source_root(expand(self._config.docs_repo).parent / "inbox")
+        the inbox (:func:`config.live_inbox`, the one answer loop's ``nothing to draft yet`` step reads too,
+        B13 round 44 C2602)."""
+        live = live_inbox(self._config)
         inbox: str | list[str] | None = None
-        # by identity (paths.same_folder): a source on ``Inbox`` is the kept folder on a case-insensitive
-        # Mac, and the line names the kept folder whichever spelling the source stores (B13 round 42 C2318)
-        if any(same_folder(path, kept) for path, _ in inboxes):
-            inbox = _display_path(kept)
-        elif len(inboxes) == 1:
-            inbox = _display_path(inboxes[0][0])
-        elif inboxes:
-            inbox = [f"`{_display_path(path)}` ({sid})" for path, sid in inboxes]
+        if isinstance(live, Path):
+            inbox = _display_path(live)
+        elif live:
+            inbox = [f"`{_display_path(path)}` ({sid})" for path, sid in live]
         return root_guide(archive=self._archive_on(), inbox=inbox)
 
     def ensure_scaffold(self) -> list[str]:

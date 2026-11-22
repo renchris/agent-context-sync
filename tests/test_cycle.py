@@ -67,7 +67,7 @@ from agentsync.errors import ConversionError, DatalessRefusedError, LockHeldErro
 from agentsync.frontmatter import parse_frontmatter, render_frontmatter
 from agentsync.graph.client import GraphClient
 from agentsync.graph.drive import DriveArm
-from agentsync.manifest import Manifest
+from agentsync.manifest import Manifest, parse_convert_options
 from agentsync.model import (
     ChangeOp,
     CycleMode,
@@ -5893,6 +5893,48 @@ def test_a_convert_record_with_a_non_ascii_digit_is_unrecorded_c2504(
     with Manifest(config.state_paths.db) as m:
         fingerprint, run_id = (m.get_meta(cycle_mod._CONVERT_OPTIONS_META) or "").split()
     assert fingerprint == mine and run_id.isascii() and run_id.isdigit(), run_id
+
+
+@pytest.mark.parametrize(
+    "shape",
+    ["x 4301", "mine 4301", "garbage 9", "hex superscript", "mine 19", "three fields"],
+)
+def test_a_convert_record_is_parsed_one_way_c2714(
+    tmp_path: Path, meetings: Path, monkeypatch: pytest.MonkeyPatch, shape: str
+) -> None:
+    """B13 round 44 C2714 (completing ruling 169): _drift_since took any two fields, so a matching
+    fingerprint before a 4301-digit run id raised int()'s ValueError in the sync, and ``garbage 9`` read as an
+    edit in the current run while the report said run 9. Both readers now take manifest.parse_convert_options:
+    two fields, a 1-to-64 lowercase hex fingerprint and a 1-to-18 ASCII digit run id, anything else
+    unrecorded, so the sync writes ``<mine> 0`` and opens nothing."""
+    config = config_with(tmp_path, meetings)
+    assert run(config).exit_code == 0
+    with Manifest(config.state_paths.db) as m:
+        mine = (m.get_meta(cycle_mod._CONVERT_OPTIONS_META) or "").split()[0]
+        value = {
+            "x 4301": "x " + "1" * 4301,
+            "mine 4301": f"{mine} " + "1" * 4301,
+            "garbage 9": "garbage 9",
+            "hex superscript": "0123abcd \u00b2",
+            "mine 19": f"{mine} " + "1" * 19,
+            "three fields": f"{mine} 9 9",
+        }[shape]
+        m.set_meta(cycle_mod._CONVERT_OPTIONS_META, value)
+    assert parse_convert_options(value) is None
+    monkeypatch.setattr(cycle_mod, "_build_digest", lambda _root: "contoso-build-2")  # it looks for re-reads
+    report = run(config)
+    assert report.exit_code == 0, report
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(cycle_mod._CONVERT_OPTIONS_META) == f"{mine} 0"
+    assert "reread_options" not in _run_record(config)
+
+
+def test_parse_convert_options_takes_the_shape_the_cycle_writes_c2714() -> None:
+    """C2714's parser: the cycle's own ``<16 hex> <run>`` and a longer digest read; nothing else does."""
+    assert parse_convert_options("0123456789abcdef 7") == ("0123456789abcdef", 7)
+    assert parse_convert_options("ab" * 32 + " " + "9" * 18) == ("ab" * 32, 10**18 - 1)
+    for bad in (None, "", "0123abcd", "0123ABCD 7", "ab" * 33 + " 7", "0123abcd -7", "0123abcd 7.0", "g 7"):
+        assert parse_convert_options(bad) is None, bad
 
 
 def test_an_options_edit_made_before_the_first_recorded_sync_opens_nothing_c2297(

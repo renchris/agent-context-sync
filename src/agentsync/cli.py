@@ -1654,8 +1654,10 @@ def _cmd_init(args: argparse.Namespace) -> int:
 def _ensure_inbox(config: Config) -> Config:
     """:func:`agentsync.config.ensure_inbox` for init and add-source (KISS K05): prints the inbox it added.
     An inbox that cannot be added is a warning, never a failure of the command that asked for more, worded
-    by its cause (B13 round 42 C2207): a file or a dangling link on the folder's name is the one case moving
-    something aside fixes; any other OSError (a permission refused, a parent that is a file) gives its own
+    by its cause (B13 round 42 C2207): anything on the folder's name that is not a folder (a file, a link to
+    one, a dangling link, a fifo) is the one case moving something aside fixes, and reads ``<folder> is not a
+    folder``, inbox_state's own words, since "a file" misnamed a dangling link (B13 round 44 C2611); any other
+    OSError (a permission refused, a parent that is a file) gives its own
     words and the path, with no advice that would be wrong for it. A source of another kind already on the
     folder is kept as it is, and said so, by id, kind and state, since it is not an inbox drop folder
     (C2309)."""
@@ -1666,8 +1668,12 @@ def _ensure_inbox(config: Config) -> Config:
         _err(f"inbox: not added: {exc}")
         return config
     except OSError as exc:
-        if isinstance(exc, FileExistsError) or (os.path.lexists(typed) and not typed.is_dir()):
-            _err(f"inbox: not added: {typed} is a file, not a folder; move it aside and run step 2 again")
+        try:
+            not_folder = isinstance(exc, FileExistsError) or (os.path.lexists(typed) and not typed.is_dir())
+        except OSError:  # a link into a folder this account cannot search: its own words below
+            not_folder = False
+        if not_folder:
+            _err(f"inbox: not added: {typed} is not a folder; move it aside and run step 2 again")
         else:
             _err(f"inbox: not added: {exc.filename or typed}: {exc.strerror or exc}")
         return config

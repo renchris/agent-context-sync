@@ -13918,7 +13918,7 @@ def test_the_readme_says_a_convert_edit_reaches_existing_pages_r41_d1() -> None:
     hashes = inspect.getsource(cycle._Cycle._drift_hashes)
     assert "if conv.converter_id == RecordingConverter.converter_id:\n" in hashes and "continue" in hashes
     since = inspect.getsource(cycle._Cycle._drift_since)
-    assert "self.run_id if len(stored) == 2 else 0" in since, "a manifest with no record opens nothing"
+    assert "self.run_id if stored is not None else 0" in since, "a manifest with no record opens nothing"
     readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
     before = readme.index("Files in a synced folder or the inbox that were converted before OCR was there")
     at = readme.index("A `[convert]` edit that changes how pages are made, such as `max_page_bytes`")

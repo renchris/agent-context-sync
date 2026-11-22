@@ -1701,6 +1701,24 @@ def test_agentsync_config_env_is_the_default_config(tmp_path: Path, monkeypatch:
     assert paths.default_config_path() == Path.home() / "agent-context" / "sources.toml"
 
 
+@pytest.mark.parametrize(
+    "blank", [" ", "\t", "\n", "\r", "\v", "\f", *map(chr, (0x1C, 0x1F, 0x85, 0xA0, 0x3000))]
+)
+def test_default_config_path_trims_only_the_six_ascii_blanks_c2729(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, blank: str
+) -> None:
+    """B13 round 44 C2729 (ruling 177): str.strip() took Unicode whitespace (U+0085, 0x1C to 0x1F, U+00A0,
+    U+3000) off AGENTSYNC_CONFIG, which install.sh's trim keeps, so step 2 and a bare sync read different
+    files. paths.CONFIG_BLANKS names the six ASCII blanks, the one set both trim, whatever the locale."""
+    assert paths.CONFIG_BLANKS == " \t\n\r\v\f"
+    cfg = tmp_path / "custom.toml"
+    monkeypatch.setenv(paths.CONFIG_ENV, f"{blank}{cfg}{blank}")
+    if blank in paths.CONFIG_BLANKS:
+        assert paths.default_config_path() == cfg
+    else:  # kept on both ends: a leading one makes the value relative, under the working folder
+        assert paths.default_config_path() == Path.cwd() / f"{blank}{cfg}{blank}"
+
+
 def test_job_logs_are_rotated_and_bounded(tmp_path: Path) -> None:
     """deploy-ops-logs-never-rotated."""
     logs = tmp_path / "logs"

@@ -30,10 +30,17 @@ CONFIG_ENV = "AGENTSYNC_CONFIG"
 """Environment variable naming the sources.toml every command uses when ``--config`` is not given."""
 
 
+CONFIG_BLANKS = " \t\n\r\v\f"
+"""The six ASCII blanks (space, tab, LF, CR, VT, FF) trimmed from both ends of ``$AGENTSYNC_CONFIG``, by
+:func:`default_config_path` and by scripts/install.sh's literal copy of this set, never ``str.strip()``'s
+Unicode table or bash's locale-dependent ``[[:space:]]``: so no locale decides which file step 2 and a bare
+sync read (B13 round 44 C2729, ruling 177)."""
+
+
 def default_config_path() -> Path:
     """Return the default sources.toml path: ``$AGENTSYNC_CONFIG`` when set (scripts/install.sh honours the
-    same variable), else ``~/agent-context/sources.toml``."""
-    env = os.environ.get(CONFIG_ENV, "").strip()
+    same variable, trimmed by the same :data:`CONFIG_BLANKS`), else ``~/agent-context/sources.toml``."""
+    env = os.environ.get(CONFIG_ENV, "").strip(CONFIG_BLANKS)
     if env:
         return expand(env)
     return expand("~/agent-context/sources.toml")
