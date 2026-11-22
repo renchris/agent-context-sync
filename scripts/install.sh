@@ -321,11 +321,13 @@
 #      that step 6's sync would have cleared (field 2026-10-07: that run ended on a chmod no agent may run).
 #      With several folders the two lines every add-source call ends on are printed once: "docs repo ..."
 #      from the first call, printed beside "sources: ..." from the last, with the inbox line ("added inbox
-#      source ...") the first call prints. After the folders line, the step prints `docs repo: <path>` and then
-#      `inbox: <path>`, the config's own docs repo and its inbox folder in list_name's spelling; the setup
-#      prompt's step 2 reads these two lines. Only when no live inbox source sits on that folder, an
-#      `inbox state: <words>` line follows, the words agentsync status prints (B13 round 43 C2410). None of
-#      them is printed in a dry run or when the installed agentsync cannot load the config within 10 s
+#      source ...") the first call prints. After the folders line, when there is one, the step prints `docs
+#      repo: <path>` and then `inbox: <path>`, the config's own docs repo and its inbox folder in list_name's
+#      spelling; the setup prompt's step 2 reads these two lines. Only when no live inbox source sits on that
+#      folder, an `inbox state: <words>` line follows, the words agentsync status prints (B13 round 43 C2410).
+#      A step 2 that agentsync refuses (config_failed) prints the same lines with no folders line, after
+#      agentsync's error and before the step's own failure line, since init and add-source make the inbox
+#      before they refuse (B13 round 43 ruling 170, C2463; round 44 C2643). None of them is printed in a dry run or when the installed agentsync cannot load the config within 10 s
 #      (config_folder_lines). These colon-form lines are apart from add-source's own `docs repo <path> (...)`
 #      line (B13 round 43 C2439)
 #   5. status: first the pandoc that status checks ([convert] pandoc_path, else the operator's native

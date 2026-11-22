@@ -4713,6 +4713,24 @@ def test_every_local_of_redaction_pairs_is_read_apart_from_its_own_write_c2506()
     assert unread == [], unread
 
 
+def test_the_header_says_a_refused_step_2_prints_its_folder_lines_c2643() -> None:
+    """B13 round 44 ruling 179, C2643: the header said step 2's `docs repo:`, `inbox:` and `inbox state:`
+    lines come after the folders line, while config_failed prints them, with no folders line, for a step 2
+    agentsync refuses (round 43 ruling 170, C2463). The header names that case, read beside the code."""
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    lines = script.splitlines()
+    end = next(i for i, ln in enumerate(lines[1:], 1) if not ln.startswith("#"))
+    header = " ".join(" ".join(ln.lstrip("#") for ln in lines[:end]).split())
+    assert "After the folders line, when there is one, the step prints `docs repo: <path>`" in header
+    assert (
+        "A step 2 that agentsync refuses (config_failed) prints the same lines with no folders line, after"
+        " agentsync's error and before the step's own failure line"
+    ) in header
+    body = script[script.index("\nconfig_failed() {") :]
+    body = body[: body.index("\n}\n")]
+    assert body.rstrip().endswith('config_folder_lines\n\t(exit "$rc") || fail "$@"'), body[-200:]
+
+
 def test_the_header_names_each_field_and_line_the_config_step_prints_c2439() -> None:
     """B13 round 43 C2439: the header said the config line ends with kept=N added=M, while C2207 appends
     inbox=not-added, and step 4's paragraph left out the `docs repo: <path>` and `inbox: <path>` lines C2317
