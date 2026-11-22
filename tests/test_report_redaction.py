@@ -9,6 +9,7 @@ import re
 import shlex
 import subprocess
 import sys
+import tomllib
 import unicodedata
 from pathlib import Path
 
@@ -2714,6 +2715,7 @@ def _debug_path(home: str, path: str, locale: str) -> str:
         [BASH32, "-c", fn + 'debug_path "$1"', "_", path],
         capture_output=True,
         text=True,
+        errors="replace",  # as the report reads install.out: bash 3.2 writes a lead byte raw (B13 round 44)
         check=True,
         timeout=30,
         env={"HOME": home, "LC_ALL": locale, "LANG": locale, "PATH": "/usr/bin:/bin"},
@@ -2821,20 +2823,80 @@ def test_both_reports_cut_a_config_path_to_its_tokens_end_c2290(
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
 @pytest.mark.parametrize(
-    ("leaf", "written"),
+    "leaf",
     [
-        ("Zephyr Quarry", None),
-        ("O'Zephyr Quarry", None),
-        ("O'Zephyr $Quarry", None),
-        (None, None),
-        ("Zephyr Quarry", "~/Tools//{leaf}/pandoc"),
-        ("Zephyr Quarry", "{home}/Tools/./{leaf}/pandoc"),
+        "Z\u00e9phyr Quarry",  # NFC
+        unicodedata.normalize("NFD", "Z\u00e9phyr Quarry"),
+        "Z\u00e9phyr\u00a0Quarry Ledger",  # an NBSP, which bash writes raw and str.isprintable() refuses
+        "\U0001f600 Quarry",
+        "Zephyr\tQuarry",
+        "Zephyr Quarry",
+    ],
+)
+def test_the_python_report_cuts_each_debug_path_word_of_a_pandoc_path_c2716(leaf: str, locale: str) -> None:
+    """B13 round 44 ruling 171 (C2716 with C2713, C2697 and C2641; privacy): under a UTF-8 locale /bin/bash
+    3.2's `printf %q` writes a non-ASCII name raw with its blank backslashed (`Z\u00e9phyr\\ Quarry`), and
+    `_printf_q_forms` returned nothing for any path past printable ASCII, so the agentsync report printed the
+    folder where the shell report, registering debug_path in its own locale, cut it. Over install.sh's real
+    debug_path under both locales, home as `~` and not, NFC, NFD, NBSP, emoji and TAB leaves: each word reads
+    `~/<path>`, as the shell report prints it, and no piece of the leaf shows."""
+    home = str(Path.home())
+    pandoc = f"{home}/Tools/{leaf}/pandoc"
+    red = setup_report.Redactor()
+    red.add("home", home)
+    setup_report._add_pandoc_cut(red, Path(pandoc), raw=pandoc)
+    word = _debug_path(home, pandoc, locale)
+    plain = _debug_path("/nonexistent-home", pandoc, locale)  # the absolute word: no home to fold into `~`
+    assert word != plain or word.startswith("$'"), (word, plain)
+    for said, want in (
+        (f"debug: pandoc {word} | x", "debug: pandoc ~/<path> | x"),
+        (f"ran {plain} --version", "ran ~/<path> --version"),
+    ):
+        got = red.redact(said)
+        assert got == want, (said, got)
+
+
+_C2432_SPELLINGS = {
+    "table": "[convert]\npandoc_path = {v}\n",
+    "quoted header": '["convert"]\n"pandoc_path" = {v}\n',
+    "literal header": "[ 'convert' ]\n'pandoc_path' = {v}\n",
+    "dotted key": "^convert.pandoc_path = {v}\n",
+    "quoted dotted key": "^\"convert\" . 'pandoc_path' = {v}\n",
+    "inline table": "^convert = {{ pandoc_path = {v} }}\n",
+    "triple literal": "[convert]\npandoc_path = '''{s}'''\n",
+    "triple basic": '[convert]\npandoc_path = """\n{s}"""\n',
+    "multi-line value": '[convert]\npandoc_path = """\n{s}\n"""\n',
+    "padded": "[convert]\npandoc_path = '  {s}\t '\n",
+}
+"""B13 round 44 ruling 171 (C2698): each TOML spelling of `[convert] pandoc_path` a person can write, `{v}`
+the value as a one-line string and `{s}` the bare path; a leading `^` puts it above the tables, where a
+top-level key must stand."""
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize(
+    ("leaf", "written", "spelling"),
+    [
+        ("Zephyr Quarry", None, "table"),
+        ("O'Zephyr Quarry", None, "table"),
+        ("O'Zephyr $Quarry", None, "table"),
+        (None, None, "table"),
+        ("Zephyr Quarry", "~/Tools//{leaf}/pandoc", "table"),
+        ("Zephyr Quarry", "{home}/Tools/./{leaf}/pandoc", "table"),
+        # B13 round 44 ruling 171 (C2716 with C2713, C2697 and C2641): a non-ASCII leaf with an NBSP, and a
+        # leaf whose blank is a TAB, as a literal TAB and as a basic string's escape
+        ("Z\u00e9phyr\u00a0Quarry Ledger", None, "table"),
+        ("Zephyr\tQuarry", None, "table"),
+        ("Zephyr\tQuarry", "basic", "table"),
+        # C2698: every TOML spelling of the key and its value
+        *(("Zephyr Quarry", None, k) for k in _C2432_SPELLINGS if k != "table"),
     ],
 )
 def test_both_reports_cut_a_configured_pandoc_path_in_every_spelling_c2432(
     env: dict[str, str],  # noqa: F811
     leaf: str | None,
     written: str | None,
+    spelling: str,
     locale: str,
 ) -> None:
     """B13 round 43 C2432 (ruling 157; privacy): the shell report registered no `[convert] pandoc_path`, so
@@ -2843,18 +2905,30 @@ def test_both_reports_cut_a_configured_pandoc_path_in_every_spelling_c2432(
     basic one: doctor writes `~/"..."`), then a `'` and a `$` (doctor's `'\\''` splice) reads `~/<path>` in
     both reports, one line, in each spelling a printer writes: as written, absolute, `~/` and doctor's shell
     word (doctor._quoted of the part under the sandbox home); the shell report (bash 3.2) also cuts the
-    spellings ruling 157 pairs that no printer writes for it, debug_path's `%q` and the shell words doctor
-    did not pick. One under /opt/homebrew names no person and stays, in both locales. One written with a
-    `//` or a `/./` (`written`) is the path pathlib reads, which every printer writes: the shell report
-    printed it in clear (B13 round 43, lane RB's review), and cuts the spelling as written too."""
+    spellings ruling 157 pairs that no printer writes for it, the shell words doctor did not pick. One under
+    /opt/homebrew names no person and stays, in both locales. One written with a `//` or a `/./` (`written`)
+    is the path pathlib reads, which every printer writes: the shell report printed it in clear (B13 round
+    43, lane RB's review), and cuts the spelling as written too.
+
+    B13 round 44 ruling 171 (C2716 with C2713, C2697 and C2641, C2698; privacy): debug_path's `%q` word, as a
+    UTF-8 run and a C run each write it, reads `~/<path>` in both reports, where the agentsync report printed
+    a UTF-8 run's `Z\u00e9phyr\\ Quarry` whole; a non-ASCII leaf with an NBSP and a leaf whose blank is a
+    TAB (a literal TAB and a basic string's `\\t`) are cut alike; and every TOML spelling of the key (a
+    quoted table header or key, a dotted key, a one-line inline table, triple-quoted strings, a multi-line
+    value, a padded one) is read by both, its echo as written cut too."""
     from agentsync.ops import doctor  # noqa: PLC0415 - as setup_report imports it
 
     home = Path(env["HOME"])
     pandoc = home / "Tools" / leaf / "pandoc" if leaf else Path("/opt/homebrew/bin/pandoc")
-    spelled = written.format(home=home, leaf=leaf) if written else str(pandoc)
-    value = f"'{spelled}'" if leaf and "'" not in leaf else json.dumps(spelled)
+    spelled = written.format(home=home, leaf=leaf) if written and written != "basic" else str(pandoc)
+    value = f"'{spelled}'" if leaf and "'" not in leaf and written != "basic" else json.dumps(spelled)
     table = local_source_table("s0", _cloud(env) / "OneDrive-Contoso" / "Juniper Notes")
-    body = f"{default_config_text()}{table}\n[convert]\npandoc_path = {value}\n"
+    fragment = _C2432_SPELLINGS[spelling].format(v=value, s=spelled)
+    if fragment.startswith("^"):
+        body = f"{fragment[1:]}{default_config_text()}{table}"
+    else:
+        body = f"{default_config_text()}{table}\n{fragment}"
+    assert tomllib.loads(body)["convert"]["pandoc_path"].strip() == spelled, body
     rest = str(pandoc.relative_to(home)) if leaf else ""
     picked = f"~/{doctor._quoted(rest)}" if leaf else doctor._shell_path(pandoc)  # _shell_path under env HOME
     said = [
@@ -2863,14 +2937,14 @@ def test_both_reports_cut_a_configured_pandoc_path_in_every_spelling_c2432(
         f"check or replace the pandoc at [convert] pandoc_path ({picked})",
         "[ok  ] pandoc — pandoc 3.1.9 at /opt/homebrew/bin/pandoc",
     ]
+    if leaf:
+        # ruling 171: debug_path's word as either locale writes it, read by both reports
+        said += [f"debug: pandoc {_debug_path(str(home), str(pandoc), loc)}" for loc in ("en_US.UTF-8", "C")]
+    if written or spelling == "padded":
+        said.append(f"pandoc_path ({spelled if spelling != 'padded' else f'  {spelled}'})")
     splice = "~/'" + rest.replace("'", "'\\''") + "'"
     words = [f"~/'{rest}'", f'~/"{rest}"', splice] if leaf else []
-    shell_only = [
-        f"debug: pandoc {_debug_path(str(home), str(pandoc), locale)}" if leaf else "",
-        *(f"pandoc_path ({w})" for w in dict.fromkeys(words) if w != picked),
-        f"pandoc_path ({spelled})" if written else "",
-    ]
-    shell_only = [ln for ln in shell_only if ln]
+    shell_only = [f"pandoc_path ({w})" for w in dict.fromkeys(words) if w != picked]
     shell, python, shell_private, python_private = _both_reports(
         env,
         ["Juniper Notes"],
@@ -2880,22 +2954,24 @@ def test_both_reports_cut_a_configured_pandoc_path_in_every_spelling_c2432(
         config_body=body,
     )
     n = len(said)
-    assert shell[:n] == python[:n] and shell_private == python_private, list(zip(shell, python, strict=True))
+    assert shell[:n] == python[:n] and shell_private == python_private, [
+        (a, b) for a, b in zip(shell, python, strict=True) if a != b
+    ]
     if leaf is None:
         assert python == said, python
         return
-    leaks = [ln for ln in [*shell, *python[:n]] if "Zephyr" in ln or "Quarry" in ln]
+    pieces = ("Zephyr", "Quarry", "phyr", "Ledger")
+    leaks = [ln for ln in [*shell, *python[:n]] if any(w in ln for w in pieces)]
     assert not leaks, leaks
-    assert python[:n] == [
+    assert python[:4] == [
         "[ok  ] pandoc — pandoc 3.1.9 at ~/<path>",
         "[FAIL] pandoc — ~/<path> did not run",
         "check or replace the pandoc at [convert] pandoc_path (~/<path>)",
         said[3],
     ], python
-    assert shell[n:] == [
-        "debug: pandoc ~/<path>",
-        *(["pandoc_path (~/<path>)"] * (len(shell_only) - 1)),
-    ], shell
+    echo = "pandoc_path (  ~/<path>)" if spelling == "padded" else "pandoc_path (~/<path>)"  # blanks kept
+    assert python[4:n] == ["debug: pandoc ~/<path>", "debug: pandoc ~/<path>", *([echo] * (n - 6))], python
+    assert shell[n:] == ["pandoc_path (~/<path>)"] * len(shell_only), shell
 
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])

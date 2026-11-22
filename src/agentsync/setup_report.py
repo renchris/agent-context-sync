@@ -6168,7 +6168,14 @@ def _add_pandoc_cut(red: Redactor, path: Path, *, raw: str | None = None) -> Non
     (``~/Tools/Zephyr\\ Quarry/pandoc``), and the value as written in sources.toml (``raw``,
     ``~/Tools//Zephyr Quarry/./pandoc``) is echoed unnormalised; the shell report cut both and this one
     printed them. Both are registered too, with the raw value's expanded form, each cut to the same
-    ``~/<path>``."""
+    ``~/<path>``.
+
+    B13 round 44 ruling 171 (C2716 with C2713, C2697 and C2641, C2698; privacy): debug_path runs in the run's
+    own locale, so a UTF-8 run writes ``~/Tools/Zéphyr\\ Quarry/pandoc`` (every non-ASCII character raw) and a
+    C run or a name holding a control writes a ``$'...'`` word; :func:`_printf_q_forms` returns the first and
+    :func:`_dollar_q_forms` the second, each cut to the same ``~/<path>`` the shell report prints for either.
+    The value as written is stripped before it expands, as config.py's ``_str`` strips it, the padded value
+    itself registered too for its echo."""
     from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are
 
     for form in dict.fromkeys((path, expand(path))):
@@ -6183,27 +6190,42 @@ def _add_pandoc_cut(red: Redactor, path: Path, *, raw: str | None = None) -> Non
         quoted = doctor._shell_path(form)
         if quoted.startswith("~/"):
             red.add_cut(quoted, shown)
-        for word in _printf_q_forms(str(form)):
+        for word in (*_printf_q_forms(str(form)), *_dollar_q_forms(str(form))):
             red.add_cut(word, shown)
     if raw:
-        # os.path, never Path: Path collapses the `//` and `/./` the echo keeps
-        unnormalised = os.path.expanduser(raw)  # noqa: PTH111
+        # os.path, never Path: Path collapses the `//` and `/./` the echo keeps; stripped first, as config's
+        # _str strips the value it loads (B13 round 44 C2698, ruling 171), so a padded `  ~/...` expands
+        written = raw.strip()
+        unnormalised = os.path.expanduser(written)  # noqa: PTH111
         shown = _config_cut_shown(Path(unnormalised)) if unnormalised.startswith("/") else None
         if shown is not None:
-            for word in dict.fromkeys((raw, unnormalised, *_printf_q_forms(unnormalised))):
+            q_forms = (*_printf_q_forms(unnormalised), *_dollar_q_forms(unnormalised))
+            words = (raw, written, unnormalised, *q_forms)
+            for word in dict.fromkeys(words):
                 red.add_cut(word, shown)
 
 
 _PRINTF_Q_ESCAPED = frozenset(" !\"$&'()*,;<>?[\\]^`{|}")
 """The printable ASCII characters bash's ``printf %q`` writes with a backslash inside a word, measured the
-same on /bin/bash 3.2.57 and bash 5.3 (B13 round 43, lane RB's review of C2497): a word holding any other byte
-below 0x20 or above 0x7E is a ``$'...'`` word, which :data:`_ANSI_C_WORD_RE` cuts whole."""
+same on /bin/bash 3.2.57 and bash 5.3 (B13 round 43, lane RB's review of C2497). Which words are
+``$'...'`` words depends on the locale (B13 round 44 ruling 171, C2641; measured on both): under ``LC_ALL=C``
+a word holding any byte below 0x20 or above 0x7E is a ``$'...'`` word; under a UTF-8 locale a control or DEL
+still makes one, while a non-ASCII character is written raw (NBSP included, never backslashed), bash 3.2
+dollar-quoting a word only for a byte in :data:`report_cuts.BASH32_UTF8_OCTAL` and bash 5.3 only for a
+character it cannot print. Each ``$'...'`` word is cut whole by :data:`_ANSI_C_WORD_RE` when no alias matches
+it first, as install.sh's --source-local loop pairs both locales' words."""
 
 
 def _printf_q_forms(path: str) -> list[str]:
-    """``path`` (absolute) as install.sh's debug_path writes it, ``printf %q`` with this home as ``~``, and
-    the plain ``%q`` word, for a path of printable ASCII; none otherwise."""
-    if not path.startswith("/") or not all(" " <= c <= "~" for c in path):
+    """``path`` (absolute) as install.sh's debug_path writes it in its backslash form, ``printf %q`` with
+    this home as ``~``, and the plain ``%q`` word: for a path of printable ASCII the word every locale writes,
+    and since B13 round 44 ruling 171 (C2716 with C2713, C2697 and C2641; privacy) for any path with no
+    control, DEL or newline the word a UTF-8 run writes, each :data:`_PRINTF_Q_ESCAPED` character backslashed
+    and every non-ASCII character raw, never gated on ``str.isprintable()`` (bash writes an NBSP raw), whether
+    or not bash 3.2 would write it (it dollar-quotes a word holding a byte in
+    :data:`report_cuts.BASH32_UTF8_OCTAL`; bash 5.3 does not): a literal never written never matches. None for
+    a relative path or one holding a control, whose words are ``$'...'`` (:func:`_dollar_q_forms`)."""
+    if not path.startswith("/") or any(c < " " or c == "\x7f" for c in path):
         return []
 
     def q(text: str) -> str:
@@ -6216,6 +6238,25 @@ def _printf_q_forms(path: str) -> list[str]:
         if hq and word.startswith(hq + "/"):
             out.append("~" + word[len(hq) :])
     return out
+
+
+def _dollar_q_forms(path: str) -> list[str]:
+    """``path`` (absolute) as ``printf %q`` writes it in a ``$'...'`` word: under ``LC_ALL=C``, under macOS's
+    /bin/bash 3.2 in a UTF-8 locale (:func:`_bash32_body`) and under a later bash there, an ESC as ``\\E`` and
+    ``\\e`` (B13 round 44 ruling 171; privacy). install.sh registers debug_path's word under both locales, so
+    the shell report cuts such a word to ``~/<path>``, where :data:`_ANSI_C_WORD_RE` alone printed ``<path>``
+    here. None for a relative path or one of printable ASCII, which no locale dollar-quotes."""
+    if not path.startswith("/") or all(" " <= c <= "~" for c in path):
+        return []
+    out = []
+    for esc in ("E", "e"):
+        letters = {**_PRINTF_LETTERS, "\x1b": esc}
+        out += [
+            f"$'{_ansi_c_body(path, letters, ascii_only=True)}'",
+            f"$'{_bash32_body(path, letters)}'",
+            f"$'{_ansi_c_body(path, letters)}'",
+        ]
+    return list(dict.fromkeys(out))
 
 
 def _raw_pandoc_path(config_path: Path | None) -> str | None:

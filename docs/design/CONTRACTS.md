@@ -44373,6 +44373,9 @@ blank, then a `'`, and an `/opt/homebrew` path kept),
 `test_the_inbox_beside_a_docs_repo_outside_the_home_is_cut_c2430` and
 `test_both_reports_cut_the_inbox_beside_a_docs_repo_outside_the_home_c2430` (`/Volumes` and `/Users/Shared`, both
 locales).
+Amended 2026-11-22, §16.275 C2716: debug_path's word is its run's locale's, so `_printf_q_forms` returns a UTF-8 run's
+word for any path with no control, DEL or newline (`~/Tools/Zéphyr\ Quarry/pandoc`), and `_dollar_q_forms` a C run's
+`$'...'` word, each cut to `~/<path>`; the value as written is stripped before it expands.
 
 **A cut token ends at the same byte in both reports** (C2526 with C2435, C2496; ruling 158; amends §16.265 C2290).
 `_CUT_TOKEN_END` is built from one named constant, `report_cuts.CUT_TOKEN_STOP` (the shell cf loop's ASCII stop set:
@@ -45169,7 +45172,30 @@ folder, print `inbox state:` with `config.inbox_state`'s words; both inbox parag
 
 ### 16.275 Round 44: the report: every pandoc_path spelling and every source of a private value cut in both reports, a quote before a head ending its value, and a none scored as the person's choice (2026-11-22, wave B13 round 44 lane RA)
 
-Reserved for round 44 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 44").
+Round 44's lane RA items (`docs/plans/bring-back-ocr.md`, "B13 round 44"; specs `round44/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's rulings 171 to 187 settle it). Rulings 171 to 173's shell halves are
+lane RB's (§16.276), landed with these in one run. A dated line this round writes reads
+`Amended 2026-11-22, §16.275 C<n>`.
+
+**Every `printf %q` word of a configured pandoc_path is cut** (C2716 with C2713, C2697 and C2641, C2698; ruling 171;
+privacy; amends §16.270 C2497). install.sh's debug_path writes in the run's own locale: a UTF-8 run writes a
+non-ASCII name raw with its blank backslashed (`~/Tools/Zéphyr\ Quarry/pandoc`), and `_printf_q_forms` returned
+nothing for any path past printable ASCII, so the agentsync report printed that word whole where the shell report,
+registering debug_path in its own locale, cut it. `_printf_q_forms` keeps its ASCII word and, for any absolute path
+with no C0 control, DEL or newline, returns the UTF-8 run's word (each `_PRINTF_Q_ESCAPED` character backslashed,
+every non-ASCII character raw, an NBSP included, never gated on `str.isprintable()`) with its `~` form, whether or not
+bash 3.2 would write it: a literal never written never matches. `_dollar_q_forms` registers the `$'...'` words a C run
+and a UTF-8 run of bash 3.2 or a later bash write (an ESC as `\E` and `\e`), each cut to the same `~/<path>` the
+shell report prints for either, where `_ANSI_C_WORD_RE` alone printed `<path>` here. The docstrings of
+`_PRINTF_Q_ESCAPED` and `_printf_q_forms` say the `$'...'` rule is the C locale's. The value as written in
+sources.toml is stripped before it expands, as config.py's `_str` strips the value it loads, so a padded `  ~/...`
+echo is cut too, the padded value registered for its echo (C2698's Python half). Tests:
+`test_report_redaction.py::test_the_python_report_cuts_each_debug_path_word_of_a_pandoc_path_c2716` (install.sh's
+real debug_path under /bin/bash in both locales, home as `~` and not, over NFC, NFD, NBSP, emoji and TAB leaves) and
+the rows added to `test_both_reports_cut_a_configured_pandoc_path_in_every_spelling_c2432` (a non-ASCII leaf with an
+NBSP; a `Zephyr Quarry` leaf whose blank is a TAB, as a literal TAB and as a basic string's `\t`; both locales'
+debug_path words read by both reports; and each TOML spelling: a quoted table header and key, a dotted and a quoted
+dotted key, a one-line inline table, triple-quoted strings, a multi-line value and a padded one).
 
 ### 16.276 Round 44: the installer: the shell halves of rulings 171 to 173, AGENTSYNC_CONFIG read by the CLI's rule, a none recorded by `--no-folder`, and C2667 waits on the operator (2026-11-22, wave B13 round 44 lane RB)
 
