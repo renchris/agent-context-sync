@@ -334,7 +334,8 @@ G77). 5: a tombstone with no ``last_commit`` gets the newest commit on its path 
 recovery line of one that has none names no position (B13 round 7 H77). 6: the tombstones of a source deleted
 from sources.toml are rendered again too (B13 round 8 J74, round 9 K70). 7: a stub that waits for the
 recording pass or the OCR helper reads ``# [WAITING]`` with a ``waiting:`` summary, its status still refused
-(B13 round 43 C2413)."""
+(B13 round 43 C2413); a waiting recording stub, whose row is live or dataless, is rendered again too, with no
+bump, so a home that ran 7 before it re-renders it once (B13 round 44 C2647)."""
 STUB_WAITING_LABEL = "WAITING"
 """The heading label of a stub that waits (``# [WAITING] <title>``), and, lower-cased, its summary's head."""
 _CHANGELOG_HEADING = re.compile(r"^## (\d{4}-\d{2}-\d{2}) · run (\d+) · (.*)$")
@@ -1319,10 +1320,15 @@ class Publisher:
         self, source: SourceConfig, item: ItemRow, run_id: int
     ) -> list[MirrorChange]:
         """Plan ``item``'s refused recording stub again as one that waits for the recording pass
-        (:data:`RECORDING_PASS_WAIT_REASON`), its row already ``RECORDING_WAITS``: no byte is read, the
-        page keeps its status (refused), its converter and keys, and it is written only when the reason it
-        shows changes, so interactive syncs make no page-only commits (B13 round 42 C2245, ruling 155). []
-        when the item has no single refused stub page."""
+        (:data:`RECORDING_PASS_WAIT_REASON`), its row already ``RECORDING_WAITS``: no source byte is read, and
+        the page keeps its status (refused), its converter and keys.  It is written in three cases only: the
+        page does not already say this wait; the file at the row's path is missing or its sha256 is not the
+        row's ``page_sha256`` (a rolled-back replan left it behind: the same bytes are written again, so no
+        change, and the row takes its digest, B13 round 43 C2508, ruling 165); or this build plans another
+        body for it (C2413's ``# [WAITING]`` heading, compared through ``rendered_sha256``, which
+        ``Cycle._rerender_stubs`` reaches once per ``STUB_RENDER``, B13 round 44 C2647).  So interactive
+        syncs make no page-only commits (B13 round 42 C2245, ruling 155; B13 round 44 C2651).  [] when the
+        item has no single refused stub page."""
         outs = self._manifest.outputs_for(item.source_id, item.stable_id)
         live = [o for o in outs if o.status is not OutputStatus.TOMBSTONE]
         if len(live) != 1 or live[0].status is not OutputStatus.REFUSED:
@@ -1390,6 +1396,13 @@ class Publisher:
         """:meth:`_withheld`, for the cycle's count of the stubs this says ``withheld by label rule`` on, so
         the sync line and the page never disagree on why a file was not read (B13 round 8 J29)."""
         return self._withheld(reason, suffix)
+
+    def says_recording_wait(self, source_id: str, stable_id: str) -> bool:
+        """True when the item's stub page already says it waits for the recording pass (its ``reason:`` is
+        :data:`RECORDING_PASS_WAIT_REASON`): the pages ``Cycle._rerender_stubs`` renders again in this
+        build's words through :meth:`replan_waiting_recording` (B13 round 44 C2647, ruling 183)."""
+        said = self._stub_says(source_id, stable_id)
+        return said is not None and said[0] == RECORDING_PASS_WAIT_REASON
 
     def _stub_says(self, source_id: str, stable_id: str) -> tuple[str, bool] | None:
         """The ``reason:`` of the page of the stub published for one item, and whether the page says a label

@@ -2940,7 +2940,8 @@ class _Cycle:
         re-plan itself (``_shown_name``, ``_shown_path``, ``_alloc_rel``), as it did the first one, and the
         secret scan's "survives redaction" check stands behind it. And every intact tombstone page, from its
         own frontmatter (``_rerender_tombstones``, B13 round 6 G77), a deleted source's too (B13 round 8
-        J74). A page is written only where the plan
+        J74), and every waiting recording stub whose page already says the wait, through
+        ``Publisher.replan_waiting_recording`` (B13 round 44 C2647). A page is written only where the plan
         differs from the intact page there (as ``_stub_stands`` compares); no verdict or count moves. The
         meta key is written after the last row, so an interrupted run tries again, and only on a run that
         covers every live source."""
@@ -2970,6 +2971,23 @@ class _Cycle:
                     continue
                 self.stub_pages.update(p.output_path for p in pages)
                 rewritten += 1
+            # a recording stub that waits for the recording pass: its row is live or dataless, so the loop
+            # above never reached it, and a page written before C2413 kept its REFUSED heading; only a page
+            # that already says this wait is planned again, written only where it differs (B13 round 44
+            # C2647, ruling 183; no STUB_RENDER bump)
+            for row in list(self.manifest.iter_items(src.id, states=(RowState.LIVE, RowState.DATALESS))):
+                if row.state_reason != RECORDING_WAITS:
+                    continue
+                if not self.publisher.says_recording_wait(row.source_id, row.stable_id):
+                    continue
+                try:
+                    done = self.publisher.replan_waiting_recording(src, row, self.run_id)
+                except (PublishError, OSError) as exc:
+                    log.warning("%s: a stub could not be rendered again (%s); it keeps its page", src.id, exc)
+                    continue
+                if done:
+                    self.changes += done
+                    rewritten += 1
         # Every source that holds a tombstone, a retired one's and one deleted from sources.toml too
         # (allowed once its rows are all tombstones; they stay until reaped): a tombstone needs nothing of
         # its source (B13 round 8 J74).
@@ -5848,8 +5866,14 @@ class _Cycle:
                 continue
             record = self._recording_load(src.id)
             # a recording the walk withheld as still settling is read by no stage this pass, queued or a
-            # stub to read again (B13 round 43 C2509, ruling 165)
-            held = self._withheld.get(src.id, (frozenset(), frozenset()))[0]
+            # stub to read again (B13 round 43 C2509, ruling 165); ``materialise PATH`` reads the files it
+            # names whatever their settle hold, as the source queue does (B13 round 44 C2645 with C2705,
+            # ruling 183)
+            held = (
+                frozenset()
+                if self.forced_paths
+                else self._withheld.get(src.id, (frozenset(), frozenset()))[0]
+            )
             queued = {
                 sid: row
                 for sid, row in self.manifest.get_items(src.id, self._recording_queue.get(src.id, ())).items()

@@ -7745,6 +7745,44 @@ def _ocr_down_marked(config: Config, rel: str, sid: str = SID) -> str | None:
         return m.get_meta(f"{cycle_mod.RECORDING_OCR_DOWN_META}{sid}:{row.stable_id}")
 
 
+def test_a_waiting_recording_stub_is_rendered_again_once_c2647(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 44 C2647 (ruling 183): STUB_RENDER 7 gave a waiting stub its ``# [WAITING]`` heading, but
+    _rerender_stubs walked only REFUSED and QUARANTINED rows, so a waiting recording stub, whose row is LIVE
+    (RECORDING_WAITS), written before 7 kept its REFUSED heading for good. _rerender_stubs passes each LIVE or
+    DATALESS row whose page already says the wait through replan_waiting_recording, which writes only when
+    the page differs: one sync rewrites it, the next commits nothing, with no STUB_RENDER bump."""
+    config = config_with(tmp_path, meetings)
+    monkeypatch.setattr(loop_mod.launchd, "agents_installed", lambda _c: False)
+    monkeypatch.setattr(cycle_mod.media, "probe", lambda _c, _d: ("ready", ""))
+    # a build from before rendering 7: no WAITING label, and its render version recorded as 6
+    monkeypatch.setattr(publish_mod, "STUB_WAITING_LABEL", "REFUSED")
+    monkeypatch.setattr(publish_mod, "STUB_RENDER", 6)
+    monkeypatch.setattr(cycle_mod, "STUB_RENDER", 6)
+    _fail_ocr(monkeypatch)
+    stub_recording(meetings / MEETING, 10)
+    assert run(config, mode=None).exit_code == 0
+    _use_ocr(monkeypatch, tmp_path)
+    assert run(config, mode=None).exit_code == 0
+    row = _row(config, MEETING)
+    assert (row.state, row.state_reason) == (RowState.LIVE, cycle_mod.RECORDING_WAITS), row
+    fm, body = _recording_page(config, MEETING)
+    assert fm["reason"] == publish_mod.RECORDING_PASS_WAIT_REASON and "\n# [REFUSED] " in body, body
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(cycle_mod._STUB_RENDER_META) == "6"
+    # this build: rendering 7
+    monkeypatch.setattr(publish_mod, "STUB_WAITING_LABEL", "WAITING")
+    monkeypatch.setattr(publish_mod, "STUB_RENDER", 7)
+    monkeypatch.setattr(cycle_mod, "STUB_RENDER", 7)
+    assert run(config, mode=None).exit_code == 0
+    fm, body = _recording_page(config, MEETING)
+    assert "\n# [WAITING] " in body and fm["summary"].startswith("waiting: "), (fm, body)
+    assert fm["status"] == "refused" and fm["reason"] == publish_mod.RECORDING_PASS_WAIT_REASON, fm
+    assert rec.worked == [], "no recording was read"
+    assert run(config, mode=None).commit_sha is None, "the next sync writes nothing"
+
+
 def test_a_recording_first_seen_in_an_ocr_outage_is_counted_and_read_again_once_the_helper_works_c2039(
     tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -8160,6 +8198,63 @@ def test_a_poll_reads_no_inbox_recording_inside_its_window_c2509(
     assert run(config, mode=CycleMode.POLL, only=["inbox"]).exit_code == 0
     assert fetched and rec.worked, (fetched, rec.worked)
     assert page_path.read_bytes() != page
+
+
+@pytest.mark.parametrize("kind", ["settled-stub", "pending-row", "regular-file"])
+def test_materialise_reads_a_settling_inbox_file_it_names_c2645(
+    tmp_path: Path, local_source_dir: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """B13 round 44 C2645 with C2705 (ruling 183): C2509's hold made _recording_candidates skip every
+    withheld id, a ``materialise PATH`` run included, so a settling inbox recording the person named was
+    never read while the source queue (which exempts a forced run) read a regular file. The recording pass
+    applies the hold only when no paths are forced: inside the 600-second window, materialise fetches the
+    recording it names, the converter runs and its row no longer waits; a regular file is the queue's twin."""
+    ahead = [3600 * 1_000_000_000]
+    fetched: list[str] = []
+
+    class FakeClockInbox(al.InboxArm):
+        def __init__(self, cfg: Any) -> None:
+            super().__init__(cfg)
+            self._clock = lambda: time.time_ns() + ahead[0]
+            self._sleep = lambda _s: None
+
+        def fetch(self, item: Any, dest_dir: Path, budget: Any) -> Any:
+            fetched.append(item.rel_path)
+            return super().fetch(item, dest_dir, budget)
+
+    monkeypatch.setattr(cycle_mod, "InboxArm", FakeClockInbox)
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    name = "Contoso notes.txt" if kind == "regular-file" else "Contoso clip.mp4"
+    if kind == "regular-file":
+        (inbox / name).write_text("The purchase order is approved.\n", encoding="utf-8")
+    else:
+        stub_recording(inbox / name, 10)
+    sources = INBOX_SOURCE.format(path=inbox).replace("quiescence_s = 0", "quiescence_s = 600")
+    config = config_with(tmp_path, local_source_dir, sources)
+    monkeypatch.setattr(loop_mod.launchd, "agents_installed", lambda _c: False)
+    _fail_ocr(monkeypatch)
+    for _ in range(2):  # the second leaves the verdict unchanged
+        assert run(config, mode=None, only=["inbox"]).exit_code == 0
+    page_path = config.docs_repo / slug.mirror_rel_path("inbox", name)
+    page = page_path.read_bytes()
+    row = _row(config, name, "inbox")
+    if kind == "pending-row":
+        with Manifest(config.state_paths.db) as m:
+            m.set_verdict("inbox", row.stable_id, Verdict.MAYBE_CHANGED)
+    _use_ocr(monkeypatch, tmp_path)
+    monkeypatch.setattr(cycle_mod.media, "probe", lambda _c, _d: ("ready", ""))
+    ahead[0] = 0
+    os.utime(inbox / name)  # rewritten in place: its ctime is now, inside the window
+    fetched.clear()
+    rec.worked.clear()
+    assert run(config, mode=None, materialise_paths=[inbox / name]).exit_code == 0
+    assert fetched == [name], fetched
+    if kind != "regular-file":
+        assert rec.worked, "the recording converter ran"
+        after = _row(config, name, "inbox")
+        assert after.state_reason not in (cycle_mod.RECORDING_WAITS, "no converter for .mp4"), after
+        assert page_path.read_bytes() != page
 
 
 def test_a_no_media_recording_stub_stays_uncounted_and_unplanned_c2039(

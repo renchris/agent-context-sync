@@ -44573,6 +44573,10 @@ recordings. A file that settles is listed on the next pass and read there. Test:
 `test_a_poll_reads_no_inbox_recording_inside_its_window_c2509` (a settled stub and a pending row, each under a poll
 with `quiescence_s = 600` and a fake-clock inbox: no fetch and no piece read inside the window, both read after it).
 
+Amended 2026-11-22, §16.277 C2645, C2705: `_recording_candidates` applies the withheld ids only when no paths are
+forced, as the source queue does, so `materialise PATH` reads a settling inbox recording it names; a poll and an
+unforced sync keep the hold.
+
 **The inbox's state, decided once** (C2410, C2411, C2441; ruling 162). Status printed `inbox: <path>` whatever
 sat on the folder, so a paused or retired inbox source, another kind's source, a file on the name or no source at
 all read as a working drop folder; loop's `inbox` word matched the kept folder by spelling; and add-source that
@@ -45226,6 +45230,23 @@ git read for it (C2672, reversing round 43's call 16). Tests:
 deleted-upstream control), `test_a_superseded_tombstone_body_names_its_successor_c2613`,
 `test_a_repaired_tombstone_keeps_its_committed_title_c2672`,
 `test_a_repaired_tombstone_with_no_history_takes_the_item_name_c2672`.
+
+**A file a person names is read whatever its settle hold, and a waiting recording stub is rendered again once**
+(C2645 with C2705, C2647, C2651; ruling 183; dated line at §16.272 C2509). C2509's hold made
+`_recording_candidates` skip every withheld id, a `materialise PATH` run included, so a settling inbox recording
+the person named was never fetched while the source queue (which exempts a forced run) read a regular file; it
+applies `self._withheld`'s ids only when `self.forced_paths` is empty, its comment saying so (C2645 with C2705).
+STUB_RENDER 7 gave a waiting stub its `# [WAITING]` heading, but `_rerender_stubs` walked only REFUSED and
+QUARANTINED rows, and a waiting recording's row is LIVE or DATALESS with `RECORDING_WAITS`, so a page written
+before 7 kept its REFUSED heading; `_rerender_stubs` also passes each such row whose page already says the wait
+(`Publisher.says_recording_wait`, the public helper in place of `_stub_says`) through
+`replan_waiting_recording`, which writes only when the page differs, with no STUB_RENDER bump (C2647).
+`replan_waiting_recording`'s docstring names the three cases it writes: the page does not say the wait, its file
+is missing or not the row's `page_sha256`, or this build plans another body (C2651, a docstring). Tests:
+`test_materialise_reads_a_settling_inbox_file_it_names_c2645` (a settled stub, a pending row and a regular file,
+each named inside a 600-second window: the fetch, the converter run and a row that no longer waits),
+`test_a_waiting_recording_stub_is_rendered_again_once_c2647` (`STUB_RENDER` patched to 6 and the label to
+`REFUSED`: `# [WAITING]` after one sync, no commit after the next).
 
 **The [convert] options record is parsed one way** (C2714; ruling 169 completed; dated line at §16.272 C2504).
 `_drift_since` and the report's `_convert_changed_run` each split the meta value their own way: a matching
