@@ -348,7 +348,9 @@ def test_the_cap_bounds_the_guarded_body_and_the_words_say_the_front_matter_is_o
     within the cap, but a page file is the front matter then the guarded body, and only the body is sized
     (a 400-row CSV's file was 8,321 bytes at 8,192). Budgeting the front matter makes things worse (it
     holds the path, URL and the body's own hash), so the words say what the cap bounds: the guarded body,
-    the front matter outside it. C2269: §16.258's C2055 line names the two exceptions its sources name."""
+    the front matter outside it. C2269: §16.258's C2055 line names the two exceptions its sources name.
+    B13 round 44 C2662: round 43's C2532 rewrote round 42's dated lines in place; they are back word for word
+    and each C2532 line carries the new words."""
     src = tmp_path / "contoso.csv"
     src.write_text("id,name\n" + "".join(f"{i},Contoso row {i}\n" for i in range(400)), encoding="utf-8")
     (unit,) = _pages(src, 8192)
@@ -365,8 +367,33 @@ def test_the_cap_bounds_the_guarded_body_and_the_words_say_the_front_matter_is_o
     assert "an edit made before the first sync that recorded [convert] re-reads nothing" in comment
     contracts = " ".join(Path("docs/design/CONTRACTS.md").read_text(encoding="utf-8").split())
     assert "the cap bounds each page's guarded body (a window past its keyframes keeps its text" in contracts
+    # B13 round 44 C2662: round 42's dated lines keep their words (ruling 74), and each C2532 line beside one
+    # carries the new words itself; config.py's comment, which is not dated text, keeps the new words
+    assert "1 KB, sits outside the cap" not in comment
     assert (
-        words + "; a [convert] edit re-reads" in contracts and "1 KB, sits outside the cap" not in contracts
+        "# Amended 2026-11-21, §16.273 C2532: the front matter (paths, URL, digests, title, summary) is "
+        "sized by the item's metadata rather than its bytes (often under 1 KB, about 2 KB with a long "
+        "path, URL and summary); it sits outside the cap, never budgeted, so a page file passes the cap "
+        "by its front matter; its size is an example, never a bound"
+    ) in contracts
+    assert (
+        "# Amended 2026-11-20, §16.268 C2220, C2306: the cap bounds each page's guarded body (a window "
+        "past its keyframes keeps its text and passes by their footer lines only, C2254); the front "
+        "matter above it, up to about 1 KB, sits outside the cap, never budgeted; a [convert] edit "
+        "re-reads"
+    ) in contracts
+    assert (
+        "the publisher's front matter above it, up to about 1 KB, sits outside the cap, never budgeted, "
+        "so a page file can pass it by that much. Amended 2026-11-21, §16.273 C2532: the line above said "
+        "the front matter is up to about 1 KB and a page passes the cap by that much; its size is an "
+        "example, never a bound, set by the item's metadata: the front matter (paths, URL,"
+    ) in contracts
+    assert (
+        "it holds the source's path, URL, etag and title, which do not follow the file's bytes" in contracts
+    )
+    assert (
+        "and the eTag above is not in a current page's front matter (`_provenance` sets it to None"
+        in contracts
     )
     assert (
         "say every page stays within any cap the config accepts (a recording's index and a window with more "

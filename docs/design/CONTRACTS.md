@@ -1414,8 +1414,8 @@ class ConvertConfig:
     max_page_bytes: int = 1_000_000  # hard cap before a unit is split / row-capped with a sidecar
     # Amended 2026-11-16, §16.258 C1886: a config sets at least 8 KiB (MIN_PAGE_BYTES); pages stay within any cap it accepts
     # Amended 2026-11-17, §16.263 C2055, C2091: every page converted under any cap it accepts stays within it, a sheet's lists included (a recording's index and a window with more keyframes than its footer lines fit aside, §16.263); a new cap reaches existing local and inbox pages over the next syncs (lane B's C2021)
-    # Amended 2026-11-20, §16.268 C2220, C2306: the cap bounds each page's guarded body (a window past its keyframes keeps its text and passes by their footer lines only, C2254); the front matter above it (paths, URL, digests, title, summary), sized by the item's metadata rather than its bytes (often under 1 KB, about 2 KB with a long path, URL and summary), sits outside the cap, never budgeted; a [convert] edit re-reads local and inbox pages converted under other options, not recordings or Graph files, nor after an edit made before the first sync that recorded [convert] (lane B's C2297); a recording's page keeps its cap until it is read again for another reason (C2256 with C2253)
-    # Amended 2026-11-21, §16.273 C2532: the front matter's size is an example, never a bound: it is sized by the item's metadata, not its bytes
+    # Amended 2026-11-20, §16.268 C2220, C2306: the cap bounds each page's guarded body (a window past its keyframes keeps its text and passes by their footer lines only, C2254); the front matter above it, up to about 1 KB, sits outside the cap, never budgeted; a [convert] edit re-reads local and inbox pages converted under other options, not recordings or Graph files, nor after an edit made before the first sync that recorded [convert] (lane B's C2297); a recording's page keeps its cap until it is read again for another reason (C2256 with C2253)
+    # Amended 2026-11-21, §16.273 C2532: the front matter (paths, URL, digests, title, summary) is sized by the item's metadata rather than its bytes (often under 1 KB, about 2 KB with a long path, URL and summary); it sits outside the cap, never budgeted, so a page file passes the cap by its front matter; its size is an example, never a bound
     pandoc_path: Path | None = None  # None = the pypandoc_binary bundled pandoc, by absolute path
     # Amended 2026-10-17, §16.114 Q62: None = that pandoc, or on macOS its native arm64 copy when installed
     ocr: bool = True  # False = never build or run the on-device OCR helper (§16.25)
@@ -43247,9 +43247,11 @@ each sync, and a Graph file's page when its bytes next change. The ConvertConfig
 so, and a dated line at §16.258's C1886 paragraph withdraws its `(C1848's sheet-comment residual aside)`. No test
 pins the comment's words; the contract scan reads the dated lines.
 Amended 2026-11-20, §16.268 C2220, C2306: the cap bounds each page's guarded body; the publisher's front matter above
-it (paths, URL, digests, title, summary), sized by the item's metadata rather than its bytes (often under 1 KB, about 2 KB with a long path, URL and summary), sits outside the cap, never budgeted, so a page file passes the cap by its front matter.
+it, up to about 1 KB, sits outside the cap, never budgeted, so a page file can pass it by that much.
 Amended 2026-11-21, §16.273 C2532: the line above said the front matter is up to about 1 KB and a page passes the cap
-by that much; its size is an example, never a bound, set by the item's metadata.
+by that much; its size is an example, never a bound, set by the item's metadata: the front matter (paths, URL,
+digests, title, summary) is sized by the item's metadata rather than its bytes (often under 1 KB, about 2 KB with a
+long path, URL and summary), sits outside the cap, never budgeted, so a page file passes the cap by its front matter.
 
 **A zero-byte file's reason says it holds 0 bytes** (C2001, makes worse True; `agentsync.policy`, `agentsync.convert`;
 amends §16.233 C930; dated line at §16.28). Every zero-byte branch (`screen_file`'s Office guard, msg, diagram, the
@@ -44048,20 +44050,22 @@ caller's `_EMITTER_VERSION` moves one more step.
 said every page converted under any cap the config accepts stays within it, but a converter sizes only the body: the
 publisher writes `render_mirror_page`, the front matter then the body, so a page file passed 8,192 by its front matter
 (a 400-row CSV: body 7,354 bytes, front matter 967, file 8,321; a synced `.txt` 8,719 with 707 of front matter; the
-verifiers' runs at 1faa3f3a). Budgeting the front matter makes things worse: it holds the source's path, URL and
-title (the eTag lives in the manifest, not on the page), which do not follow the file's bytes, and the body's own `rendered_sha256` and token count, so a rename or
+verifiers' runs at 1faa3f3a). Budgeting the front matter makes things worse: it holds the source's path, URL, etag
+and title, which do not follow the file's bytes, and the body's own `rendered_sha256` and token count, so a rename or
 a longer URL would re-cut the body and change its hash and the cache, and the budget would feed on itself. The words
 now say the cap bounds the guarded body (the guard's banner and footer, a fence and a sheet's lists included; a
 recording's index, and a window past its keyframes, which keeps its text and passes by their footer lines only, C2254,
-aside), and the front matter above it (paths, URL, digests, title, summary), sized by the item's metadata rather than its bytes (often under 1 KB, about 2 KB with a long path, URL and summary), sits outside the cap, never budgeted. The same comment and row carry lane B's re-read words once (ruling 154, §16.267): a [convert] edit
+aside), and the front matter above it, up to about 1 KB (paths, URL, digests, title, summary), sits outside the cap,
+never budgeted. The same comment and row carry lane B's re-read words once (ruling 154, §16.267): a [convert] edit
 re-reads every local and inbox page converted under other options before the edit's sync, a few per sync, its note
 starting `sync again:` only while another sync reads more; an edit made before the first sync that recorded
 [convert] re-reads nothing, recordings and cloud (Graph) files are not re-read for an options edit, a Graph file's
 page takes a new cap when its bytes next change and a recording's keeps its cap until it is read again for another
 reason (C2297, C2256 with C2253, C2308). Test:
 `test_convert_page_cap.py::test_the_cap_bounds_the_guarded_body_and_the_words_say_the_front_matter_is_outside_c2220`.
-Amended 2026-11-21, §16.273 C2532: the 967 and 707 bytes above are examples, not a bound, and the eTag is not in a
-current page's front matter; the words above say so.
+Amended 2026-11-21, §16.273 C2532: the 967 and 707 bytes above are examples, not a bound: the front matter is sized
+by the item's metadata (often under 1 KB, about 2 KB with a long path, URL and summary), and the eTag above is not in a
+current page's front matter (`_provenance` sets it to None; it lives in the manifest).
 
 **§16.258's C2055 line names the two exceptions its sources name** (C2269; ruling 153; docs). §16.258's dated line
 for C2055 and C2091 said the config's comment and the ConvertConfig row say every page stays within any cap the
@@ -44883,6 +44887,8 @@ which `_provenance` sets to None (it lives in the manifest). No byte cap is adde
 reason stands). Test:
 `test_convert_page_cap.py::test_the_cap_bounds_the_guarded_body_and_the_words_say_the_front_matter_is_outside_c2220`
 (the new words in config.py and CONTRACTS, and a long path, URL and summary rendering front matter over 1 KB).
+Amended 2026-11-22, §16.279 C2662: the old dated lines keep their words (ruling 74): round 44 put back round 42's
+three passages word for word from f9e96ccd1^, and the C2532 dated line beside each carries the new words itself.
 
 **A comment author, chart title and pivot table stay raw in their sidecar record, and the page flattens each before
 escaping it** (C2519 with C2530 and C2452; ruling 167, data integrity; `agentsync.convert.xlsx`; amends §16.263
@@ -45452,6 +45458,21 @@ lands green), `::test_a_lost_runners_jobs_read_waits_out_a_spent_rate_limit_and_
 6) and `::test_a_not_read_line_names_ghs_first_error_line_not_its_hint_c2680` (an HTTP 502 stub, a stub whose
 cause follows a blank and CR line and comes before its `gh auth login` hint, and a 300-character listing error cut to
 200).
+
+**Round 42's dated lines keep their words, and each C2532 line carries the new ones** (C2662; ruling 186; docs and
+`tests/test_convert_page_cap.py`; amends §16.273 C2532). Round 43's C2532 rewrote three passages round 42 wrote, their
+2026-11-20 dates kept (§15's ConvertConfig comment, §16.263's C2220 line and §16.268's C2220 paragraph), and its new
+§16.263 line then described words no longer above it; ruling 74 keeps another round's text and dates the change. The
+three passages are back word for word from f9e96ccd1^ (`up to about 1 KB, sits outside the cap, never budgeted`, `so
+a page file can pass it by that much`, `path, URL, etag and title`), and each 2026-11-21 C2532 line carries the new
+words itself: §15's names what the front matter holds and that it is sized by the item's metadata (often under 1 KB,
+about 2 KB with a long path, URL and summary), outside the cap, never budgeted, its size an example; §16.263's keeps
+`the line above said ...`, true again, and adds the same words; §16.268's says the 967 and 707 bytes are examples and
+the eTag above is not in a current page's front matter, its `the words above say so` dropped. A dated line under
+§16.273's C2532 paragraph says the old lines keep their words. config.py's comment, which is not dated text, keeps the
+new words. The c2220 test asserts the §15 C2532 line's words and round 42's passages, and `1 KB, sits outside the cap`
+only against config.py's comment. Test:
+`tests/test_convert_page_cap.py::test_the_cap_bounds_the_guarded_body_and_the_words_say_the_front_matter_is_outside_c2220`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
