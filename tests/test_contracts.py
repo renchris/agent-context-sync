@@ -124,6 +124,7 @@ INSTALL_OPTIONS: dict[str, list[str]] = {
         "--confirm-install-agent",
         "--report-only",
         "--list-folders",
+        "--no-folder",
         "--timeout",
         "--timeout=*",
         "--cwd",

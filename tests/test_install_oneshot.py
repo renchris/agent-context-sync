@@ -1619,6 +1619,53 @@ def test_a_bare_rerun_over_an_inbox_only_config_says_no_folder_is_synced_yet_c24
     assert not [p for p in home.rglob("SKILL.md") if p.parent.name == "agentsync-docs"], "no skill written"
 
 
+NONE_CHOSEN_NOT = ("no folder is synced yet", "no folder to sync yet")
+
+
+def test_no_folder_records_the_persons_none_and_exits_0_c2658(env: dict[str, str], wheel: Path) -> None:
+    """B13 round 44 ruling 178, C2658: after the person answered the folder question with none, the prompt
+    ran a bare step 2, which exits 2 on `no folder to sync yet`, and the report scored that deliberate none as
+    a failed step 2. install.sh --no-folder does a bare step 2's work, logs the flag in its start line's args
+    so the report reads the none from install.log, exits 0 and ends on a NEXT naming the person's choice,
+    never the no-folder words the prompt's folder rule reads; over the inbox-only config it made, the same."""
+    want = (
+        "NEXT: the person chose no folder, so this Mac syncs none of their folders: go on to the report; if "
+        f'they choose one later, the run is: {INSTALL_SH} {wheel} --source-local "<folder>" (one '
+        f"--source-local per folder) [setup report: {report_path(env)}]"
+    )
+    first = install_sh(env, str(wheel), "--no-folder")
+    assert first.returncode == 0, first.stdout + first.stderr
+    assert last_line(first) == want and one_next(first), first.stdout + first.stderr
+    said = [ln for ln in (first.stdout + first.stderr).splitlines() if any(w in ln for w in NONE_CHOSEN_NOT)]
+    assert said == [], said
+    [start] = [ln for ln in install_log(env) if " start install.sh " in ln]
+    assert re.search(r" args=(.* )?--no-folder( |$)", start), start
+    assert ("config", "done", "0", "created") in steps(install_log(env)), install_log(env)
+    skill_next = (
+        "NEXT: the agentsync-docs skill is missing or out of date: run "
+        f"{env['HOME']}/.local/bin/agentsync sync"
+    )
+    again = install_sh({**env, "STUB_STATUS_OUT": skill_next}, str(wheel), "--no-folder")
+    assert again.returncode == 0 and last_line(again) == want, again.stdout + again.stderr
+    bare = install_sh({**env, "STUB_STATUS_OUT": skill_next}, str(wheel))
+    assert last_line(bare).startswith("NEXT: no folder is synced yet: "), "a bare re-run keeps C2401's NEXT"
+
+
+@pytest.mark.parametrize("other", ["--source-local", "--confirm-install-agent", "--list-folders"])
+def test_no_folder_is_refused_beside_a_folder_c2658(
+    env: dict[str, str], folder: Path, wheel: Path, other: str
+) -> None:
+    """B13 round 44 ruling 178, C2658: --no-folder beside a folder, background sync or the folder list
+    contradicts it, and is a usage error before anything is written."""
+    args = [other, str(folder)] if other == "--source-local" else [other]
+    if other != "--list-folders":
+        args = [str(wheel), *args]
+    cp = install_sh(env, *args, "--no-folder")
+    assert cp.returncode == 2 and "usage error: " in cp.stderr, cp.stdout + cp.stderr
+    assert "--no-folder" in cp.stderr or "takes no other option" in cp.stderr, cp.stderr
+    assert calls(env) == [] and not (Path(env["HOME"]) / "agent-context" / "sources.toml").exists()
+
+
 def test_a_no_folder_next_with_exit_0_is_one_step_2_says_to_ask_for_folders_c2316(
     env: dict[str, str], wheel: Path
 ) -> None:

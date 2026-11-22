@@ -4,6 +4,8 @@
 # Usage: scripts/install.sh [--source-local <DIR>]... [--confirm-install-agent
 #                           [--launcher <PATH>]] [--timeout <DURATION>]
 #                           [--cwd <DIR>] [--debug] [--non-interactive]
+#        scripts/install.sh --no-folder [--timeout <DURATION>] [--cwd <DIR>]
+#                           [--debug] [--non-interactive]
 #        scripts/install.sh --list-folders [-a | -n <NUMBER>] [--json]
 #        scripts/install.sh --report-only
 #        scripts/install.sh --version [--json]
@@ -33,6 +35,8 @@
 #   --log <STEP> <KIND> <WHAT> <FIX>
 #                             append one event to the friction log
 #   --log-start <AGENT>       start an attempt in the friction log
+#   --no-folder               the person chose no folder: set agentsync up
+#                             with none and exit 0; not with --source-local
 #   --non-interactive         accepted and ignored: the installer never asks
 #   --report-only             only write the setup report, then exit
 #   --source-local <DIR>      sync <DIR> as a local source; repeatable
@@ -91,6 +95,7 @@
 # Usage: scripts/install.sh [--source-local FOLDER ...] [--confirm-install-agent [--launcher PATH]]
 #                           [--timeout DURATION] [--cwd DIR] [--debug] [--non-interactive]
 #                           [--version] [--help] [help]
+#        scripts/install.sh --no-folder [--timeout DURATION] [--cwd DIR] [--debug] [--non-interactive]
 #        scripts/install.sh --report-only
 #        scripts/install.sh --list-folders
 #        scripts/install.sh --log-start AGENT | --log STEP KIND WHAT FIX
@@ -115,6 +120,11 @@
 #                           it from DIR)
 #   --debug                 also print the run's settings (the folder it runs in, what it installs, the config
 #                           and the limits) on stderr, each line starting "debug: ", the home written as ~
+#   --no-folder             the person answered the folder question with none: step 2's work with no folder (the
+#                           config, the inbox and the status), logged as args=--no-folder on install.log's start
+#                           line, exit 0, and a NEXT that names their choice and never says "no folder is synced
+#                           yet" or "no folder to sync yet"; a usage error beside --source-local or
+#                           --confirm-install-agent (B13 round 44 ruling 178, C2658)
 #   --non-interactive       accepted and ignored: the installer never asks a question
 #   --source-local=FOLDER, --launcher=PATH, --timeout=DURATION, --cwd=DIR
 #                           the same options; a folder named like an option needs this form or ./ before its name
@@ -402,7 +412,8 @@
 # the NEXT and the run exits 1. A run without a folder over an existing config ends on that status's NEXT
 # too (its "no folder is synced yet" step; where that status names the missing agentsync-docs skill first,
 # which no sync without a folder writes, the NEXT is "no folder is synced yet:" with the --source-local re-run,
-# exit 0 kept: B13 round 43 ruling 163, C2401). Nothing
+# exit 0 kept: B13 round 43 ruling 163, C2401; after --no-folder the NEXT is the person's choice instead,
+# B13 round 44 C2658). Nothing
 # else it prints is an instruction: agentsync is always called by its full path (~/.local/bin/agentsync), so
 # nothing needs adding to PATH or to a shell profile; uv's "not on your PATH ... update-shell" hint is
 # filtered out of its output; every other agentsync call is told to print no "next:" hints of its own (the
@@ -452,7 +463,7 @@
 # Exit status: 0 when every step ran, 2 on a usage error (one the argument parsing stops at, such as a path that is
 # no agentsync checkout or wheel, leaves no report and no "NEXT:" line, but for a relative or ~user
 # AGENTSYNC_CONFIG, whose one NEXT: line says changing it is the person's: B13 round 44 C2728) and when a run
-# created the config and has no folder to sync (its NEXT names --list-folders; a run over an existing config exits 0), 1 when a step failed (a
+# created the config and has no folder to sync (its NEXT names --list-folders; a run over an existing config, and a --no-folder run, exit 0), 1 when a step failed (a
 # status [FAIL] that stops step 6, a listing held for an Allow click, a network/proxy/TLS failure
 # of uv, a failed first sync, a background run that exited 80, and --confirm-install-agent that did not
 # install the LaunchAgents), 3 when the wait ran out before a background run exited 0 (exit 79 then: macOS
@@ -1723,6 +1734,7 @@ esac
 DRY_RUN=0
 [ "${AGENTSYNC_INSTALL_DRY_RUN:-}" != "1" ] || DRY_RUN=1 # the dry run (see the header)
 INSTALL_AGENT=0
+NO_FOLDER=0 # --no-folder: the person answered the folder question with none (B13 round 44 ruling 178)
 REBUILD=0
 [ "${AGENTSYNC_REBUILD_LAUNCHER:-}" != "1" ] || REBUILD=1 # developer only: rebuild an up-to-date launcher (step 3)
 REPORT=1
@@ -11278,13 +11290,17 @@ record_flush() { # ORIG_ARGS, ORIG_SHOWN and BASE_ARGS from RECORDED, in the ord
 	local r w
 	for r in ${RECORDED[@]+"${RECORDED[@]}"}; do
 		w="${r#?:}"
-		if [ -n "$RUN_DIR" ] && [ "${r%%:*}" != a ]; then
+		if [ -n "$RUN_DIR" ] && [ "${r%%:*}" != a ] && [ "${r%%:*}" != n ]; then
 			case "$w" in /* | \~ | \~/*) ;; *) w="$PWD/${w#./}" ;; esac # a ~ folder is the home, not DIR
 		fi
 		case "$r" in
 		f:*)
 			ORIG_ARGS="$ORIG_ARGS --source-local $(printf '%q' "$w")"
 			ORIG_SHOWN="$ORIG_SHOWN --source-local $(shown_arg "$w")"
+			;;
+		n:*) # --no-folder: a re-run of this run repeats it, a --source-local re-run (BASE_ARGS) never
+			ORIG_ARGS="$ORIG_ARGS $w"
+			ORIG_SHOWN="$ORIG_SHOWN $w"
 			;;
 		*)
 			ORIG_ARGS="$ORIG_ARGS $(printf '%q' "$w")"
@@ -11337,7 +11353,7 @@ option_name() { # WORD
 	case "$1" in
 	--confirm-install-agent | --report-only | --list-folders | --all | --limit | --json | --no-report | --log-start | \
 		--log | --log-end | --launcher | --source-local | --timeout | --cwd | --debug | --non-interactive | --version | \
-		-h | --help | --) return 0 ;;
+		--no-folder | -h | --help | --) return 0 ;;
 	*) return 1 ;;
 	esac
 }
@@ -11378,6 +11394,10 @@ while [ $# -gt 0 ]; do
 		;;
 	--report-only) REPORT_ONLY=1 ;;
 	--list-folders) LIST_FOLDERS=1 ;;
+	--no-folder) # the person chose no folder: a bare step 2, ended on their choice (B13 round 44 ruling 178)
+		NO_FOLDER=1
+		RECORDED+=("n:$1")
+		;;
 	--timeout)
 		[ $# -ge 2 ] || usage_error '--timeout needs a DURATION'
 		take_timeout "$2"
@@ -11475,6 +11495,12 @@ while [ $# -gt 0 ]; do
 	esac
 	shift
 done
+# --no-folder is a bare step 2 that the person chose: a folder beside it, or background sync for no folder, is
+# a contradiction, refused before anything is written (B13 round 44 ruling 178, C2658)
+if [ "$NO_FOLDER" -eq 1 ] && [ "$LIST_FOLDERS" -eq 0 ] && [ "$REPORT_ONLY" -eq 0 ]; then
+	[ "${#SOURCE_LOCALS[@]}" -eq 0 ] || usage_error "--no-folder goes with no --source-local: the person chose no folder"
+	[ "$INSTALL_AGENT" -eq 0 ] || usage_error "--no-folder goes with no --confirm-install-agent: background sync needs a folder"
+fi
 [ "$NO_REPORT_SEEN" -eq 0 ] || warn "--no-report is deprecated and ignored: this run still writes the setup report; drop the option"
 # --all and --limit size the folder list only; past 9 digits a limit is every folder (no shell overflow)
 if [ -n "$LIST_OPT" ]; then
@@ -13865,10 +13891,16 @@ loop_next() { # sets next, and EXIT_RC to 1 when that status found something tha
 	fi
 }
 EXIT_RC=0
+# --no-folder's NEXT: the person's choice, said as theirs, with the run that adds a folder if they choose one later
+# (B13 round 44 ruling 178, C2658); never "no folder is synced yet" or "no folder to sync yet", so the setup
+# prompt's folder rule never fires on it
+NO_FOLDER_NEXT="the person chose no folder, so this Mac syncs none of their folders: go on to the report; if they choose one later, the run is: $SELF$BASE_ARGS --source-local \"<folder>\" (one --source-local per folder)"
 LOOP_STOPPED="" # the closing status's rc when a signal stopped it: install.log's report line says so (P14)
 TCC_CLICK="turn on agentsync-launcher in System Settings > Privacy & Security > Files and Folders" # a click, not a command
 if [ "$DRY_RUN" -eq 1 ]; then
 	next="re-run without AGENTSYNC_INSTALL_DRY_RUN=1 to apply the steps above"
+elif [ "$NO_FOLDER" -eq 1 ] && [ "$CONFIG_STATE" = "created" ] && [ "$HAVE_SOURCES" -eq 0 ]; then
+	next="$NO_FOLDER_NEXT" # the person's none, exit 0: never the no-folder words the prompt's folder rule reads
 elif [ "$CONFIG_STATE" = "created" ] && [ "$HAVE_SOURCES" -eq 0 ]; then
 	EXIT_RC=2 # a first run with no folder: an existing config (inbox-only too) ends on status's NEXT below
 	next="no folder to sync yet: list them with $SELF --list-folders, choose the folders to sync, then run: $SELF$BASE_ARGS --source-local \"<folder>\" (one --source-local per folder)"
@@ -13919,11 +13951,12 @@ else # the loop's NEXT, after the background-sync result when it was asked for
 	# a config with no folder but the inbox: status puts its skill rule before its no-folder rule, and step 2
 	# never syncs without a folder, so the skill stays missing and status said to sync; its place goes to the
 	# no-folder NEXT with the --source-local re-run, exit 0 kept, after the [FAIL], held-listing and doctor
-	# checks (B13 round 43 ruling 163, C2401)
+	# checks (B13 round 43 ruling 163, C2401), or --no-folder's NEXT, the person's choice (B13 round 44 C2658)
 	if [ "$HAVE_SOURCES" -eq 0 ] && [ "$EXIT_RC" -eq 0 ]; then
 		case "$next" in
 		"the agentsync-docs skill is missing or out of date"*)
 			next="no folder is synced yet: list them with $SELF --list-folders, choose the folders to sync, then run: $SELF$BASE_ARGS --source-local \"<folder>\" (one --source-local per folder)"
+			[ "$NO_FOLDER" -eq 0 ] || next="$NO_FOLDER_NEXT" # the person chose none (B13 round 44 C2658)
 			;;
 		esac
 	fi
