@@ -1665,6 +1665,58 @@ def test_a_bare_rerun_over_an_inbox_only_config_says_no_folder_is_synced_yet_c24
     assert not [p for p in home.rglob("SKILL.md") if p.parent.name == "agentsync-docs"], "no skill written"
 
 
+def test_a_bare_rerun_counts_a_paused_or_retired_folder_and_syncs_c2700(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 44 ruling 179, C2700, with the real agentsync: install.sh's HAVE_SOURCES counts every
+    non-inbox source whatever its state, while the report's Loop line reads a sync with no live folder as
+    `inbox synced`. The state-blind count stays, as the gate for step 6: a bare re-run over a live inbox
+    beside one paused and one retired local source still runs the first sync, which writes the skill and
+    applies the retirement, exits 0, and ends on status's own no-folder NEXT; the report reads `inbox
+    synced`."""
+    env = real_env
+    home = Path(env["HOME"])
+    cs = _cloud(env) / "OneDrive-Contoso"
+    paused, retired = cs / "Kestrel Plans", cs / "Wombat Notes"
+    for d in (paused, retired):
+        d.mkdir(parents=True)
+        (d / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(
+        env, str(wheel), "--source-local", str(paused), "--source-local", str(retired), timeout=300
+    )
+    assert first.returncode == 0, first.stdout + first.stderr
+    cfg = home / "agent-context" / "sources.toml"
+    text = cfg.read_text(encoding="utf-8")
+    tables = text.split("[[source]]")
+    for i, t in enumerate(tables):
+        if str(paused) in t:
+            tables[i] = t.replace('kind = "local"\n', 'kind = "local"\nstate = "paused"\n', 1)
+        elif str(retired) in t:
+            tables[i] = t.replace(
+                'kind = "local"\n',
+                'kind = "local"\nstate = "retired"\nretired_reason = "made-up reason"\n',
+                1,
+            )
+    cfg.write_text("[[source]]".join(tables), encoding="utf-8")
+    assert cfg.read_text(encoding="utf-8").count("state = ") == 2, cfg.read_text(encoding="utf-8")
+    for skill in [p for p in home.rglob("SKILL.md") if p.parent.name == "agentsync-docs"]:
+        skill.unlink()  # the first run's: the re-run's own sync writes it again
+    again = install_sh(env, str(wheel), timeout=300)
+    assert again.returncode == 0, again.stdout + again.stderr
+    run = re.search(r" run=(\S+) start ", [ln for ln in install_log(env) if " start install.sh " in ln][-1])
+    assert run, install_log(env)
+    mine = [ln for ln in install_log(env) if f" run={run.group(1)} " in ln]
+    assert ("first-sync", "done") in [s[:2] for s in steps(mine)], mine
+    assert [p for p in home.rglob("SKILL.md") if p.parent.name == "agentsync-docs"], (
+        "the sync wrote the skill"
+    )
+    assert one_next(again) and last_line(again).startswith("NEXT: no folder is synced yet:"), last_line(again)
+    loop = [
+        ln for ln in report_path(env).read_text(encoding="utf-8").splitlines() if ln.startswith("- Loop: ")
+    ]
+    assert loop and loop[0].startswith("- Loop: inbox synced"), loop
+
+
 NONE_CHOSEN_NOT = ("no folder is synced yet", "no folder to sync yet")
 
 
