@@ -4154,10 +4154,16 @@ def test_the_cap_and_sidecar_dated_lines_say_what_the_page_and_sidecar_hold_c247
         "**git's", 1
     )[0]
     assert "A reader drops exactly those two lines, and only when line 1 is the banner" in c2301
-    guard = inspect.getsource(registry._with_sidecar_digests)
+    # B13 round 44 C2723 with C2712 (ruling 176): every text sidecar takes the header, and the reader drops
+    # line 1 when it is the banner, then line 2 when it is empty
     assert (
-        'banner + b"\\n\\n" + raw if text_sidecar else raw' in guard and "not raw.startswith(banner)" in guard
-    )
+        "Amended 2026-11-22, §16.278 C2723 (with C2712): the guard writes the banner line and an empty line"
+        " on every text sidecar, the skip for bytes that already start with the banner gone. A reader drops"
+        " line 1 when it is the banner, then line 2 when it is empty"
+    ) in c2301
+    guard = inspect.getsource(registry._with_sidecar_digests)
+    assert 'banner + b"\\n\\n" + raw if text_sidecar else raw' in guard and "startswith(banner)" not in guard
+    assert "text_sidecar = name.lower().endswith(_TEXT_SIDECAR_SUFFIXES)\n" in guard
     assert registry._TEXT_SIDECAR_SUFFIXES == (".txt", ".md") and "\n" not in policy.UNTRUSTED_BANNER
 
 

@@ -157,6 +157,57 @@ def test_the_guard_reserve_holds_the_banner_and_one_footer_line_c2044() -> None:
         assert want - 1 <= added <= want  # the reserve counts a line end the footer's rstrip takes back
 
 
+def _read_text_sidecar(raw: bytes) -> bytes:
+    """CONTRACTS' reader rule (B13 round 44 C2723, ruling 176): drop line 1 when it is the banner, then line
+    2 when it is empty."""
+    banner = policy.UNTRUSTED_BANNER.encode("utf-8") + b"\n"
+    if raw.startswith(banner):
+        raw = raw[len(banner) :]
+        if raw.startswith(b"\n"):
+            raw = raw[1:]
+    return raw
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        f"{policy.UNTRUSTED_BANNER}\nContoso content on line two\nline three\n".encode(),
+        f"{policy.UNTRUSTED_BANNER}\n\nContoso content after an empty line\n".encode(),
+        b"\nContoso content after an empty line\n",
+        b"Contoso plain first line\n",
+    ],
+    ids=["banner-then-content", "banner-then-empty", "empty-first", "plain"],
+)
+def test_every_text_sidecar_opens_with_the_banner_and_reads_back_exactly_c2723(raw: bytes) -> None:
+    """B13 round 44 C2723 with C2712 (ruling 176): the guard skipped the header when a sidecar's bytes already
+    began with the banner, so a reader dropping two lines lost a source's line 2. Every text sidecar now
+    opens with the banner and an empty line, and the reader rule gives every one back byte for byte."""
+    banner = policy.UNTRUSTED_BANNER.encode("utf-8")
+    for name in ("full-text.txt", "contoso.comments.md"):
+        unit = make_unit(
+            unit_id="whole", kind=UnitKind.WHOLE, index=0, of=1, name="", file_stem="", title="t",
+            summary="s", body="Contoso", sidecars=((name, raw),),
+        )  # fmt: skip
+        [(_, data)] = _with_sidecar_digests(_bannered(unit)).sidecars
+        assert data.startswith(banner + b"\n\n"), name
+        assert _read_text_sidecar(data) == raw, name
+
+
+def test_a_capped_markdown_source_opening_with_the_banner_reads_back_exactly_c2723(tmp_path: Path) -> None:
+    """B13 round 44 C2723 with C2712: a capped markdown source whose line 1 is the banner and line 2 a heading
+    rides whole in full-text.txt; its sidecar's line 2 is the guard's empty line and the reader rule gives
+    back the heading and every line after it."""
+    source = f"{policy.UNTRUSTED_BANNER}\n# Contoso heading\n{_filler(40_000)}"
+    src = tmp_path / "contoso-notes.md"
+    src.write_text(source, encoding="utf-8")
+    [unit] = _pages(src, 8192)
+    data = dict(unit.sidecars)["full-text.txt"]
+    assert data.split(b"\n")[1] == b""
+    back = _read_text_sidecar(data).decode("utf-8")
+    assert back.split("\n")[:2] == [policy.UNTRUSTED_BANNER, "# Contoso heading"]
+    assert back.rstrip("\n") == source.rstrip("\n")
+
+
 @pytest.mark.parametrize("cap", [8192, 20_000])
 def test_a_cap_body_page_with_other_sidecars_stays_within_the_cap_c2044(cap: int) -> None:
     """B13 round 41 C2044: `_cap_body` (every converter's but text's and xlsx's: eml, msg, pdf, pptx, vtt,

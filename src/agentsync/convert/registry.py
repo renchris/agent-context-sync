@@ -98,7 +98,10 @@ def _with_sidecar_digests(unit: RenderedUnit) -> RenderedUnit:
     sidecars: list[tuple[str, bytes]] = []
     banner = policy_mod.UNTRUSTED_BANNER.encode("utf-8")
     for name, raw in unit.sidecars:
-        text_sidecar = name.lower().endswith(_TEXT_SIDECAR_SUFFIXES) and not raw.startswith(banner)
+        # Every text sidecar, a source opening with the banner included: a reader drops line 1 when it is the
+        # banner, then line 2 when it is empty, and gets the source back byte for byte (B13 round 44 C2723,
+        # C2712; ruling 176). The guard runs once per unit, so no bytes can already carry this header.
+        text_sidecar = name.lower().endswith(_TEXT_SIDECAR_SUFFIXES)
         sidecars.append((name, banner + b"\n\n" + raw if text_sidecar else raw))
     footer = "\n".join(
         f"{SIDECAR_DIGEST_PREFIX}`{name}` sha256 {hashlib.sha256(data).hexdigest()}"

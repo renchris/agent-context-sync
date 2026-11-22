@@ -43903,6 +43903,11 @@ starts with two lines the converter guard adds (`registry._with_sidecar_digests`
 escaped record. A reader drops exactly those two lines, and only when line 1 is the banner: the guard adds none to
 bytes that already start with it, and a full-text body may itself start with `> ` or an empty line. The page footer's
 sha256 covers the bannered bytes.
+Amended 2026-11-22, §16.278 C2723 (with C2712): the guard writes the banner line and an empty line on every text
+sidecar, the skip for bytes that already start with the banner gone. A reader drops line 1 when it is the banner, then
+line 2 when it is empty; that gives back every sidecar written from now on byte for byte, a source opening with the
+banner or an empty line included, and an older sidecar written under the skip keeps its source's line 2. A sidecar
+written under the skip is rewritten when its source next changes: `BANNER_VERSION` does not move.
 
 **git's settings for the seed are read as NUL-ended records** (C2304; ruling 152; `agentsync.convert.speech`; amends
 §16.54 Q52). `_git_config` split `git config --type=path --get-urlmatch http <NEMO_URL>`'s output with
@@ -45202,7 +45207,26 @@ digest still reads) and a run id of 1 to 18 ASCII digits, else None; `_drift_sin
 
 ### 16.278 Round 44: the converters: a failed zero-byte re-read put back whole, every text sidecar's banner, an xlsx cut costed as it renders, and Office content types read from the parse (2026-11-22, wave B13 round 44 lane E)
 
-Reserved for round 44 lane E of B13.
+Round 44's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 44"; specs `round44/items/C<n>.md`, the
+verifier's corrected fix built as the lead's rulings 175, 176, 184, 185 and 186 settle it). A dated line this round
+writes reads `Amended 2026-11-22, §16.278 C<n>`.
+
+**Every text sidecar opens with the banner and an empty line** (C2723 with C2712; ruling 176;
+`agentsync.convert.registry`; amends §16.268 C2301). `_with_sidecar_digests` added the header only when a sidecar's
+bytes did not already start with the untrusted-content banner, and §16.274's C2415 line told a reader to drop two lines
+whenever line 1 is the banner, so a capped markdown or text source whose line 1 is the banner and line 2 a heading
+(`# Contoso heading`) lost the heading to that reader. No converter writes the banner into a sidecar and the guard runs
+once per unit, so the skip guarded nothing: it is gone, and every `.txt` and `.md` sidecar starts with the banner line
+and an empty line. The reader rule, C2301's dated line under C2415, reads: drop line 1 when it is the banner, then line
+2 when it is empty; that gives back every sidecar written from now on byte for byte, a source that opens with the
+banner, the banner and an empty line, or an empty line included. No `BANNER_VERSION` bump: it moves every
+banner-wrapped conversion's action key while re-reading nothing (C2270), so it would refresh no sidecar on disk; a
+sidecar written under the skip is rewritten when its source next changes. Tests:
+`test_convert_page_cap.py::test_every_text_sidecar_opens_with_the_banner_and_reads_back_exactly_c2723` (banner then
+content, banner then an empty line, an empty first line, a plain one) and
+`test_convert_page_cap.py::test_a_capped_markdown_source_opening_with_the_banner_reads_back_exactly_c2723`; the pin
+`tests/test_deploy_pack.py::test_the_cap_and_sidecar_dated_lines_say_what_the_page_and_sidecar_hold_c2477_c2415` reads
+the guard with no skip and the new line.
 
 ### 16.279 Round 44: the prompt goes to v41 (only what setup prints and this shell holds), ship-land's superseded-run lookup in its rate wait, dated lines in place of rewrites, and the guides (2026-11-22, wave B13 round 44 lane D)
 
