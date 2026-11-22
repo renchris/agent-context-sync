@@ -3276,6 +3276,120 @@ leftovers (C2495) and C2488 (Gemini). The specs cite `bd65e0e1`'s line numbers, 
 `lanes/COMMON42.md` and `docs/lanes/COMMON.md` now say so. Round 44 rehearses v40, with v39's block (`1433dd16`) as
 scenario C's first old copy.
 
+### B13 round 43 landed (2026-11-22)
+
+All five lanes landed, and the prompt is now v40 (`5cf1b540`, lane D's commit for C2406, C2408, C2419 with C2524, C2420,
+C2523, C2538, C2535, C2536 and C2541, ruling 170). Notes `lanes/r43-<lane>.md`, lead notes `round29/lead-notes.md`. Of
+the 123 confirmed items, 105 are built on trunk: the triage gave the lanes 107 (RA 19, RB 19, B 24, E 20, D 25) and the
+lead 16 (lane L), and the count is the 123 less the 16 lane L items, which went into round 44's kit and brief, not into
+shipped files, less C2469 (lane RB's, unbuilt) and C2470 (lane E's, recorded not built), so 123 - 16 - 2 = 105. The
+lead's `7acb0255` carries rulings 157 to 170, reserves §16.270 to §16.274 and carries C2480's round-agnostic result-note
+pin (the triage's call 21; ci `44909703610` success); on it the lanes landed 81 commits (`git log --oneline
+7acb0255..5affa1ab`), each landed tip's CI read back green by the lead (`5affa1ab`'s CI: ci `44989244934` and diagrams
+`44989244964` success). Lane D's first land came first, `ebaa3d4e` to `a87872a2` (8, its first 12 items; ci
+`44920047919` and diagrams `44920047917` success), then lane B's 24 items, `8ba890e1..bb3cf651` (6, ci `44930177067`
+success), and lane E's, `5eb373b3` to `dea3fabc` (18, ci `44938342369` and diagrams `44938342349` success). Lanes RA and
+RB then landed in one `scripts/ship-land.sh` run, `09b13195` to `a7151574` (12: lane RA's halves of rulings 157 and 158,
+`09b13195..22401d64`, then lane RB's C2432, C2430, C2496, C2436, C2466 and C2468), so no trunk commit carries one half
+(ci `44953728522` and diagrams `44953728518` success). Lane RA's other 11 followed, `bde9b284..cd368d72` (ci
+`44963011118` and diagrams `44963011116` success), then lane RB's second land, `b13ca8f0..e41d6e3e` (14, ci
+`44971418654` and diagrams `44971418627` success), lane D's second, `5cf1b540..23528563` (5: v40 after lane RB's printed
+lines for C2463 and C2401, ruling 164's README line, C2477 with C2415, C2459 with lane RA's rows, and lane RB's C2423
+and C2401 words; ci `44978747375` and diagrams `44978747359` success), lane RB's third, `7d11d040..0036704f` (6: ruling
+162's installer line, C2440, C2540, C2471, a C2498 follow-up and §16.271; ci `44984122069` and diagrams `44984122140`
+success), and last lane D's third, `5affa1ab` (lane RB's C2471 and ruling 162's words in the guides). Lane D
+self-recorded one `git fetch` in its own worktree (C2486, below).
+
+C2469 (round 42's C2263, round 41's C2060) is still unbuilt: the operator's class C decision `1476293d00a3` was open at
+lane RB's start and again before its last land, so ruling 150's strict xfail stays (`4 xfailed` at `0036704f`) and
+§16.271 says so; the commit that lands it must still drop lane D's C2259 caveat and its pin. C2470, the one-shot
+zero-byte pass for `.drawio` stubs, is recorded not built with a measured reason: only builds from the diagram
+converter's arrival (`f94ee869`, 2026-10-11) to C930 (`18ba64ff`, 2026-11-04) stored a `conversion failed` stub for a
+zero-byte `.drawio`, while the field build (`4a42af93`) stored `refused: no converter for .drawio`, which today's build
+reads once and ends `empty-output`, so the pass would read no row a field install holds while adding a second token and
+mark namespace to every source. Lane RA's one deviation, accepted by the lead: C2430's docs path under `/` stays
+registered, since skipping it would print a name such as `/Contoso Legal` in clear and registering it only over-cuts
+(`~/agent-context/docs` to `~/agent-context<folder-1>`). Lane E had a fresh read-only review on every builder commit,
+and lanes B and D ran each new test once against its unfixed source. The lead's 16 went into round 44's kit
+(`round44/tools`, 1109 checks passing in its own `kit-test.sh`). The class B packet `767198a7eec3` (the triage's 21
+calls) has every course on origin/main and is actioned.
+
+Choices that differ from a spec's words, each with its measured reason in the lane's note: C2466's finder row quoted a
+whole command, so its head did not follow the quote, and the row in `_r142_lines` puts the quote right before
+`add-source`; C2497's printf `%q` and as-written pandoc spellings, found by lane RB's review, are cut too (`cd368d72`);
+and C2496's line-final `\` row is in the Python-only C2290 test, since in a friction cell a ` | -` follows it (lane RA).
+The `%q` form and the quote forms doctor did not pick of C2432's pandoc path are cut by the shell report alone and
+tested there; a configured `pandoc_path` or `docs_repo` written with `//` or `/./` is normalized before it is paired (a
+review find); C2440's pattern is built to cli's real lines, which end ` (<kind>, <state>), not an inbox source` and
+which the verifier's pattern matched none of; C2471's two maps became one key map, and install.log's late words number a
+library only when its path is on disk; C2534's refusal of a relative `AGENTSYNC_CONFIG` holds for install runs, the dry
+run included, never for `--report-only` or `--list-folders`; and the C2430 harness where the shell's Status section
+really runs was not built, so the shell's `- docs repo:` and `- inbox:` Configuration lines are never compared (lane
+RB). Ruling 162's answer is a separate `inbox state:` line from `config.inbox_state`, not a suffix on `inbox:` and not
+in cli.py, and a folder above the inbox that refuses a search reads `not added (no source on <folder>)`, or `live
+<folder>` when a source is stored there; C2508's replan plans the page on every call to compare its body digest; and
+C2424's mirror this account cannot walk counts as holding a converted page (lane B). C2518's split of `_plain` is not
+built, since C2528 settles it; C2529's tests use the middle of the measured cap windows, the spec's caps lying outside
+them; C2516's cut is costed in one sweep (4,000 cells from 100 seconds to 0.1); C2451's close needs a run at least the
+opener's whole run (CommonMark); C2512 adds `Manifest.delete_meta_prefix` to lane B's manifest.py; and C2532's dated
+line is in §16.263, not §16.258 (lane E). C2478's table has five jobs past 70 minutes, not four; C2483 is option (a),
+its test's name kept; C2457's and C2464's stale sentences take dated lines, not rewrites; C2460's `not read (<why>)` now
+comes only when reading the folder fails with an error; and a fresh reviewer's five misreadings of the v40 draft were
+fixed before its commit (lane D).
+
+For later lanes and the rehearsal, from each lane note's closing section: status keeps `inbox: <path>` byte for byte and
+adds `inbox state: <words>` only when no live inbox source sits there, a line that can hold a source id and the inbox
+path, so the reports' cuts must cover it; `STUB_RENDER` is 7, so a v40 home's first sync rewrites every stub it can
+rebuild once (one page-only commit), and `mirror/CLAUDE.md` and the skill once; a waiting stub reads `# [WAITING]`,
+curate has a `SOURCE-SUPERSEDED` verdict, a removed part's CHANGELOG line reads `- M <path> (part no longer produced)`,
+and a lock wait with no recorded holder has its own mark (lane B); install.sh's `-I` snippet calls `config.inbox_state`
+only when the installed build has it, else an inline fallback that uses `paths.same_folder` where that build has it
+(lane RB); every `_cap_body` caller
+stepped its emitter once, xlsx to 1.0.5 (lane E); a lane that cherry-picks from side worktrees never cites a builder or
+review sha in CONTRACTS or a test docstring, since `test_a_cited_commit_is_on_the_trunk` stopped lane E's first land at
+the gate (exit 5, nothing pushed); and v40's new paths for round 44 to exercise are an Allow click or denial on the
+list's NEXT, a person answering none to the which-folders question, a refused step 2 that prints `docs repo:` and
+`inbox:` (C2463) against a usage error that prints no `inbox:` line, a custom `AGENTSYNC_SETUP_REPORT` (the final
+message names that bring-back.md) and another live inbox source beside another kind's source on the kept folder (lane
+D). Lane D breached C2486 once, a `git fetch -q` in its lane worktree right after writing the rule, and recorded it; no
+land failed on it, and the harvest's scan will find it. The branches `b13/r43-b2` and `b13/r43-d-v40` stay under the
+worktree guard, every commit of each on trunk by patch.
+
+| Lane | Landed (lane commits) |
+|---|---|
+| D | `ebaa3d4e` to `a87872a2` (8), `5cf1b540..23528563` (5; v40 at `5cf1b540`), `5affa1ab` (1); 25 items |
+| B | `8ba890e1..bb3cf651` (6, 24 items) |
+| E | `5eb373b3` to `dea3fabc` (18, 19 items; C2470 recorded not built) |
+| RA | `09b13195..22401d64` in the joint run (6), `bde9b284..cd368d72` (11); 19 items |
+| RB | `a451a740..a7151574` in the joint run (6), `b13ca8f0..e41d6e3e` (14), `7d11d040..0036704f` (6); 18 items, C2469 unbuilt |
+| Joint (RA, RB) | `09b13195` to `a7151574` (12) |
+
+Learnings: from the round's launch (2026-11-21 10:28Z) to the last lane land (`5affa1ab`, 04:19Z on 2026-11-22) took
+about 18 hours (17 hours 51 minutes). The `next`, `next2` and `next4` accounts were weekly-exhausted (`next4` resets
+2026-11-22 09:00Z), so every lane ran on `next3`. Named teammates could not spawn in lane RB's pane (teammate mode
+iterm2, with no backend under kitty), so its builders ran as foreground subagents in separate worktrees, each followed
+by a fresh reviewer and a fix pass; its three reviews found the `//` and `/./` leak, a SIGPIPE fail-open in C2498's scan
+(`report_words_cut` died on the scan's early exit, read as nothing found) and four C2410, C2440 and C2471 defects, a
+fifth found in its fix pass. The machine's test-slot queue ran hours deep, so lane RB's builders' `--affected` runs
+were cut and each of its lands' full `scripts/gate.sh` was the gate of record; lane D's three land gates took 3,155,
+3,362 and 3,053 seconds.
+
+Round 44: the round 43 workflow (`round43/round43-workflow.js` through `round44/tools/edit.py` and `edit-xvendor.py`,
+codex-only: the allow rule for `~/.claude/scripts/agy-review.sh` is the operator's) with the harvest list in
+`round44/tools/harvest-lead.txt`, on this section's landed tip passed as its full 40-hex sha, BASE `7acb0255`, ids C2601
+and up, prompt v40 (v39's block from `1433dd16` as scenario C's first old copy), outputs `round44/`. Its harvest opens
+with the privacy residuals: a quote wrapping a whole command before a head (`'~/.local/bin/agentsync add-source ~/Wombat
+Ledger/x' first`) still prints `Ledger/...` in both reports (C2466's residual), and `--cwd=is not a folder this run can
+enter: <name>` (round 43's C2467, refuted, so nothing covers it) leaves the name in clear in both. Then come lane RB's
+four Python-side findings for lane RA, which had closed: a source id `it` beside a library `IT` is `<library-1>` in the
+agentsync report and `<source-1>` in the shell's; a folder `it` after a library `IT` makes the agentsync report
+private-only and not the shell's; an install.log path not on disk prints in clear in the agentsync report where the
+shell cuts it to `<folder-N>`; and an on-disk CloudStorage folder neither configured nor listed is numbered by the
+agentsync report's listing alone. Lane E's carry-forward, pre-existing, follows: an xlsx list-sidecar record can be read
+two ways (an author `Ana): forged` gives `A1 (Ana): forged): x`, and a pivot name holding ` at ` splits wrong). While
+its slots run, the lead reads trunk with `round44/tools/trunk.sh`, never a fetch in the operator checkout (C1470, C1661,
+C2066). The stop rule names Codex and Gemini: a clean round without Gemini goes to the operator before the loop closes.
+
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be
