@@ -1829,14 +1829,17 @@ class Publisher:
         """Re-render, in ``rows`` (an item's output rows about to be stored), each kept ``unit-removed`` whole
         tombstone whose ``superseded_by`` the item's live pages there no longer give, so it never names a page
         that moved or went (B13 round 43 C2510, ruling 164), nor one of an item deleted upstream, moved out of
-        scope or retired (``tombstone``, with ``source_exists`` False; B13 round 44 C2646 with C2706).  Its
+        scope or retired (``tombstone``, with ``source_exists`` False; B13 round 44 C2646 with C2706), when
+        a removed part's tombstone also drops its ``still exists`` clause (C2613).  Its
         row takes the new digests in place, its deleted_at, reap_after and last_commit kept; one M change
         each."""
         live = [r.output_path for r in rows if r.status is not OutputStatus.TOMBSTONE]
         changes: list[MirrorChange] = []
         for n, out in enumerate(rows):
-            if out.status is not OutputStatus.TOMBSTONE or out.unit_id != UnitKind.WHOLE.value:
+            if out.status is not OutputStatus.TOMBSTONE:
                 continue
+            if out.unit_id != UnitKind.WHOLE.value and source_exists is not False:
+                continue  # a removed part names no successor; only the item's going changes its words
             tomb = self._manifest.get_tombstone(out.output_path)
             if tomb is None or tomb.reason != _UNIT_REMOVED:
                 continue

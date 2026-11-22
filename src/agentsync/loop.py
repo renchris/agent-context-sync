@@ -1779,11 +1779,9 @@ def next_step(
     # from, and an empty draft is not one to confirm (B13 round 43 C2424, ruling 163).  An empty draft over an
     # empty mirror takes this step whether or not topic pages exist, as docs_waits drops its wait by the same
     # _draft_suppressed: rule 5 never points at a WAITING ON YOU line nothing prints (B13 round 44 C2707).
-    converted = _has_converted_page(config.layout)
-    if (not pages and questions is None and not converted) or (
-        questions is not None
-        and not confirmed
-        and _draft_suppressed(eval_dir, config.layout, converted=converted)
+    # Each branch walks the mirror only when it can fire.
+    if (not pages and questions is None and not _has_converted_page(config.layout)) or (
+        questions is not None and not confirmed and _draft_suppressed(eval_dir, config.layout)
     ):
         return done(_nothing_to_draft(config, online=sum(files.online.values())), 4)
     if not pages and questions is None:
@@ -1893,14 +1891,11 @@ def _page_status(path: Path) -> str | None:
     return None
 
 
-def _draft_suppressed(eval_dir: Path, layout: DocsLayout, *, converted: bool | None = None) -> bool:
+def _draft_suppressed(eval_dir: Path, layout: DocsLayout) -> bool:
     """True when the baseline draft is the empty one over a mirror with no converted page: nothing to draft
     from, so docs_waits prints no wait and next_step's rule 4 says ``nothing to draft yet`` in place of rule
-    5, the one test both read (B13 round 44 C2707). ``converted`` is :func:`_has_converted_page`'s answer when
-    the caller already has it."""
-    if not _empty_draft(eval_dir):
-        return False
-    return not (_has_converted_page(layout) if converted is None else converted)
+    5, the one test both read (B13 round 44 C2707)."""
+    return _empty_draft(eval_dir) and not _has_converted_page(layout)
 
 
 def _inbox_clause(config: Config) -> str:

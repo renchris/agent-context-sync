@@ -743,6 +743,9 @@ def test_a_superseded_tombstone_drops_its_successor_when_the_item_goes_c2646(env
     env.publish(item, result(unit()))
     stub = "mirror/src/contoso-clip.xlsx.md"
     env.publish(item, workbook("Q3", "Q4"))
+    env.publish(item, workbook("Q3"))  # a part gone too: its tombstone says the source still exists
+    part = "mirror/src/contoso-clip.xlsx.d/02-q4.md"
+    assert "(the source itself still exists)" in env.text(part)
     first = "mirror/src/contoso-clip.xlsx.d/00-index.md"
     kept = env.manifest.get_tombstone(stub)
     assert kept is not None and parse_mirror_page(env.text(stub))[0].superseded_by == first
@@ -753,6 +756,7 @@ def test_a_superseded_tombstone_drops_its_successor_when_the_item_goes_c2646(env
     assert fm.status is PageStatus.DELETED and fm.superseded_by is None and first not in body, fm
     assert "still exists" not in body, body
     assert (ChangeOp.MODIFIED, stub) in [(c.op, c.path) for c in ch], ch
+    assert "still exists" not in env.text(part) and (ChangeOp.MODIFIED, part) in [(c.op, c.path) for c in ch]
     assert env.manifest.get_tombstone(stub) == kept  # deleted_at, reap_after, last_commit and reason kept
     out = env.manifest.output_by_path(stub)
     assert out is not None and out.page_sha256 == sha(env.text(stub))

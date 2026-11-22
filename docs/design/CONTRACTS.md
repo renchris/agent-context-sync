@@ -45213,7 +45213,8 @@ an item's existing tombstones as they were, so a whole stub a workbook's pages r
 after the workbook went, and curate called a page citing it SOURCE-SUPERSEDED; it adds
 `self._successors_again(rows, source_exists=False)` to its changes after its loop and before the `if changes:`
 guard, so the kept unit-removed whole tombstone drops its successor in place, one M change, its deleted_at,
-reap_after and last_commit kept (C2646 with C2706). `run_changes` derived the flag from a tombstone the same run
+reap_after and last_commit kept, and a kept removed part's tombstone drops its `still exists` clause the same way
+(C2646 with C2706). `run_changes` derived the flag from a tombstone the same run
 wrote, so a change carried a second time read d; it gains a nullable `unit_removed INTEGER` column, added on open
 by `Manifest._ensure_run_changes_flag` with no schema version bump (an older build names its columns in its INSERT
 and SELECT), written by `record_run_changes` and read when not NULL, the same-run join kept, never loosened, for an
