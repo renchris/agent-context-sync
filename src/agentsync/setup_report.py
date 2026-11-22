@@ -19452,7 +19452,6 @@ def _head_value_cut(red: Redactor, head: str, value: str) -> str:
 
 
 _CWD_KEPT = (*report_cuts.CWD_USAGE, _CWD_NAME_HEAD.removeprefix("--cwd "))
-_CWD_KEPT = (*report_cuts.CWD_USAGE, _CWD_NAME_HEAD.removeprefix("--cwd "))
 """What stays whole right after ``--cwd ``: install.sh's own usage words (:data:`report_cuts.CWD_USAGE`) and
 the rest of its not-a-folder head, whose name :data:`_CWD_NAME_RE` cuts (B13 round 41 C2030)."""
 

@@ -29176,6 +29176,22 @@ def test_an_unloaded_config_registers_its_ids_and_folders_c2609(tmp_path: Path, 
     assert "Private only: sources.toml does not load and is not readable as TOML" in text, text
 
 
+def test_no_report_module_assigns_a_module_level_name_twice_c2640() -> None:
+    """B13 round 44 C2640 with C2702 and C2733: round 43's quoted-head change left `_CWD_KEPT` assigned twice
+    in a row, the first copy dead and the docstring attached to the second. No module-level name in
+    setup_report or report_cuts is assigned twice."""
+    for module in (setup_report, report_cuts):
+        tree = ast.parse(Path(inspect.getfile(module)).read_text(encoding="utf-8"))
+        names = Counter(
+            target.id
+            for node in tree.body
+            if isinstance(node, (ast.Assign, ast.AnnAssign))
+            for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
+            if isinstance(target, ast.Name)
+        )
+        assert not [n for n, k in names.items() if k > 1], (module.__name__, names.most_common(3))
+
+
 def test_a_config_cut_runs_to_its_path_tokens_end_c2290() -> None:
     """B13 round 42 C2290 (ruling 147; privacy; makes worse True for a boundary-only match): the whole-config
     cut replaced the literal alone, so `sources.toml-PrivateBackup` printed its suffix after the cut, and a

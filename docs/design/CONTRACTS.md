@@ -45281,6 +45281,11 @@ doctor-FAIL control, a failed-run control, a live-folder control and a paused fo
 `test_report_redaction.py::test_the_loop_line_and_install_sh_say_one_no_folder_next_c2601` (the twins fed one real
 run: install.sh's NEXT and the report's Loop line).
 
+**`_CWD_KEPT` is assigned once** (C2640 with C2702 and C2733). Round 43's quoted-head change left `_CWD_KEPT`
+assigned twice in a row, the first copy dead; the first line is deleted and the second kept, its docstring right
+under it. Behavior does not change. Test: `test_setup_report.py::test_no_report_module_assigns_a_module_level_name_twice_c2640`
+(setup_report and report_cuts, by their module-level assignments).
+
 ### 16.276 Round 44: the installer: the shell halves of rulings 171 to 173, AGENTSYNC_CONFIG read by the CLI's rule, a none recorded by `--no-folder`, and C2667 waits on the operator (2026-11-22, wave B13 round 44 lane RB)
 
 Lane RB built round 44's installer items on lane RA's branch (rulings 171 to 173 land as one run: lane RA's Python
