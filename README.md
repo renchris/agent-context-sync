@@ -228,7 +228,8 @@ newer agentsync reads recordings differently, or `~/.local/bin/agentsync materia
 takes the new options when its bytes next change. While such files are left, `sync` prints the re-read's `note:`
 line, which starts `sync again:` only while another sync would read more of them and otherwise says why they wait,
 and, while a converter that can run has such files left, a `note:` line after it counts them; files whose converter
-cannot start are counted only in the re-read's note.
+cannot start are counted in the re-read's note when the last sync read none of the others, and otherwise in a `note:`
+line of their own, which never says `sync again:`.
 
 **Comments in PDFs.** A reviewer's comments on a PDF (notes, highlights, strikethroughs, text boxes and the like) are
 listed after the text of the page they are on, under `[comments on this page (PDF annotations):]`: one line per

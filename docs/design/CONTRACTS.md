@@ -45068,6 +45068,9 @@ note comes while a converter that can run has such files left, and that the othe
 note; the code and `reread_options`' meaning stay. Test:
 `tests/test_deploy_pack.py::test_the_readme_says_the_options_note_comes_only_while_a_converter_that_can_run_has_files_c2461`,
 held to `_reread_notes` with a waiting-only and a live tally.
+Amended 2026-11-22, §16.277 C2720: a run that read some counted its converter waits in no note, and with only them
+left said `sync again:`; they get a note of their own (`loop._REREAD_WAITING`), never `sync again:`, and the README
+sentence says they are counted in the re-read's note only when the last sync read none of the others.
 
 **Setup prompt v40: only lines setup prints in every branch** (C2406, C2408, C2419, C2524, C2420, C2523, C2538,
 C2535, C2536, C2541; ruling 170; amends §16.49 R11, §16.142 W12). v39's step 2 told the person "I have no drop
@@ -45258,6 +45261,18 @@ and `int()` raises ValueError on it (an Arabic-Indic digit reads as a number nob
 lane RA's. Tests: `test_every_isdigit_that_feeds_int_takes_ascii_digits_only_c2677`,
 `test_lockinfo_parse_rejects_malformed` (a superscript pid, an Arabic-Indic boot time),
 `test_a_content_length_of_non_ascii_digits_is_no_declared_size_c2677`.
+
+**A re-read's converter waits have a note of their own** (C2720; dated line at §16.274 C2461). `_reread_notes`
+counted `reread_waits` only in the branch where the run read none, so a run that read some (`reread` 1, `reread_left`
+2, `reread_options` 2, `reread_waits` 3) printed two notes counting 2 and none counting the 3, and with only waits
+left (`reread_left` 0) said `sync again:` for files no sync reads while their converter cannot start. The branch
+choice stays (widening the read-none branch would drop a true `sync again:` for files another sync reads); a run
+that read some appends `said(looked, reread_waits, loop._REREAD_WAITING)` after the others, `<N> file(s) in <ids>
+wait for a converter that cannot start, and no sync reads them again while it cannot; it does not block the next
+step` (`_REREAD_WAITING_ONE` for one), and with only they left prints no re-read note; the OCR-down branch counts
+them in its own note when the run read none. README :230-232 says so, moved with its two pins in this commit. Test:
+the C2461 test's two mixed tallies (three notes, the waits counted; only waits, one note and no `sync again:`) and
+a one-file tally.
 
 **The [convert] options record is parsed one way** (C2714; ruling 169 completed; dated line at §16.272 C2504).
 `_drift_since` and the report's `_convert_changed_run` each split the meta value their own way: a matching

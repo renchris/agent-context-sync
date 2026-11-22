@@ -13950,7 +13950,8 @@ def test_the_readme_says_a_convert_edit_reaches_existing_pages_r41_d1() -> None:
         " bytes next change. While such files are left, `sync` prints the re-read's `note:` line, which"
         " starts `sync again:` only while another sync would read more of them and otherwise says why they"
         " wait, and, while a converter that can run has such files left, a `note:` line after it counts"
-        " them; files whose converter cannot start are counted only in the re-read's note."
+        " them; files whose converter cannot start are counted in the re-read's note when the last sync read"
+        " none of the others, and otherwise in a `note:` line of their own, which never says `sync again:`."
     ) in readme
     assert "prints the `sync again:` note, and" not in readme and "usually" not in readme[at : at + 1600]
 
@@ -13959,7 +13960,8 @@ def test_the_readme_says_the_options_note_comes_only_while_a_converter_that_can_
     """B13 round 43 C2461: the README said a `note:` line after the re-read's counts the files whose pages
     were made under other converter options, while `_reread_notes` prints it only `if options and left`, and
     a file whose converter cannot start is counted only in `reread_waits`, the re-read's own note. The
-    sentence says so, held to loop's notes."""
+    sentence says so, held to loop's notes. B13 round 44 C2720: and with a run that read some, those files
+    have a note of their own, never "sync again" when only they remain (README :230-232 moves with it)."""
     from agentsync import loop  # noqa: PLC0415
 
     waiting = loop._reread_notes(
@@ -13970,10 +13972,26 @@ def test_the_readme_says_the_options_note_comes_only_while_a_converter_that_can_
         ["s1"], [], [{"reread_left": 2, "reread_options": 2, "reread": 1}], downloads=False
     )
     assert len(live) == 2 and loop._REREAD_OPTIONS in live[1], live
+    # B13 round 44 C2720: a run that read some dropped its converter waits from every note, and with only them
+    # left said "sync again"; they get a note of their own, and no "sync again" when only they remain
+    mixed = loop._reread_notes(
+        ["s1"], [], [{"reread": 1, "reread_left": 2, "reread_options": 2, "reread_waits": 3}], downloads=False
+    )
+    assert len(mixed) == 3 and mixed[0].startswith(loop.SYNC_AGAIN), mixed
+    assert mixed[2] == f"3 files in s1 {loop._REREAD_WAITING}; it does not block the next step", mixed
+    only = loop._reread_notes(
+        ["s1"], [], [{"reread": 1, "reread_left": 0, "reread_waits": 3}], downloads=False
+    )
+    assert only == [f"3 files in s1 {loop._REREAD_WAITING}; it does not block the next step"], only
+    one = loop._reread_notes(
+        ["s1"], [], [{"reread": 1, "reread_left": 0, "reread_waits": 1}], downloads=False
+    )
+    assert one == [f"1 file in s1 {loop._REREAD_WAITING_ONE}; it does not block the next step"], one
     readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
     assert (
         "and, while a converter that can run has such files left, a `note:` line after it counts them; files"
-        " whose converter cannot start are counted only in the re-read's note."
+        " whose converter cannot start are counted in the re-read's note when the last sync read none of the"
+        " others, and otherwise in a `note:` line of their own, which never says `sync again:`."
     ) in readme
     assert (
         "a `note:` line after it counts the files whose pages were made under other converter" not in readme
