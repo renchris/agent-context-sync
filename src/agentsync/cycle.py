@@ -286,8 +286,11 @@ def _zero_byte_mark(row: ItemRow) -> str:
 
 _REREAD_BATCH = 20  # files asked for at a time, and read between two lock beats
 _CONVERTER_DISTS = ("olefile", "openpyxl", "pdfminer.six", "pypandoc_binary", "pypdfium2", "python-pptx")
-"""The distributions the converters read files with (pyproject.toml's dependencies), whose installed
-versions are in ``_Cycle._capabilities``: a library upgrade (a reinstall of the uv tool environment with no
+"""The distributions the converters read files with (pyproject.toml's dependencies), except lxml, whose
+installed versions are in ``_Cycle._capabilities``.  lxml is left out on purpose: ``content_types_tree`` and
+pptx's ``_decoded_deck_types`` parse ``[Content_Types].xml`` with it, but it arrives with python-pptx, and
+adding it would move the capabilities digest and open every source's re-read (B13 round 43 C2454; CONTRACTS
+§16.45 R100; round 44 C2655).  A library upgrade (a reinstall of the uv tool environment with no
 agentsync change; ``uv sync`` never reaches that environment) may read a file the old one failed on, so it
 opens the re-read as a new build does.  Distribution versions only: a
 converter's ``version()`` also carries the OCR identity and an import failure's word, which change from

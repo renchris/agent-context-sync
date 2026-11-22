@@ -6544,6 +6544,19 @@ def test_the_converter_libraries_in_the_re_read_digest_are_dependencies() -> Non
     assert all(convert_common._dist_version(dist) != "unknown" for dist in cycle_mod._CONVERTER_DISTS)
 
 
+def test_the_converter_libraries_docstring_names_lxml_as_left_out_c2655() -> None:
+    """B13 round 44 C2655: the docstring defined ``_CONVERTER_DISTS`` as the distributions the converters
+    read files with, which lxml is too (``content_types_tree``), though C2454 leaves it out on purpose so the
+    capabilities digest does not move. The docstring says so, and the tuple is kept without it."""
+    import inspect  # noqa: PLC0415
+
+    source = inspect.getsource(cycle_mod)
+    doc = source.split("\n_CONVERTER_DISTS = ", 1)[1].split('"""', 2)[1]
+    flat = " ".join(doc.split())
+    assert "except lxml" in flat and "lxml is left out on purpose" in flat and "C2454" in flat, flat
+    assert "lxml" not in cycle_mod._CONVERTER_DISTS
+
+
 def test_three_failed_re_reads_in_a_row_end_the_re_reads_of_that_cycle(
     sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -44774,6 +44774,8 @@ before `error:` in a clause and inside a path, on the exit and the crash branch,
 record after). `_first_cause` tests a record's blankness on its `_one_line` form, since `bytes.strip()` keeps 0x1C to
 0x1E, U+0085 and U+2028, so a line of those alone is skipped and the next names the exit, never `no message`
 (`test_a_record_of_separators_alone_is_no_first_cause_c2528`, from the review of its first build).
+Amended 2026-11-22, §16.278 C2654: "stays 1.0.2" says this change moved no version; pandoc's was 1.0.2 then, and
+C2450's step below took it to 1.0.3.
 
 **The zero-byte re-read is counted, rolls back a row at a time, and reads each row once whatever its scope**
 (C2422, C2442, C2512, with C2470 not built; ruling 166, amending ruling 155; `agentsync.cycle`, `agentsync.manifest`;
@@ -44818,6 +44820,8 @@ While the revision is 1.1.0 nothing changes; no page's bytes move, so recording'
 `test_convert_recording.py::test_a_legacy_piece_is_read_again_once_the_piece_revision_is_raised_c2515` (each legacy
 emitter: a marked piece under its key, the revision raised to 1.2.0, `scan` runs again and the piece under the new
 key is the fresh read, not the marked bytes).
+Amended 2026-11-22, §16.278 C2654: "stays 1.1.2" says this change moved no version; recording's was 1.1.2 then,
+and C2450's step below took it to 1.1.3.
 
 **The legacy-key test builds the old key from the old formula** (C2453; `tests/test_convert_recording.py`).
 `test_a_picture_piece_outlives_a_page_change_and_a_legacy_key_is_read_once_c2296` saved its legacy pieces under
@@ -44849,6 +44853,8 @@ original bytes and answers three ways: parsed with hits, only those Overrides an
 None; not parsed, `_deck_types`' literal byte and UTF-16 replace. A normal template's in-memory part is re-serialized
 by lxml rather than keeping the byte output, and a literal template type in a comment or on another element keeps its
 spelling; an over-cap or unparseable part is still retyped by a literal replace.
+Amended 2026-11-22, §16.278 C2654: "stays 1.0.3" says this change moved no version; pptx's was 1.0.3 then, and
+C2450's step below took it to 1.0.4.
 
 **lxml is a declared dependency, and the xlsx docstrings name the formulas sidecar** (C2454; `pyproject.toml`,
 `agentsync.convert.xlsx`). C2303's `content_types_tree` and `_decoded_deck_types` import `lxml.etree` directly, but
@@ -45338,6 +45344,19 @@ orders convert to the same page before and after (one body sha256 for all ten), 
 (the Override literal and escaped, both Notes literal and escaped, in UTF-8, UTF-16 LE and BE: the Override the
 deck's, both Notes and a comment the template's, the title read, the staged file untouched) and
 `test_convert_formats.py::test_an_over_cap_or_unparseable_template_part_is_still_retyped_by_its_bytes_c2722`.
+
+**Three "stays" clauses name the version of their own change** (C2654; ruling 186; docs only; amends §16.273 C2528,
+C2515 and C2517). §16.273 said pandoc's emitter "stays 1.0.2", recording's "stays 1.1.2" and pptx's "stays 1.0.3",
+each true at its own commit (1bc7cb642, 07c3b3b5b, b1c9b2a3c), while the same section's C2450 paragraph and the code
+moved them to 1.0.3, 1.1.3 and 1.0.4 (c4ff9befa). Each clause keeps its words and takes a dated line: that change
+moved no version, and C2450's step took pandoc to 1.0.3, recording to 1.1.3 and pptx to 1.0.4. No code, test or cache
+key moves.
+
+**`_CONVERTER_DISTS`' docstring names lxml's deliberate exception** (C2655; `agentsync.cycle`). The docstring defined
+the tuple as the distributions the converters read files with, which lxml is too (`content_types_tree`,
+`_decoded_deck_types`), though C2454 leaves it out on purpose so the capabilities digest (§16.45 R100) does not move
+and an lxml upgrade does not open every source's re-read. The docstring says so, naming C2454; the tuple is kept.
+Test: `test_cycle.py::test_the_converter_libraries_docstring_names_lxml_as_left_out_c2655`.
 
 ### 16.279 Round 44: the prompt goes to v41 (only what setup prints and this shell holds), ship-land's superseded-run lookup in its rate wait, dated lines in place of rewrites, and the guides (2026-11-22, wave B13 round 44 lane D)
 
