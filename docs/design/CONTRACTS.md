@@ -22354,6 +22354,10 @@ lines are `write_bring_back`'s section 3 `not sent: ... this account cannot read
 not hold ... this account cannot read` and `Section 3 sends no patch: ... could not be read` sentences, the `could not
 be read, so ... does not hold` warning and the `--report-only` NEXT's `kept patch file` sentence; since S14 each
 takes its noun from the count (`1 patch file` / `N patch files`).
+Amended 2026-11-22, §16.276 C2639: install.sh's older-render rewrite (`older_report_rewrite`'s `status_one`) words a
+zero the same way, consuming the old line's ending: `its last walk listed all 0 file(s) the mirror holds for it`
+becomes `its last walk had no file to list: the mirror holds none for it`, never `every one of the 0 files` and never
+that sentence followed by `the mirror holds for it` again.
 
 install.sh rewrites a stopped copy that any installed renderer may have written, so its readers accept both forms
 (an older agentsync still writes `(s)`): the install.out details summary (` line(s) of ` or ` lines of `, for the

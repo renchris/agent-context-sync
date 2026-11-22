@@ -20941,6 +20941,7 @@ _OLD_RENDER_FIXTURE = [
     "gone file",
     "- <folder-1>: 0 unknown; its last walk listed all 4 file(s) the mirror holds for it",
     "- <folder-2>: 0 unknown; its last walk listed all 1 file(s) the mirror holds for it",
+    "- <folder-3>: 0 unknown; its last walk listed all 0 file(s) the mirror holds for it",
     "- sources: 3 local or inbox source(s) (3 source(s) with a folder) of the last 4 run(s), 37 day(s)",
     "- images: 2 files (6 pages), already in the current words",
     "- a label rule names no count: id(s) and name(s)",
@@ -20997,6 +20998,8 @@ def test_a_stopped_copy_by_an_older_agentsync_words_every_count(env: dict[str, s
         "gone file",
         "- <folder-1>: 0 unknown; its last walk listed every one of the 4 files the mirror holds for it",
         "- <folder-2>: 0 unknown; its last walk listed the one file the mirror holds for it",
+        # the zero form consumes its ending: never "... holds none for it the mirror holds for it" (C2639)
+        "- <folder-3>: 0 unknown; its last walk had no file to list: the mirror holds none for it",
         "- sources: 3 local or inbox sources (3 sources with a folder) of the last 4 runs, 37 days",
         "- images: 2 files (6 pages), already in the current words",
         "- a label rule names no count: id(s) and name(s)",

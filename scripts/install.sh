@@ -8801,8 +8801,11 @@ older_report_rewrite() { # MODE
 			# v10 (4a42af9) wrote "(1 of them with a link count of 2: no entry by the folder\047s own metadata)" (B13 round 16 T18)
 			if (index(line, " 1 materialised-and-empty (1 of them with a link count of 2: "))
 				line = fix(line, "\\(1 of them with a link count of 2: [^)]*\\)", 0, 1, "(still empty on this Mac, by its link count of 2)")
-			# "its last walk listed all N file(s)": the current words (B13 round 15 S30, round 16 T23)
-			if (match(line, /its last walk listed all [0-9]+ file\(s\)/)) {
+			# "its last walk listed all N file(s)": the current words (B13 round 15 S30, round 16 T23); a zero takes
+			# its own words, the ending " the mirror holds for it" consumed with it (B13 round 43 C2425, round 44 C2639)
+			if (match(line, /its last walk listed all 0+ file\(s\) the mirror holds for it/))
+				line = substr(line, 1, RSTART - 1) "its last walk had no file to list: the mirror holds none for it" substr(line, RSTART + RLENGTH)
+			else if (match(line, /its last walk listed all [0-9]+ file\(s\)/)) {
 				n = substr(line, RSTART + 25) + 0
 				line = substr(line, 1, RSTART - 1) "its last walk listed " (n == 1 ? "the one file" : "every one of the " n " files") substr(line, RSTART + RLENGTH)
 			}
