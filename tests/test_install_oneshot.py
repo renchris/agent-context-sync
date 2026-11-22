@@ -23125,9 +23125,11 @@ def test_the_real_report_of_a_stopped_copy_invites_no_bring_back(real_env: dict[
     assert real.returncode == 0 and not side.exists()
     text = report_path(real_env).read_text()
     assert "\nSend it: " in text and text.rstrip("\n").splitlines()[-1].startswith(setup_report.ISSUE_URL)
+    # B13 round 44 C2618 (amending C1112): both lines one fixed line each, the bring-back path not shown
     assert (
-        "\nbring back: ~/agent-context/bring-back.md (one file:" in text and "&title=Contoso" not in text
-    ), "a report that was not stopped still quotes both lines, the link as one fixed line (C1112)"
+        "\nbring back: ~/agent-context/bring-back.md (one file:" not in text and "&title=Contoso" not in text
+    )
+    assert f"\n{setup_report.EARLIER_BRING_BACK}\n" in text, "a report that was not stopped quotes both lines"
     assert f"\n{setup_report.EARLIER_LINK}\n" in text
     assert gone not in text and "Read the report before sending it: a" in text
 

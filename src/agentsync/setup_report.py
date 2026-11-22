@@ -398,6 +398,13 @@ ISSUE_LINK_LABEL = "issue link (review the report first):"
 EARLIER_LINK = "issue link (an earlier run's, not shown: this report's own link is its last line)"
 """An earlier run's issue link line as the Installer section's copy of install.out shows it: one fixed line
 for one line, with no URL, so a public report holds one issue link, its last line (B13 round 36 C1112)."""
+EARLIER_BRING_BACK = (
+    "bring back: (an earlier run's, not shown: this run's NEXT: says which file, if any, to bring back)"
+)
+"""An earlier run's ``bring back: <path>`` line as the Installer section's copy of install.out shows it, one
+fixed line for one line, amending C1112 (B13 round 44 C2618): the earlier run's path beside this run's own
+report read as the file to bring back, where this run's NEXT names it, if any. The ``bring back: `` head is
+kept, so install.sh's stopped-copy rewrite still drops it and counts it as left out."""
 ISSUE_TITLE = "Setup report: "
 """The issue form's ``title:`` (the report's link appends the outcome, run type and prompt version)."""
 ISSUE_FIELDS = {
@@ -8094,9 +8101,13 @@ def _installer_output(r: _Run) -> list[str]:
         elif read_first is not None:
             r.facts.first_sync_first_read = (converted, again, int(read_first.group(1)))
     # B13 round 36 C1112: an earlier run's issue link is one fixed line with no URL, so the report's own,
-    # its last line, is the one link it holds
+    # its last line, is the one link it holds; B13 round 44 C2618: its bring-back line one fixed line too
     shown = [
-        EARLIER_LINK if ln.lstrip().startswith(ISSUE_LINK_LABEL) else _labelled(ln, r.install_runs)
+        EARLIER_LINK
+        if ln.lstrip().startswith(ISSUE_LINK_LABEL)
+        else EARLIER_BRING_BACK
+        if ln.startswith("bring back: ")
+        else _labelled(ln, r.install_runs)
         for ln in lines[-INSTALL_OUT_TAIL:]
     ]
     # An attempt that ran no install.sh (a stopped copy) saw none of these lines: say whose they are, as the

@@ -2440,6 +2440,32 @@ def test_a_public_report_holds_one_issue_link_its_last_line_c1112(fake_mac: dict
     assert installer.count(f"\n{setup_report.EARLIER_LINK}\n") == 1 and old not in text, installer
 
 
+def test_an_earlier_runs_bring_back_line_is_one_fixed_line_c2618(fake_mac: dict[str, Path]) -> None:
+    """B13 round 44 C2618, amending C1112: the Installer section's copy of install.out replaced an earlier
+    run's issue link line by one fixed line and quoted its `bring back: ~/agent-context/bring-back.md` line as
+    written, an earlier run's path read as the file to bring back. That line reads
+    :data:`setup_report.EARLIER_BRING_BACK`, one line for one line, so the tail keeps its line count and no
+    path, and its `bring back: ` head, which install.sh's stopped-copy rewrite drops and counts."""
+    said = "bring back: ~/agent-context/Wombat Ledger/bring-back.md (one file: report, fix request)"
+    write_install_log(fake_mac)
+    body = (
+        "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n"
+        f"{said}\nNEXT: stop: session done\n"
+        "# run=20260929T110000Z-4343 2026-09-29T11:00:00Z install.sh --list-folders\n"
+        "error: step 1 failed\n"
+    )
+    (fake_mac["setup"] / "install.out").write_text(body, encoding="utf-8")
+    write_friction(fake_mac)
+    text = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())[0]
+    installer = section(text, "Installer")
+    assert installer.count(f"\n{setup_report.EARLIER_BRING_BACK}\n") == 1, installer
+    assert "bring-back.md" not in installer and "Wombat" not in text, installer
+    assert setup_report.EARLIER_BRING_BACK.startswith("bring back: ")
+    rows = installer.splitlines()
+    at = rows.index(setup_report.EARLIER_BRING_BACK)  # one line for one line: its neighbours kept in place
+    assert "install.sh --source-local" in rows[at - 1] and rows[at + 1].endswith("NEXT: stop: session done")
+
+
 def test_a_private_only_report_shows_no_issue_link_install_out_holds(fake_mac: dict[str, Path]) -> None:
     """B13 round 27 P104: a private-only report (a hold's one-word value it would print) still copied an
     earlier run's `issue link (review the report first): https://github.com/.../issues/new?...` line from

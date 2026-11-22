@@ -39499,6 +39499,8 @@ only the lines holding the URL, so it now keeps that fixed line above the earlie
 `left out` count is unchanged. Tests: `tests/test_setup_report.py::test_a_public_report_holds_one_issue_link_its_last_line_c1112`,
 `test_a_private_only_report_shows_no_issue_link_install_out_holds` (its public half),
 `tests/test_install_oneshot.py::test_the_real_report_of_a_stopped_copy_invites_no_bring_back`.
+Amended 2026-11-22, §16.275 C2618: an earlier run's `bring back: <path>` line in the copy is one fixed line too,
+`EARLIER_BRING_BACK`, its `bring back: ` head kept, so a report that was not stopped no longer quotes the earlier path.
 
 **Each report's calls start nothing once it has ended** (C1065 and C1067, the report halves; ruling 117;
 `src/agentsync/setup_report.py`). A doctor program or an OCR, media or speech helper that a call the report abandoned
@@ -45301,6 +45303,18 @@ holds clause `the mirror holds no file below it`, so the line said none twice; i
 list`, the zero case still ahead of the listed-all one (never `every one of the 0 files`). Test:
 `test_empty_cloud_folders_says_a_walk_with_no_file_in_words_c2425` (the line ends `; the mirror holds no file below
 it; its last walk had no file to list`, and `holds none for it` is nowhere in the part).
+
+**An earlier run's bring-back line is one fixed line** (C2618; amends §16.235 C1112). The Installer section's copy of
+install.out replaced an earlier run's issue link line by `EARLIER_LINK` and quoted its `bring back:
+~/agent-context/bring-back.md (one file: ...)` line as written, so an earlier run's path, beside this run's own
+report, read as the file to bring back. Each such line is now one fixed line, `EARLIER_BRING_BACK`, `bring back: (an
+earlier run's, not shown: this run's NEXT: says which file, if any, to bring back)`, one line for one line, so the
+tail's count and run owners do not move; its `bring back: ` head is kept, so install.sh's stopped-copy rewrite still
+drops it and counts it as left out (`2 of them left out` unchanged). The phrase holds none of ruling 68's words, which
+the phrase scans confirm. The earlier run's `report:` line and its NEXT's `[setup report: ...]` pointer still name the
+earlier paths. Tests: `test_setup_report.py::test_an_earlier_runs_bring_back_line_is_one_fixed_line_c2618` and
+`test_install_oneshot.py::test_the_real_report_of_a_stopped_copy_invites_no_bring_back`, whose not-stopped report now
+holds `EARLIER_BRING_BACK` and no `bring back: ~/agent-context/bring-back.md`.
 
 ### 16.276 Round 44: the installer: the shell halves of rulings 171 to 173, AGENTSYNC_CONFIG read by the CLI's rule, a none recorded by `--no-folder`, and C2667 waits on the operator (2026-11-22, wave B13 round 44 lane RB)
 
