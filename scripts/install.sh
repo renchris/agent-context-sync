@@ -3944,7 +3944,10 @@ redaction_pairs() {
 				part="${rel%%/*}"
 				[ "$part" = "$rel" ] && rel="" || rel="${rel#*/}"
 				first="$lib" lib=""
-				[ "$only" != listed ] || ! { generic_folder "$part" || agent_words_name "$part"; } || continue
+				# a listed or late name that every drive has or that is coding-agent product words only takes no
+				# number, under report_cuts' one skip, as the agentsync report registers install.log's words (B13
+				# round 44 ruling 172, C2668: the shell numbered `Copilot` and `Documents` from install.log)
+				[ "$only" = "" ] || ! { generic_folder "$part" || agent_words_name "$part"; } || continue
 				k="$(id_key "$part")" new=""
 				case "$folder_keys" in
 				*$'\n'"$k"$'\t'*)
@@ -4133,14 +4136,12 @@ redaction_pairs() {
 	# their numbers: status and the Configuration print it, the docs path's own cut one line above no use. Never at
 	# its default, never under a / parent (/inbox would cut ~/agent-context/inbox), never the parent itself (/tmp
 	# would cut every temporary path); inside the home the parent's own part is registered already, as
-	# setup_report._build_redactor registers it (B13 round 43 ruling 157, C2430)
+	# setup_report._build_redactor registers it (B13 round 43 ruling 157, C2430). Whenever the typed parent lies
+	# outside the home, wherever it resolves: a link from outside the home into it named the inbox outside in
+	# clear (B13 round 44 ruling 172, C2637)
 	if [ -n "$own_docs" ] && [ -n "$beside" ]; then
-		x="$(cd "$beside" 2>/dev/null && pwd -P || true)"
 		h="${hp:-$HOME}"
-		case "$beside" in "$HOME" | "$HOME"/* | "$h" | "$h"/*) ;; *)
-			case "$x" in "$HOME" | "$HOME"/* | "$h" | "$h"/*) ;; *) own_folder_values "$beside/inbox" "$HOME/agent-context/inbox" ;; esac
-			;;
-		esac
+		case "$beside" in "$HOME" | "$HOME"/* | "$h" | "$h"/*) ;; *) own_folder_values "$beside/inbox" "$HOME/agent-context/inbox" ;; esac
 	fi
 	# Every configured source id, as <source-N> numbered in config order among the ids that take a number of their
 	# own (B13 round 5 F6; round 41 C2071; round 42 C2238): an id is its
