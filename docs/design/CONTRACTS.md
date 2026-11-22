@@ -44557,6 +44557,8 @@ first run that creates the config still ends `no folder to sync yet` with exit 2
 it does not or in a dry run (C2463: the finder's say-nothing clause hid a drop folder init had already made). Tests:
 `test_install_oneshot.py::test_a_bare_rerun_over_an_inbox_only_config_says_no_folder_is_synced_yet_c2401` and
 `test_a_refused_step_2_names_its_docs_repo_and_inbox_when_the_config_loads_c2463`.
+Amended 2026-11-22, §16.275 C2601: the setup report's `- Loop:` line says the same no-folder NEXT where install.sh
+does, from the one constant `setup_report.NO_FOLDER_NEXT`, which a test holds this literal to.
 
 **The installer's smaller words** (C2534, C2423, C2437, C2473, C2439, C2506, C2541; C2423's dated lines at §16.41 H33
 and §16.141 W31 are §16.274's, written by lane D). `AGENTSYNC_CONFIG` is trimmed and its `~` and `~/` expanded as `paths.default_config_path` reads it, and an
@@ -45261,6 +45263,23 @@ locales: an off-disk folder, `Copilot` alone and under one, `Documents/...`), th
 switched off, which cuts a temporary folder's path for another reason) and
 `test_an_unloaded_config_registers_its_ids_and_folders_c2609` (a retired source with and without its reason give the
 same placeholders; an unparseable file, private only).
+
+**The Loop line says install.sh's no-folder NEXT where install.sh does** (C2601 with C2638; ruling 179; amends §16.271
+C2401). On a config with no folder but the inbox, install.sh's closing NEXT replaces status's skill-missing one by
+its no-folder re-run (ruling 163), while the report's `- Loop:` line kept the skill-missing NEXT and told the agent
+to sync. `_loop_line` replaces a NEXT that opens `NEXT: the agentsync-docs skill is missing or out of date` by
+`NEXT: ` and `setup_report.NO_FOLDER_NEXT` (`no folder is synced yet: list them with {install_sh} --list-folders,
+choose the folders to sync, then run: {rerun} --source-local "<folder>" (one --source-local per folder)`, both
+placeholders `~/src/agent-context-sync/scripts/install.sh` in the report) only when install.sh would
+(`_install_sh_said_no_folder`): the config loads with no source whose kind is not inbox, in any state (install.sh's
+HAVE_SOURCES count, never `live_sources()`), the latest install run ended 0 and doctor has no FAIL (a sign-in needs a
+Graph source, which is not inbox). The constant is the one copy of the words: a test holds install.sh's literal to it,
+`$SELF` and `$SELF$BASE_ARGS` in its placeholders. Tests:
+`test_setup_report.py::test_the_loop_line_says_install_shs_no_folder_next_on_an_inbox_only_config_c2601` (a
+doctor-FAIL control, a failed-run control, a live-folder control and a paused folder keep status's NEXT),
+`test_install_sh_prints_the_reports_no_folder_next_c2601`, and
+`test_report_redaction.py::test_the_loop_line_and_install_sh_say_one_no_folder_next_c2601` (the twins fed one real
+run: install.sh's NEXT and the report's Loop line).
 
 ### 16.276 Round 44: the installer: the shell halves of rulings 171 to 173, AGENTSYNC_CONFIG read by the CLI's rule, a none recorded by `--no-folder`, and C2667 waits on the operator (2026-11-22, wave B13 round 44 lane RB)
 

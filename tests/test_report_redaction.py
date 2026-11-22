@@ -35,7 +35,9 @@ from test_install_oneshot import (  # noqa: F401  (fixture)
     friction_path,
     install_log_path,
     install_sh,
+    real_env,
     report_path,
+    wheel,
 )
 from test_setup_report import (  # noqa: F401  (fixtures)
     _REAL_FULL_NAME,
@@ -3645,6 +3647,36 @@ def test_both_reports_number_install_log_cloudstorage_parts_under_one_skip_c2668
     assert re.fullmatch(r"the Documents folder and my <folder-\d+>", python[3]), python  # generic: kept
     assert not python_private, python
     assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
+
+
+def test_the_loop_line_and_install_sh_say_one_no_folder_next_c2601(
+    real_env: dict[str, str],  # noqa: F811
+    wheel: Path,  # noqa: F811
+) -> None:
+    """B13 round 44 ruling 179 (C2601 with C2638), the twins fed one run: a bare install.sh, then the same
+    command over the inbox-only config it made, ends on install.sh's `no folder is synced yet:` NEXT (round 43
+    ruling 163, C2401), and the setup report install.sh writes at that exit said status's skill-missing NEXT
+    on its Loop line. Both now say the no-folder words of the one constant, the Loop line with
+    install.sh's path kept whole and no skill-missing words."""
+    home_env = real_env
+    assert install_sh(home_env, str(wheel), timeout=300).returncode == 2
+    again = install_sh(home_env, str(wheel), timeout=300)
+    assert again.returncode == 0, again.stdout + again.stderr
+    said = [ln for ln in again.stdout.splitlines() if ln.startswith("NEXT: ")][-1]
+    words = setup_report.NO_FOLDER_NEXT.split("{install_sh}", 1)[0]
+    assert said.startswith(f"NEXT: {words}{INSTALL_SH} --list-folders"), said
+    [loop] = [
+        ln
+        for ln in report_path(home_env).read_text(encoding="utf-8").splitlines()
+        if ln.startswith("- Loop: ")
+    ]
+    kept = setup_report.INSTALL_SH  # the report keeps the README checkout's path whole, whatever $SELF is
+    want = setup_report.NO_FOLDER_NEXT.format(install_sh=kept, rerun=kept)
+    assert f"NEXT: {want}" in loop and "skill is missing" not in loop, loop
+    assert (
+        said.replace(str(INSTALL_SH), kept).split(" then run: ", 1)[0]
+        == f"NEXT: {want}".split(" then run: ")[0]
+    )
 
 
 _PROJECTS_OUTSIDE = "~/Projects/Zephyr Quarry"

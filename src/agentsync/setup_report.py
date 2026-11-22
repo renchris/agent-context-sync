@@ -17140,6 +17140,35 @@ def _one_bracket(text: str, words: str) -> str:
     return f"{text[:-1]}; {words})" if text.endswith(")") else f"{text} ({words})"
 
 
+NO_FOLDER_NEXT = (
+    "no folder is synced yet: list them with {install_sh} --list-folders, choose the folders to sync, "
+    'then run: {rerun} --source-local "<folder>" (one --source-local per folder)'
+)
+"""install.sh's NEXT in place of status's skill-missing one on a config with no folder but the inbox (B13
+round 43 ruling 163, C2401), ``{install_sh}`` its own path and ``{rerun}`` that path with the run's other
+arguments: the one copy of its words, which a test holds install.sh's literal to (B13 round 44 ruling 179,
+C2601 with C2638)."""
+_SKILL_MISSING_NEXT = "NEXT: the agentsync-docs skill is missing or out of date"
+
+
+def _install_sh_said_no_folder(r: _Run, config: Config, found: str) -> bool:
+    """Whether install.sh's closing NEXT replaced status's ``found`` by :data:`NO_FOLDER_NEXT` (B13 round 44
+    ruling 179, C2601 with C2638): ``found`` opens with the skill-missing words, the config holds no source
+    whose kind is not inbox in any state (install.sh's HAVE_SOURCES count, paused and retired ones included,
+    never ``live_sources()``), and the latest install run ended 0 with no doctor FAIL, as install.sh replaces
+    it only at ``EXIT_RC`` 0 after its [FAIL] and doctor checks (a sign-in needs a Graph source, which is not
+    inbox). The Loop line kept the skill-missing NEXT install.sh had replaced, so it told the agent to sync
+    while the Installer section's quoted NEXT asked for a folder."""
+    if not found.startswith(_SKILL_MISSING_NEXT):
+        return False
+    if any(s.kind is not SourceKind.INBOX for s in config.sources):
+        return False
+    latest = r.install_runs[-1] if r.install_runs else None
+    if latest is None or latest.rc != 0:
+        return False
+    return not any(tag == "FAIL" for tag, _name, _detail in r.facts.doctor_problems)
+
+
 def _loop_line(r: _Run) -> str:
     """``- Loop: <stage>; NEXT: <the loop's NEXT line, without paths>`` (KISS K16b): the stage from status's
     loop line, the NEXT from the ``loop_next`` hook (run after doctor, whose FAILs are rule 1's), then the
@@ -17205,6 +17234,8 @@ def _loop_line(r: _Run) -> str:
         r.facts.loop_unread_why = said
         return f"- Loop: {stage}; NEXT: not read ({said}){damaged}"
     found = next((ln for ln in lines if ln.startswith("NEXT: ")), None)
+    if found is not None and _install_sh_said_no_folder(r, config, found):
+        found = "NEXT: " + NO_FOLDER_NEXT.format(install_sh=INSTALL_SH, rerun=INSTALL_SH)
     text = (
         loop_next_text(_fail_step_in_doctor(r, found))
         if found

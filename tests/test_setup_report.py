@@ -61,6 +61,7 @@ from agentsync.config import (
     Config,
     ConvertConfig,
     default_config_text,
+    inbox_source_table,
     inbox_state,
     load_config,
     local_source_table,
@@ -12583,6 +12584,72 @@ def test_the_loop_lines_next_says_whose_reading_it_is_with_only_a_list_run_c709(
     assert setup_report._no_install_words(r) is None, r.install_runs
     assert "this attempt ran" not in setup_report._loop_line(r)
     assert kept
+
+
+def test_the_loop_line_says_install_shs_no_folder_next_on_an_inbox_only_config_c2601(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 44 ruling 179 (C2601 with C2638): on a config with no folder but the inbox, install.sh's
+    closing NEXT replaces status's skill-missing one by its no-folder re-run (B13 round 43 ruling 163, C2401),
+    while the report's Loop line kept the skill-missing NEXT and told the agent to sync. The Loop line says
+    install.sh's words, from the one constant install.sh's literal is held to, only when install.sh would:
+    no source whose kind is not inbox (a paused one counts, as install.sh's count does), the latest install
+    run ended 0 and doctor has no FAIL; a doctor-FAIL control, a failed-run control and a folder control
+    keep status's NEXT."""
+    skill = (
+        "NEXT: the agentsync-docs skill is missing or out of date: run `~/.local/bin/agentsync sync` (it "
+        "writes the skill; if this line is still here after that sync, the skills folder cannot be written: "
+        "tell the operator)"
+    )
+    hooks = setup_report.ReportHooks(loop_next=lambda _config: [skill])
+    cfg = fake_mac["config"]
+    home = Path.home()
+    inbox_only = default_config_text() + inbox_source_table("inbox", home / "agent-context" / "inbox")
+    folder = local_source_table("wombat", home / "Wombat")
+    log = fake_mac["setup"] / "install.log"
+    run = "2026-11-22T10:00:00Z run=20261122T100000Z-7"
+    ok = (
+        f"{run} start install.sh compat=40 commit=0123456789ab kind=checkout source=- args=\n{run} end rc=0\n"
+    )
+    no_folder = "NEXT: " + setup_report.NO_FOLDER_NEXT.format(
+        install_sh=setup_report.INSTALL_SH, rerun=setup_report.INSTALL_SH
+    )
+
+    def loop(body: str, logged: str, fail: bool = False) -> str:
+        cfg.write_text(body, encoding="utf-8")
+        log.write_text(logged, encoding="utf-8")
+        r = setup_report._Run(cfg, hooks, 60.0)
+        if fail:
+            r.facts.doctor_problems.append(("FAIL", "state_dir.files", "x"))
+        return setup_report._loop_line(r)
+
+    line = loop(inbox_only, ok)
+    assert no_folder in line and "skill is missing" not in line, line
+    assert "--source-local" in line and setup_report.INSTALL_SH in line, line
+    paused = folder.replace('kind = "local"', 'kind = "local"\nstate = "paused"')
+    assert "state = " in paused
+    for body, logged, fail in (
+        (inbox_only, ok, True),  # a doctor FAIL: install.sh's EXIT_RC is not 0
+        (inbox_only, ok.replace("end rc=0", "end rc=1"), False),
+        (inbox_only + folder, ok, False),  # a folder: install.sh's HAVE_SOURCES is 1
+        (inbox_only + paused, ok, False),  # in any state
+    ):
+        line = loop(body, logged, fail)
+        assert "skill is missing" in line and "no folder is synced yet" not in line, (
+            body,
+            logged,
+            fail,
+            line,
+        )
+
+
+def test_install_sh_prints_the_reports_no_folder_next_c2601() -> None:
+    """B13 round 44 ruling 179 (C2601 with C2638): install.sh's literal is
+    :data:`setup_report.NO_FOLDER_NEXT`, its own path and re-run arguments in place of the placeholders, so
+    the report's Loop line and install.sh's NEXT cannot drift apart."""
+    want = setup_report.NO_FOLDER_NEXT.format(install_sh="$SELF", rerun="$SELF$BASE_ARGS").replace('"', '\\"')
+    script = (Path(__file__).resolve().parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
+    assert f'next="{want}"' in script, want
 
 
 @pytest.mark.parametrize(
