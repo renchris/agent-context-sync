@@ -45286,6 +45286,11 @@ assigned twice in a row, the first copy dead; the first line is deleted and the 
 under it. Behavior does not change. Test: `test_setup_report.py::test_no_report_module_assigns_a_module_level_name_twice_c2640`
 (setup_report and report_cuts, by their module-level assignments).
 
+**The C2430 test checks the parent itself** (C2642). `test_the_inbox_beside_a_docs_repo_outside_the_home_is_cut_c2430`
+said "never the parent itself" and tested the grandparent with `endswith`, which passed whatever was registered; it
+asserts equality on `<parent>/elsewhere`, measured to fail under a mutant that registers the parent
+(`<folder-8>/elsewhere`).
+
 ### 16.276 Round 44: the installer: the shell halves of rulings 171 to 173, AGENTSYNC_CONFIG read by the CLI's rule, a none recorded by `--no-folder`, and C2667 waits on the operator (2026-11-22, wave B13 round 44 lane RB)
 
 Lane RB built round 44's installer items on lane RA's branch (rulings 171 to 173 land as one run: lane RA's Python

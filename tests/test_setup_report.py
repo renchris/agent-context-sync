@@ -18555,8 +18555,10 @@ def test_the_inbox_beside_a_docs_repo_outside_the_home_is_cut_c2430(
     assert docs_ph and inbox_ph and docs_ph.group() != inbox_ph.group(), (docs_line, inbox_line)
     assert int(inbox_ph.group()[8:-1]) > int(docs_ph.group()[8:-1]), "after the four own folders"
     assert any(ln.startswith("inbox: <folder-") for ln in text.splitlines()), "status's inbox: line, cut"
-    # never the parent itself, nor a `/` parent's /inbox
-    assert red.redact(str(Path(docs).parent.parent) + "/elsewhere").endswith("/elsewhere")
+    # never the parent itself, nor a `/` parent's /inbox: equality on the parent (B13 round 44 C2642;
+    # `endswith` on the grandparent passed whatever was registered)
+    elsewhere = str(Path(docs).parent) + "/elsewhere"
+    assert red.redact(elsewhere) == elsewhere, red.redact(elsewhere)
     cfg.write_text('[agentsync]\ndocs_repo = "/zephyr-docs"\n' + body, encoding="utf-8")
     text, red2 = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
     assert red2.redact("agentsync keeps ~/agent-context/inbox") == "agentsync keeps ~/agent-context/inbox"
