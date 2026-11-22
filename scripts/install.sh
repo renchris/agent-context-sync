@@ -450,8 +450,9 @@
 # Only its last 2000 lines are kept. `agentsync setup-report` may embed its (redacted) tail.
 #
 # Exit status: 0 when every step ran, 2 on a usage error (one the argument parsing stops at, such as a path that is
-# no agentsync checkout or wheel, leaves no report and no "NEXT:" line) and when a run created the config and has no folder to
-# sync (its NEXT names --list-folders; a run over an existing config exits 0), 1 when a step failed (a
+# no agentsync checkout or wheel, leaves no report and no "NEXT:" line, but for a relative or ~user
+# AGENTSYNC_CONFIG, whose one NEXT: line says changing it is the person's: B13 round 44 C2728) and when a run
+# created the config and has no folder to sync (its NEXT names --list-folders; a run over an existing config exits 0), 1 when a step failed (a
 # status [FAIL] that stops step 6, a listing held for an Allow click, a network/proxy/TLS failure
 # of uv, a failed first sync, a background run that exited 80, and --confirm-install-agent that did not
 # install the LaunchAgents), 3 when the wait ran out before a background run exited 0 (exit 79 then: macOS
@@ -11503,13 +11504,24 @@ fi
 # A relative AGENTSYNC_CONFIG: step 2 would write a config under this folder that a later bare `agentsync sync`
 # from another folder never reads, so an install run refuses it, naming the absolute path to export; a ~user
 # home is refused too. --report-only and --list-folders read it from this folder (B13 round 43 C2534).
+# The refusal comes before PARSED=1, so on_exit never prints its NEXT: it prints its own NEXT: line on stdout
+# first (none in a JSON run), saying that the setting lives where the person starts their shell, so changing it
+# is the person's: an export or an env prefix in the agent's own shell would write the config at the absolute
+# path while the person's shell kept the relative value (B13 round 44 ruling 177, C2728 with C2610).
+config_env_next() { # WHAT FIX: one NEXT: line for a refused AGENTSYNC_CONFIG
+	[ "$JSON_RUN" -eq 1 ] || say "NEXT: AGENTSYNC_CONFIG in the environment this agent was started from $1: $2, or unsetting it, where the person starts their shell is the person's, not a step for the agent, so show them the error and go on to the report; once they have, they paste the setup prompt again in a new session"
+}
 if [ "$LIST_FOLDERS" -eq 0 ] && [ "$REPORT_ONLY" -eq 0 ]; then
 	case "$CONFIG" in
 	/*) ;;
-	\~*) usage_error "AGENTSYNC_CONFIG names another account's home; export it as an absolute path and run the command again" ;;
+	\~*)
+		config_env_next "names another account's home" "setting it to an absolute path"
+		usage_error "AGENTSYNC_CONFIG names another account's home; export it as an absolute path and run the command again"
+		;;
 	*)
 		cfg_abs="$CONFIG"
 		while [ "${cfg_abs#./}" != "$cfg_abs" ]; do cfg_abs="${cfg_abs#./}"; done
+		config_env_next "is a relative path" "setting it to $(shown_arg "$PWD/$cfg_abs")"
 		usage_error "AGENTSYNC_CONFIG is a relative path, which a later agentsync run from another folder reads as another file; export AGENTSYNC_CONFIG=$(shown_arg "$PWD/$cfg_abs") and run the command again"
 		;;
 	esac

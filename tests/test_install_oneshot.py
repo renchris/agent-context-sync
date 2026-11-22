@@ -9712,6 +9712,37 @@ def test_the_installer_reads_agentsync_config_as_the_cli_does_c2534(
         assert not (cwd / "cfg" / "sources.toml").exists()
 
 
+@pytest.mark.parametrize("value", ["rel.toml", "./cfg/sources.toml", "~nobody/contoso.toml"])
+def test_a_refused_agentsync_config_prints_one_next_line_for_the_person_c2728_c2610(
+    env: dict[str, str], folder: Path, wheel: Path, value: str
+) -> None:
+    """B13 round 44 ruling 177, C2728 with C2610 (a turn): the relative and ~user AGENTSYNC_CONFIG refusal
+    runs before PARSED=1, so on_exit never printed a NEXT: line, while the setup prompt goes by step 2's NEXT.
+    It prints exactly one, on stdout, before its usage error: the setting lives where the person starts their
+    shell, so changing it is the person's, not a step for the agent, which shows the error and goes to the
+    report. It never tells the agent to export the value or to prefix install.sh with it (that would write the
+    config at the absolute path while the person's shell kept the relative value), and it writes no file."""
+    before = sorted(p.relative_to(env["HOME"]) for p in Path(env["HOME"]).rglob("*"))
+    cp = install_sh({**env, "AGENTSYNC_CONFIG": value}, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 2, cp.stdout + cp.stderr
+    nexts = [ln for ln in (cp.stdout + cp.stderr).splitlines() if ln.startswith("NEXT:")]
+    assert len(nexts) == 1 and nexts[0] in cp.stdout.splitlines(), cp.stdout + cp.stderr
+    [nxt] = nexts
+    assert "is the person's, not a step for the agent, so show them the error and go on to the report" in nxt
+    assert (
+        "where the person starts their shell" in nxt
+        and "paste the setup prompt again in a new session" in nxt
+    )
+    assert "export" not in nxt and "AGENTSYNC_CONFIG=" not in nxt, nxt
+    assert "usage error: AGENTSYNC_CONFIG" in cp.stderr and "usage error" not in cp.stdout, cp.stdout
+    if value.startswith("~"):
+        assert "names another account's home" in nxt, nxt
+    else:
+        assert "is a relative path: setting it to " in nxt, nxt
+    assert calls(env) == []
+    assert sorted(p.relative_to(env["HOME"]) for p in Path(env["HOME"]).rglob("*")) == before
+
+
 @pytest.mark.parametrize("renderer", ["shell", "agentsync"])
 def test_the_config_step_prints_the_docs_repo_and_inbox_it_used_c2317(
     real_env: dict[str, str], wheel: Path, renderer: str
