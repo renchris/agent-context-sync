@@ -7962,13 +7962,15 @@ report_cwd_lines() {
 # a tenant in clear, and report_recut has no free-text rule, so such a render is replaced by the shell report, which
 # cuts it in typed_note_cut. The scan is freecut itself (FREECUT_AWK), over the render, never install.out, so a
 # line any section printed counts, as report_words_cut leaves it: a not-a-folder or refused name the recut cuts to
-# <path> anyway is no reason to give way (B13 round 43 ruling 160, C2498, its option A).
+# <path> anyway is no reason to give way (B13 round 43 ruling 160, C2498, its option A). The scan reads to the end of
+# its input after a find: an early exit made report_words_cut die of SIGPIPE on a render of about 96 KB or more, and
+# under pipefail that status read as nothing found, so the render was kept.
 report_provider_lines() {
 	[ -f "$REPORT_PATH" ] && [ ! -L "$REPORT_PATH" ] || return 1
 	report_words_cut <"$REPORT_PATH" 2>/dev/null | FREE_HEAD="$CUT_FREE_HEAD" FREE_END="$CUT_FREE_END" FREE_TRAIL="$CUT_FREE_TRAIL" \
 		FREE_CUT_TRAIL="${CUT_FREE_CUT_TRAIL:-}" FREE_STOP="$CUT_FREE_PART_STOP" FREE_PATH="$CUT_FREE_PATH_START" \
 		FREE_APPS="$CUT_APPS" FREE_KEPT="$CUT_PROVIDER_KEPT" \
-		LC_ALL=C awk "$FREECUT_AWK"'BEGIN { freeinit() } freecut($0) != $0 { found = 1; exit } END { exit !found }' \
+		LC_ALL=C awk "$FREECUT_AWK"'BEGIN { freeinit() } !found && freecut($0) != $0 { found = 1 } END { exit !found }' \
 		2>/dev/null || return 1
 	SPLIT_WHY="a provider folder name after ~/Library/CloudStorage/ in its render that this checkout cuts"
 	SPLIT_HOW="may print $SPLIT_WHY in clear"

@@ -1529,6 +1529,27 @@ def test_another_builds_render_gives_way_exactly_where_the_free_text_cut_changes
     assert report.read_bytes() == before, "this checkout's own render stays byte for byte"
 
 
+@pytest.mark.parametrize("filler_kb", [0, 8, 120, 400])
+def test_another_builds_large_render_gives_way_on_its_first_provider_word_c2498(
+    tmp_path: Path, filler_kb: int
+) -> None:
+    """B13 round 43 C2498 (privacy), from lane RB's review: the scan's awk exited on its first find, so on a
+    render of about 96 KB or more report_words_cut, still writing, died of SIGPIPE, and under pipefail that
+    status read as nothing found: another build's render that printed a tenant in clear near its top was kept.
+    The scan reads to the end of its input, so a tenant word on line 3 gives way at every size."""
+    row = "- plain line {:06d} with nothing to cut in it at all\n"
+    filler = "".join(row.format(n) for n in range(filler_kb * 20))
+    report = tmp_path / "setup-report.md"
+    report.write_text(
+        f"# agentsync setup report\n\nsaw ~/Library/CloudStorage/OneDrive-Tailspin Toys today\n{filler}",
+        encoding="utf-8",
+    )
+    assert report.stat().st_size >= filler_kb * 1000
+    cp = _provider_lines_harness(tmp_path, report)
+    assert cp.returncode == 0, (report.stat().st_size, cp.returncode, cp.stderr)
+    assert cp.stdout.decode().startswith("a provider folder name after ~/Library/CloudStorage/"), cp.stdout
+
+
 @pytest.mark.parametrize(
     "line",
     [
