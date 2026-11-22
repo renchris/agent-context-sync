@@ -4153,28 +4153,52 @@ def test_the_cap_and_sidecar_dated_lines_say_what_the_page_and_sidecar_hold_c247
 def test_the_exit_0_no_folder_next_is_named_as_status_s_c2457_c2464() -> None:
     """B13 round 43 C2457 with C2464: K63 and §16.269 said step 2 ended with exit 0 and a `no folder to sync
     yet` NEXT, and §16.266 read the C2316 test's stub rc 2 as status's. install.sh prints that NEXT only on a
-    config the run created, with exit 2; a re-run's exit-0 NEXT is status's `no folder is synced yet`."""
+    config the run created, with exit 2; a re-run's exit-0 NEXT says `no folder is synced yet`, status's and,
+    since lane RB's C2401 (f02dcc209), install.sh's own on that re-run."""
     install = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
     branch = install.split('elif [ "$CONFIG_STATE" = "created" ] && [ "$HAVE_SOURCES" -eq 0 ]; then\n', 1)[1]
     assert branch.split("\n", 2)[0].lstrip().startswith("EXIT_RC=2")
     assert branch.split("\n", 2)[1].lstrip().startswith('next="no folder to sync yet: ')
     assert "no folder is synced yet: " in (ROOT / "src" / "agentsync" / "loop.py").read_text(encoding="utf-8")
+    assert 'next="no folder is synced yet: list them with $SELF --list-folders' in install
     guide = (ROOT / "docs" / "deploy" / "setup-feedback.md").read_text(encoding="utf-8")
     [k63] = [ln for ln in guide.splitlines() if ln.startswith("| K63 |")]
     assert (
-        "step 2 sent the agent to step 3 after status's `no folder is synced yet` NEXT that came with exit 0"
-        " (install.sh's own `no folder to sync yet` comes only with exit 2, on a config the run created)"
+        "step 2 sent the agent to step 3 after a `no folder is synced yet` NEXT that came with exit 0"
+        " (status's, and since B13 round 43 C2401 install.sh's own on that re-run; install.sh's `no folder to"
+        " sync yet` comes only with exit 2, on a config the run created)"
     ) in k63
     assert "after a `no folder to sync yet` NEXT that came with exit 0" not in k63
     contracts = " ".join((ROOT / "docs" / "design" / "CONTRACTS.md").read_text(encoding="utf-8").split())
     assert (
-        "Amended 2026-11-21, §16.274 C2457: the exit-0 NEXT of a re-run over an inbox-only config is status's"
-        " `no folder is synced yet`; install.sh's own `no folder to sync yet` comes only with exit 2"
+        "Amended 2026-11-21, §16.274 C2457: the exit-0 NEXT of a re-run over an inbox-only config says `no"
+        " folder is synced yet` (status's, and since lane RB's C2401, f02dcc209, install.sh's own on that"
+        " re-run); install.sh's `no folder to sync yet` comes only with exit 2"
     ) in contracts
     assert (
         "Amended 2026-11-21, §16.274 C2464: the rc 2 above is the test's stub status (`STUB_STATUS_RC`); the"
         " real status exits 0 with that NEXT"
     ) in contracts
+
+
+def test_the_guide_and_contracts_quote_the_reinstall_tickers_words_c2423() -> None:
+    """B13 round 43 C2423 (lane RB's 88a60a073): the bare-lock reinstall ticker reads `reinstalling once the
+    lock is free`, and the guide and two contracts quoted the old `reinstalling after the lock is free`; RB
+    left the docs' quotes to lane D. Held to install.sh's own ticker."""
+    install = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    assert 'ticker "agentsync: reinstalling once the lock is free" &' in install
+    assert "reinstalling after the lock is free" not in install
+    guide = _feedback_page()
+    assert "`agentsync: reinstalling once the lock is free, still running, <N>s`" in guide
+    assert "reinstalling after the lock is free" not in guide
+    contracts = " ".join((ROOT / "docs" / "design" / "CONTRACTS.md").read_text(encoding="utf-8").split())
+    for words in (
+        "Amended 2026-11-21, §16.274 C2423: the ticker reads `reinstalling once the lock is free` (lane RB's"
+        " 88a60a073)",
+        "Amended 2026-11-21, §16.274 C2423: the ticker reads `agentsync: reinstalling once the lock is free,"
+        " still running, <N>s` (lane RB's 88a60a073).",
+    ):
+        assert words in contracts, words
 
 
 def test_the_v39_prompt_reads_the_paths_and_folder_states_setup_printed_c2316_c2317_c2212_c2310() -> None:

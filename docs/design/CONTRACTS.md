@@ -12550,6 +12550,8 @@ hold value "Records" cuts none of it, and a row with no re-read record reads `no
   - Amended 2026-10-20, §16.141 W31: a lock held with an empty body reads `another sync is running (or install.sh,
     a status or doctor check, or a cycle starting holds the lock); the reinstall waits for it to be free (at most
     <N>s)`, `reinstalling after the lock is free` and `the lock is still held after <N>s`.
+  - Amended 2026-11-21, §16.274 C2423: the ticker reads `reinstalling once the lock is free` (lane RB's 88a60a073),
+    true both while lockf waits and while uv rebuilds under the lock.
   - Amended 2026-10-20, §16.147 X32: `<who>` names the pass as the cycle's wait line does (`the background job,
     pass poll`, `a sync not started by the background job, pass poll`).
   - lockf writes no body, keeps the file and its mode and never creates one, so the next sync breaks no stale
@@ -25554,6 +25556,8 @@ running" stays, as V40's `UNRECORDED_LOCK_WAIT_QUIET` keeps it: README step 2 ca
 "still running" lines expected, so no prompt words change. A body with a pid, or one that cannot be read, keeps the
 three lines it had; `AGENTSYNC_NOTE` is unchanged. Test: `test_the_reinstall_names_who_started_the_sync_it_waits_for`
 (an empty body: the three words, no "the other sync", no "the background job").
+Amended 2026-11-21, §16.274 C2423: the ticker reads `agentsync: reinstalling once the lock is free, still running,
+<N>s` (lane RB's 88a60a073).
 
 **The helpers note says "not ready", which a built helper that fails its probe is** (W38; amends §16.135 V6).
 `ocr._entry` exits 1 when the probe after a good build answers `failed`, so install.sh notes `not-built-<names>`
@@ -44301,9 +44305,9 @@ exit-0 install case after this lands; round 43 rehearses v39 with v38's block (4
 `test_step2_tells_of_the_inbox_only_when_its_source_is_live_c2092` (a kind = "local" source on the kept folder and
 cli's own line), `test_the_prompt_text_changes_only_with_its_version`, `test_readme_prompt_compat_matches_the_installer`.
 
-Amended 2026-11-21, §16.274 C2457: the exit-0 NEXT of a re-run over an inbox-only config is status's `no folder is
-synced yet`; install.sh's own `no folder to sync yet` comes only with exit 2, on a config the run created. The v39
-rule naming both forms stands.
+Amended 2026-11-21, §16.274 C2457: the exit-0 NEXT of a re-run over an inbox-only config says `no folder is synced
+yet` (status's, and since lane RB's C2401, f02dcc209, install.sh's own on that re-run); install.sh's `no folder to
+sync yet` comes only with exit 2, on a config the run created. The v39 rule naming both forms stands.
 
 ### 16.270 Round 43: the report: every path cut in every spelling its printer writes, a cut token ending at the same byte in both reports, and the inbox's state as one helper decides it (2026-11-21, wave B13 round 43 lane RA)
 
@@ -44850,7 +44854,8 @@ harvest's transcript scan is the lead's. Tests: `tests/test_deploy_pack.py`
 **The exit-0 no-folder NEXT is status's** (C2457, C2464; `docs/deploy/setup-feedback.md`; amends §16.269 C2316,
 §16.266 C2316). K63's problem column and §16.269's v39 paragraph said step 2 ended with exit 0 and a `no folder to sync
 yet` NEXT, but install.sh prints that NEXT only with exit 2, on a config the run created (`CONFIG_STATE = created`
-and no source); a re-run over an inbox-only config exits 0 with status's `no folder is synced yet` (loop.py). §16.266
+and no source); a re-run over an inbox-only config exits 0 with status's `no folder is synced yet` (loop.py), and since
+lane RB's C2401 (f02dcc209) with install.sh's own NEXT of the same words on that re-run. §16.266
 read the C2316 test's `STUB_STATUS_RC=2` as status's rc, where the real status exits 0 and the 2 in loop.py's
 `done(..., 2)` is the rule number. K63's row says status's NEXT, the two paragraphs take dated lines, and the C2316
 test's docstring follows; the v39 rule sentence naming both forms, which README.md's step 2 keeps, stays. Test:
@@ -44938,6 +44943,14 @@ Summary field's end), and the `inbox:` row says the folder is matched in the for
 and that a file or a dangling link on the name reads `not added (<folder> is not a folder)` whatever sources.toml
 lists. Test: `tests/test_deploy_pack.py::test_the_guides_configuration_rows_and_path_legend_follow_the_report_c2459`,
 held to `_convert_line`'s output and the report's legend.
+
+**The guide and two contracts quote the reinstall ticker's new words** (C2423; lane RB's 88a60a073;
+`docs/deploy/setup-feedback.md`; amends §16.41 W31, §16.141 W31). Lane RB's C2423 changed the bare-lock reinstall
+ticker from `reinstalling after the lock is free` to `reinstalling once the lock is free`, true both while lockf
+waits and while uv rebuilds under the lock, and left the docs' quotes to lane D. The guide's install-log paragraph
+quotes the new ticker, and §16.41's W31 bullet and §16.141's W31 paragraph take dated lines. Test:
+`tests/test_deploy_pack.py::test_the_guide_and_contracts_quote_the_reinstall_tickers_words_c2423`, held to install.sh's
+ticker.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
