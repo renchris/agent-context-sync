@@ -45264,7 +45264,74 @@ same placeholders; an unparseable file, private only).
 
 ### 16.276 Round 44: the installer: the shell halves of rulings 171 to 173, AGENTSYNC_CONFIG read by the CLI's rule, a none recorded by `--no-folder`, and C2667 waits on the operator (2026-11-22, wave B13 round 44 lane RB)
 
-Reserved for round 44 lane RB of B13.
+Lane RB built round 44's installer items on lane RA's branch (rulings 171 to 173 land as one run: lane RA's Python
+halves and rows, this lane's shell halves), then the AGENTSYNC_CONFIG, `--no-folder`, step-2 and older-render items.
+
+**A refused AGENTSYNC_CONFIG prints one NEXT: line for the person** (C2728 with C2610; ruling 177, makes worse True
+for an export or env prefix). The relative and `~user` refusal runs before `PARSED=1`, so `on_exit` printed no
+NEXT: line while the setup prompt goes by step 2's. It prints one on stdout before its usage error (none in a JSON
+run): `NEXT: AGENTSYNC_CONFIG in the environment this agent was started from is a relative path: setting it to
+<path>, or unsetting it, where the person starts their shell is the person's, not a step for the agent, so show
+them the error and go on to the report; once they have, they paste the setup prompt again in a new session` (the
+`~user` form: `names another account's home: setting it to an absolute path, or unsetting it, ...`). It never tells
+the agent to export the value or prefix install.sh with it; it writes no file; the usage error's words are
+unchanged. C2606's sentence for a usage error that still prints none is the prompt's (lane D, ruling 187). Test:
+`test_a_refused_agentsync_config_prints_one_next_line_for_the_person_c2728_c2610`.
+
+**A none is recorded by `--no-folder`** (C2658; ruling 178). `install.sh --no-folder` does a bare step 2's work,
+puts `--no-folder` in install.log's start-line `args=` (a word after `args=`, never in a `--source-local` re-run's
+words), exits 0 and ends on `NEXT: the person chose no folder, so this Mac syncs none of their folders: go on to the
+report; if they choose one later, the run is: <install.sh> [<SOURCE>] --source-local "<folder>" (one --source-local
+per folder)`, over a config it created and over an inbox-only one whose status names the missing skill; never `no
+folder is synced yet` or `no folder to sync yet`. It is a usage error beside `--source-local`,
+`--confirm-install-agent` or `--list-folders`; the help, the header and `test_contracts.INSTALL_OPTIONS` name it.
+The report's scoring is lane RA's (§16.275). Tests: `test_no_folder_records_the_persons_none_and_exits_0_c2658`,
+`test_no_folder_is_refused_beside_a_folder_c2658`.
+
+**A refused config step keeps the inbox it could not add** (C2701; ruling 179). The added-then-refused closes end
+with ` inbox=not-added` after their counts, and a failed or refused init or add-source that saw the warning closes
+its own step as `note=failed inbox=not-added` before `config_failed` (a leading note word, so a `key=value` reader
+never reads `note=inbox=not-added`). Test: `test_a_refused_config_step_keeps_the_inbox_it_could_not_add_c2701`.
+
+**The header says a refused step 2 prints its folder lines** (C2643). `config_failed` prints `docs repo:`, `inbox:`
+and `inbox state:` with no folders line; the header says so and that the folders line itself may be absent. Test:
+`test_the_header_says_a_refused_step_2_prints_its_folder_lines_c2643`.
+
+**A paused or retired folder still counts for step 6** (C2700; ruling 179). install.sh's `HAVE_SOURCES` stays
+state-blind. Test (the real agentsync): `test_a_bare_rerun_counts_a_paused_or_retired_folder_and_syncs_c2700`;
+fails against a count that skips paused and retired tables.
+
+**The older-render rewrite words a zero walk** (C2639): a dated line beside §16.115's plural paragraph.
+
+C2667 stays unbuilt: decision 1476293d00a3 (C2060) was still open at this lane's start and before its last land
+(ruling 174), so round 41's strict xfail stays and no install.sh change writes its decode another way.
+
+**The shell halves of rulings 171 to 173** (privacy; one run with lane RA's §16.275 halves). Ruling 171 (C2698,
+C2671): `agentsync_dir_values` is a small TOML reader for `[convert] pandoc_path` and the `[agentsync]` paths:
+headers and keys bare or quoted, a top-level dotted key, a one-line inline table, `"""..."""` (its escapes and
+line-ending backslash) and `'''...'''`, the newline after the opening quotes dropped, a value read to its close
+with each inner newline a space. The caller keeps the value as written for the echo pairs (blanks off both ends,
+as the agentsync report keeps a padded echo's lead) and trims it as `str.strip()` does (`py_strip`, Python's
+whitespace on its UTF-8 bytes under `LC_ALL=C`) before `path_norm`. A flag-c pair's blank matches a TAB or a space
+(`tsp`, a byte-for-byte copy of the line), never a raw TAB in a pair; `debug_path` is registered as a C run and a
+UTF-8 run write it, and with a TAB at each blank; a flag-c pair written as a `$'..'` word takes its own cut before
+every other `$'..'` word is `<path>`. Residual: a name with both a space and a TAB at its blanks is matched by the
+raw text (flag c) but its `$'..'` debug word only in the all-space and all-TAB spellings. Ruling 172: the shell
+lists `~/Library/CloudStorage` as `cloud_folder_names` does (C2669: depth 2 and 3, hidden names pruned, no link
+followed, each provider under `with_timeout`, 3 s in all, Python's order, at most 2000, once per report;
+a listing that ran out of time registers nothing and, with no list in install.out, makes the report private only
+with the agentsync report's line; a denied provider is listed as far as find reaches, as `os.scandir`'s OSError
+leaves it out); `hidden_by` registers a library's own folded value whatever its length and a two-letter word that
+is no library landing on a `<library-N>` makes the report private where it shows (C2670); install.log's late parts
+skip `report_cuts.GENERIC_FOLDERS` and the agent words (C2668); the typed `<parent>/inbox` is registered whenever
+the typed parent lies outside the home (C2637). Ruling 173 (C2666): `qheads` reads a head with a quote anywhere
+before it as `_quoted_value_end` does; `report_cuts.shell_block` did not change, so install.sh's copy stands.
+Tests: lane RA's rows (§16.275), `test_both_reports_number_a_cloudstorage_folder_on_disk_alike_c2669`,
+`test_an_unfinished_cloudstorage_listing_makes_the_shell_report_private_c2669`,
+`test_a_two_letter_word_on_a_library_makes_both_reports_private_c2670`. Since both reports list CloudStorage, a
+listed folder on disk is registered by its own bytes, so round 41's C2060 xfail
+(`test_both_reports_cut_a_folder_step_1_listed_but_not_configured_ruling_142`) removes each name from disk once
+step 1 listed it (`_both_reports(vanish=True)`): install.out's list alone names it, the case C2060's decode is for.
 
 ### 16.277 Round 44: the inbox's state read once and an unread state said so, rule 4's NEXT naming whose move it is, a tombstone's facts following their source, and a named recording read through its settle hold (2026-11-22, wave B13 round 44 lane B)
 
