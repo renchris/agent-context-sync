@@ -63,6 +63,7 @@ from agentsync.config import (
     default_config_text,
     inbox_state,
     load_config,
+    local_source_table,
     set_source_exclude,
     toml_string,
 )
@@ -18494,6 +18495,36 @@ def test_the_inbox_beside_a_docs_repo_outside_the_home_is_cut_c2430(
     assert red2.redact("agentsync keeps ~/agent-context/inbox") == "agentsync keeps ~/agent-context/inbox"
 
 
+@pytest.mark.parametrize("link", ["inbox", "parent"])
+def test_the_inbox_beside_an_outside_docs_repo_that_links_home_is_cut_c2637(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch, link: str
+) -> None:
+    """B13 round 44 C2637 (ruling 172; privacy): the typed `<parent>/inbox` beside a docs repo outside the
+    home was skipped when it resolved into the home, so an inbox that links into the home, or a parent that
+    does, printed the typed path whole in Configuration and status's `inbox:` line: the home's own
+    components never cut a typed path outside it. It is registered whenever the typed inbox lies outside the
+    home, wherever it resolves. The foreign-path rule, which cuts a temporary folder's path for another
+    reason, is switched off, so the registration alone is tested."""
+    monkeypatch.setattr(setup_report, "_HOME_LIKE", ())
+    home = Path.home()
+    beside = tmp_path / "Zephyr Quarry"
+    if link == "inbox":
+        (home / "Wombat Inbox").mkdir()
+        beside.mkdir()
+        (beside / "inbox").symlink_to(home / "Wombat Inbox")
+    else:
+        (home / "Wombat Quarry").mkdir()
+        beside.symlink_to(home / "Wombat Quarry")
+    cfg = fake_mac["config"]
+    body = cfg.read_text(encoding="utf-8")
+    cfg.write_text(f"[agentsync]\ndocs_repo = {toml_string(str(beside / 'docs'))}\n" + body, encoding="utf-8")
+    text, _red = setup_report.build_report(cfg, hooks=cli._report_hooks())
+    leaks = [ln for ln in text.splitlines() if "Zephyr" in ln or "Wombat" in ln]
+    assert not leaks, leaks
+    [inbox_line] = [ln for ln in section(text, "Configuration").splitlines() if ln.startswith("- inbox: ")]
+    assert re.search(r"<folder-\d+>", inbox_line), inbox_line
+
+
 def test_the_inbox_line_matches_the_folder_setup_stores_and_the_disk_first_c2525(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -29018,6 +29049,64 @@ def test_a_quote_anywhere_before_a_head_ends_its_value_at_the_next_same_kind_quo
     ):
         got = setup_report._redact_lines(red, [said])
         assert got == want, (said, got)
+
+
+@pytest.mark.parametrize("reason", [False, True])
+def test_an_unloaded_config_registers_its_ids_and_folders_c2609(tmp_path: Path, reason: bool) -> None:
+    """B13 round 44 C2609 (ruling 172; privacy): only a loaded config registered its source ids and project
+    folders, so a retired source with no retired_reason printed `id='tailspin-bridge-<folder-1>'` in the
+    `loads: no:` line and both `Not run:` lines, and the install.out tail printed the project folder whole.
+    The file is read unvalidated through the loaded case's registration: the same homes give the same
+    placeholders with or without the reason, and no id or project word shows. A file that does not parse
+    makes the report private only."""
+    home = Path.home()
+    meetings = home / "Library" / "CloudStorage" / "OneDrive-Fabrikam" / "Meetings"
+    meetings.mkdir(parents=True)
+    bridge = home / "Development" / "project-tailspin" / "bridge"
+    for leaf in ("mail", "meetings"):
+        (bridge / leaf).mkdir(parents=True)
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    retired = 'state = "retired"\n' + ('retired_reason = "moved"\n' if reason else "")
+    cfg.write_text(
+        default_config_text()
+        + local_source_table("plans", meetings)
+        + local_source_table("tailspin-bridge-mail", bridge / "mail")
+        + local_source_table("tailspin-bridge-meetings", bridge / "meetings")
+        + retired,
+        encoding="utf-8",
+    )
+    setup = home / "agent-context" / "setup"
+    setup.mkdir(parents=True, exist_ok=True)
+    (setup / "install.out").write_text(
+        f"[warn] source.tailspin-bridge-mail.listable — {bridge}/mail is empty\n"
+        f"[warn] source.tailspin-bridge-meetings.listable — ~/Development/project-tailspin/bridge/meetings\n",
+        encoding="utf-8",
+    )
+    (setup / "install.log").write_text(
+        f"2026-11-22T10:00:00Z run=20261122T100000Z-1 start install.sh compat=40 source={home}/src args=\n"
+        "2026-11-22T10:00:09Z run=20261122T100000Z-1 end rc=0\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "r.md"
+    assert cli.main(["setup-report", "--out", str(out)]) == 0
+    text = out.read_text(encoding="utf-8")
+    assert ("- loads: no:" in text) != reason, text
+    if not reason:
+        [loads] = [ln for ln in text.splitlines() if ln.startswith("- loads: no:")]
+        assert "id='<source-" in loads, loads
+    body = "\n".join(ln for ln in text.splitlines() if not ln.startswith("Placeholders used: "))
+    assert not re.search("(?i)tailspin|bridge", body), [
+        ln for ln in body.splitlines() if re.search("(?i)tailspin|bridge", ln)
+    ]
+    assert "Private only: sources.toml does not load" not in text
+    tail = [ln for ln in section(text, "Installer").splitlines() if "listable" in ln]
+    assert len(tail) == 2 and all("~/Development/<folder-" in ln for ln in tail), tail
+    # a file that does not parse names nothing a reader could register: the report is private only
+    cfg.write_text(cfg.read_text(encoding="utf-8") + "id = = \n", encoding="utf-8")
+    assert cli.main(["setup-report", "--out", str(out)]) == 0
+    text = out.read_text(encoding="utf-8")
+    assert "Private only: sources.toml does not load and is not readable as TOML" in text, text
 
 
 def test_a_config_cut_runs_to_its_path_tokens_end_c2290() -> None:

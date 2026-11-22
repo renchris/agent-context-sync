@@ -44376,6 +44376,9 @@ locales).
 Amended 2026-11-22, §16.275 C2716: debug_path's word is its run's locale's, so `_printf_q_forms` returns a UTF-8 run's
 word for any path with no control, DEL or newline (`~/Tools/Zéphyr\ Quarry/pandoc`), and `_dollar_q_forms` a C run's
 `$'...'` word, each cut to `~/<path>`; the value as written is stripped before it expands.
+Amended 2026-11-22, §16.275 C2637: the inbox beside a docs repo outside the home is registered whenever the typed
+`<parent>/inbox` lies outside the home, wherever it resolves; an inbox or a parent that links into the home is no
+longer skipped.
 
 **A cut token ends at the same byte in both reports** (C2526 with C2435, C2496; ruling 158; amends §16.265 C2290).
 `_CUT_TOKEN_END` is built from one named constant, `report_cuts.CUT_TOKEN_STOP` (the shell cf loop's ASCII stop set:
@@ -44479,6 +44482,8 @@ and `foreign_home_cut` runs before the head cuts, as Python cuts other homes fir
 `test_both_reports_register_no_inbox_beside_a_docs_repo_under_the_root_c2430`, the C2290 config-token rows, the
 `_r142_lines` rows (each head form, quoted heads, a `/Volumes/<org>/Users` path) and
 `test_install_oneshot.py::test_the_shell_free_text_cut_gives_back_the_blank_before_a_quote_c2436`.
+Amended 2026-11-22, §16.275 C2637: install.sh registers the typed `<parent>/inbox` whenever it lies outside the home,
+wherever the parent resolves, as the agentsync report does (lane RB's half, §16.276).
 
 **A source id and a folder take Python's number and length rule** (C2471, C2501 with C2433, C2434; ruling 159;
 privacy; dated line at §16.265 C2288). One `id_known` helper (an org key, a fuzzy key of 3 or more characters, a
@@ -45219,6 +45224,32 @@ regenerates install.sh's copy from `report_cuts.shell_block` byte for byte (§16
 rows added to `_r142_lines` (both finding rows, `Dana's run: '...--cwd=~/<outside>/<shown>' first`, a double-quoted
 whole command, and a prose row with an apostrophe and no path that stays whole), read by
 `test_both_reports_apply_each_heads_rule_to_any_path_ruling_142`.
+
+**Every place a private value comes from is read** (C2668, C2637, C2609; ruling 172; privacy; amends §16.270 C2430 and
+§16.271 C2430). install.log's `--source-local` words under ~/Library/CloudStorage that no listing or config names
+were numbered by the shell report alone, so the agentsync report printed `Kestrel Quarry/Zephyr Plans` whole: after
+every value it numbers, `_build_redactor` registers each part below the provider of every such word, placed as
+install.sh's logged_source_local places it (`_logged_cloud_folders`; a SharedLibraries folder's first part a library
+when its folder is on disk), under `_add_listed`'s skip (`report_cuts.GENERIC_FOLDERS` and a coding agent's product
+words), and install.sh's late mode skips them too (C2668, makes worse True for numbering every part, the shell's
+`GitHub <folder-N> CLI`: `Copilot` and `Documents` stay readable in both). The typed `<parent>/inbox` beside a docs
+repo outside the home is registered whenever it lies outside the home, wherever it resolves: an inbox or a parent
+that links into the home printed the typed path whole, since the home's own components never cut a typed path outside
+it (C2637). A sources.toml that exists and does not load is read with `tomllib` and no validation
+(`_unloaded_config`) and sent through the loaded case's own registration (cloud parts, project folders with the
+`own` exclusions, own folders, the inbox beside the docs repo, ids): an id only when it is a source id
+(`SOURCE_ID_RE`), none of `_GENERIC_IDS` and no word of the report's own, so `loads: no:`, both `Not run:` lines and
+the install.out tail print `<source-N>` and `~/Development/<folder-N>` where they printed the ids and the project
+folder; the manifest's and the purge queue's ids no source names are not read for it, as they need a loaded config.
+One that does not parse (or decode) registers nothing and makes the report private only, `Private only: sources.toml
+does not load and is not readable as TOML, so a source id or folder it names may show in clear.` (C2609). Tests:
+`test_report_redaction.py::test_both_reports_number_install_log_cloudstorage_parts_under_one_skip_c2668` (both
+locales: an off-disk folder, `Copilot` alone and under one, `Documents/...`), the link rows of
+`test_both_reports_cut_the_inbox_beside_a_docs_repo_outside_the_home_c2430`,
+`test_setup_report.py::test_the_inbox_beside_an_outside_docs_repo_that_links_home_is_cut_c2637` (the foreign-path rule
+switched off, which cuts a temporary folder's path for another reason) and
+`test_an_unloaded_config_registers_its_ids_and_folders_c2609` (a retired source with and without its reason give the
+same placeholders; an unparseable file, private only).
 
 ### 16.276 Round 44: the installer: the shell halves of rulings 171 to 173, AGENTSYNC_CONFIG read by the CLI's rule, a none recorded by `--no-folder`, and C2667 waits on the operator (2026-11-22, wave B13 round 44 lane RB)
 

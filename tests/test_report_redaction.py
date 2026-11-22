@@ -2602,6 +2602,9 @@ def test_both_reports_cut_a_config_path_but_the_default_c2063_c2083(
         "/Users/Shared/Zephyr Quarry/docs",
         "/Volumes/Zephyr Drive//Wombat/docs",
         "/Volumes/Zephyr Drive/Wombat/./docs",
+        # B13 round 44 C2637 (ruling 172): beside the home, an inbox that links into it, a parent that does
+        "<beside>/Zephyr Quarry/docs inbox-link",
+        "<beside>/Zephyr Quarry/docs parent-link",
     ],
 )
 def test_both_reports_cut_the_inbox_beside_a_docs_repo_outside_the_home_c2430(
@@ -2614,7 +2617,21 @@ def test_both_reports_cut_the_inbox_beside_a_docs_repo_outside_the_home_c2430(
     path's own cut one line above it no use. Both register `<parent>/inbox` whole after the four own folders:
     the Configuration lines and a friction row quoting the inbox print no part of the parent, and agree. A
     docs repo written with a `//` or a `/./` is the path pathlib reads, which both print: the shell report
-    printed it and its inbox in clear (B13 round 43, lane RB's review)."""
+    printed it and its inbox in clear (B13 round 43, lane RB's review).
+
+    B13 round 44 C2637 (ruling 172; privacy): the agentsync report skipped the inbox whose path resolved
+    into the home, and the shell report judged the parent's resolved path, so an inbox that is a link into
+    the home, or a parent that is one, printed the typed path whole. Both register the typed
+    `<parent>/inbox` whenever it lies outside the home, wherever it resolves."""
+    beside = Path(env["HOME"]).parent  # outside the home, a folder a test can make
+    docs, _, link = docs.replace("<beside>", str(beside)).partition(" ")
+    if link == "inbox-link":
+        (Path(env["HOME"]) / "Wombat Inbox").mkdir()
+        Path(docs).parent.mkdir(parents=True)
+        (Path(docs).parent / "inbox").symlink_to(Path(env["HOME"]) / "Wombat Inbox")
+    elif link == "parent-link":
+        (Path(env["HOME"]) / "Wombat Quarry").mkdir()
+        Path(docs).parent.symlink_to(Path(env["HOME"]) / "Wombat Quarry")
     shown = str(Path(docs))
     inbox = str(Path(docs).parent / "inbox")
     config = Path(env["HOME"]) / "agent-context" / "sources.toml"
@@ -3495,6 +3512,48 @@ def test_both_reports_number_a_folder_install_log_alone_names_after_the_rest_c22
     assert len(python) == len(said), python
     assert not [ln for ln in python for w in ("Kestrel", "Alpha", "Beta") if w in ln], python
     assert python[-1] == "GitHub Copilot CLI ran", python[-1]
+    assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+def test_both_reports_number_install_log_cloudstorage_parts_under_one_skip_c2668(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+) -> None:
+    """B13 round 44 C2668 (ruling 172; privacy; makes worse True for numbering every part as the shell did):
+    install.log's --source-local words under ~/Library/CloudStorage that no listing or config names were
+    numbered by the shell report alone, so the agentsync report printed `Kestrel Quarry/Zephyr Plans` whole,
+    while the shell numbered `Copilot` and `Documents` from install.log (`GitHub <folder-2> CLI`). Both
+    register each part below the provider after every value they number, under report_cuts' one skip (a
+    generic folder, a coding agent's product word): an off-disk folder reads `<folder-N>/<folder-M>` in both,
+    and `GitHub Copilot CLI` and `Documents` stay readable."""
+    start = "2026-10-10T00:00:00Z run=20261010T000000Z-4242"
+    cs = "~/Library/CloudStorage/OneDrive-Contoso"
+    words = [f"{cs}/Kestrel\\ Quarry/Zephyr\\ Plans", f"{cs}/Copilot", f"{cs}/Kestrel\\ Quarry/Copilot"]
+    words.append(f"{cs}/Documents/Wombat\\ Drafts")
+    log = install_log_path(env)
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text(
+        f"{start} start install.sh compat=5 commit=0123456789ab kind=checkout source=- args="
+        + " ".join(f"--source-local {w}" for w in words)
+        + f"\n{start} end rc=2 seconds=1\n",
+        encoding="utf-8",
+    )
+    said = [
+        f"picked {cs}/Kestrel Quarry/Zephyr Plans",
+        "the Kestrel Quarry folder was gone",
+        "GitHub Copilot CLI ran",
+        "the Documents folder and my Wombat Drafts",
+    ]
+    shell, python, shell_private, python_private = _both_reports(env, ["Project Alpha"], said, locale)
+    assert not [ln for ln in python for w in ("Kestrel", "Zephyr", "Quarry") if w in ln], python
+    assert re.fullmatch(
+        r"picked ~/Library/CloudStorage/OneDrive-<org-1>/<folder-\d+>/<folder-\d+>", python[0]
+    )
+    assert re.fullmatch(r"the <folder-\d+> folder was gone", python[1]), python
+    assert python[2] == "GitHub Copilot CLI ran", python  # a product word, never numbered
+    assert re.fullmatch(r"the Documents folder and my <folder-\d+>", python[3]), python  # generic: kept
+    assert not python_private, python
     assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
 
 

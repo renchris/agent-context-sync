@@ -1879,6 +1879,9 @@ class Redactor:
         # the CloudStorage listing for redaction did not finish and no list of step 1 named the folders in its
         # place, so a folder name may show in clear (B13 round 8 J69): the report is for a private copy only
         self.listing_unread = False
+        # sources.toml exists, does not load and does not parse as TOML, so no source id or folder it names
+        # was registered: the report is for a private copy only (B13 round 44 C2609, ruling 172)
+        self.config_unparsed = False
         # the listed names :func:`_add_listed` kept in clear (a generic name, or one of coding-agent product
         # words) that no configured folder has, and the configured names it compares with: the legend says
         # why one stays in clear where the body shows it (B13 round 12 N3)
@@ -1941,8 +1944,10 @@ class Redactor:
         """Whether the report is for a private copy only: :attr:`word_named_shown`, a one-word hold reason or
         owner that is a report word replaced in a line (:attr:`value_word_shown`, B13 round 25 D80), or a
         CloudStorage listing for redaction that did not finish with no list of step 1 in its place
-        (:attr:`listing_unread`). Such a report ends with no public issue link (B13 round 7 H75)."""
-        return self.word_named_shown or self.value_word_shown or self.listing_unread
+        (:attr:`listing_unread`), or a sources.toml that does not load and does not parse
+        (:attr:`config_unparsed`, B13 round 44 C2609). Such a report ends with no public issue link (B13 round
+        7 H75)."""
+        return self.word_named_shown or self.value_word_shown or self.listing_unread or self.config_unparsed
 
     def _placeholder(self, kind: str) -> str:
         if kind == "home":
@@ -5777,6 +5782,133 @@ friction log keeps that spelling for good (B13 round 41 C2035); the current one 
 ``arm_local.list_escaped_char``, which install.sh's LIST_ESC_AWK is held to byte for byte."""
 
 
+@dataclasses.dataclass(frozen=True)
+class _RawSource:
+    """One ``[[source]]`` table of a sources.toml that does not load, as far as the redactor reads it
+    (B13 round 44 C2609): ``id`` empty when it is no source id."""
+
+    id: str
+    path: Path | None
+    site: str | None
+
+
+@dataclasses.dataclass(frozen=True)
+class _RawGraph:
+    tenant: str
+
+
+@dataclasses.dataclass(frozen=True)
+class _RawConfig:
+    """The fields of :class:`Config` :func:`_build_redactor` registers values from, read unvalidated from a
+    sources.toml that does not load (B13 round 44 C2609)."""
+
+    sources: tuple[_RawSource, ...]
+    docs_repo: Path
+    state_dir: Path
+    cache_dir: Path
+    log_dir: Path
+    graph: _RawGraph
+
+
+def _unloaded_config(r: _Run, red: Redactor) -> _RawConfig | None:
+    """sources.toml read with :mod:`tomllib` and no validation when it exists and does not load (B13 round 44
+    C2609, ruling 172; privacy): its ids and folders printed in clear in the ``loads: no:`` line, both
+    ``Not run:`` lines and the install.out tail, since only a loaded config registered them. An id is kept
+    only when it is a source id (:data:`SOURCE_ID_RE`), none of :data:`_GENERIC_IDS` and none of the report's
+    own words, as the vanished ids are; a path only when it is a non-blank string, a folder only as the loaded
+    case reads one. A file that does not parse (or decode) registers nothing and sets
+    :attr:`Redactor.config_unparsed`, which makes the report private only; a missing or unreadable one is
+    None. The manifest's and the purge queue's ids no source names are not read for it: they need a loaded
+    config."""
+    if r.config is not None or r.config_missing:
+        return None
+    try:
+        data = tomllib.loads(expand(r.config_path).read_text(encoding="utf-8"))
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError, ValueError):
+        red.config_unparsed = True
+        return None
+    except OSError:
+        return None
+
+    def table(value: object) -> dict[str, object]:
+        return value if isinstance(value, dict) else {}
+
+    def text(value: object) -> str | None:
+        return value.strip() if isinstance(value, str) and value.strip() else None
+
+    def folder(value: object, default: Path) -> Path:
+        written = text(value)
+        return expand(written) if written is not None else default
+
+    top = table(data.get("agentsync"))
+    sources = []
+    for raw in data.get("source", []) if isinstance(data.get("source"), list) else []:
+        t = table(raw)
+        sid = t.get("id")
+        keep = (
+            isinstance(sid, str)
+            and SOURCE_ID_RE.match(sid) is not None
+            and sid not in _GENERIC_IDS
+            and sid.lower() not in report_words()
+        )
+        path = text(t.get("path"))
+        site = t.get("site")
+        sources.append(
+            _RawSource(
+                sid if keep and isinstance(sid, str) else "",
+                expand(path) if path is not None else None,
+                site if isinstance(site, str) else None,
+            )
+        )
+    tenant = table(data.get("graph")).get("tenant")
+    return _RawConfig(
+        tuple(sources),
+        folder(top.get("docs_repo"), default_docs_repo()),
+        folder(top.get("state_dir"), default_state_dir()),
+        folder(top.get("cache_dir"), default_cache_dir()),
+        folder(top.get("log_dir"), default_log_dir()),
+        _RawGraph(tenant.strip() if isinstance(tenant, str) else ""),
+    )
+
+
+_LOGGED_SOURCE_LOCAL_RE = re.compile(r"(?:^|[ \t])--source-local[ \t]+(\$'(?:[^'\\]|\\.)*'|(?:\\.|[^\s\\])+)")
+"""A ``--source-local`` word on install.log's start line, written with ``printf %q`` (B13 round 44 C2668)."""
+
+
+def _logged_cloud_folders(log: Path) -> list[tuple[list[str], bool]]:
+    """The parts below the provider of every install.log ``--source-local`` word under
+    ~/Library/CloudStorage, placed as install.sh's logged_source_local places it (B13 round 44 C2668): ``~/``
+    and absolute words as written, a word holding ``Library/CloudStorage/`` from there, a relative one only
+    when its first part is a CloudStorage entry; with whether the first part is a SharedLibraries folder's
+    library (its folder on disk). install.log has no working directory, so no other word is placed."""
+    home = Path(home_path())
+    cs = cloud_storage_root()
+    out: list[tuple[list[str], bool]] = []
+    for _run, fields, _lines in _install_runs(log):
+        for m in _LOGGED_SOURCE_LOCAL_RE.finditer(fields.get("start", {}).get("args", "")):
+            word = _shell_unquote(m.group(1))
+            if word == "~" or word.startswith("~/"):
+                placed = home / word[2:]
+            elif word.startswith("/"):
+                placed = Path(word)
+            elif "Library/CloudStorage/" in word:
+                placed = cs / word.split("Library/CloudStorage/", 1)[1]
+            else:
+                rel = word.removeprefix("./")
+                first = rel.split("/", 1)[0]
+                if first in ("", ".", "..") or not (cs / first).exists():
+                    continue
+                placed = cs / rel
+            parts = _cloud_parts(placed)
+            if parts is None or not parts[1]:
+                continue
+            provider, comps = parts
+            comps = [c for c in comps if c not in ("", ".", "..")]
+            library = provider.startswith("OneDrive-SharedLibraries-") and placed.is_dir()
+            out.append((comps, library))
+    return out
+
+
 def _build_redactor(r: _Run) -> Redactor:
     """Register everything this Mac's report could name (see the module docstring)."""
     red = Redactor()
@@ -5882,16 +6014,20 @@ def _build_redactor(r: _Run) -> Redactor:
                 heads.add(provider.partition("-")[0])
     cloud_sources: list[tuple[str, str, list[str]]] = []  # (id, provider, components)
     project_paths: list[Path] = []  # configured folders outside CloudStorage and outside agentsync's own
-    if r.config is not None:
+    # B13 round 44 C2609 (ruling 172; privacy): a sources.toml that exists and does not load is read
+    # unvalidated and sent through the loaded case's own registration, its exclusions kept; one that does not
+    # parse makes the report private only
+    cfg: Config | _RawConfig | None = r.config if r.config is not None else _unloaded_config(r, red)
+    if cfg is not None:
         # agentsync's own, never a project: the inbox it keeps beside the docs repo, and every folder beside
         # the docs repo (~/agent-context). Not the latter when a hand-set docs_repo sits straight in a
         # container such as ~/Documents: the person's own projects live there too.
-        beside = expand(r.config.docs_repo).parent
+        beside = expand(cfg.docs_repo).parent
         own = {beside / "inbox", (beside / "inbox").resolve()}
         if beside.name.casefold() not in _GENERIC_HOME_DIRS:
             own |= {beside, beside.resolve()}
         own -= {home, home.resolve()}
-        for src in r.config.sources:
+        for src in cfg.sources:
             parts = _cloud_parts(src.path) if src.path is not None else None
             if parts is not None:
                 cloud_sources.append((src.id, *parts))
@@ -5903,10 +6039,10 @@ def _build_redactor(r: _Run) -> Redactor:
                     heads.add(parts[0].partition("-")[0])
             elif src.path is not None and not any(expand(src.path).is_relative_to(o) for o in own):
                 project_paths.append(expand(src.path))
-        tenant = r.config.graph.tenant
+        tenant = cfg.graph.tenant
         if tenant and "." in tenant:
             orgs.append(tenant.split(".", 1)[0])
-        for src in r.config.sources:
+        for src in cfg.sources:
             if src.site:
                 host, _, site_path = src.site.partition(":")
                 if host.endswith(".sharepoint.com"):
@@ -5918,7 +6054,7 @@ def _build_redactor(r: _Run) -> Redactor:
     red.set_app_heads(heads)
     for org in orgs:
         red.add("org", org, fuzzy=True)
-    tenant = r.config.graph.tenant if r.config is not None else ""
+    tenant = cfg.graph.tenant if cfg is not None else ""
     if tenant and "." in tenant and not tenant.lower().endswith(".onmicrosoft.com"):
         # a custom domain: whole, so a word-named organisation's domain never prints (F42); after the
         # organisations, so OneDrive's stays <org-1> (B13 round 6 G49)
@@ -5994,12 +6130,12 @@ def _build_redactor(r: _Run) -> Redactor:
             _alias_escaped(red, value)
     # B13 round 22 Z21, Z28: agentsync's own folders where sources.toml moves them, after the source folders,
     # so theirs keep their numbers; whole-word literals, never fuzzy
-    if r.config is not None:
+    if cfg is not None:
         for own_dir, default in (
-            (r.config.state_dir, default_state_dir()),
-            (r.config.docs_repo, default_docs_repo()),
-            (r.config.cache_dir, default_cache_dir()),
-            (r.config.log_dir, default_log_dir()),
+            (cfg.state_dir, default_state_dir()),
+            (cfg.docs_repo, default_docs_repo()),
+            (cfg.cache_dir, default_cache_dir()),
+            (cfg.log_dir, default_log_dir()),
         ):
             for value in _own_folder_values(expand(own_dir), expand(default)):
                 red.add("folder", value, ignore_case=True)
@@ -6009,20 +6145,21 @@ def _build_redactor(r: _Run) -> Redactor:
         # line), the docs path's own cut one line above it no use. Its path is registered whole after the four
         # folders, so theirs keep their numbers; never at its default, never under a `/` parent (`/inbox`
         # would cut `~/agent-context/inbox`), never the parent itself (`/tmp` would cut every temporary path).
-        # Inside the home the parent's own component is registered already.
-        inbox = expand(r.config.docs_repo).parent / "inbox"
-        if (
-            inbox.parent != Path("/")
-            and not _under_home(str(inbox))
-            and not _under_home(os.path.realpath(inbox))
-        ):
+        # Inside the home the parent's own component is registered already. B13 round 44 C2637 (ruling 172;
+        # privacy): whenever the typed inbox lies outside the home, wherever it resolves: an inbox or a parent
+        # that links into the home printed the typed path whole, since a typed path outside the home is never
+        # cut by the home's own components.
+        inbox = expand(cfg.docs_repo).parent / "inbox"
+        if inbox.parent != Path("/") and not _under_home(str(inbox)):
             for value in _own_folder_values(inbox, expand(default_docs_repo()).parent / "inbox"):
                 red.add("folder", value, ignore_case=True)
                 _alias_escaped(red, value)
     # Every configured id: an inbox or project source has one too, and a folder word inside an unregistered
     # id left it half-redacted (``<prefix>-<folder-N>-mail``, field report 2026-10-06).
     cloud_ids = {sid for sid, _provider, _comps in cloud_sources}
-    for src in r.config.sources if r.config is not None else ():
+    for src in cfg.sources if cfg is not None else ():
+        if not src.id:  # an unloaded config's id that is no source id (C2609): never registered
+            continue
         folder = expand(src.path) if src.path is not None and src.id not in _GENERIC_IDS else None
         mirror = own_value.get(folder) if folder is not None else None  # a Graph source has no path
         if folder is not None and mirror is not None and src.id == slugify(folder.name):
@@ -6144,6 +6281,18 @@ def _build_redactor(r: _Run) -> Redactor:
         targets += _said_link_targets(_run_text_lines(r), disk)
     for target in sorted(set(targets), key=len, reverse=True):
         red.add("path", target)
+    # B13 round 44 C2668 (ruling 172; privacy; makes worse True for numbering every part): the CloudStorage
+    # folders only install.log's --source-local words name, after every value numbered above, so no number a
+    # report shows today moves, under _add_listed's skip (a generic folder, a coding agent's product word),
+    # as install.sh's late folder_parts skips them: the shell report numbered `Kestrel Quarry/Zephyr Plans`
+    # where this one printed it whole
+    with contextlib.suppress(Exception):
+        for comps, library in _logged_cloud_folders(r.install_log):
+            for i, c in enumerate(comps):
+                if c in _GENERIC_FOLDERS or _agent_words(c):
+                    continue
+                red.add("library" if library and i == 0 else "folder", c, fuzzy=True)
+                _alias_escaped(red, c)
     _add_config_cut(red, r.config_path)
     if r.config is not None and r.config.convert.pandoc_path is not None:
         _add_pandoc_cut(red, r.config.convert.pandoc_path, raw=_raw_pandoc_path(r.config_path))
@@ -18861,6 +19010,11 @@ def _redaction_section(
         word.append(
             "Private only: the listing of ~/Library/CloudStorage for redaction did not finish and "
             "install.out holds no folder list of step 1, so a folder name may show in clear."
+        )
+    if red.config_unparsed:  # B13 round 44 C2609 (ruling 172)
+        word.append(
+            "Private only: sources.toml does not load and is not readable as TOML, so a source id or folder "
+            "it names may show in clear."
         )
     if red.private_only:
         why = (  # by flag (B13 round 26 E6): a hold's one-word value is a word, no name
