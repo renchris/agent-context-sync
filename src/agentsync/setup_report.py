@@ -19187,26 +19187,61 @@ _QUOTED_HEAD_RE = re.compile(rf"""(['"])({_WORD_HEADS})""")
 ``'add-source ...'``): the quote is the value's own, so the value runs to its closing quote
 (:func:`_closing_quote`) or the line's end, where the one-word read cut it at its first blank and printed
 the rest of a name with a blank (``~/<path> Ledger/<folder-1>``). Ruling 148's "never the form whose quote
-wraps the whole argument" clause is lifted."""
+wraps the whole argument" clause is lifted. B13 round 44 ruling 173 (C2666) keeps it as the special case of
+:data:`_ANY_HEAD_RE`'s rule."""
+_ANY_HEAD_RE = re.compile(rf"(?<![\w-])({_WORD_HEADS})")
+"""B13 round 44 ruling 173 (C2666; privacy; amending ruling 158): any one-shell-word head with a ``'`` or
+``"`` earlier on its line, not only right after one: a quote that opens a whole command
+(``I ran 'install.sh --cwd=~/Wombat Ledger/x' first``) or prose with an apostrophe before it
+(``Dana's run: '...'``) wraps the value too, which then runs to the nearest quote after the head of a kind
+that stands before it (:func:`_closing_quote`'s rule: a ``\\"`` never ends it), or the line's end. A quote
+counted from the line's start by parity would pair an apostrophe with the command's quote and leave the head
+outside every span."""
+_ESCAPED_BLANK_WORD_RE = re.compile(r"(?:[^\s\\'\"]|\\[^ \t])*\\[ \t]")
+"""A ``printf %q`` value right after a head that holds a backslash-escaped blank (``~/Wombat\\ Ledger/x``):
+one shell word, which the one-word read already takes whole, so ruling 173's rule leaves it (C2666)."""
 _LATER_HEAD_RE = re.compile(rf"(?<=[ \t])({_WORD_HEADS})")
 """A later head inside that quoted span, after a blank: the span splits there and each piece is cut by its
 own head's rule, so a second head's configured folder keeps its ``<folder-N>`` (C2466)."""
 
 
+def _quoted_value_end(line: str, m: re.Match[str]) -> int | None:
+    """Where the value of ``m``'s head (:data:`_ANY_HEAD_RE`) ends under ruling 173 (B13 round 44 C2666), or
+    None when the one-word read takes it: right after a quote, that quote's close (:data:`_QUOTED_HEAD_RE`,
+    ruling 158's special case); else, with a ``'`` or ``"`` anywhere before the head, the nearest quote after
+    it of a kind that stands before it, by :func:`_closing_quote`'s rule, or the line's end. None with no
+    quote before the head, for a value that opens with a quote of its own (a quoted word, which the one-word
+    read takes to its close) and for a ``printf %q`` value holding an escaped blank."""
+    h = m.start()
+    if h > 0 and line[h - 1] in "'\"":
+        k = _closing_quote(line[h - 1 :], line[h - 1])
+        return len(line) if k < 0 else h - 1 + k
+    kinds = [q for q in "'\"" if q in line[:h]]
+    rest = line[m.end() :]
+    if not kinds or rest.startswith(("'", '"', "$'")) or _ESCAPED_BLANK_WORD_RE.match(rest):
+        return None
+    ends = [m.end() - 1 + k for q in kinds if (k := _closing_quote(q + rest, q)) > 0]
+    return min(ends, default=len(line))
+
+
 def _quoted_heads_cut(red: Redactor, line: str) -> str:
-    """``line`` (already redacted) with each :data:`_QUOTED_HEAD_RE` span cut: from the head to the closing
-    quote or the line's end, split at each :data:`_LATER_HEAD_RE` head, each piece's value (its trailing
-    blanks kept) cut by its head's :data:`report_cuts.PATH_HEADS` rule (B13 round 43 C2466, ruling 158). A
-    value with no ``/``, ``\\`` or quote stays as prose, as :func:`_source_local_shown` keeps one, but a
-    ``--cwd`` value, which names a folder even when relative; install.sh's own --cwd usage words stay."""
+    """``line`` (already redacted) with each quoted head's value cut (:func:`_quoted_value_end`): from the
+    head to its end, split at each :data:`_LATER_HEAD_RE` head, each piece's value (its trailing blanks kept)
+    cut by its head's :data:`report_cuts.PATH_HEADS` rule (B13 round 43 C2466, ruling 158; round 44 C2666,
+    ruling 173). A value with no ``/``, ``\\`` or quote stays as prose, as :func:`_source_local_shown` keeps
+    one, but a ``--cwd`` value, which names a folder even when relative; install.sh's own --cwd usage words
+    stay."""
     out: list[str] = []
     pos = 0
-    while (m := _QUOTED_HEAD_RE.search(line, pos)) is not None:
-        k = _closing_quote(line[m.start() :], m.group(1))
-        end = len(line) if k < 0 else m.start() + k
+    while (m := _ANY_HEAD_RE.search(line, pos)) is not None:
+        end = _quoted_value_end(line, m)
+        if end is None:
+            out.append(line[pos : m.end()])
+            pos = m.end()
+            continue
         span, start = line[m.end() : end], 0
         out.append(line[pos : m.end()])
-        head = m.group(2)
+        head = m.group(1)
         for later in _LATER_HEAD_RE.finditer(span):
             out += [_head_value_cut(red, head, span[start : later.start()]), later.group(1)]
             head, start = later.group(1), later.end()

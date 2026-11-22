@@ -28971,6 +28971,55 @@ def test_the_pandoc_path_is_cut_in_debug_paths_and_its_raw_spelling_c2497() -> N
     assert setup_report._printf_q_forms("/opt/x\tb") == [], "a $'...' word is cut whole elsewhere"
 
 
+def test_a_quote_anywhere_before_a_head_ends_its_value_at_the_next_same_kind_quote_c2666() -> None:
+    """B13 round 44 C2666 (ruling 173, amending ruling 158; privacy): only a head right after a quote took its
+    value to the quote's close, so a quote that opened a whole command (`I ran 'install.sh --cwd=~/<a b>/x'`)
+    left the one-word read, which stopped at the first blank and printed `Ledger/Alder Birch` in both reports.
+    A `'` or `"` anywhere before a one-word head ends its value at the nearest quote of a kind before it, past
+    an apostrophe in prose (`Dana's run: '...'`), a `\\"` never ending it, or at the line's end, split at a
+    later head; a `%q` value with an escaped blank keeps the one-word read, a prose row with an apostrophe and
+    no path stays whole, and the head right after a quote stays the special case."""
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    for said, want in (
+        (
+            "I ran '~/.local/bin/agentsync add-source ~/Wombat Ledger/Alder Birch' first",
+            "I ran '~/.local/bin/agentsync add-source ~/<path>' first",
+        ),
+        (
+            "I ran 'install.sh --cwd=~/Wombat Ledger/Alder Birch' first",
+            "I ran 'install.sh --cwd=~/<path>' first",
+        ),
+        (
+            "Dana's run: 'install.sh --cwd=~/Wombat Ledger/Alder Birch' first",
+            "Dana's run: 'install.sh --cwd=~/<path>' first",
+        ),
+        (
+            'I ran "install.sh --source-local ~/Wombat Ledger/Alder \\"Birch\\" x" first',
+            'I ran "install.sh --source-local ~/<path>" first',
+        ),
+        (
+            "I ran 'install.sh --cwd ~/Wombat Ledger --debug --source-local ~/Wombat Ledger/x' then",
+            "I ran 'install.sh --cwd ~/<path> --source-local ~/<path>' then",  # a piece runs to the next head
+        ),
+        ("I ran 'install.sh --cwd=~/Wombat Ledger/Alder Birch", "I ran 'install.sh --cwd=~/<path>"),
+        # the special case, and the rows the rule leaves
+        ("start install.sh args='--cwd=~/Wombat Ledger/x' x", "start install.sh args='--cwd=~/<path>' x"),
+        (
+            "Dana's note: add-source again, then add-source --help",
+            "Dana's note: add-source again, then add-source --help",
+        ),
+        ("I ran 'install.sh --cwd ~/Wombat\\ Ledger/x' first", "I ran 'install.sh --cwd ~/<path>' first"),
+        (
+            "Dana's run: install.sh --cwd '~/Wombat Ledger/x' first",
+            "Dana's run: install.sh --cwd '~/<path>' first",
+        ),
+        ("I ran install.sh --cwd=~/Wombat first", "I ran install.sh --cwd=~/<path> first"),
+    ):
+        got = setup_report._redact_lines(red, [said])
+        assert got == want, (said, got)
+
+
 def test_a_config_cut_runs_to_its_path_tokens_end_c2290() -> None:
     """B13 round 42 C2290 (ruling 147; privacy; makes worse True for a boundary-only match): the whole-config
     cut replaced the literal alone, so `sources.toml-PrivateBackup` printed its suffix after the cut, and a

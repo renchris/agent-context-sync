@@ -2101,6 +2101,12 @@ def _r142_lines(
         f"I ran 'add-source ~/{_OUTSIDE}/{shown}' first",
         f"start install.sh args='--cwd=~/{_OUTSIDE}/{shown} then more",
         f"start install.sh args='--cwd ~/{_OUTSIDE} --debug --source-local ./{shown}' x",
+        # B13 round 44 C2666 (ruling 173): a quote that opens a whole command before the head, an apostrophe
+        # in prose before that quote, and a double-quoted whole command, each value to its quote's close
+        f"I ran '~/.local/bin/agentsync add-source ~/{_OUTSIDE}/{shown}' first",
+        f"I ran 'install.sh --cwd=~/{_OUTSIDE}/{shown}' first",
+        f"Dana's run: '~/src/install.sh --cwd=~/{_OUTSIDE}/{shown}' first",
+        f'I ran "install.sh --debug --source-local ~/{_OUTSIDE}/{shown}" first',
         # B13 round 43 C2468 (ruling 158): another home's path with a blank, a later word holding a `/`, after
         # each head and behind a registered org's volume, only the residual word (no `/`) in clear in both
         *(f"I ran {h}{_OTHER_HOME} x" for h in _C2468_HEADS),
@@ -2116,6 +2122,7 @@ def _r142_lines(
         f"saw ~/Library/CloudStorage/OneDrive-SharedLibraries-{_OUTSIDE}/A x/{free} done",
         "usage error: --source-local is not an existing folder: (see --help)",
         "I ran add-source again, then add-source --help",
+        "Dana's note: add-source again, then add-source --help",  # C2666: an apostrophe and no path, whole
         "~/.local/bin/agentsync add-source failed after adding it; add-source opened past it",
         *(f"usage error: --cwd {usage} --debug (see --help)" for usage in report_cuts.CWD_USAGE),
         f"debug: config {report_cuts.CONFIG_DEFAULT}",

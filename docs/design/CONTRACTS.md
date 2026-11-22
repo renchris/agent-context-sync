@@ -44399,6 +44399,9 @@ from `_r142_lines`, which gains the quoted forms (the `=` and blank forms, singl
 with an unconfigured name holding a blank, left open, and with a second head inside). A quote that wraps a whole
 command before the head (`'~/.local/bin/agentsync add-source ~/x y'`) is outside the ruling and still prints the
 later word: a residual. Test: `test_both_reports_apply_each_heads_rule_to_any_path_ruling_142`.
+Amended 2026-11-22, §16.275 C2666: a quote anywhere before the head now ends its value at the nearest same-kind
+quote after it, or the line's end, so a quote that wraps a whole command is cut too; the unquoted prose form
+(`I ran install.sh --cwd=~/x y first`) stays the residual.
 
 **A not-kept tenant's cut gives back its trailing blanks** (C2436; ruling 158; amends §16.265 C2285). The provider
 rule's not-kept arm gives back `report_cuts.FREE_CUT_TRAIL` (`FREE_WORD_TRAIL` with a blank and a tab), so
@@ -45196,6 +45199,26 @@ the rows added to `test_both_reports_cut_a_configured_pandoc_path_in_every_spell
 NBSP; a `Zephyr Quarry` leaf whose blank is a TAB, as a literal TAB and as a basic string's `\t`; both locales'
 debug_path words read by both reports; and each TOML spelling: a quoted table header and key, a dotted and a quoted
 dotted key, a one-line inline table, triple-quoted strings, a multi-line value and a padded one).
+
+**A quote anywhere before a head ends its value at the next same-kind quote** (C2666; ruling 173, amending ruling 158;
+privacy; amends §16.270 C2466). Only a head right after a quote took its value to the quote's close, so a quote that
+opened a whole command (`I ran 'install.sh --cwd=~/Wombat Ledger/Alder Birch' first`) left the one-word read, which
+stopped at the first blank and printed `Ledger/Alder Birch` in both reports. For each one-word head (`--source-local`,
+`add-source`, `--cwd`, blank or `=` form; `_ANY_HEAD_RE`, never inside a longer word), when a `'` or `"` stands earlier
+on the line, the value runs to the nearest quote after the head of a kind that stands before it (`_closing_quote`'s
+rule, so a `\"` never ends it) or to the line's end, never by quote parity from the line's start, which pairs an
+apostrophe in prose (`Dana's run: '...'`) with the command's quote; it splits at a later head after a blank
+(`_LATER_HEAD_RE`), each piece cut by `_head_value_cut` with its guards (an empty value, install.sh's own `--cwd`
+usage words and a non-`--cwd` value with no `/`, `\` or quote stay). The one-word read keeps a `printf %q` value
+holding a backslash-escaped blank and a value that opens with a quote of its own, which it takes to that quote's
+close; the head right after a quote stays the special case (`_quoted_value_end`). An apostrophe in prose before a
+head now cuts to the next apostrophe or the line's end, which is safe. The unquoted prose form (`I ran install.sh
+--cwd=~/Wombat Ledger/Alder Birch first`) still prints the later words in both reports: a residual. Lane RB
+regenerates install.sh's copy from `report_cuts.shell_block` byte for byte (§16.276). Tests:
+`test_setup_report.py::test_a_quote_anywhere_before_a_head_ends_its_value_at_the_next_same_kind_quote_c2666` and the
+rows added to `_r142_lines` (both finding rows, `Dana's run: '...--cwd=~/<outside>/<shown>' first`, a double-quoted
+whole command, and a prose row with an apostrophe and no path that stays whole), read by
+`test_both_reports_apply_each_heads_rule_to_any_path_ruling_142`.
 
 ### 16.276 Round 44: the installer: the shell halves of rulings 171 to 173, AGENTSYNC_CONFIG read by the CLI's rule, a none recorded by `--no-folder`, and C2667 waits on the operator (2026-11-22, wave B13 round 44 lane RB)
 
