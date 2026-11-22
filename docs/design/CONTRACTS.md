@@ -45345,6 +45345,14 @@ an ImportError still reads 0. Test: the rows added to
 `test_setup_report.py::test_a_malformed_options_meta_leaves_configuration_whole_c2504_c2522` (`garbage 9`, `x `
 and a 4301-digit run, a fingerprint with a 4301-digit and a 19-digit run: each prints `- [convert]: default`).
 
+**An inbox this account cannot search reads `not read` in the report** (C2644 with C2636, the report test; ruling 180;
+lane B's `config.inbox_state`, §16.277). An inbox name that links into a folder this account cannot search raised in
+`inbox_state`'s `is_dir`, so the report's Configuration section failed with status. With lane B's guarded read, the
+report's `- inbox:` line prints status's own answer, `not read (Permission denied)`, no path and never `is not a
+folder`, every other Configuration line kept; `_inbox_line` is unchanged. Test:
+`test_setup_report.py::test_an_inbox_link_into_a_folder_this_account_cannot_search_reads_not_read_c2644` (a link
+into a mode-000 folder, skipped as root; measured to fail with lane B's guard taken out).
+
 ### 16.276 Round 44: the installer: the shell halves of rulings 171 to 173, AGENTSYNC_CONFIG read by the CLI's rule, a none recorded by `--no-folder`, and C2667 waits on the operator (2026-11-22, wave B13 round 44 lane RB)
 
 Lane RB built round 44's installer items on lane RA's branch (rulings 171 to 173 land as one run: lane RA's Python

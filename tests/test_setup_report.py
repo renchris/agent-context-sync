@@ -18682,6 +18682,34 @@ def test_the_inbox_beside_an_outside_docs_repo_that_links_home_is_cut_c2637(
     assert re.search(r"<folder-\d+>", inbox_line), inbox_line
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a mode-000 folder")
+def test_an_inbox_link_into_a_folder_this_account_cannot_search_reads_not_read_c2644(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 44 ruling 180 (C2644 with C2636, makes worse True for os.path.isdir): an inbox name that is a
+    link into a folder this account cannot search raised in config.inbox_state's is_dir, so status replaced
+    its whole detail block with `cannot read the state` and the report's Configuration failed with it. With
+    lane B's guarded read, the report's `- inbox:` line prints the same answer status's `inbox state:` line
+    does, `not read (Permission denied)`, no path and never `is not a folder`, and every other Configuration
+    line still prints."""
+    folder = fake_mac["config"].parent / "inbox"
+    locked = tmp_path / "locked"
+    (locked / "target").mkdir(parents=True)
+    folder.rmdir()
+    folder.symlink_to(locked / "target")
+    locked.chmod(0)
+    try:
+        text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+        status = inbox_state(load_config(fake_mac["config"]))[1]
+    finally:
+        locked.chmod(0o700)
+    conf = section(text, "Configuration")
+    [line] = [ln for ln in conf.splitlines() if ln.startswith("- inbox: ")]
+    assert line == "- inbox: not read (Permission denied)" == f"- inbox: {status}", (line, status)
+    assert "is not a folder" not in conf and "This section failed" not in conf, conf
+    assert any(ln.startswith("- docs repo: ") for ln in conf.splitlines()), conf
+
+
 def test_the_inbox_line_matches_the_folder_setup_stores_and_the_disk_first_c2525(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
