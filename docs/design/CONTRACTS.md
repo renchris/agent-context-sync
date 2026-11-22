@@ -44784,6 +44784,9 @@ field install holds while adding a second token and mark set to every source. Te
 `test_convert_family.py::test_a_zero_byte_reread_counts_as_read_again_and_never_as_converted_c2422`,
 `test_convert_family.py::test_a_zero_byte_reread_that_fails_rolls_back_its_own_row_alone_c2442` and
 `test_convert_family.py::test_a_zero_byte_row_out_of_scope_keeps_the_token_unset_and_is_read_when_it_returns_c2512`.
+Amended 2026-11-22, §16.278 C2703 (with C2650): the failing row's page is no longer committed ahead of its manifest
+row; before each row's savepoint the pass keeps its page files, its books and `read again`'s two counters, and puts
+them back through `_put_back` on a raise, as `_replan_recording_stubs` does (C2508), the token still unset.
 
 **A legacy picture piece is migrated only into the revision it holds** (C2515; `agentsync.convert.recording`; amends
 §16.268 C2296). `_stored_piece` tried every `_legacy_keys()` key whenever the running key
@@ -45227,6 +45230,22 @@ content, banner then an empty line, an empty first line, a plain one) and
 `test_convert_page_cap.py::test_a_capped_markdown_source_opening_with_the_banner_reads_back_exactly_c2723`; the pin
 `tests/test_deploy_pack.py::test_the_cap_and_sidecar_dated_lines_say_what_the_page_and_sidecar_hold_c2477_c2415` reads
 the guard with no skip and the new line.
+
+**A failed zero-byte re-read puts back its page, its books and its counters** (C2703 with C2650; ruling 175;
+`agentsync.cycle`; amends §16.273 C2442). `_reread_zero_byte_stubs` cut a failing row's recorded changes and its
+savepoint rolled back its manifest row, but the page `_after_fetch` had written stayed on disk, `git add -A` committed
+it, and `_reread_n` and `_reread_s` kept the re-read: the verifier's run of the C2442 fixture left HEAD's
+`contoso-b.docx.md` saying `empty-output` beside a manifest row and a committed QUARANTINE.tsv saying `not-ooxml`, and
+`read again 2` for one kept re-read. Before each row's savepoint the pass now takes what the recording replan takes
+(C2508): `_page_files(src.id, row.stable_id)`, the books (the row in `acc.deferred_ids`, `acc.counted_as`'s entry,
+the recording queue's length) and `(_reread_n, _reread_s)`; on a raise, before `del self.changes[mark:]`, it calls
+lane B's `_put_back` as it stands with them and restores both counters. The token stays unset, so the next sync reads
+the row as before. `_put_back`'s one residual applies here too: a page path `write_pages` wrote before it raised, with
+no change recorded for it yet, is not known and stays on disk. Tests:
+`test_convert_family.py::test_a_zero_byte_reread_that_fails_rolls_back_its_own_row_alone_c2442` (right after the
+failing sync, the failing row's page in HEAD and on disk has its manifest `page_sha256` and says `not-ooxml`, and
+`read again` is 1) and `test_convert_family.py::test_the_zero_byte_pass_keeps_what_the_recording_replan_keeps_c2703`
+(the twins take the same snapshot and put it back the same way).
 
 ### 16.279 Round 44: the prompt goes to v41 (only what setup prints and this shell holds), ship-land's superseded-run lookup in its rate wait, dated lines in place of rewrites, and the guides (2026-11-22, wave B13 round 44 lane D)
 

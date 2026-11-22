@@ -4,6 +4,8 @@ error names the staged path or the home folder."""
 from __future__ import annotations
 
 import dataclasses
+import hashlib
+import inspect
 import json
 import re
 import xml.etree.ElementTree as ET
@@ -572,8 +574,11 @@ def test_a_zero_byte_reread_that_fails_rolls_back_its_own_row_alone_c2442(
     row is read under its own savepoint now (C2249's shape): the row read first keeps its ``empty`` row and
     its probe mark (C2512) in the manifest and in the committed ``_manifest`` and QUARANTINE.tsv, the failing
     row rolls back, the error is reported, and the token stays unset, so the next sync reads that row, sets
-    the token and takes the marks away. The failing row's page, written before the raise, can still be
-    committed one sync ahead of its manifest row, the leftover C2249 left too; the next sync converges."""
+    the token and takes the marks away. B13 round 44 C2703 with C2650 (ruling 175): the failing row's page,
+    written before the raise, was committed ahead of its rolled-back row and counted in ``read again``; its
+    page, books and both re-read counters now go back with the row (``_put_back``, as the recording replan
+    does), so HEAD and the disk hold the page the manifest names, and ``read again`` is 1. ``_put_back``'s
+    one residual stays: a page path ``write_pages`` wrote with no change recorded yet stays on disk."""
     config, src = make_env(tmp_path)
     with monkeypatch.context() as old:
         _older_zero_byte_answers(old)
@@ -597,6 +602,14 @@ def test_a_zero_byte_reread_that_fails_rolls_back_its_own_row_alone_c2442(
     first, second = called
     assert _row(config, first).state_reason == policy_mod.ZERO_BYTES_REASON, "the row before it commits"
     assert _row(config, second).state_reason == NOT_OOXML_REASON, "the failing row rolls back"
+    assert report.read_again == 1, "the failing row's re-read is not counted"
+    with Manifest(config.state_paths.db) as m:
+        (out,) = m.outputs_for("src", item_id(config, second))
+    on_disk = (config.docs_repo / out.output_path).read_bytes()
+    in_head = git(config.docs_repo, "show", f"HEAD:{out.output_path}")
+    assert hashlib.sha256(on_disk).hexdigest() == out.page_sha256, "the page on disk is the row's"
+    assert hashlib.sha256(in_head.encode("utf-8")).hexdigest() == out.page_sha256, "HEAD holds the row's page"
+    assert NOT_OOXML_REASON in in_head and policy_mod.ZERO_BYTES_REASON not in in_head
     key = cycle_mod._ZERO_BYTES_META + "src"
     with Manifest(config.state_paths.db) as m:
         assert m.get_meta(key) is None, "the token stays unset: the next sync reads the row again"
@@ -613,6 +626,28 @@ def test_a_zero_byte_reread_that_fails_rolls_back_its_own_row_alone_c2442(
     with Manifest(config.state_paths.db) as m:
         assert m.get_meta(key) == "done"
         assert m.get_meta(f"{key}:{item_id(config, first)}") is None, "the marks go with the token"
+
+
+def test_the_zero_byte_pass_keeps_what_the_recording_replan_keeps_c2703() -> None:
+    """B13 round 44 C2703 with C2650 (ruling 175): the zero-byte pass is the recording replan's twin, and it
+    kept none of what the replan's savepoint cannot roll back. Both now take the same snapshot before a
+    row's savepoint and hand it to the one ``_put_back``; the zero-byte pass restores ``read again``'s
+    counters too."""
+    snapshot = (
+        "files = self._page_files(src.id, row.stable_id)",
+        "row.stable_id in acc.deferred_ids,",
+        "acc.counted_as.get(row.stable_id),",
+        "len(self._recording_queue.get(src.id, [])),",
+        "src, row.stable_id, acc, files=files, books=books, changes=self.changes[mark:]",
+    )
+    for twin in (cycle_mod._Cycle._replan_recording_stubs, cycle_mod._Cycle._reread_zero_byte_stubs):
+        code = inspect.getsource(twin)
+        for line in snapshot:
+            assert code.count(line) == 1, (twin.__name__, line)
+        assert code.index("self._put_back(") < code.index("del self.changes[mark:]"), twin.__name__
+    zero = inspect.getsource(cycle_mod._Cycle._reread_zero_byte_stubs)
+    assert "reread = (self._reread_n, self._reread_s)" in zero
+    assert "self._reread_n, self._reread_s = reread" in zero
 
 
 def test_a_zero_byte_row_out_of_scope_keeps_the_token_unset_and_is_read_when_it_returns_c2512(

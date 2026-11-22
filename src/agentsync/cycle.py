@@ -5649,8 +5649,12 @@ class _Cycle:
         when its source's other rows were read is read when it comes back (a source-wide token set while it
         was out kept its old stub for good).  Each row is read under a savepoint of its batch's
         transaction, so a row that raises rolls back its own writes and mark alone, the rows before it
-        commit, and the error goes on to the caller with the token unset (C2442, C2249's shape).  Never in
-        a dry run."""
+        commit, and the error goes on to the caller with the token unset (C2442, C2249's shape).  What the
+        savepoint does not hold goes back with the row through :meth:`_put_back`, as in the recording replan:
+        its page files, its ``deferred_ids``, settle and recording-queue entries, and ``read again``'s two
+        counters, so the commit carries no page its manifest row does not name (B13 round 44 C2703 with
+        C2650, ruling 175).  ``_put_back``'s one residual stays: a page path ``write_pages`` wrote before it
+        raised, with no change recorded for it yet, is not known and stays on disk.  Never in a dry run."""
         key = _ZERO_BYTES_META + src.id
         if self.dry or self.manifest.get_meta(key):
             return
@@ -5672,12 +5676,27 @@ class _Cycle:
             with self.manifest.transaction():
                 for row in rows[start : start + _WORK_BATCH]:
                     mark = len(self.changes)
+                    # what the savepoint cannot roll back, as the recording replan keeps it: the row's pages
+                    # on disk, the cycle's books and the re-read counters (B13 round 44 C2703 with C2650,
+                    # ruling 175)
+                    files = self._page_files(src.id, row.stable_id)
+                    books = (
+                        row.stable_id in acc.deferred_ids,
+                        acc.counted_as.get(row.stable_id),
+                        len(self._recording_queue.get(src.id, [])),
+                    )
+                    reread = (self._reread_n, self._reread_s)
                     try:
                         with self.manifest.savepoint():
                             self._zero_byte_reread(src, arm, row, acc)
                     except BaseException as exc:
-                        # the rows before it commit; this row's own writes and mark roll back, and the
-                        # token stays unset, so the next cycle reads it (B13 round 43 C2442, ruling 166)
+                        # the rows before it commit; this row's own writes and mark roll back, its pages,
+                        # books and re-read counters go back with them, and the token stays unset, so the
+                        # next cycle reads it (B13 round 43 C2442, ruling 166; round 44 C2703, ruling 175)
+                        self._put_back(
+                            src, row.stable_id, acc, files=files, books=books, changes=self.changes[mark:]
+                        )
+                        self._reread_n, self._reread_s = reread
                         del self.changes[mark:]
                         failure = exc
                         break
