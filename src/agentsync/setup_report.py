@@ -11885,8 +11885,9 @@ def _empty_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
                 (int(walk), src.id),
             )[0]
             missed = (  # "did not list 0" read as a double negative (B13 round 3 R14)
-                # B13 round 43 C2425: never "every one of the 0 files"
-                "its last walk had no file to list: the mirror holds none for it"
+                # B13 round 43 C2425: never "every one of the 0 files"; B13 round 44 C2632: the holds clause
+                # before it already says the mirror holds no file below the folder, so no second "holds none"
+                "its last walk had no file to list"
                 if total == 0
                 # never "all 1 file" or "1 of the 1 file" (B13 round 15 S30)
                 else "its last walk listed "

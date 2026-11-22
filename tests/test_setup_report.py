@@ -18644,7 +18644,8 @@ def test_the_inbox_line_matches_the_folder_setup_stores_and_the_disk_first_c2525
 @pytest.mark.usefixtures("roomy_calls")
 def test_empty_cloud_folders_says_a_walk_with_no_file_in_words_c2425(fake_mac: dict[str, Path]) -> None:
     """B13 round 43 C2425: a clean recorded walk of a source whose mirror holds no file read `its last walk
-    listed every one of the 0 files the mirror holds for it`. A zero case comes before the listed-all one."""
+    listed every one of the 0 files the mirror holds for it`. A zero case comes before the listed-all one. B13
+    round 44 C2632: `its last walk had no file to list`, the holds clause before it saying none already."""
     (fake_mac["one"] / "Wingtip merger").mkdir()
     seed = Seed(fake_mac["config"])
     one = seed.ids()[0]
@@ -18658,7 +18659,9 @@ def test_empty_cloud_folders_says_a_walk_with_no_file_in_words_c2425(fake_mac: d
     seed.close()
     part = status_parts(fake_mac)[1]["Empty cloud folders"]
     line = next(ln for ln in part.splitlines() if ln.startswith("- <"))
-    assert line.endswith("; its last walk had no file to list: the mirror holds none for it"), line
+    # B13 round 44 C2632: the holds clause says none already, so the walk clause never says it again
+    assert line.endswith("; the mirror holds no file below it; its last walk had no file to list"), line
+    assert "holds none for it" not in part, part
     assert "every one of the 0" not in part and " 0 files" not in part, part
 
 

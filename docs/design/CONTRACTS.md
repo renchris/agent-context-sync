@@ -22365,6 +22365,8 @@ Amended 2026-11-22, §16.276 C2639: install.sh's older-render rewrite (`older_re
 zero the same way, consuming the old line's ending: `its last walk listed all 0 file(s) the mirror holds for it`
 becomes `its last walk had no file to list: the mirror holds none for it`, never `every one of the 0 files` and never
 that sentence followed by `the mirror holds for it` again.
+Amended 2026-11-22, §16.275 C2632: none reads `its last walk had no file to list`, the line's holds clause before it
+saying already that the mirror holds no file below the folder.
 
 install.sh rewrites a stopped copy that any installed renderer may have written, so its readers accept both forms
 (an older agentsync still writes `(s)`): the install.out details summary (` line(s) of ` or ` lines of `, for the
@@ -44450,6 +44452,8 @@ its guide row and two test_deploy_pack.py pins (C2521). Tests:
 the listed-all one, `its last walk had no file to list: the mirror holds none for it`, never `every one of the 0
 files`; the counts sentence of the plural paragraph names it. Test:
 `test_empty_cloud_folders_says_a_walk_with_no_file_in_words_c2425`.
+Amended 2026-11-22, §16.275 C2632: the zero case reads `its last walk had no file to list`; the line's holds clause
+before it says the mirror holds no file below the folder, so `: the mirror holds none for it` repeated it.
 
 **The inbox line prints the one answer** (C2525 with C2503, C2513, C2537; ruling 162; amends §16.265 C2207).
 `_inbox_line` prints `config.inbox_state`'s words (lane B's helper, which status's `inbox state:` line prints too):
@@ -45290,6 +45294,13 @@ under it. Behavior does not change. Test: `test_setup_report.py::test_no_report_
 said "never the parent itself" and tested the grandparent with `endswith`, which passed whatever was registered; it
 asserts equality on `<parent>/elsewhere`, measured to fail under a mutant that registers the parent
 (`<folder-8>/elsewhere`).
+
+**A walk with no file to list is said once** (C2632; amends §16.116 S30 and §16.270 C2425). The Empty cloud folders
+line's zero-file walk clause read `its last walk had no file to list: the mirror holds none for it` right after the
+holds clause `the mirror holds no file below it`, so the line said none twice; it reads `its last walk had no file to
+list`, the zero case still ahead of the listed-all one (never `every one of the 0 files`). Test:
+`test_empty_cloud_folders_says_a_walk_with_no_file_in_words_c2425` (the line ends `; the mirror holds no file below
+it; its last walk had no file to list`, and `holds none for it` is nowhere in the part).
 
 ### 16.276 Round 44: the installer: the shell halves of rulings 171 to 173, AGENTSYNC_CONFIG read by the CLI's rule, a none recorded by `--no-folder`, and C2667 waits on the operator (2026-11-22, wave B13 round 44 lane RB)
 
