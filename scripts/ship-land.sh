@@ -60,8 +60,11 @@ fi
 # SHIP_LAND_RUN_SLEEP s apart (5), so runs get 2 minutes to appear; the two are for tests. A watch refreshes every
 # SHIP_LAND_WATCH_INTERVAL s (60), not gh's default 3: at 3 s one watcher spent about 2,400 of the account's 5,000 API
 # requests an hour, and the rate limit stopped a green land with "nothing pushed" (B13 round 43 C2479). A gh read that
-# fails while the limit is spent waits once for its reset, at most SHIP_LAND_RATE_WAIT_MAX s (3900, 65 minutes), and
-# is read again; every other gh failure keeps its bound.
+# fails while the limit is spent waits once a watch for its reset, at most SHIP_LAND_RATE_WAIT_MAX s (3900, 65
+# minutes), and is read again, the lookup of the run that superseded a cancelled one included (B13 round 44 C2724).
+# A failure with headroom, or a limit it cannot read, keeps its own bound and is then not read: SHIP_LAND_RUN_POLLS
+# listings (24) for `gh run list`, 3 reads for a run's state, one read for the superseded-run lookup. Each of those
+# three not-read lines ends with gh's first non-blank error line, printable and at most 200 characters (C2680).
 polls=${SHIP_LAND_RUN_POLLS:-24} pause=${SHIP_LAND_RUN_SLEEP:-5} rate_max=${SHIP_LAND_RATE_WAIT_MAX:-3900}
 
 # Whether GitHub's API rate limit is spent, and if so a wait until its reset (5 s past it, at most rate_max s).
@@ -85,11 +88,12 @@ rate_wait() {
 # 40523387625's first attempt ended failure at 46:01 with no step failed, pytest's still in progress, and the
 # annotation "The hosted runner lost communication with the server"; both readers called it red, exit 6). Lost
 # only when every failed job has no failed step and a step left uncompleted, so a timeout or a cancelled step
-# stays red; a gh error or any other answer is red too (fail closed). Both readers below use it.
+# stays red; a gh error or any other answer is red too (fail closed). Both readers below use it. 0 lost, 1 red, 2 a
+# gh error, which watch_runs alone waits out once on a spent limit before it calls it red (B13 round 44 C2724).
 run_lost() {
   local verdict
   # shellcheck disable=SC2016 # a jq program: $f is jq's, not the shell's
-  verdict=$(gh run view "$1" --json jobs --jq '[.jobs[]|select(.conclusion=="failure")] as $f | if ($f|length)>0 and all($f[]; ([.steps[]|select(.conclusion=="failure")]|length)==0 and any(.steps[]; .status!="completed")) then "lost" else "red" end' 2>/dev/null) || return 1
+  verdict=$(gh run view "$1" --json jobs --jq '[.jobs[]|select(.conclusion=="failure")] as $f | if ($f|length)>0 and all($f[]; ([.steps[]|select(.conclusion=="failure")]|length)==0 and any(.steps[]; .status!="completed")) then "lost" else "red" end' 2>/dev/null) || return 2
   [ "$verdict" = lost ]
 }
 # The words for a run that lost its runner: not read, never red, and rerun rather than landed past.
@@ -97,13 +101,27 @@ lost_words() {
   echo "run $1 lost its hosted runner (rerun it: gh run rerun $1 --failed)"
 }
 
+# gh's first non-blank error line from the file $1, as ": <line>" (nothing when there is none): CRs dropped, only
+# printable ASCII kept, at most 200 characters. The first, not the last: gh can end with a hint after the cause, such
+# as its `gh auth login` advice (B13 round 44 C2680).
+gh_why() {
+  local why
+  why=$(LC_ALL=C tr -d '\r' <"$1" | LC_ALL=C grep -v '^[[:space:]]*$' | head -n 1 | LC_ALL=C tr -cd '[:print:]' |
+    cut -c1-200) || true
+  [ -z "$why" ] || printf ': %s' "$why"
+}
+
+# Always run in a command substitution, so its EXIT trap removes its own scratch file when that subshell ends.
 watch_runs() {
-  local sha=$1 ids='' req all id tries=0 answered=0 state passes reads workflow newest rated=0
+  local sha=$1 ids='' req all id tries=0 answered=0 state passes reads workflow newest rated=0 errf jobs
+  errf=$(mktemp "${TMPDIR:-/tmp}/ship-land-gh.XXXXXX")
+  # shellcheck disable=SC2064 # the file's name is fixed now, on purpose
+  trap "rm -f '$errf'" EXIT
   while [ -z "$ids" ] && [ "$tries" -lt "$polls" ]; do
     # A sha's runs are listed one at a time, and diagrams can be listed before ci: the list counts only once it
     # holds a ci run, which every push to main starts (B13 round 23: a land read back diagrams alone as CI green).
-    if req=$(gh run list --commit "$sha" --workflow ci --json databaseId --jq '.[].databaseId' 2>/dev/null) &&
-      all=$(gh run list --commit "$sha" --json databaseId --jq '.[].databaseId' 2>/dev/null); then
+    if req=$(gh run list --commit "$sha" --workflow ci --json databaseId --jq '.[].databaseId' 2>"$errf") &&
+      all=$(gh run list --commit "$sha" --json databaseId --jq '.[].databaseId' 2>"$errf"); then
       answered=1
       ids=''
       [ -z "$req" ] || ids=$(printf '%s\n' "$req" "$all" | awk 'NF && !seen[$0]++')
@@ -120,7 +138,7 @@ watch_runs() {
     if [ "$answered" = 1 ]; then
       echo "no CI run for ${sha:0:8} after $((polls * pause)) s"
     else
-      echo "gh run list failed $polls times for ${sha:0:8}"
+      echo "gh run list failed $polls times for ${sha:0:8}$(gh_why "$errf")"
     fi
     return 2
   fi
@@ -130,14 +148,14 @@ watch_runs() {
       echo "== CI: waiting for run $id" >&2
       gh run watch "$id" --interval "${SHIP_LAND_WATCH_INTERVAL:-60}" --exit-status >/dev/null 2>&1 && break
       state='' reads=0
-      until state=$(gh run view "$id" --json status,conclusion --jq '"\(.status) \(.conclusion)"' 2>/dev/null); do
+      until state=$(gh run view "$id" --json status,conclusion --jq '"\(.status) \(.conclusion)"' 2>"$errf"); do
         if [ "$rated" = 0 ] && rate_wait; then
           rated=1
           continue
         fi
         reads=$((reads + 1))
         if [ "$reads" -ge 3 ]; then
-          echo "gh run view $id failed 3 times"
+          echo "gh run view $id failed 3 times$(gh_why "$errf")"
           return 2
         fi
         /bin/sleep "$pause"
@@ -145,9 +163,17 @@ watch_runs() {
       case $state in
         "completed success" | "completed skipped" | "completed neutral") break ;;
         "completed failure" | "completed timed_out" | "completed startup_failure")
-          if [ "$state" = "completed failure" ] && run_lost "$id"; then
-            lost_words "$id"
-            return 2
+          if [ "$state" = "completed failure" ]; then
+            jobs=0
+            run_lost "$id" || jobs=$?
+            if [ "$jobs" = 2 ] && [ "$rated" = 0 ] && rate_wait; then
+              rated=1 jobs=0
+              run_lost "$id" || jobs=$?
+            fi
+            if [ "$jobs" = 0 ]; then
+              lost_words "$id"
+              return 2
+            fi
           fi
           echo "$id"
           return 1
@@ -167,12 +193,19 @@ watch_runs() {
           continue # the watch broke off before the run completed
           ;;
       esac
-      if ! workflow=$(gh run view "$id" --json workflowName --jq .workflowName 2>/dev/null) ||
-        ! newest=$(gh run list --branch main --workflow "$workflow" --limit 1 --json databaseId,headSha \
-          --jq '.[0] | "\(.databaseId) \(.headSha)"' 2>/dev/null); then
-        echo "gh failed reading which run superseded the cancelled run $id"
+      # One read, or two across the once-per-watch wait when the limit is spent, as the reads above (C2724)
+      while ! {
+        workflow=$(gh run view "$id" --json workflowName --jq .workflowName 2>"$errf") &&
+          newest=$(gh run list --branch main --workflow "$workflow" --limit 1 --json databaseId,headSha \
+            --jq '.[0] | "\(.databaseId) \(.headSha)"' 2>"$errf")
+      }; do
+        if [ "$rated" = 0 ] && rate_wait; then
+          rated=1
+          continue
+        fi
+        echo "gh failed reading which run superseded the cancelled run $id$(gh_why "$errf")"
         return 2
-      fi
+      done
       git fetch -q origin main || {
         echo "git fetch failed reading which run superseded the cancelled run $id"
         return 2

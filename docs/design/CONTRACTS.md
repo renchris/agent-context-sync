@@ -44990,6 +44990,10 @@ says no core request is left, `watch_runs` waits once for the reset, 5 s past it
 keeps its 3 reads and exit 9. Tests: `tests/test_ship_land.py`
 `::test_every_ci_watch_refreshes_once_a_minute_not_every_3_s_c2479` and
 `::test_a_read_that_fails_on_a_spent_rate_limit_waits_for_its_reset_once_c2479`.
+Amended 2026-11-22, §16.279 C2724, C2680: the lookup of the run that superseded a cancelled one waits too, once a
+watch with the reads above; each read keeps its own bound with headroom or an unread limit, `SHIP_LAND_RUN_POLLS`
+listings (24) for `gh run list`, 3 reads for a run's state and one for the lookup, not the 3 reads this says for
+all; and each of those three not-read lines ends with gh's first non-blank error line.
 
 **The gate's ceiling stays about twice the slowest part** (C2483; `scripts/gate.sh`, `tests/test_gate_journal.py`;
 amends §16.269 C2273). gate.sh's comment called `GATE_CEILING_S`'s 10800 s about twice the slowest part, the rest
@@ -45419,7 +45423,35 @@ a `.curlrc`), `test_speech.py::test_the_seeds_curl_is_the_systems_c2715` and the
 
 ### 16.279 Round 44: the prompt goes to v41 (only what setup prints and this shell holds), ship-land's superseded-run lookup in its rate wait, dated lines in place of rewrites, and the guides (2026-11-22, wave B13 round 44 lane D)
 
-Reserved for round 44 lane D of B13.
+Round 44's lane D items (`docs/plans/bring-back-ocr.md`, "B13 round 44"; specs `round44/items/C<n>.md`, the verifier's
+corrected fix built, as the lead's rulings 171 to 187 settle it). A dated line this round writes reads
+`Amended 2026-11-22, §16.279 C<n>`.
+
+**The superseded-run lookup waits out a spent rate limit, and a not-read line says what gh said** (C2724, C2680;
+`scripts/ship-land.sh`, `tests/test_ship_land.py`; amends §16.274 C2479). C2479's wait covered `watch_runs`' listing
+and its state reads, but the lookup of the run that superseded a cancelled one (`gh run view --json workflowName`, then
+`gh run list --branch main`) read once and returned "gh failed reading which run superseded the cancelled run" on any
+failure, with `gh api rate_limit` never read: a land whose trunk run a later push cancelled stopped exit 9 on a spent
+limit after a green gate, the stop C2479 was written to prevent. The lookup now sits in a loop that takes the same
+once-per-watch wait (the shared `rated` flag) and reads both commands again. With headroom, or a limit it cannot read,
+each read keeps its own bound: `SHIP_LAND_RUN_POLLS` listings (24) for `gh run list`, 3 reads for a run's state, one
+read for the lookup; the header says so. Every gh read behind one of those three not-read lines wrote its error to
+/dev/null, so a land stopped by an HTTP 502, a secondary limit or an expired sign-in said only `gh run view <id> failed
+3 times` (round 43 C2492 read its HTTP 403 from a transcript). Those reads now write to one scratch file of the watch's
+own, and each of the three lines ends with `: ` and gh's first non-blank error line, CRs dropped, printable ASCII
+only, at most 200 characters (`gh_why`): the first, never the last, since gh can end with a hint after the cause (its
+`gh auth login` advice). The rc 1 path still prints a bare run id, `gh run watch` stays silent (its failure falls
+through to `gh run view`), and `rate_wait`, `run_lost` and the pre-gate reader stay silent, failing closed or open on
+purpose. The verifier's further gap is built too: `run_lost`'s `--json jobs` read took no wait, so on a spent limit a
+run that only lost its runner read red (exit 6, which `--allow-red-trunk` lands past, against C569); `run_lost` now
+returns 2 on a gh error, `watch_runs` waits once on a spent limit and reads the jobs again, and `trunk_known_red`, which
+never waits, still reads that 2 as red. Tests: `tests/test_ship_land.py`
+`::test_the_superseded_run_lookup_waits_out_a_spent_rate_limit_too_c2724` (a cancelled run 111 whose workflowName read
+fails once with the limit spent, run 222 on main holding the sha: the land reads the limit between the two lookups and
+lands green), `::test_a_lost_runners_jobs_read_waits_out_a_spent_rate_limit_and_is_not_red_c2724` (exit 9, rerun, not
+6) and `::test_a_not_read_line_names_ghs_first_error_line_not_its_hint_c2680` (an HTTP 502 stub, a stub whose
+cause follows a blank and CR line and comes before its `gh auth login` hint, and a 300-character listing error cut to
+200).
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

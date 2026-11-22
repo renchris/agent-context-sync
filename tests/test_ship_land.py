@@ -296,6 +296,118 @@ def test_a_read_that_fails_on_a_spent_rate_limit_waits_for_its_reset_once_c2479(
     assert _git(remote, "rev-parse", "main") == before
 
 
+def test_the_superseded_run_lookup_waits_out_a_spent_rate_limit_too_c2724(
+    remote: Path, tmp_path: Path, env: dict[str, str]
+) -> None:
+    """B13 round 44 C2724: the lookup of the run that superseded a cancelled one read `gh run view
+    --json workflowName` once and stopped "gh failed reading which run superseded the cancelled run" on
+    any failure, a spent rate limit included, with `gh api rate_limit` never read; the header and §16.274's
+    C2479 said every read waits once. Run 111 is cancelled, its workflowName read fails once while the
+    limit is spent, and run 222 on main holds the sha: the land waits, reads again and goes on."""
+    clone = _clone(remote, tmp_path / "a", env, "one")
+    failed = tmp_path / "failed-once"
+    body = (
+        'case "$*" in\n'
+        '  "run list --branch main"*) echo "222 $(git rev-parse origin/main)" ;;\n'
+        '  "run list"*) echo 111 ;;\n'
+        '  "run watch"*) exit 1 ;;\n'
+        f'  "run view 111 --json workflowName"*) [ -e "{failed}" ] || {{ : >"{failed}"; exit 1; }}\n'
+        "    echo ci ;;\n"
+        '  "run view 111"*) echo completed cancelled ;;\n'
+        '  "run view 222"*) echo completed success ;;\n'
+        '  "api rate_limit"*) echo "0 $(( $(date +%s) + 3600 ))" ;;\n'
+        "esac\n"
+    )
+    cp = _land(clone, {**_with_gh(tmp_path, env, body), "SHIP_LAND_RATE_WAIT_MAX": "1"})
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert "gh failed reading which run superseded" not in cp.stdout + cp.stderr
+    assert "was cancelled by a later push" in cp.stderr
+    assert "GitHub's API rate limit is spent; waiting 1 s for its reset" in cp.stderr
+    calls = (tmp_path / "gh.log").read_text().splitlines()
+    looked = [n for n, line in enumerate(calls) if line.startswith("run view 111 --json workflowName")]
+    rated = [n for n, line in enumerate(calls) if line.startswith("api rate_limit")]
+    assert len(looked) >= 2 and rated and looked[0] < rated[0] < looked[1], calls
+    assert _git(remote, "rev-parse", "main") == _git(clone, "rev-parse", "HEAD")
+    assert "LANDED" in cp.stdout and "CI green" in cp.stdout
+
+
+def test_a_lost_runners_jobs_read_waits_out_a_spent_rate_limit_and_is_not_red_c2724(
+    remote: Path, tmp_path: Path, env: dict[str, str]
+) -> None:
+    """B13 round 44 C2724 (its verifier's further gap): run_lost's `--json jobs` read took no wait, so on a
+    spent limit a run that only lost its runner read red, exit 6 (a land --allow-red-trunk would make past
+    it). After the gate the trunk run ends failure, its jobs read fails once with the limit spent, and the
+    read after the wait says lost: not read, rerun, nothing pushed."""
+    clone = _clone(remote, tmp_path / "a", env, "one")
+    before = _git(remote, "rev-parse", "main")
+    seen, failed = tmp_path / "states", tmp_path / "failed-once"
+    body = (
+        'case "$*" in\n'
+        '  "run list"*) echo 111 ;;\n'
+        '  "run watch"*) exit 1 ;;\n'
+        f'  "run view 111 --json jobs"*) [ -e "{failed}" ] || {{ : >"{failed}"; exit 1; }}; echo lost ;;\n'
+        f'  "run view 111"*) echo x >>"{seen}"; [ "$(wc -l <"{seen}")" -gt 1 ] && echo completed failure'
+        " || echo in_progress ;;\n"
+        '  "api rate_limit"*) echo "0 $(( $(date +%s) + 3600 ))" ;;\n'
+        "esac\n"
+    )
+    cp = _land(clone, {**_with_gh(tmp_path, env, body), "SHIP_LAND_RATE_WAIT_MAX": "1"})
+    assert cp.returncode == 9, cp.stdout + cp.stderr
+    assert "trunk CI not read: run 111 lost its hosted runner (rerun it" in cp.stderr
+    assert "GitHub's API rate limit is spent; waiting 1 s for its reset" in cp.stderr
+    assert _git(remote, "rev-parse", "main") == before
+
+
+def test_a_not_read_line_names_ghs_first_error_line_not_its_hint_c2680(
+    remote: Path, tmp_path: Path, env: dict[str, str]
+) -> None:
+    """B13 round 44 C2680: every gh read's error went to /dev/null, so a land stopped by an HTTP 502 (or a
+    secondary limit, an expired sign-in) said only `gh run view <id> failed 3 times`. The not-read line
+    ends with gh's first non-blank error line, printable and cut at 200 characters, and never with the hint
+    gh prints after the cause. The stub fails only once main holds the pushed sha, so the after-push
+    `CI NOT READ` line is the one read."""
+    pushed = '[ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ]'
+    for n, (err, cause, hint) in enumerate(
+        (
+            (r"HTTP 502: Bad Gateway (https://api.github.com/graphql)\n", "HTTP 502: Bad Gateway", None),
+            (
+                r"\r\n  \nHTTP 401: Bad credentials \033[31m(https://api.github.com/graphql)\r\n"
+                r"Try authenticating with:  gh auth login\n",
+                "HTTP 401: Bad credentials",
+                "gh auth login",
+            ),
+        )
+    ):
+        clone = _clone(remote, tmp_path / f"a{n}", env, f"one{n}")
+        body = (
+            'case "$1 $2" in\n'
+            '  "run list") echo 111 ;;\n'
+            '  "run watch") exit 1 ;;\n'
+            f"  \"run view\") {pushed} && {{ printf '{err}' >&2; exit 1; }}; echo completed success ;;\n"
+            '  "api rate_limit") echo "4999 $(( $(date +%s) + 3600 ))" ;;\n'
+            "esac\n"
+        )
+        cp = _land(clone, _with_gh(tmp_path, env, body))
+        assert cp.returncode == 9, cp.stdout + cp.stderr
+        [line] = [line for line in cp.stdout.splitlines() if "CI NOT READ" in line]
+        assert f"gh run view 111 failed 3 times: {cause}" in line, line
+        assert "\033" not in line and "\r" not in line
+        if hint:
+            assert hint not in line, line
+    clone = _clone(remote, tmp_path / "long", env, "long")
+    body = (
+        'case "$1 $2" in\n'
+        f"  \"run list\") {pushed} && {{ printf 'x%.0s' $(seq 300) >&2; exit 1; }}; echo 111 ;;\n"
+        '  "run watch") exit 0 ;;\n'
+        '  "api rate_limit") echo "4999 $(( $(date +%s) + 3600 ))" ;;\n'
+        "esac\n"
+    )
+    cp = _land(clone, _with_gh(tmp_path, env, body))
+    assert cp.returncode == 9, cp.stdout + cp.stderr
+    [line] = [line for line in cp.stdout.splitlines() if "CI NOT READ" in line]
+    assert re.search(r"gh run list failed 3 times for \w{8}: x{200}; read it back", line), line
+
+
 def test_a_pushed_sha_with_no_run_says_landed_and_ci_not_read(
     remote: Path, tmp_path: Path, env: dict[str, str]
 ) -> None:
