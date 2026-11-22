@@ -443,7 +443,8 @@
 # older:<the name the installed agentsync lacks>, failed or failed:<the class of its error>); the config line ends with kept=N added=M when agentsync could count them: the folders
 # synced before the step and the ones it added, then inbox=not-added when init or add-source printed `inbox: not
 # added` or another kind's `inbox: <path> is source ..., not an inbox source` (alone when the counts are
-# unknown)), then the report step's line, then one "end" line (exit status, total seconds, the report
+# unknown; a refused or failed config step keeps it too, after note=added-then-refused and its counts, or
+# after note=failed: B13 round 44 C2701)), then the report step's line, then one "end" line (exit status, total seconds, the report
 # included). The report is written while a provisional end line is the log's last line, so it reads a
 # finished run; that line is then replaced by the report step's line and the final end line (when another
 # line followed it meanwhile, the report step's line is appended instead). `agentsync setup-report` reads it
@@ -12962,6 +12963,7 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 	(exit "$rc") || fail "$@"
 }
 KEPT=0 # the folders synced before this step, and below the ones it added: both in its log line
+inbox_flag() { [ "${INBOX_NOT_ADDED:-0}" -eq 0 ] || printf ' inbox=not-added'; } # the config line's inbox field
 [ "$CONFIG_STATE" = "created" ] || KEPT="$(synced_count)"
 # add-source ends every call on two summary lines, "docs repo ..." and "sources: ..." (cli._ensure_setup).
 # With several folders that block came once per folder (field reports 2026-10-06 and 2026-10-07: 16 source
@@ -13041,12 +13043,15 @@ if [ "${#FOLDERS[@]}" -gt 0 ]; then
 			kill "$TICKER" 2>/dev/null || true
 			TICKER=""
 			if [ -n "$KEPT" ] && [ -n "$NOW" ] && [ "$NOW" -gt "$KEPT" ]; then
-				step_end failed "$HELD_RC" "added-then-refused kept=$KEPT added=$((NOW - KEPT))"
+				step_end failed "$HELD_RC" "added-then-refused kept=$KEPT added=$((NOW - KEPT))$(inbox_flag)"
 			else
-				step_end failed "$HELD_RC" "added-then-refused"
+				step_end failed "$HELD_RC" "added-then-refused$(inbox_flag)"
 			fi
 		fi
 		rm -f "$MARK" "$ERRF"
+		# a call that refused before adding the folder closes the step itself when it saw the inbox warning, so
+		# the failed config line keeps inbox=not-added; fail's own step_end is then a no-op (B13 round 44 C2701)
+		[ "$HELD_RC" -eq 0 ] || [ -z "$(inbox_flag)" ] || step_end failed "$HELD_RC" "failed inbox=not-added"
 		(exit "$HELD_RC") || config_failed "$WHY"
 	done
 	[ -z "$HELD" ] || rm -f "$HELD"
@@ -13060,6 +13065,7 @@ else
 	! inbox_not_added "$ERRF" || INBOX_NOT_ADDED=1
 	rm -f "$ERRF"
 	ERRF=""
+	[ "$INIT_RC" -eq 0 ] || [ -z "$(inbox_flag)" ] || step_end failed "$INIT_RC" "failed inbox=not-added" # C2701, as above
 	(exit "$INIT_RC") || config_failed "agentsync init failed (see the error above)"
 	# what became of the inbox is init's own line to say (`added inbox source ...`, `inbox: not added: ...`,
 	# `inbox: <path> is source ...`): this line claimed `(inbox ensured)` after `inbox: not added` (B13 round 42
@@ -13070,7 +13076,8 @@ fi
 # before, and one with it adds only the folders not yet there. One line for the reader, and two fields on
 # the step's log line for the setup report; and inbox=not-added when init or add-source printed `inbox: not
 # added` or `inbox: <path> is source ..., not an inbox source` (inbox_not_added), so install.log carries it
-# (B13 round 42 ruling 151, C2207; round 43 C2440).
+# (B13 round 42 ruling 151, C2207; round 43 C2440); a refused or failed init or add-source that saw the warning
+# ends its failed config line with it as well, closing its own step before config_failed (B13 round 44 C2701).
 FOLDER_COUNTS=""
 NOW="$(synced_count)"
 kill "$TICKER" 2>/dev/null || true

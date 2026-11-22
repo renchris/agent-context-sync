@@ -190,13 +190,16 @@ setup() { [ -f "$cfg" ] || { mkdir -p "$(dirname "$cfg")"; echo "# stub" > "$cfg
 inbox() { grep -q "^kind = .inbox." "$cfg" || printf '[[source]]\\nkind = "inbox"\\n' >> "$cfg"; }
 case "$sub" in
   init)
-    [ -z "${STUB_INIT_RC:-}" ] ||
-      { echo "configuration error: $cfg: not valid TOML (stub)" >&2; exit "$STUB_INIT_RC"; }
+    [ -z "${STUB_INIT_RC:-}" ] || {  # STUB_INBOX_FIRST: the inbox warning before the refusal (C2701)
+      [ -z "${STUB_INBOX_FIRST:-}" ] || printf '%s\\n' "$STUB_INBOX_ERR" >&2
+      echo "configuration error: $cfg: not valid TOML (stub)" >&2; exit "$STUB_INIT_RC"; }
     [ -z "${STUB_INBOX_ERR:-}" ] || printf '%s\\n' "$STUB_INBOX_ERR" >&2  # what init said of the inbox
     setup; inbox; hint "agentsync doctor" ;;
   add-source)
     [ -z "${STUB_ADD_SOURCE_SLEEP:-}" ] || sleep "$STUB_ADD_SOURCE_SLEEP"  # a slow call on a busy Mac
-    [ -z "${STUB_ADD_SOURCE_RC:-}" ] || { echo "add-source failed (stub)" >&2; exit "$STUB_ADD_SOURCE_RC"; }
+    [ -z "${STUB_ADD_SOURCE_RC:-}" ] || {
+      [ -z "${STUB_INBOX_FIRST:-}" ] || printf '%s\\n' "$STUB_INBOX_ERR" >&2
+      echo "add-source failed (stub)" >&2; exit "$STUB_ADD_SOURCE_RC"; }
     [ "$pos" != "${STUB_ADD_SOURCE_FAIL:-}" ] || { echo "add-source failed (stub)" >&2; exit 1; }
     [ -z "${STUB_INBOX_ERR:-}" ] || printf '%s\\n' "$STUB_INBOX_ERR" >&2
     setup; printf '[[source]]\\npath = "%s"\\n' "$pos" >> "$cfg"; inbox; hint "agentsync doctor"
@@ -207,7 +210,11 @@ case "$sub" in
       echo "docs repo $(dirname "$cfg")/docs (exists, no remote; scaffold up to date)"
       [ -f "$cfg.tm" ] || { echo "time machine: excluded the cache (stub)"; : > "$cfg.tm"; }  # the first call
       echo "sources: ${pos##*/}"
-    fi ;;
+    fi
+    # a refusal after the add (note=added-then-refused): the folder's block is written, then the call fails
+    [ -z "${STUB_ADD_SOURCE_LATE_RC:-}" ] ||
+      { echo "configuration error: $cfg (stub)" >&2; exit "$STUB_ADD_SOURCE_LATE_RC"; }
+    ;;
   doctor|status)
     if [ "$sub" = status ] && [ "${AGENTSYNC_NO_NEXT_HINT:-}" != 1 ]; then  # install.sh's closing status
       printf '%s\\n' "${STUB_STATUS_OUT:-NEXT: draft the baseline questions (stub)}"
@@ -1377,6 +1384,45 @@ def test_another_kinds_source_on_the_inbox_folder_logs_inbox_not_added_c2440(
     assert cp.returncode in (0, 2), cp.stdout + cp.stderr
     assert f"\n{lines[said]}\n" in f"\n{cp.stderr}", cp.stderr
     assert _config_line(env).endswith(" inbox=not-added") is (said != "added"), _config_line(env)
+
+
+@pytest.mark.parametrize("warned", [True, False], ids=["warned", "quiet"])
+@pytest.mark.parametrize(
+    ("call", "knob", "rc"),
+    [
+        ("init", "STUB_INIT_RC", "1"),
+        ("init", "STUB_INIT_RC", "78"),
+        ("add-source", "STUB_ADD_SOURCE_RC", "1"),
+        ("add-source", "STUB_ADD_SOURCE_RC", "78"),
+        ("add-source", "STUB_ADD_SOURCE_LATE_RC", "78"),
+    ],
+)
+def test_a_refused_config_step_keeps_the_inbox_it_could_not_add_c2701(
+    env: dict[str, str], wheel: Path, folder: Path, call: str, knob: str, rc: str, warned: bool
+) -> None:
+    """B13 round 44 ruling 179, C2701: init or add-source printed `inbox: not added`, then refused, and the
+    failed config line dropped the inbox=not-added it had already seen (the added-then-refused closes and
+    fail's own step_end carried no such field). A refused or failed config step now keeps it: after
+    note=added-then-refused and its counts, or after note=failed when nothing was added; without the warning
+    the endings are as before."""
+    warning = f"inbox: not added: {Path(env['HOME'])}/agent-context/inbox is not a folder (stub)"
+    e = {**env, knob: rc, "STUB_INBOX_FIRST": "1", "STUB_ADD_SOURCE_SUMMARY": "1"}
+    if warned:
+        e["STUB_INBOX_ERR"] = warning
+    args = [str(wheel), *(["--source-local", str(folder)] if call == "add-source" else [])]
+    cp = install_sh(e, *args)
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert (warning in cp.stderr) is warned, cp.stderr
+    line = _config_line(env)
+    assert f" rc={rc} result=failed" in line, line
+    late = knob == "STUB_ADD_SOURCE_LATE_RC"
+    note = line.partition(" note=")[2]
+    if warned:
+        assert line.endswith(" inbox=not-added") and line.count("inbox=not-added") == 1, line
+        assert note.startswith("added-then-refused") if late else note == "failed inbox=not-added", line
+    else:
+        assert "inbox=not-added" not in line, line
+        assert note.startswith("added-then-refused") if late else note == "", line
 
 
 @pytest.mark.parametrize("case", ["refused", "does not load", "dry run"])
