@@ -29573,6 +29573,23 @@ def test_a_non_ascii_digit_in_install_log_is_no_number_c2677(fake_mac: dict[str,
     assert setup_report._reread_since(r, parsed) == [], "the stopped sync's own run, its seconds read as 0"
 
 
+def test_an_install_log_rc_is_read_from_ascii_digits_only_c2847(tmp_path: Path) -> None:
+    """B13 round 45 C2847 (C2677's pattern): the end line's rc was read with `\\d`, which takes `\u0660`
+    (ARABIC-INDIC DIGIT ZERO), so `end rc=\u0660` read as an exit 0 and the run as one that ended clean. Only
+    ASCII digits are an rc: that run has no rc and its outcome is not `worked with help`."""
+    log = tmp_path / "install.log"
+    run = "2026-11-23T10:00:00Z run=20261123T100000Z-9"
+    log.write_text(
+        f"{run} start install.sh compat=41 commit=0123456789ab kind=checkout source=- args=\n"
+        f"{run} step=config seconds=1 rc=0 result=done note=exists\n"
+        f"{run} end rc=\u0660 seconds=5\n",
+        encoding="utf-8",
+    )
+    [parsed] = setup_report.read_install_runs(log)
+    assert parsed.rc is None, parsed
+    assert setup_report.compute_outcome(None, [parsed]).kind != "worked with help"
+
+
 def test_a_config_cut_runs_to_its_path_tokens_end_c2290() -> None:
     """B13 round 42 C2290 (ruling 147; privacy; makes worse True for a boundary-only match): the whole-config
     cut replaced the literal alone, so `sources.toml-PrivateBackup` printed its suffix after the cut, and a

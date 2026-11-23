@@ -45981,6 +45981,10 @@ is no none either; any other falls through to its failure, signal or no-end scor
 `test_a_none_is_scored_only_for_a_no_folder_run_that_ended_clean_c2947` (a failed agentsync step, a status [FAIL] at
 rc 1 and at rc 0, a status timeout, rc 143 and no end line).
 
+**An install.log rc is ASCII digits only** (C2847; C2677's pattern). `read_install_runs` read the end line's rc with
+`\d`, which takes `\u0660`, so `end rc=\u0660` read as an exit 0 and the run as one that ended clean; it takes
+`-?[0-9]+` only, and that run has no rc. Test: `test_an_install_log_rc_is_read_from_ascii_digits_only_c2847`.
+
 ### 16.281 Round 45: the installer: the shell halves of rulings 188 and 189, the person's none honored at every NEXT, an inbox-state read that did not finish said so, and C2060 waits on the operator (2026-11-23, wave B13 round 45 lane RB)
 
 Round 45's lane RB items (`docs/plans/bring-back-ocr.md`, "B13 round 45"; specs `round45/items/C<n>.md`, the

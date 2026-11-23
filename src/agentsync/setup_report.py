@@ -3025,7 +3025,8 @@ def read_install_runs(log: Path) -> list[InstallRun]:
             InstallRun(
                 run_id=run_id,
                 started=parse_time(fields.get("start", {}).get("at", "")),
-                rc=int(rc_text) if re.fullmatch(r"-?\d+", rc_text) else None,
+                # B13 round 45 C2847: ASCII digits only, as C2677's readers take them; \d matches U+0660
+                rc=int(rc_text) if re.fullmatch(r"-?[0-9]+", rc_text) else None,
                 seconds=int(secs) if secs.isascii() and secs.isdigit() else None,  # B13 round 44 C2677
                 steps=steps,
                 simulated=any(_SIMULATED_RE.search(ln) for ln in lines),
