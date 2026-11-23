@@ -723,6 +723,56 @@ def test_the_zero_byte_pass_keeps_what_the_recording_replan_keeps_c2703() -> Non
     zero = inspect.getsource(cycle_mod._Cycle._reread_zero_byte_stubs)
     assert "reread = (self._reread_n, self._reread_s)" in zero
     assert "self._reread_n, self._reread_s = reread" in zero
+    # B13 round 45 C2923 (ruling 196): the counts a first read moved go back with the row too
+    assert zero.count("counted = self._row_books(row, acc)") == 1
+    assert zero.count("self._restore_row_books(row, acc, counted)") == 1
+    assert zero.index("counted = self._row_books(") < zero.index("with self.manifest.savepoint():")
+
+
+def test_a_zero_byte_first_read_whose_publish_fails_counts_nothing_c2923(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 45 C2923 (ruling 196): the zero-byte pass put back ``read again``'s two counters when a
+    row's savepoint rolled back, but not what a first read (its old page deleted, so not intact) counts
+    before it publishes: ``converted``, ``read first``, the source's unreadable count and the run tally's
+    ``converted_unreadable``. A publish that raised left a row that was never converted counted as one, and
+    ``read first`` (1) above ``read again`` (0). ``_row_books`` keeps them before the savepoint and
+    ``_restore_row_books`` puts them back; the next sync reads the row and counts it once."""
+    config, src = make_env(tmp_path)
+    with monkeypatch.context() as old:
+        _older_zero_byte_answers(old)
+        (src / "Contoso a.docx").write_bytes(b"")
+        assert run(config).exit_code == 0
+    assert _row(config, "Contoso a.docx").state_reason == NOT_OOXML_REASON
+    with Manifest(config.state_paths.db) as m:
+        (out,) = m.outputs_for("src", item_id(config, "Contoso a.docx"))
+    (config.docs_repo / out.output_path).unlink()  # the page is gone: the re-read is a first read
+    real = cycle_mod._Cycle._publish
+
+    def raises(self, src_cfg, row, *a, **kw):  # type: ignore[no-untyped-def]
+        if row.name == "Contoso a.docx":
+            raise OSError("Contoso disk full")
+        return real(self, src_cfg, row, *a, **kw)
+
+    with monkeypatch.context() as failing:
+        failing.setattr(cycle_mod._Cycle, "_publish", raises)
+        report = run(config)
+    assert report.exit_code == 0
+    assert "reading files again stopped: OSError" in report.sources[0].errors
+    assert _row(config, "Contoso a.docx").state_reason == NOT_OOXML_REASON, "the row rolls back"
+    assert (report.read_again, report.read_first) == (0, 0), report
+    assert sum(s.converted for s in report.sources) == 0
+    assert sum(s.unreadable for s in report.sources) == 0
+    counts = _run_counts(config)
+    assert counts.get("converted") == 0, counts
+    assert not {"converted_unreadable", "reread_first", "reread"} & set(counts), counts
+    report = run(config)
+    assert report.exit_code == 0
+    assert _row(config, "Contoso a.docx").state_reason == policy_mod.ZERO_BYTES_REASON
+    assert (report.read_again, report.read_first) == (1, 1), report
+    assert sum(s.converted for s in report.sources) == 1
+    counts = _run_counts(config)
+    assert (counts["converted"], counts["reread_first"], counts["converted_unreadable"]) == (1, 1, 1), counts
 
 
 def test_a_zero_byte_row_out_of_scope_keeps_the_token_unset_and_is_read_when_it_returns_c2512(

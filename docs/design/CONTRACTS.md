@@ -45617,6 +45617,9 @@ no change recorded for it yet, is not known and stays on disk. Tests:
 failing sync, the failing row's page in HEAD and on disk has its manifest `page_sha256` and says `not-ooxml`, and
 `read again` is 1) and `test_convert_family.py::test_the_zero_byte_pass_keeps_what_the_recording_replan_keeps_c2703`
 (the twins take the same snapshot and put it back the same way).
+Amended 2026-11-23, §16.283 C2923: the snapshot also holds what a first read (the old page deleted) counts before
+its publish raises, `converted`, `read first` and the run tally's conversion keys (`_row_books`), and the except
+branch puts them back; an alarm and the OCR tallies stay.
 
 **A CRLF in a cut formula is costed as it renders** (C2710 with C2652 and C2721; ruling 184; `agentsync.convert.xlsx`;
 amends §16.273 C2516). Since C2531 `_code` renders a CRLF as one space, but `_CODE_RUNS` put the CR and the LF in its
@@ -45845,7 +45848,32 @@ Reserved for round 45 lane B of B13.
 
 ### 16.283 Round 45: the converters: a failed zero-byte re-read's books put back, an Office file's container and family parse in its answer and key, and a source's own banner line (2026-11-23, wave B13 round 45 lane E)
 
-Reserved for round 45 lane E of B13.
+Each item is built as its verifier corrected it, as the lead's rulings 188 to 197 settle it. A dated line this
+round writes reads `Amended 2026-11-23, §16.283 C<n>`.
+
+**A failed zero-byte re-read puts back what its first read counted** (C2923; ruling 196; `agentsync.cycle`; amends
+§16.278 C2703). A row whose mirror page is gone is not intact, so `_after_fetch` takes its first-read branch: it
+adds the row to `acc.converted`, `_reread_first` and the source's per-result count (`unreadable` for a stub), runs
+`_tally_converted` (`converted`, `converted_unreadable`), and only then calls `_publish`. When that publish raised,
+the row's savepoint rolled back and `_put_back` restored its page and books, but none of those counts: the verifier's
+sync said `converted 1`, `read first 1` above `read again 0`, and stored `{'converted': 1, 'converted_unreadable':
+1, 'reread_first': 1}` for a row still `not-ooxml`. Before each row's savepoint `_reread_zero_byte_stubs` now also
+keeps `_row_books(row, acc)`: `_reread_first` and `_reread_kept`, the `_SourceAcc` counts in `_ROW_ACC_COUNTS`
+(converted, unreadable, conversion_failed, refused, withheld_read, label_unreadable, converter_waiting,
+credential_stubbed), the run tally's `_ROW_TALLY_KEYS` (converted, converted_failed, converted_unreadable,
+converted_seen, converted_again, converter_waiting and the three rescreened keys), and whether the row was in
+`_converted_ok`, `_waiting_ids` and `_credential_counted`; the except branch, after `_put_back` and the two
+re-read counters, calls `_restore_row_books`, which sets each count back (a tally key back at 0 is dropped) and
+takes the row out of a set it was not in. `acc.alarms` and the OCR tallies (`ocr_*`) stay: an OCR outage or a
+helper failure seen during the read is a fact about the run, and putting the whole tally back would hide it. The
+recording replan is the pass's twin: its `_empty_recording` reaches the same first-read branch, and the twin test,
+fed the same publish failure, measured it keeping `converted 1`, `unreadable 1` and `converted_unreadable 1` for a
+row that rolled back, so its arm is a strict xfail that lane B's adoption of the pair in `_replan_recording_stubs`
+takes away (ruling 196). Tests:
+`test_convert_family.py::test_a_zero_byte_first_read_whose_publish_fails_counts_nothing_c2923` (the row stays
+`not-ooxml`, `read again` and `read first` 0, no `converted_unreadable` or `reread_first` stored; the next sync
+counts it once), `test_cycle.py::test_a_first_read_whose_publish_fails_counts_nothing_in_either_twin_c2923` and the
+C2703 shape test, which requires the pair's two lines.
 
 ### 16.284 Round 45: the prompt goes to v42 (a none, a config path and an unread inbox state as setup gives them), the gate's part ceiling and CI's limit, dated lines, and the guides (2026-11-23, wave B13 round 45 lane D)
 

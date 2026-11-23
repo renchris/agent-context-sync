@@ -2076,6 +2076,50 @@ def _cycle_registry(
     return Registry.default(config.convert, policy=policy, ocr=engine, **extra)
 
 
+_ROW_ACC_COUNTS = (
+    "converted",
+    "unreadable",
+    "conversion_failed",
+    "refused",
+    "withheld_read",
+    "label_unreadable",
+    "converter_waiting",
+    "credential_stubbed",
+)
+"""The :class:`_SourceAcc` counts one row's conversion moves (``_Cycle._after_fetch``, ``_count_credential``):
+what ``_Cycle._row_books`` keeps before a row's savepoint and ``_restore_row_books`` puts back when it rolls
+back (B13 round 45 C2923, ruling 196).  Never ``alarms``: an alarm raised during the read is a fact about the
+run."""
+
+_ROW_TALLY_KEYS = (
+    "converted",
+    "converted_failed",
+    "converted_unreadable",
+    "converted_seen",
+    "converted_again",
+    "converter_waiting",
+    "rescreened",
+    "rescreened_unchanged",
+    "rescreened_reader",
+)
+"""``_Cycle._tally``'s conversion keys one row's conversion moves, kept and put back with
+:data:`_ROW_ACC_COUNTS`.  Never the OCR tallies (``ocr_*``): a helper failure or an OCR outage seen during the
+read is a fact about the run, and putting the whole Counter back would hide it (C2923)."""
+
+
+@dataclass(frozen=True, slots=True)
+class _RowBooks:
+    """What one row's conversion moves in the cycle's own books that a manifest savepoint cannot roll back
+    (``_Cycle._row_books``; B13 round 45 C2923, ruling 196): ``read again``'s first-read and kept counters,
+    the source's :data:`_ROW_ACC_COUNTS`, the run tally's :data:`_ROW_TALLY_KEYS`, and whether the row was in
+    ``_converted_ok``, ``_waiting_ids`` and ``_credential_counted``."""
+
+    reread: tuple[int, int]
+    acc: tuple[int, ...]
+    tally: tuple[int, ...]
+    member: tuple[bool, ...]
+
+
 @dataclass(slots=True)
 class _SourceAcc:
     """Mutable per-source accumulator for one cycle (becomes a SourceReport)."""
@@ -5674,7 +5718,10 @@ class _Cycle:
         savepoint does not hold goes back with the row through :meth:`_put_back`, as in the recording replan:
         its page files, its ``deferred_ids``, settle and recording-queue entries, and ``read again``'s two
         counters, so the commit carries no page its manifest row does not name (B13 round 44 C2703 with
-        C2650, ruling 175).  ``_put_back``'s one residual stays: a page path ``write_pages`` wrote before it
+        C2650, ruling 175), and the counts a first read moved before its publish raised (:meth:`_row_books`:
+        ``converted``, ``read first`` and the run tally's conversion keys; never an alarm or an OCR tally),
+        so a row that was never converted is never counted as one (B13 round 45 C2923, ruling 196).
+        ``_put_back``'s one residual stays: a page path ``write_pages`` wrote before it
         raised, with no change recorded for it yet, is not known and stays on disk.  Never in a dry run."""
         key = _ZERO_BYTES_META + src.id
         if self.dry or self.manifest.get_meta(key):
@@ -5707,17 +5754,22 @@ class _Cycle:
                         len(self._recording_queue.get(src.id, [])),
                     )
                     reread = (self._reread_n, self._reread_s)
+                    counted = self._row_books(row, acc)
                     try:
                         with self.manifest.savepoint():
                             self._zero_byte_reread(src, arm, row, acc)
                     except BaseException as exc:
                         # the rows before it commit; this row's own writes and mark roll back, its pages,
                         # books and re-read counters go back with them, and the token stays unset, so the
-                        # next cycle reads it (B13 round 43 C2442, ruling 166; round 44 C2703, ruling 175)
+                        # next cycle reads it (B13 round 43 C2442, ruling 166; round 44 C2703, ruling 175);
+                        # so do the counts a first read moved before its publish raised: converted, read
+                        # first and the run tally's conversion keys, never an alarm or an OCR tally (B13
+                        # round 45 C2923, ruling 196)
                         self._put_back(
                             src, row.stable_id, acc, files=files, books=books, changes=self.changes[mark:]
                         )
                         self._reread_n, self._reread_s = reread
+                        self._restore_row_books(row, acc, counted)
                         del self.changes[mark:]
                         failure = exc
                         break
@@ -5728,6 +5780,39 @@ class _Cycle:
             with self.manifest.savepoint():
                 self.manifest.set_meta(key, "done")
                 self.manifest.delete_meta_prefix(key + ":")
+
+    def _row_sets(self) -> tuple[set[tuple[str, str]], ...]:
+        """The cycle's per-row sets one conversion joins, in :class:`_RowBooks`' ``member`` order."""
+        return (self._converted_ok, self._waiting_ids, self._credential_counted)
+
+    def _row_books(self, row: ItemRow, acc: _SourceAcc) -> _RowBooks:
+        """The books ``row``'s conversion may move that its savepoint cannot roll back, kept before the
+        savepoint for :meth:`_restore_row_books` (B13 round 45 C2923, ruling 196): a first read's
+        ``_after_fetch`` counts it converted and read first, and only then publishes, so a publish that raised
+        left a row that was never converted counted as one."""
+        key = (row.source_id, row.stable_id)
+        return _RowBooks(
+            reread=(self._reread_first, self._reread_kept),
+            acc=tuple(getattr(acc, name) for name in _ROW_ACC_COUNTS),
+            tally=tuple(self._tally[name] for name in _ROW_TALLY_KEYS),
+            member=tuple(key in members for members in self._row_sets()),
+        )
+
+    def _restore_row_books(self, row: ItemRow, acc: _SourceAcc, books: _RowBooks) -> None:
+        """Put back what :meth:`_row_books` kept, after ``row``'s savepoint rolled back: the counters as they
+        were, and ``row`` out of each set it was not in.  ``acc.alarms`` and the OCR tallies stay."""
+        self._reread_first, self._reread_kept = books.reread
+        for name, value in zip(_ROW_ACC_COUNTS, books.acc, strict=True):
+            setattr(acc, name, value)
+        for name, value in zip(_ROW_TALLY_KEYS, books.tally, strict=True):
+            if value:
+                self._tally[name] = value
+            else:
+                self._tally.pop(name, None)
+        key = (row.source_id, row.stable_id)
+        for members, was in zip(self._row_sets(), books.member, strict=True):
+            if not was:
+                members.discard(key)
 
     def _zero_byte_reread(self, src: SourceConfig, arm: LocalArm, row: ItemRow, acc: _SourceAcc) -> None:
         """One row of :meth:`_reread_zero_byte_stubs`: marked probed, staged empty or not at all, then

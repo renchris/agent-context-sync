@@ -101,6 +101,7 @@ from test_convert_builders import (
     pandoc_build,
     shade_engine,
 )
+from test_convert_family import _older_zero_byte_answers
 from test_convert_image import picture, picture_bytes, reads, text_png
 from test_e2e import (
     GRAPH_SOURCE,
@@ -8108,6 +8109,79 @@ def test_a_replanned_recording_that_raises_rolls_back_alone_c2249(
     assert run(config, mode=None).exit_code == 0
     assert _row(config, second).state_reason == cycle_mod.RECORDING_WAITS
     assert _page_state(config, second) == (wait, True), "the retry leaves the page and its digest agreeing"
+
+
+def _counts_json(config: Config) -> dict[str, int]:
+    """The newest run's ``runs.counts_json`` (``_Cycle._run_tally``)."""
+    with Manifest(config.state_paths.db) as m:
+        (raw,) = m._db.execute("SELECT counts_json FROM runs ORDER BY run_id DESC LIMIT 1").fetchone()
+    counts: dict[str, int] = json.loads(raw)
+    return counts
+
+
+@pytest.mark.parametrize(
+    "twin",
+    [
+        "zero-byte pass",
+        pytest.param(
+            "recording replan",
+            marks=pytest.mark.xfail(
+                strict=True,
+                reason="B13 round 45 ruling 196: lane B adopts _row_books in _replan_recording_stubs",
+            ),
+        ),
+    ],
+)
+def test_a_first_read_whose_publish_fails_counts_nothing_in_either_twin_c2923(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch, twin: str
+) -> None:
+    """B13 round 45 C2923 (ruling 196), the twin test: the zero-byte pass and the recording replan each read a
+    row under a savepoint, and each reaches ``_after_fetch``'s first-read branch, which counts the row
+    converted (and its run tally's ``converted_unreadable``) before ``_publish``. The same failure, a publish
+    that raises, is fed to both: the zero-byte pass puts the counts back (``_row_books`` and
+    ``_restore_row_books``), so the run says nothing was converted. The recording replan, measured here at
+    round 45, kept them (``converted 1`` for a row that rolled back); ruling 196 gives lane B that adoption,
+    and its commit takes the xfail away."""
+    config = config_with(tmp_path, meetings)
+    monkeypatch.setattr(loop_mod.launchd, "agents_installed", lambda _c: False)
+    if twin == "zero-byte pass":
+        rel, before = "Contoso a.docx", content_policy.NOT_OOXML_REASON
+        with monkeypatch.context() as old:
+            _older_zero_byte_answers(old)
+            (meetings / rel).write_bytes(b"")
+            assert run(config, mode=None).exit_code == 0
+        stable = _row(config, rel).stable_id
+        with Manifest(config.state_paths.db) as m:
+            (out,) = m.outputs_for(SID, stable)
+        (config.docs_repo / out.output_path).unlink()  # not intact: the re-read is a first read
+    else:
+        rel, before = EMPTY_MEETING, "no converter for .mp4"
+        _fail_ocr(monkeypatch)
+        monkeypatch.setattr(cycle_mod.media, "probe", lambda _c, _d: ("ready", ""))
+        (meetings / rel).parent.mkdir(parents=True, exist_ok=True)
+        (meetings / rel).write_bytes(b"")
+        assert run(config, mode=None).exit_code == 0
+        _use_ocr(monkeypatch, tmp_path)
+    assert _row(config, rel).state_reason == before
+    real = cycle_mod._Cycle._publish
+
+    def raises(self: Any, src: Any, row: Any, *a: Any, **kw: Any) -> None:
+        if row.rel_path == rel:
+            raise OSError(errno.EIO, "injected in the row's publish")
+        real(self, src, row, *a, **kw)
+
+    monkeypatch.setattr(cycle_mod._Cycle, "_publish", raises)
+    report = run(config, mode=None)
+    assert "reading files again stopped: OSError" in [e for s in report.sources for e in s.errors]
+    assert _row(config, rel).state_reason == before, "the row rolls back"
+    counted = (
+        sum(s.converted for s in report.sources),
+        sum(s.unreadable for s in report.sources),
+        report.read_first,
+    )
+    counts = _counts_json(config)
+    assert counted == (0, 0, 0) and counts.get("converted") == 0, (counted, counts)
+    assert not {"converted_unreadable", "reread_first"} & set(counts), counts
 
 
 def test_a_settling_inbox_recording_is_not_replanned_until_it_settles_c2293(
