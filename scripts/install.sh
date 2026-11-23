@@ -9203,9 +9203,13 @@ older_report_rewrite() { # MODE
 			if (index(line, " 1 materialised-and-empty (1 of them with a link count of 2: "))
 				line = fix(line, "\\(1 of them with a link count of 2: [^)]*\\)", 0, 1, "(still empty on this Mac, by its link count of 2)")
 			# "its last walk listed all N file(s)": the current words (B13 round 15 S30, round 16 T23); a zero takes
-			# its own words, the ending " the mirror holds for it" consumed with it (B13 round 43 C2425, round 44 C2639)
-			if (match(line, /its last walk listed all 0+ file\(s\) the mirror holds for it/))
-				line = substr(line, 1, RSTART - 1) "its last walk had no file to list: the mirror holds none for it" substr(line, RSTART + RLENGTH)
+			# the words of the live render, `its last walk had no file to list` (C2632), the ending " the mirror holds
+			# for it" consumed with it, and so do the two later older zero forms, since every render that wrote one
+			# put its holds clause before it (B13 round 43 C2425, round 44 C2639; round 45 C2841 with C2867, C2879)
+			if (match(line, /its last walk listed all 0+ file\(s\) the mirror holds for it/) ||
+				match(line, /its last walk listed every one of the 0+ files the mirror holds for it/) ||
+				match(line, /its last walk had no file to list: the mirror holds none for it/))
+				line = substr(line, 1, RSTART - 1) "its last walk had no file to list" substr(line, RSTART + RLENGTH)
 			else if (match(line, /its last walk listed all [0-9]+ file\(s\)/)) {
 				n = substr(line, RSTART + 25) + 0
 				line = substr(line, 1, RSTART - 1) "its last walk listed " (n == 1 ? "the one file" : "every one of the " n " files") substr(line, RSTART + RLENGTH)

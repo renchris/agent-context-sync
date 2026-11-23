@@ -22377,6 +22377,10 @@ becomes `its last walk had no file to list: the mirror holds none for it`, never
 that sentence followed by `the mirror holds for it` again.
 Amended 2026-11-22, §16.275 C2632: none reads `its last walk had no file to list`, the line's holds clause before it
 saying already that the mirror holds no file below the folder.
+Amended 2026-11-23, §16.281 C2841, C2867, C2879: the older-render rewrite gives C2632's words too, `its last walk had
+no file to list`, for every older zero form (`listed all 0 file(s)`, `listed every one of the 0 files` and round 43's
+`had no file to list: the mirror holds none for it`), each followed by the old ending it consumes, so "the same way"
+above reads C2632's words.
 
 install.sh rewrites a stopped copy that any installed renderer may have written, so its readers accept both forms
 (an older agentsync still writes `(s)`): the install.out details summary (` line(s) of ` or ` lines of `, for the
@@ -44484,6 +44488,8 @@ files`; the counts sentence of the plural paragraph names it. Test:
 `test_empty_cloud_folders_says_a_walk_with_no_file_in_words_c2425`.
 Amended 2026-11-22, §16.275 C2632: the zero case reads `its last walk had no file to list`; the line's holds clause
 before it says the mirror holds no file below the folder, so `: the mirror holds none for it` repeated it.
+Amended 2026-11-23, §16.281 C2841, C2867, C2879: install.sh's older-render rewrite, the twin of this clause, gives the
+same words for every older zero form.
 
 **The inbox line prints the one answer** (C2525 with C2503, C2513, C2537; ruling 162; amends §16.265 C2207).
 `_inbox_line` prints `config.inbox_state`'s words (lane B's helper, which status's `inbox state:` line prints too):
@@ -46022,6 +46028,18 @@ cannot search not a folder (C2810). Tests: the four failing builds of
 before and after a third record, no state printed), the `not read` row of
 `test_another_kinds_source_on_the_inbox_folder_logs_inbox_not_added_c2440` and
 `test_the_shell_report_says_it_did_not_check_whether_the_config_loads`.
+
+**The older-render rewrite gives a zero walk the live render's words** (C2841 with C2867 and C2879; amends §16.116's
+plural paragraph and §16.270 C2425, dated lines there). install.sh's `status_one` still wrote round 43's `its last
+walk had no file to list: the mirror holds none for it` after a holds clause that already says the mirror holds no
+file below the folder, where the live render says `its last walk had no file to list` (C2632). Every render that wrote
+a zero walk put its holds clause before it, so every older zero form takes C2632's words unconditionally: `listed
+all 0 file(s) the mirror holds for it`, `listed every one of the 0 files the mirror holds for it` (renders from
+0c8e0b866) and `had no file to list: the mirror holds none for it` (from 4350e3c2c). Tests:
+`test_install_oneshot.py::test_an_older_renders_zero_walk_reads_as_the_live_render_c2841_c2867_c2879` (a holds clause
+on `it`, on `them` over one checked folder, none, and the two later forms) and
+`test_a_stopped_copy_by_an_older_agentsync_words_every_count`, its `<folder-3>` row a real-shape line with a holds
+clause.
 
 ### 16.282 Round 45: an inbox that is not a folder never named as kept, its state read by lstat and stat, a `~user` AGENTSYNC_CONFIG refused, and every waiting stub and tombstone rendered again under STUB_RENDER 8 (2026-11-23, wave B13 round 45 lane B)
 

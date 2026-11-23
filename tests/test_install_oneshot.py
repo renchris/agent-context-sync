@@ -21124,7 +21124,9 @@ _OLD_RENDER_FIXTURE = [
     "gone file",
     "- <folder-1>: 0 unknown; its last walk listed all 4 file(s) the mirror holds for it",
     "- <folder-2>: 0 unknown; its last walk listed all 1 file(s) the mirror holds for it",
-    "- <folder-3>: 0 unknown; its last walk listed all 0 file(s) the mirror holds for it",
+    # B13 round 45 C2841 with C2867: a real-shape zero line, its holds clause before the walk clause
+    "- <folder-3>: 0 unknown; 1 of 1 checked; it is not excluded in sources.toml now; the mirror holds no "
+    "file below it; its last walk listed all 0 file(s) the mirror holds for it",
     "- sources: 3 local or inbox source(s) (3 source(s) with a folder) of the last 4 run(s), 37 day(s)",
     "- images: 2 files (6 pages), already in the current words",
     "- a label rule names no count: id(s) and name(s)",
@@ -21139,6 +21141,34 @@ _OLD_RENDER_FIXTURE = [
 """A stopped copy as an agentsync from before B13 round 15 S26 (61474fdf, v23) words it, with made-up names:
 "(s)" beside every known count, counts of 0, 1 and 2, a plural verb after a count of 1, and the same forms in
 the install.out <details> block and the friction log's fence, which hold history."""
+
+
+def test_an_older_renders_zero_walk_reads_as_the_live_render_c2841_c2867_c2879(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    """B13 round 45 C2841 with C2867 and C2879: install.sh's older-render rewrite gave a zero walk round 43's
+    words, `its last walk had no file to list: the mirror holds none for it`, after a holds clause that says
+    the mirror holds no file below the folder already, where the live render (C2632) says `its last walk had
+    no file to list`. Every older zero form reads the live words: a holds clause on `it`, on `them` over one
+    checked folder (which the rewrite makes `it`), none, the `every one of the 0 files` form and round 43's
+    form, and `holds none for it` is left nowhere."""
+    head = "0 unknown; 1 of 1 checked; it is not excluded in sources.toml now; the mirror holds no file below"
+    rows = [
+        f"- <folder-1>: {head} it; its last walk listed all 0 file(s) the mirror holds for it",
+        f"- <folder-2>: {head} them; its last walk listed all 0 file(s) the mirror holds for it",
+        "- <folder-3>: 0 unknown; its last walk listed all 0 file(s) the mirror holds for it",
+        f"- <folder-4>: {head} it; its last walk listed every one of the 0 files the mirror holds for it",
+        f"- <folder-5>: {head} it; its last walk had no file to list: the mirror holds none for it",
+    ]
+    report = "\n".join(["# agentsync setup report", "", "## Status", "", *rows, ""])
+    lines = [ln for ln in _stopped_copy_of(env, tmp_path, report).splitlines() if ln.startswith("- <folder-")]
+    live = "; the mirror holds no file below it; its last walk had no file to list"  # setup_report's C2632
+    assert lines == [
+        f"- <folder-{n}>: {head.removesuffix('; the mirror holds no file below')}{live}" for n in (1, 2)
+    ] + ["- <folder-3>: 0 unknown; its last walk had no file to list"] + [
+        f"- <folder-{n}>: {head.removesuffix('; the mirror holds no file below')}{live}" for n in (4, 5)
+    ], lines
+    assert not [ln for ln in lines if "holds none for it" in ln or "the 0 files" in ln], lines
 
 
 def test_a_stopped_copy_by_an_older_agentsync_words_every_count(env: dict[str, str], tmp_path: Path) -> None:
@@ -21181,8 +21211,11 @@ def test_a_stopped_copy_by_an_older_agentsync_words_every_count(env: dict[str, s
         "gone file",
         "- <folder-1>: 0 unknown; its last walk listed every one of the 4 files the mirror holds for it",
         "- <folder-2>: 0 unknown; its last walk listed the one file the mirror holds for it",
-        # the zero form consumes its ending: never "... holds none for it the mirror holds for it" (C2639)
-        "- <folder-3>: 0 unknown; its last walk had no file to list: the mirror holds none for it",
+        # the zero form consumes its ending: never "... holds none for it the mirror holds for it"
+        # (C2639); the live render's words, the holds clause saying none already (C2632; B13 round 45
+        # C2841, C2867)
+        "- <folder-3>: 0 unknown; 1 of 1 checked; it is not excluded in sources.toml now; the mirror holds "
+        "no file below it; its last walk had no file to list",
         "- sources: 3 local or inbox sources (3 sources with a folder) of the last 4 runs, 37 days",
         "- images: 2 files (6 pages), already in the current words",
         "- a label rule names no count: id(s) and name(s)",
