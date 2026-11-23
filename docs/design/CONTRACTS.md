@@ -14534,6 +14534,11 @@ Amended 2026-10-15, §16.94 M28: since v20 a sources.toml that does not load is 
 Amended 2026-11-21, §16.274 C2408, C2419: since v40 the finish reads the config the report's Configuration `config:`
 line names (step 2's, if step 2 ran), with no status pointer, and leaves out kind = "inbox" sources only: a kind =
 "local" source on the inbox folder is listed like any other folder, as step 2's `folders:` line counts it.
+Amended 2026-11-22, §16.279 C2727, C2656, C2717: since v41 the finish reads the file step 2's `config:` line named,
+else AGENTSYNC_CONFIG as `printenv` read it just before the report, resolved as `--report-only` resolves it, else
+`~/agent-context/sources.toml`, never a path the report shows holding `<path>` (the report's `config:` line cuts any
+config but the default); exists, unknown and none come from that line's `(exists)` or `(missing)` mark and the
+`loads:` line, and `(exists)` with `loads: yes` never gives none.
 
 **Step 1's exception** (R41): "say in your final message that I gave no answer, so no folder was added" (§16.29's
 block carries a dated line).
@@ -45148,6 +45153,10 @@ form's placeholder, the version pins, setup-feedback.md's version lines and its 
 K64 row); `CUT_OFF_TOLD` names no version and is unchanged. Round 44 rehearses v40 with v39's block (1433dd16d) as
 scenario C's first old copy. Tests: `test_the_v40_prompt_reads_only_lines_setup_prints_in_every_branch_c2406_c2408_c2419_c2523`,
 `test_the_prompt_text_changes_only_with_its_version`, `test_readme_prompt_compat_matches_the_installer`.
+Amended 2026-11-22, §16.279 C2727, C2660: the config step's own `config: <path> exists` comes on a run with no
+`--source-local` on a Mac that has a config, not on every such Mac; and since v41 the Finish reads the file step 2's
+`config:` line named, else AGENTSYNC_CONFIG as `printenv` read it, else the default, the report's `config:` line only
+a pointer, since it cuts any config but the default.
 
 **README lists the superseded verdict** (ruling 164's words, lane B's c8e54894d; `README.md`). Lane B's curate reports a
 page that a unit-removed tombstone names a successor for as `SOURCE-SUPERSEDED`, naming the page to cite now; README's
@@ -45763,6 +45772,55 @@ the lead's decline of call 5 of packet 767198a7eec3 and lane E's measured reason
 ruling 138's C2069 line keeps them; §16.273's C2470 paragraph takes a dated line pointing at it. The actioned packet's
 JSON is not edited by hand; the plan's half is the lead's (C2674). Test:
 `tests/test_deploy_pack.py::test_ruling_166_keeps_its_words_and_a_dated_line_records_call_5s_decline_c2673`.
+
+**Setup prompt v41: only what setup prints and this shell holds** (C2727, C2656, C2717, C2718, C2731, C2657, C2608,
+C2604, C2659, C2606, C2619, C2634, C2664, C2660; rulings 178, 180, 181, 187; amends §16.49 R11, §16.274 C2419). v40's
+Finish read the config the report's Configuration `config:` line names, but the report cuts any config path but the
+default to `~/<path>` (ruling 142's privacy cut), so on a custom AGENTSYNC_CONFIG the agent opened a path that does not
+exist and could say "none" of a config that loads (C2727, C2656, C2717). Step 2 read sources.toml before its
+`inbox state:` line, so a file or a link on the inbox's name, which `config.inbox_state` reports as `not added (<folder>
+is not a folder)` whatever sources.toml lists, was told as a live drop folder (C2718, C2731, C2657); and only the
+other-kind case named the other live kind = "inbox" sources (C2608, makes worse True for moving root_guide and the
+loop word, which would drop live inbox folders from AGENTS.md: the fix is in the prompt alone). A none to the
+which-folders question was read from install.sh's exit 2, and step 1's recovery ran step 2 again after it (C2604, with
+lane RB's `--no-folder`, ruling 178). Step 3 had no words for rule 4's `nothing to draft yet` NEXT, whose move ruling
+181 makes the person's (C2659). A step 2 that printed no NEXT: line had no words (C2606). Step 3's first sentence ran
+to 265 columns (236 without its code span), unseen by a width test that skipped every line holding a code span (C2619, C2634, C2664, makes worse
+True for a rewrap alone: the digest moves only with the version). v41: the Finish names the config as the file step
+2's `config:` line named if step 2 printed one, else AGENTSYNC_CONFIG as `printenv AGENTSYNC_CONFIG`, run just before
+the report command in the folder the report runs in, prints it, resolved as `--report-only` resolves it (blanks
+trimmed, `~/` the home, any other relative value under that folder), else `~/agent-context/sources.toml`; never a path
+holding `<path>`; exists, unknown and none come from the report's `(exists)` or `(missing)` mark and its `loads:` line,
+`loads: not checked` and `loads: no:` first, and `(exists)` with `loads: yes` never gives none. Step 2 reads its
+`inbox state:` line before the config: no such line, a live inbox source; `paused` or `retired`, v40's words; `not
+added (<folder> is not a folder)`, the inbox could not be added whatever sources.toml lists, that line and step 2's
+`inbox: not added:` line shown, moving the file or link aside the person's, nothing said of dropping files there;
+another kind's source or no source, v40's words; `not read (<why>)` (lane B's C2644), that line shown; and in each case
+but a live one the other kind = "inbox" sources neither paused nor retired are named as folders the person added, else
+no drop folder. A none to the which-folders question (the exceptions' add-a-folder none and an unanswered question do
+not count) runs `install.sh --no-folder`, whose start line records it and whose NEXT names the person's choice, then
+the agent tells the person this Mac syncs no folder and goes to step 3's report; step 1's recovery does the same on a
+fresh none or a none given earlier. A none is scored from install.log, as lane RA's C2605 reads it: a last install
+run carrying `--no-folder` is `stopped at step 1 (the person chose no folder)`, v40's no-folder first run followed by a
+step 1 deviation is `stopped at step 1 (no folder answer came)`, and a bare exit 2 or a usage error stays failed at
+step 2; setup-feedback.md's section 4 says so. Step 3 shows a `nothing to draft yet` NEXT whose move is the person's, chooses no
+folder, moves or makes no file, runs no add-source, asks whether to add a folder from step 1's list and runs step 2
+again with one `--source-local` per folder named, or on none or no way to ask logs nothing and goes on to the report
+syncs. A step 2 that printed no NEXT: line either is logged as a step 2 error and its usage line shown before the
+report, its export the person's (lane RB's C2728 NEXT covers the relative AGENTSYNC_CONFIG). Step 3's first sentence
+is rewrapped at the block's width with no word changed and no line opening on the digit 2, and the width test measures
+each line with its code spans removed. README's inbox paragraph names `not added (<folder> is not a folder)` and `not
+read (<why>)` (C2657). No step moves, so v41 is read with v7's layout. Version 41 everywhere the bump list names it
+(the block and its digest in `PROMPT`, `prompt v41` in step 1's `--log-start`, `SETUP_PROMPT_COMPAT`,
+`setup_report.PROMPT_VERSION`, its docstring's list and its two v40 mentions, the form's placeholder, the version pins,
+setup-feedback.md's version lines and its old-copy list, which v40 joins, and a K65 row; K64 says the config step's
+own `config:` line comes on a run with no `--source-local`, C2660); `CUT_OFF_TOLD` names no version and is unchanged.
+§16.49's finish and §16.274's v40 paragraph take dated lines. Round 45 rehearses v41 with v40's block (5cf1b5407) as
+scenario C's first old copy. Tests:
+`test_the_v41_prompt_reads_what_setup_prints_c2727_c2718_c2608_c2604_c2659`,
+`test_the_finish_reads_a_custom_config_the_report_cuts_c2727_c2656_c2717`,
+`test_no_line_of_the_prompt_block_is_a_lone_word_or_wider_than_the_block`,
+`test_the_prompt_text_changes_only_with_its_version`, `test_readme_prompt_compat_matches_the_installer`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
