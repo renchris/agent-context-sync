@@ -2859,9 +2859,51 @@ def read_friction(path: Path) -> Friction | None:
 # ---------------------------------------------------------------------------------------------------------
 
 
-_NO_FOLDER_ARG_RE = re.compile(r"(?:^|\s)--no-folder(?=\s|$)")
-"""install.sh's ``--no-folder`` as a word of its start line's ``args=`` (B13 round 44 ruling 178, C2605): the
-recorded words, space-separated, a SOURCE first when one was given."""
+_BLOCKING_STATUS_NOTES = frozenset({"fail-lines", "status-error", "timeout"})
+"""The status step's notes that block a run (B13 round 45 C2947, ruling 192): [FAIL] lines, an exit with no
+[FAIL] line, the watchdog's TERM."""
+
+_VALUE_OPTIONS = frozenset({"--source-local", "--cwd", "--launcher", "--timeout", "-n", "--limit"})
+"""install.sh's options whose next word is their value (B13 round 45 C2933 with C2911 and C2846, ruling 192):
+a folder that value names is never read as ``--no-folder``, however it is spelled."""
+
+
+def _q_words(args: str) -> list[str]:
+    """``args`` split into its top-level words as ``printf %q`` wrote them, each kept as written: a ``\\x``
+    is one character, and a ``'..'`` or ``$'..'`` span (backslash escapes inside the latter) is skipped
+    whole, so only a blank outside them ends a word (B13 round 45 C2911, ruling 192): the scan for an args=
+    that :func:`shlex.split` refuses, a ``$'..'`` word holding ``\\'``."""
+    words: list[str] = []
+    word: list[str] | None = None
+    i, n = 0, len(args)
+    while i < n:
+        c = args[i]
+        if c in " \t\n":
+            if word is not None:
+                words.append("".join(word))
+                word = None
+            i += 1
+            continue
+        word = [] if word is None else word
+        if c == "\\":
+            end = i + 2
+        elif args.startswith("$'", i):
+            end = i + 2
+            while end < n and args[end] != "'":
+                end += 2 if args[end] == "\\" else 1
+            end += 1
+        elif c == "'":
+            close = args.find("'", i + 1)
+            end = n if close < 0 else close + 1
+        else:
+            end = i + 1
+        word.append(args[i:end])
+        i = end
+    if word is not None:
+        words.append("".join(word))
+    return words
+
+
 NO_FOLDER_CHOSEN = "the person chose no folder"
 """The stopped outcome's why and note for a last install run that logged ``--no-folder`` (ruling 178)."""
 NO_FOLDER_UNANSWERED = "no folder answer came"
@@ -2892,10 +2934,36 @@ class InstallRun:
         return failed[-1] if failed else None
 
     @property
+    def completed_none(self) -> bool:
+        """Whether this run ended rc 0 with no failed step and no status note that blocks (``fail-lines``,
+        ``status-error``, ``timeout``): a ``--no-folder`` run is scored as the person's choice only then (B13
+        round 45 C2947 with C2837 and C2861, ruling 192). An older install.sh ended a --no-folder run over a
+        config it created 0 even when status printed [FAIL] (C2909's report half)."""
+        status = self.step("status") or self.step("doctor") or {}
+        blocked = status.get("note", "") in _BLOCKING_STATUS_NOTES
+        return self.rc == 0 and self.failed_step() is None and not blocked
+
+    @property
     def chose_no_folder(self) -> bool:
         """Whether install.sh logged ``--no-folder`` on this run's start line, the person's none to the folder
-        question (B13 round 44 ruling 178, C2605): a word of ``args=``, never inferred from an exit code."""
-        return _NO_FOLDER_ARG_RE.search(self.args) is not None
+        question (B13 round 44 ruling 178, C2605): a word of ``args=``, never inferred from an exit code.
+
+        B13 round 45 C2933 with C2911 and C2846 (ruling 192): a shell word, never a regex over the line, which
+        read a folder logged as ``/w/Project\\ --no-folder`` as the flag: ``args=`` split as the shell splits
+        it (:func:`shlex.split`), the word after each of :data:`_VALUE_OPTIONS` skipped, true when a bare
+        ``--no-folder`` remains; an ``args=`` shlex refuses is read by :func:`_q_words`, whose top-level words
+        alone are tested."""
+        try:
+            words = shlex.split(self.args)
+        except ValueError:
+            words = _q_words(self.args)
+        it = iter(words)
+        for word in it:
+            if word in _VALUE_OPTIONS:
+                next(it, None)
+            elif word == "--no-folder":
+                return True
+        return False
 
     @property
     def no_folder_first_run(self) -> bool:
@@ -3993,8 +4061,10 @@ def compute_outcome(
     # B13 round 44 ruling 178 (C2605): a none is install.sh's record, never an exit code read alone. A last
     # run that logged --no-folder stopped at step 1 by the person's choice; v40's no-folder first run (ended
     # 2) with a step 1 deviation logged after it stopped there waiting for an answer that never came. A bare
-    # exit 2 with neither, and a usage error's 2, stay failed
-    if last is not None and last.chose_no_folder:
+    # exit 2 with neither, and a usage error's 2, stay failed. B13 round 45 C2947 with C2837 and C2861 (ruling
+    # 192): only a --no-folder run install.sh completed, rc 0 with no failed step and no blocking status note;
+    # a failed, killed or unended one is scored by its failure, signal or no-end words, never as the choice
+    if last is not None and last.chose_no_folder and last.completed_none:
         return Outcome("stopped", FOLDER_QUESTION_STEP, (NO_FOLDER_CHOSEN,), version, NO_FOLDER_CHOSEN)
     if (
         last is not None

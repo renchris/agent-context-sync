@@ -45394,6 +45394,9 @@ logged), stay `failed at step 2`. Neither is ever `fully one command`: setup is 
 is not built (ruling 178): a no-folder run before a later run that ended 0 still counts as a retry. Test:
 `test_setup_report.py::test_a_none_is_read_from_install_log_and_scored_as_the_persons_choice_c2605` (both stopped
 forms, a SOURCE before the flag, a bare exit 2, a usage error and a `--no-folders` word that is no flag).
+Amended 2026-11-23, §16.280 C2933, C2947: the run is one whose `args=` holds `--no-folder` as a shell word (split as
+the shell splits it, each value option's operand skipped, `_NO_FOLDER_ARG_RE` gone) and that ended rc 0 with no failed
+step and no blocking status note; any other --no-folder run is scored by its own failure, signal or no-end words.
 
 **The `[convert]` record is read by one parser** (C2714, the report half; lane B's `manifest.parse_convert_options`,
 §16.277). `_convert_changed_run` read the `convert_options` meta by its own two-field, ASCII-digit rule, so a value
@@ -45893,6 +45896,9 @@ scenario C's first old copy. Tests:
 `test_the_finish_reads_a_custom_config_the_report_cuts_c2727_c2656_c2717`,
 `test_no_line_of_the_prompt_block_is_a_lone_word_or_wider_than_the_block`,
 `test_the_prompt_text_changes_only_with_its_version`, `test_readme_prompt_compat_matches_the_installer`.
+Amended 2026-11-23, §16.280 C2947, C2933: the last install run is scored as the person's none only when it holds
+--no-folder as a shell word of args= and ended rc 0 with no failed step; a failed, killed or unended one is scored as
+that failure.
 
 **Where round 44's other lanes moved round 43 lane D's §16.274** (docs). Two round 44 lanes changed a rule §16.274
 states, each with a dated line in its own commit, so §16.274 keeps round 43's words and is read with those two lines.
@@ -45957,6 +45963,23 @@ paragraph amending H33 and K35 are lane RB's, §16.281). install.sh writes `wait
 recorded holder of the sync lock, so `_AGENTSYNC_NOTE_WORDS` maps it to `waited for another sync to end` and keeps
 `waited-for-a-background-sync` beside it, so an older install.log still reads as words. Test: the row added to
 `test_the_install_line_says_what_the_agentsync_steps_seconds_held`.
+
+**A none is a shell word of a run that ended clean** (C2933 with C2911 and C2846, C2947 with C2837 and C2861; ruling
+192; amends §16.275 C2605 and §16.279 C2727). `_NO_FOLDER_ARG_RE` matched `--no-folder` after any blank, a `printf %q` escaped one
+included, so a folder logged as `/w/Project\ --no-folder` read as the person's none; and any last run that logged the
+flag was `stopped at step 1 (the person chose no folder)`, so a --no-folder run that failed a step, reported [FAIL],
+was stopped by a signal or never ended hid its failure. `InstallRun.chose_no_folder` splits `args=` with
+`shlex.split`, skips the operand of `--source-local`, `--cwd`, `--launcher`, `--timeout` and `-n`/`--limit`
+(`_VALUE_OPTIONS`) and is true when a bare `--no-folder` word remains; an `args=` shlex refuses (a `$'..'` word
+holding `\'`) is split by `_q_words`, which takes `\x` as one character and skips `'..'` and `$'..'` spans, so only
+its top-level words are tested; `_NO_FOLDER_ARG_RE` is gone. `compute_outcome` scores such a run stopped only when
+`InstallRun.completed_none` holds: rc 0, no failed step and no blocking status note (`_BLOCKING_STATUS_NOTES`:
+`fail-lines`, `status-error`, `timeout`), so an older install.sh's exit 0 over a status [FAIL] (C2909's report half)
+is no none either; any other falls through to its failure, signal or no-end scoring. Tests:
+`test_a_none_is_read_from_args_as_a_shell_word_c2933` (an escaped blank before the flag's words, a `$'..'` word, a
+`--launcher` operand, a SOURCE ending in a backslash, and the shlex-refused rows) and
+`test_a_none_is_scored_only_for_a_no_folder_run_that_ended_clean_c2947` (a failed agentsync step, a status [FAIL] at
+rc 1 and at rc 0, a status timeout, rc 143 and no end line).
 
 ### 16.281 Round 45: the installer: the shell halves of rulings 188 and 189, the person's none honored at every NEXT, an inbox-state read that did not finish said so, and C2060 waits on the operator (2026-11-23, wave B13 round 45 lane RB)
 

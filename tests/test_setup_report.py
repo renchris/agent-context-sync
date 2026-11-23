@@ -14259,10 +14259,19 @@ def install_run(start: str, rc: int | None, *, status_failed: bool = False) -> s
     return "\n".join(lines) + "\n"
 
 
-def _no_folder_run(start: str, args: str, rc: int, *, first: bool = True) -> str:
+def _no_folder_run(
+    start: str,
+    args: str,
+    rc: int | None,
+    *,
+    first: bool = True,
+    status: str = "seconds=6 rc=0 result=done",
+    steps: tuple[str, ...] = (),
+) -> str:
     """One install.sh run as install.log has it for B13 round 44 ruling 178 (C2605): a bare step 2 that
     made the config and skipped its first sync for no source (``first``), else a usage error that logged no
-    step."""
+    step. B13 round 45 C2947 (ruling 192): ``status``, the status step's fields, ``steps``, step lines logged
+    after the config step (a failed one), and ``rc`` None for a run with no end line."""
     run = f"run={re.sub('[-:]', '', start)}-88"
     lines = [
         f"{start} {run} start install.sh compat=40 commit=0123456789ab kind=checkout source=- args={args}"
@@ -14270,11 +14279,13 @@ def _no_folder_run(start: str, args: str, rc: int, *, first: bool = True) -> str
     if first:
         lines += [
             f"{start} {run} step=config seconds=1 rc=0 result=done note=created",
-            f"{start} {run} step=status seconds=6 rc=0 result=done",
+            *(f"{start} {run} step={step}" for step in steps),
+            f"{start} {run} step=status {status}",
             f"{start} {run} step=first-sync seconds=0 rc=0 result=skipped note=no-sources",
             f"{start} {run} step=report seconds=2 rc=0 result=done note=agentsync",
         ]
-    lines.append(f"{start} {run} end rc={rc} seconds=9")
+    if rc is not None:
+        lines.append(f"{start} {run} end rc={rc} seconds=9")
     return "\n".join(lines) + "\n"
 
 
@@ -14319,6 +14330,86 @@ def test_a_none_is_read_from_install_log_and_scored_as_the_persons_choice_c2605(
     assert words in " ".join((*outcome.why, outcome.note)), outcome
     if kind == "stopped":
         assert outcome.text.startswith("stopped at step 1 (") and "fully one command" not in outcome.text
+
+
+@pytest.mark.parametrize(
+    ("args", "chose"),
+    [
+        ("--no-folder", True),
+        ("/w.whl --no-folder", True),
+        ("--cwd /w --no-folder", True),
+        ("-n 5 --no-folder", True),
+        ("--no-folders", False),
+        # a folder logged with an escaped blank before the flag's words is one shell word (C2933, C2846)
+        ("--source-local /w/Project\\ --no-folder", False),
+        ("--source-local /Users/dana/a\\ --no-folder", False),
+        ("/w.whl --launcher /Apps/x\\ --no-folder", False),
+        ("--source-local $'/Users/dana/a\\001 --no-folder b'", False),
+        # a SOURCE ending in a backslash, then the real flag
+        ("/src/foo\\\\ --no-folder", True),
+        # shlex refuses a $'..' word holding \': the %q-aware scan reads its top-level words (C2911)
+        ("--source-local $'/w/it\\'s --no-folder'", False),
+        ("--source-local $'/w/it\\'s' --no-folder", True),
+        ("--source-local $'/w/a\\\\' --no-folder", True),
+    ],
+)
+def test_a_none_is_read_from_args_as_a_shell_word_c2933(args: str, chose: bool) -> None:
+    """B13 round 45 C2933 with C2911 and C2846 (ruling 192): `_NO_FOLDER_ARG_RE` matched `--no-folder` after
+    any blank, a printf %q escaped one included, so a folder named `Project --no-folder` read as the person's
+    none. args= is split as the shell splits it, the operand of a value option skipped, and a bare
+    `--no-folder` word alone counts; an args= shlex refuses is scanned %q-aware."""
+    run = setup_report.InstallRun("r", None, 0, 1, (), False, (), args=args)
+    assert run.chose_no_folder is chose, args
+
+
+@pytest.mark.parametrize(
+    ("logged", "want"),
+    [
+        # a --no-folder run that failed a step, reported [FAIL], was stopped or did not end: its failure
+        (
+            _no_folder_run(
+                "2026-11-23T10:00:00Z", "--no-folder", 1, steps=("agentsync seconds=41 rc=1 result=failed",)
+            ),
+            ("failed", 2),
+        ),
+        (
+            _no_folder_run(
+                "2026-11-23T10:00:00Z", "--no-folder", 1, status="seconds=6 rc=1 result=done note=fail-lines"
+            ),
+            ("failed", 2),
+        ),
+        (_no_folder_run("2026-11-23T10:00:00Z", "--no-folder", 143), None),
+        (_no_folder_run("2026-11-23T10:00:00Z", "--no-folder", None), None),
+        # an older install.sh ended a --no-folder run over a config it created 0 with status [FAIL] (C2909)
+        (
+            _no_folder_run(
+                "2026-11-23T10:00:00Z", "--no-folder", 0, status="seconds=6 rc=1 result=done note=fail-lines"
+            ),
+            None,
+        ),
+        (
+            _no_folder_run(
+                "2026-11-23T10:00:00Z", "--no-folder", 0, status="seconds=10 rc=143 result=done note=timeout"
+            ),
+            None,
+        ),
+        # a folder named with the flag's words is no none
+        (_no_folder_run("2026-11-23T10:00:00Z", "--source-local /w/Project\\ --no-folder", 0), None),
+    ],
+)
+def test_a_none_is_scored_only_for_a_no_folder_run_that_ended_clean_c2947(
+    tmp_path: Path, logged: str, want: tuple[str, int] | None
+) -> None:
+    """B13 round 45 C2947 with C2837 and C2861 (ruling 192): any last run that logged --no-folder was scored
+    `stopped at step 1 (the person chose no folder)`, so a failed, killed or unended run hid its failure.
+    Only one that ended rc 0 with no failed step and no blocking status note (fail-lines, status-error,
+    timeout) is the person's choice; any other is scored by its own failure, signal or no-end words."""
+    log = tmp_path / "install.log"
+    log.write_text(logged, encoding="utf-8")
+    outcome = setup_report.compute_outcome(None, setup_report.read_install_runs(log))
+    assert setup_report.NO_FOLDER_CHOSEN not in " ".join((*outcome.why, outcome.note)), outcome
+    if want is not None:
+        assert (outcome.kind, outcome.step) == want, outcome
 
 
 def test_the_outcome_of_a_status_fail_stop_names_the_status_step(tmp_path: Path) -> None:
