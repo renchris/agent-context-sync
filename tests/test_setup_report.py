@@ -6160,6 +6160,8 @@ def test_the_install_line_says_what_the_agentsync_steps_seconds_held(tmp_path: P
             "waited 120s for another sync, then reinstalled while it was still running",
         ),
         ("lock-not-taken-rc73", "could not take the sync lock, lockf exit 73; reinstalled without waiting"),
+        # B13 round 45 C2829: install.sh's neutral token for every recorded holder, the old one kept above
+        ("waited-for-another-sync", "waited for another sync to end"),
         # B13 round 20 X43: a lock held with an empty body need not be another sync's
         ("waited-for-an-unrecorded-holder", "waited for the sync lock to be free"),
         (

@@ -45948,6 +45948,12 @@ decision c0777e12a523`, on one line (C2882), as test_deploy_pack.py's caveat pin
 the operator's Allow, builds on this commit. Test:
 `test_a_listed_escaped_name_is_decoded_under_one_number_and_the_old_form_left_c2873`.
 
+**The new holder note reads as words, the old one too** (C2829, the report half; install.sh's token and the
+paragraph amending H33 and K35 are lane RB's, §16.281). install.sh writes `waited-for-another-sync` for every
+recorded holder of the sync lock, so `_AGENTSYNC_NOTE_WORDS` maps it to `waited for another sync to end` and keeps
+`waited-for-a-background-sync` beside it, so an older install.log still reads as words. Test: the row added to
+`test_the_install_line_says_what_the_agentsync_steps_seconds_held`.
+
 ### 16.281 Round 45: the installer: the shell halves of rulings 188 and 189, the person's none honored at every NEXT, an inbox-state read that did not finish said so, and C2060 waits on the operator (2026-11-23, wave B13 round 45 lane RB)
 
 Round 45's lane RB items (`docs/plans/bring-back-ocr.md`, "B13 round 45"; specs `round45/items/C<n>.md`, the
