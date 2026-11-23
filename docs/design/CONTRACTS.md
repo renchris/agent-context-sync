@@ -45831,6 +45831,26 @@ text sidecar opens with the banner and an empty line`): C2415's reader rule, dro
 the banner, becomes drop line 1 when it is the banner, then line 2 when it is empty. Lanes RA and RB, landed through
 31e2a0173, added no line inside §16.274 and none that amends a rule it states.
 
+### 16.280 Round 45: the report: an unloaded or unusually spelled sources.toml cut to one verdict in both reports, a word ending where bash ends it, and a none read, scored and worded as install.sh made it (2026-11-23, wave B13 round 45 lane RA)
+
+Reserved for round 45 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 45").
+
+### 16.281 Round 45: the installer: the shell halves of rulings 188 and 189, the person's none honored at every NEXT, an inbox-state read that did not finish said so, and C2060 waits on the operator (2026-11-23, wave B13 round 45 lane RB)
+
+Reserved for round 45 lane RB of B13.
+
+### 16.282 Round 45: an inbox that is not a folder never named as kept, its state read by lstat and stat, a `~user` AGENTSYNC_CONFIG refused, and every waiting stub and tombstone rendered again under STUB_RENDER 8 (2026-11-23, wave B13 round 45 lane B)
+
+Reserved for round 45 lane B of B13.
+
+### 16.283 Round 45: the converters: a failed zero-byte re-read's books put back, an Office file's container and family parse in its answer and key, and a source's own banner line (2026-11-23, wave B13 round 45 lane E)
+
+Reserved for round 45 lane E of B13.
+
+### 16.284 Round 45: the prompt goes to v42 (a none, a config path and an unread inbox state as setup gives them), the gate's part ceiling and CI's limit, dated lines, and the guides (2026-11-23, wave B13 round 45 lane D)
+
+Reserved for round 45 lane D of B13.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units

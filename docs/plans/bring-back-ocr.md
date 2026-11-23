@@ -3643,6 +3643,90 @@ the four carried items, so the lead adds them before the render. While its slots
 `round45/tools/trunk.sh`, never a fetch in the operator checkout (C1470, C1661, C2066). The stop rule names Codex and
 Gemini: a clean round without Gemini goes to the operator before the loop closes.
 
+### B13 round 45: v41 rehearsal, cross-lane review, harvest, Codex beside Claude; Gemini not run (2026-11-23)
+
+Run `wf_fbcdf674-a76` on `2390257d` (BASE `d6b9f61f`), codex-only, 167 agents with no errors. 151 raw findings, 150
+after dedupe, 126 confirmed (2 turns, 38 wrongs and 86 small, as the verifiers classed them in the items' headers; the
+finders classed 4 turns, 50 wrongs and 72 small, C2931 and C2949 the other two turns), 24 refuted (C2811, C2832, C2835,
+C2881, C2883, C2892 to C2896, C2898 to C2908, C2919, C2927, C2928); 18 of the confirmed carry "a fix makes things worse?
+True", each with a corrected fix that does not, adopted. All six rehearsal scenarios passed on v41 at `2390257d`. The
+stop rule is not met (2 turns and 38 wrongs). The two turns are one defect: install.sh swapped in the person's none only
+on the skill-missing NEXT, so a `--no-folder` re-run over an inbox-only or paused-only config ended on status's rule 2
+and asked for folders again (C2910 with C2945, merged with C2931, C2838 and C2860). Eleven items need prompt words
+(C2804, C2821, C2831, C2859, C2868, C2869, C2870, C2871, C2938, C2949, C2950) and C2935 joins through C2868's case: the
+Finish forbade the none a `--no-folder` run gives (C2938 with C2950, C2859 and C2804), its AGENTSYNC_CONFIG rule did not
+read as install.sh's case arms (C2821 with C2871 and C2949), step 2 had no words for an inbox-state read that did not
+finish (C2868), its not-a-folder parenthetical and no-NEXT branch were off (C2869, C2870), and step 3's folder question
+needed its once-a-session rule (C2831), so the prompt goes to v42. Nine items are data integrity, 8 of them privacy as
+classified (C2839, C2939, C2840, C2915, C2913, C2877, C2873, C2914; the other C2807), though C2914's own verifier
+measured no leak, and the turns and wrongs share five root causes: a choice the person made was not honored on every
+route (rulings 191, 192 and 197); a report cut a value from one source or one spelling and the other printed it (rulings
+188 to 190); a missing or unread fact was read as the good one (ruling 194); a derived fact went stale (rulings 195 and
+196, C2922); and a setting or a bound did not hold as written (ruling 193, C2862, C2876, C2874, C2875). Codex gave 40
+opinions, 2 disputed: C2874 and C2875, both "cannot tell" from the committed-code export, which holds neither the
+recycled transcript, brief and gate journal C2874 rests on nor the closes and timestamped store contents C2875 does;
+both stay confirmed and the lead's. Gemini did not run (C2897; the allow rule for `~/.claude/scripts/agy-review.sh` is
+the operator's, backlog `8ed9dae0fbc0`, now a seventh round without it). The lead's triage (`round45/triage.md`) placed
+every item once.
+
+Lead rulings for round 45 (in `lanes/COMMON44.md`, mirrored in `docs/lanes/COMMON.md`): (188) both reports reach one
+verdict on a sources.toml that does not load or is spelled unusually and cut every value it names (lane RA's docs remote
+and pandoc cut from the raw config and its line-scanned ids, lane RB's tomllib check through an interpreter install.sh
+already resolves, a structural check only where none has tomllib), completing rulings 171 and 172; (189) a word ends
+where bash ends it and a listed name is read whole, so both reports number and cut it alike, lanes RA and RB landing the
+halves of rulings 188 and 189 in one run; (190) C2060 is still gated on the operator, now under class C decision
+`c0777e12a523`, rulings 150, 161 and 174 standing; (191) install.sh honors the person's none at every NEXT that would
+ask for folders again, keyed on NO_FOLDER=1 alone, and never over a failed step, completing ruling 178; (192) the report
+reads, scores and words a none as install.sh made it (InstallRun.chose_no_folder through shlex, a none scored only on rc
+0 with no failed step and no blocking status note, each NEXT constant held to install.sh's literal), completing rulings
+178 and 179; (193) a non-absolute AGENTSYNC_CONFIG is refused or resolved by one rule wherever it is read and shown as a
+person can copy it, completing ruling 177; (194) every reader tells the inbox's state as config.inbox_state reads it,
+and a read that did not finish prints `inbox state: not checked (<why>)`, completing ruling 180; (195) every home
+renders its stubs again once under STUB_RENDER 8 and the marker moves only after every page rendered, amending ruling
+183; (196) a kept answer is keyed on, and put back with, everything that decides it, completing rulings 175 and 185;
+(197) the setup prompt reads a none, a config path and an unread inbox state as setup gives them and goes to v42 in lane
+D's one commit, after lane RB lands the lines it quotes, as ruling 187 took it to v41. The triage's 17 calls, each
+drafted one way so nothing waits (convictions 55 to 90), are filed as one class B packet with their courses kept:
+decision `b80f9aa26a01`. Call 1 moves C2873 with C2882
+ungated to lane RA, the triage's pick (conviction 70), over the lead's first direction to keep it gated in lane RB: its fix is Python only, not the refused edit. Once every course is on origin/main, the packet is marked with `cc-decide
+action`, so its expiry fires nothing, and its evidence cites a sha only once `git merge-base --is-ancestor` puts it on
+origin/main (C2494).
+
+C2667 (round 43's C2469, round 42's C2263, round 41's C2060) is still gated, now on the operator's open class C decision
+`c0777e12a523` (ceiling permission), which superseded `1476293d00a3`: lane RB reads `cc-decide list --open` for it at
+start and before its last land, takes an "Allow" on it as round 44's "Allow it", and reads any answer on `1476293d00a3`
+through its superseded recheck (C2889). Lane RA builds C2873's Python twin ungated (setup_report.py decoding only rows that opened with an escaped mark, the C2667 test split so the agentsync report is asserted unconditionally and only the shell half keeps the strict xfail); on "Allow" lane RB builds the port at C2667's three porting points on top of it, and a second refusal stops it. Otherwise the shell half's strict xfail stays and §16.281 says so; either way its reason reads `C2060 unbuilt: install.sh's decode of a listed part awaits operator decision c0777e12a523` on one line (C2882, lane RA; ruling 190). The lead adds C2873's dated line to `c0777e12a523`'s receipt and otherwise leaves both packets as they are. Of the residuals that opened round 45's harvest, C2667 is C2873 with C2882
+(lane RA, ungated) and C2889 (lane RB, gated), under ruling 190; c1001's printf EINTR on the runner is C2877 (bash 3.2's builtin printf in
+listed_folder_lines can drop a listed name), built under ruling 189 by an awk-only listed_folder_lines; lane RA's two
+load-flaky tests are C2890 and lane D's cancelled ci attempt (`45072863193` attempt 1, an explicit cancel) is C2891,
+recorded as unattributed, both the lead's; and lane RA's leftover scratch worktree was refuted as a finding (C2883).
+
+Convergence: confirmed as before, then 118, then 126; turns as before, then 2, then 2; wrongs as before, then 45, then
+38 (the verifiers' count; the finders' is 50 wrongs and 4 turns, and round 44's 45 was the finders').
+
+Lanes (`--account auto`, CONTRACTS §16.280 to §16.284, plain `scripts/ship-land.sh`, scratch under `round45/`): RA 22
+(the Python halves and both-reports rows of rulings 188 and 189 first, sent to lane RB as a branch sha; ruling 192's
+reading, scoring and words of a none on lane RB's literals; the report clusters), RB 30 (both halves of rulings 188 and
+189 landed in one run on lane RA's branch, ruling 191's NEXTs and ruling 194's `inbox state: not checked (<why>)` line
+sent to lanes RA and D and landed before lane D's v42 commit, ruling 193's --list-folders tail and shown_arg, the shell
+installer clusters, and C2889 with the port only on the operator's word), B 17 (ruling 194's live_inbox,
+inbox_state and doctor words sent to lanes RA, RB and D first, ruling 193's `~user` refusal, ruling 195's STUB_RENDER 8
+and the CLI clusters), E 11 (ruling 196 and the conversion clusters), D 25 (the v42 prompt commit after lane RB's
+printed lines land, the gate's part ceiling and CI's head and limit, dated lines and the guides). RB builds 18 after its
+merges and stays one lane: every RB item edits scripts/install.sh and tests/test_install_oneshot.py, so no split with
+disjoint files exists (conviction 60 against a split by function). Moved in triage: C2889 from L to RB, gated under ruling 190;
+C2873 and C2882 stay in lane RA, ungated (call 1). This lead commit does not carry C2887 (the result note's `Twins named:`
+line), so lane D builds all 25; notes-check.sh's fourth check is the lead's kit either way. No other lane passes 22. The
+lead holds 21: round 46's kit (C2805, C2833, C2806, C2820, C2825 with C2884, C2826, C2827, C2828, C2830), the brief
+(C2818, C2819, C2834, C2885), the lead's reads and closes (C2874: trunk polled with no fetch, recycle briefs from one
+source, and the PreToolUse no-fetch hook filed for the operator as a settings step, not written; C2875's `Yours:` line;
+C2897: Codex-only review until backlog `8ed9dae0fbc0`'s allow rule, that backlog and decision `c0777e12a523` named in
+every close), and the record (C2886: `227f3aa21701` and `7a3d1b19344a` closed with their landed ranges; C2888's push and
+launch times; C2890; C2891). The plan's 13,200-second mention in round 43's section takes a dated line once lane D lands
+C2876's 23,400 (the lead's half). The specs cite `2390257d`'s line numbers, and the kept lessons in
+`docs/lanes/COMMON.md` now say so (the triage's copy named `5affe89c`'s, round 41's base). Round 46 rehearses v42, with
+v41's block (`9acf0c54`) as scenario C's first old copy.
+
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be
