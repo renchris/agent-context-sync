@@ -91,6 +91,11 @@ _SAFE_CONFIG: tuple[tuple[str, str], ...] = (
     ("color.ui", "false"),
     ("i18n.commitEncoding", "UTF-8"),
     ("i18n.logOutputEncoding", "UTF-8"),
+    # git's trailer extraction reads agentsync's run trailers (``Agentsync-Run: N``): an operator's
+    # trailer.separators without ``:``, or a trailer.Agentsync-Run.key alias naming another key (in any
+    # case), hid them from every run reader (B13 round 45 C2920)
+    ("trailer.separators", ":"),
+    ("trailer.Agentsync-Run.key", "Agentsync-Run"),
 )
 _SAFE_ARGS: tuple[str, ...] = tuple(arg for key, value in _SAFE_CONFIG for arg in ("-c", f"{key}={value}"))
 _INFO_EXCLUDE_PATTERNS: tuple[str, ...] = (".agentsync-*.tmp", ".DS_Store")

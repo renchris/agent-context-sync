@@ -206,7 +206,28 @@ log = logging.getLogger(__name__)
 # ``label-unreadable``): the sync line counts these refusals apart from K (B13 round 30 C326)
 _LABEL_UNREADABLE_HEAD = f"{content_policy.REFUSED_PREFIX}sensitivity label unreadable"
 
-_RUN_TRAILER = re.compile(r"^Agentsync-Run:\s*(\d+)\s*$", re.MULTILINE)
+_RUN_DIGITS_MAX = 18
+"""The most digits an ``Agentsync-Run`` value may hold (:func:`_run_value`): inside SQLite's int64 and far
+below Python's 4300-digit int() limit, which raised ValueError on a 5000-digit value (B13 round 45 C2920)."""
+_RUN_TRAILER_FORMAT = "--format=%(trailers:key=Agentsync-Run,valueonly)"
+"""git's own trailer extraction, the one reader of a run number in a commit message for all three readers
+(``trailer.separators`` is pinned to ``:`` in ``gitops._SAFE_CONFIG``, so an operator's setting cannot hide
+agentsync's own trailers; B13 round 45 C2920)."""
+
+
+def _run_value(value: str) -> int | None:
+    """A run number from one trailer value: ASCII digits only (an Arabic-Indic digit is no run agentsync
+    wrote), at most :data:`_RUN_DIGITS_MAX` of them; None otherwise (B13 round 45 C2920)."""
+    if value.isascii() and value.isdigit() and len(value) <= _RUN_DIGITS_MAX:
+        return int(value)
+    return None
+
+
+def _run_values(out: str) -> list[int]:
+    """Every valid run number in ``git log``'s trailer extraction output (:func:`_run_value`)."""
+    return [run for value in out.split() if (run := _run_value(value)) is not None]
+
+
 _SETTLED_PUBLISHED = Verdict.UNCHANGED  # a published row is in sync; CHANGED would be pending work again
 _PRESENT = PRESENT_STATES
 _NEVER_TRIPS = BreakerConfig(fraction=1.0, floor=10**12, hold_days=0)
@@ -1038,15 +1059,17 @@ def _same_stub(outs: Sequence[OutputRow], row: ItemRow, result: ConversionResult
 
 
 def _head_run_id(repo: Path) -> int | None:
-    """The ``Agentsync-Run`` trailer of HEAD's commit message (None if HEAD is not an agentsync commit)."""
+    """The ``Agentsync-Run`` trailer of HEAD's commit message (None if HEAD is not an agentsync commit), read
+    as the history readers read it: git's trailer extraction, so a line in a body paragraph that is not the
+    trailer block is no run, and the largest valid value of a squashed message, as :func:`_newest_run_trailer`
+    takes it; a regex over the whole message took the first match anywhere (B13 round 45 C2920)."""
     try:
         if gitops.head_sha(repo) is None:
             return None
-        message = gitops.run_git(repo, "log", "-1", "--format=%B", "HEAD").stdout
+        out = gitops.run_git(repo, "log", "-1", _RUN_TRAILER_FORMAT, "HEAD").stdout
     except AgentSyncError:
         return None
-    m = _RUN_TRAILER.search(message)
-    return int(m.group(1)) if m else None
+    return max(_run_values(out), default=None)
 
 
 def _highest_recorded_run(config: Config) -> int:
@@ -1060,8 +1083,8 @@ def _highest_recorded_run(config: Config) -> int:
     high = _state_md_run(config)
     try:
         if gitops.head_sha(repo) is not None:
-            out = gitops.run_git(repo, "log", "--format=%(trailers:key=Agentsync-Run,valueonly)").stdout
-            high = max([high, *(int(v) for v in out.split() if v.isascii() and v.isdigit())])
+            out = gitops.run_git(repo, "log", _RUN_TRAILER_FORMAT).stdout
+            high = max([high, *_run_values(out)])
     except AgentSyncError:
         pass
     folder = config.layout.changelog_dir
@@ -1115,12 +1138,10 @@ def _newest_run_trailer(repo: Path) -> int:
     try:
         if gitops.head_sha(repo) is None:
             return 0
-        out = gitops.run_git(
-            repo, "log", "-1", "--grep=^Agentsync-Run: ", "--format=%(trailers:key=Agentsync-Run,valueonly)"
-        ).stdout
+        out = gitops.run_git(repo, "log", "-1", "--grep=^Agentsync-Run: ", _RUN_TRAILER_FORMAT).stdout
     except AgentSyncError:
         return 0
-    return max((int(v) for v in out.split() if v.isascii() and v.isdigit()), default=0)
+    return max(_run_values(out), default=0)
 
 
 _OCR_KEPT_CONVERTERS = frozenset({ImageConverter.converter_id, RecordingConverter.converter_id})

@@ -5973,6 +5973,42 @@ def test_a_convert_record_is_parsed_one_way_c2714(
     assert "reread_options" not in _run_record(config)
 
 
+def test_every_run_reader_reads_a_trailer_as_git_does_c2920(
+    tmp_path: Path, meetings: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 45 C2920 (makes worse True for git's extraction without the pin): HEAD recovery read
+    ``Agentsync-Run`` with a regex over the whole message while the two history readers took git's trailer
+    extraction, so a run line in a body paragraph, a squashed message and an Arabic-Indic digit read one way
+    at HEAD and another in history, and a 5000-digit value raised ValueError in all three. One bounded ASCII
+    parser and git's extraction serve all three, with ``trailer.separators`` pinned to ``:``, so an operator's
+    ``separators = "="`` no longer hides agentsync's own trailers."""
+    config = config_with(tmp_path, meetings)
+    assert run(config).exit_code == 0
+    repo = config.docs_repo
+
+    def readers(message: str) -> tuple[int | None, int, int]:
+        gitops.run_git(repo, "commit", "-q", "--allow-empty", "-m", message)
+        high = cycle_mod._highest_recorded_run(config)
+        return cycle_mod._head_run_id(repo), cycle_mod._newest_run_trailer(repo), high
+
+    base = cycle_mod._highest_recorded_run(config)
+    assert readers("by hand\n\nAgentsync-Run: \u0667") == (None, 0, base)  # an Arabic-Indic seven
+    for digits in (20, 5000):  # past int64, and past int()'s 4300-digit limit: ignored, never raised
+        assert readers(f"by hand\n\nAgentsync-Run: {'7' * digits}") == (None, 0, base)
+    # a run line in a body paragraph that is not the trailer block is no run, at HEAD as in history
+    assert readers("curated\n\nAgentsync-Run: 7\n\nmore words after it") == (None, 0, base)
+    # a squashed message: git reads the last paragraph's trailer, at HEAD too
+    assert readers("squash\n\nAgentsync-Run: 5\n\nsecond\n\nAgentsync-Run: 6")[:2] == (6, 6)
+    # an operator's trailer.separators without ":" (and an alias on the key) hides nothing
+    cfg = tmp_path / "contoso-gitconfig"
+    cfg.write_text(
+        '[trailer]\n\tseparators = "="\n[trailer "Agentsync-Run"]\n\tkey = "Contoso-Key"\n', encoding="utf-8"
+    )
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(cfg))
+    run_n = base + 40
+    assert readers(f"sync: contoso\n\nAgentsync-Run: {run_n}\nAgentsync-Version: 1") == (run_n, run_n, run_n)
+
+
 def test_every_isdigit_that_feeds_int_takes_ascii_digits_only_c2677(
     tmp_path: Path, meetings: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

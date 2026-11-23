@@ -45985,6 +45985,17 @@ incomplete-pass count and the removal and work filters (makes worse True). Test:
 `test_materialise_never_calls_a_file_it_names_withheld_or_unknown_c2813` (a known and a new file, an unnamed settling
 file still reported).
 
+**One bounded run parser and git's trailer extraction for every run reader** (C2920). `_head_run_id` read
+`Agentsync-Run` with a regex over HEAD's whole message while `_newest_run_trailer` and `_highest_recorded_run` took
+git's `%(trailers:key=Agentsync-Run,valueonly)`, so a run line in a body paragraph, a squashed message and an
+Arabic-Indic digit read one way at HEAD and another in history, and a 5000-digit value raised ValueError in all
+three. All three read git's extraction through `cycle._run_value` (ASCII digits, at most 18), HEAD taking the
+largest valid value as `_newest_run_trailer` does. `gitops._SAFE_CONFIG` pins `trailer.separators` to `:` and
+`trailer.Agentsync-Run.key` to `Agentsync-Run`: git's extraction alone hid agentsync's own trailers under an
+operator's `separators = "="` (makes worse True without the pin), and an alias on the `Agentsync-Run` token, in any
+case, renamed the key (measured; an alias from another token to it changes nothing, and git warns once when the
+operator has one). Test: `test_every_run_reader_reads_a_trailer_as_git_does_c2920`.
+
 ### 16.283 Round 45: the converters: a failed zero-byte re-read's books put back, an Office file's container and family parse in its answer and key, and a source's own banner line (2026-11-23, wave B13 round 45 lane E)
 
 Each item is built as its verifier corrected it, as the lead's rulings 188 to 197 settle it. A dated line this
