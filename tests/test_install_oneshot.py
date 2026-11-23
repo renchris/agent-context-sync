@@ -26953,8 +26953,12 @@ def test_the_reinstall_waits_for_a_running_background_sync_and_holds_its_lock(
     assert sum(c.startswith("uv tool install") for c in calls(e)) == 1
     assert _step_seconds(e, "agentsync") >= 1
     # install.log says why the step took its seconds (B13 round 2 R34).
-    note = "waited-for-an-unrecorded-holder" if bare else "waited-for-a-background-sync"
+    # B13 round 45 C2829: a recorded holder is another sync, whoever started it, never a background one
+    note = "waited-for-an-unrecorded-holder" if bare else "waited-for-another-sync"
     assert ("agentsync", "done", "0", note) in steps(install_log(e))
+    assert not [ln for ln in install_log(e) if " step=agentsync " in ln and "background" in ln], install_log(
+        e
+    )
     assert lock.read_text() == "" and lock.stat().st_mode & 0o777 == 0o600
 
 

@@ -291,7 +291,8 @@
 #      re-run's rebuild (setup-report exit 127, a shell-fallback report); the re-run rewrites it. A signal to
 #      the whole process group ends the wait at once (B13 round 35 C926).
 #      install.log's step=agentsync line notes what the script saw:
-#      waited-for-a-background-sync, wait-ran-out-after-<N>s or lock-not-taken-rc<N> (a sync that starts
+#      waited-for-another-sync (a recorded holder, whoever started it: B13 round 45 C2829; an older run wrote
+#      waited-for-a-background-sync), wait-ran-out-after-<N>s or lock-not-taken-rc<N> (a sync that starts
 #      after the probe is waited for too, with no note); a lock with an empty body, which no sync need hold,
 #      notes waited-for-an-unrecorded-holder or lock-wait-ran-out-after-<N>s instead (B13 round 20 X43); a
 #      SIGTERM acted on after the reinstall ended 0 notes stopped-after-install, the step done (B13 round 36 C1119)
@@ -12510,7 +12511,7 @@ uv_tool_install_pinned() {
 		0)
 			if [ "$busy" -ne 75 ]; then :
 			elif [ "$bare" -eq 1 ]; then AGENTSYNC_NOTE="waited-for-an-unrecorded-holder"
-			else AGENTSYNC_NOTE="waited-for-a-background-sync"; fi
+			else AGENTSYNC_NOTE="waited-for-another-sync"; fi # whoever started it (C2829)
 			;;
 		64 | 69 | 71 | 73) AGENTSYNC_NOTE="lock-not-taken-rc$rc" ;;
 		75)

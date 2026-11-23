@@ -16948,6 +16948,8 @@ Summary and the Installer table; install.log keeps it.
 Amended 2026-10-15, §16.93 M43, M60: since §16.87 (round 10 L73) the holder sidecar records who started a cycle;
 install.sh names it from there for the lock body's own pid, and the either-or words read `the background job, or a
 sync started another way`, not `one started in a terminal`.
+Amended 2026-11-23, §16.281 C2829: the note no longer stays: install.log writes `waited-for-another-sync` for every
+recorded holder, whoever started it, and the report reads the old token as before.
 
 **H34: a provider link keeps the form of the root that held it (`agentsync.paths`).** Under a home reached through
 a link (`/tmp` is `/private/tmp`), a provider link whose absolute target is written in the unresolved form was read
@@ -18506,6 +18508,8 @@ removed: the lock does not say who started the sync. Both read `waited for anoth
 (`_AGENTSYNC_NOTE_WORDS`); install.log keeps the token, and a note the map does not hold is shown as it is. Test:
 `test_the_install_line_says_what_the_agentsync_steps_seconds_held`.
 Amended 2026-10-14, §16.86 L35: `wait-ran-out-after-<N>s` and `lock-not-taken-rc<N>` read as words too.
+Amended 2026-11-23, §16.281 C2829: install.log's token is `waited-for-another-sync` now, which
+`_AGENTSYNC_NOTE_WORDS` reads as the same words beside the old one (lane RA's half).
 
 ### 16.82 Round 9: setup prompt v18 (2026-10-14, wave B13 round 9 lane P)
 
@@ -46094,6 +46098,15 @@ nothing. Tests: `test_install_oneshot.py::test_both_reports_compute_a_failed_ste
 error; a step 3 error before a step 2 error that has its end line; both reports on the same files), and the rows of
 `test_the_shell_report_computes_no_other_outcome` and
 `test_a_step_3_sync_stop_with_no_end_line_is_bounded_by_the_attempts_last_write` that now compute.
+
+**install.log names a recorded lock holder as another sync** (C2829; amends §16.68 H33 and §16.81 K35, dated lines
+there). The lock does not say who started a sync (H33), yet install.log's `step=agentsync` line still noted
+`waited-for-a-background-sync` for every recorded holder, and the report printed that token where its words were
+missing. install.sh writes `waited-for-another-sync` for a recorded holder whoever started it (launchd, another
+way, unreadable); `waited-for-an-unrecorded-holder` for an empty body stays. Lane RA keeps the old key beside the new
+in `_AGENTSYNC_NOTE_WORDS`, both read as `waited for another sync to end`. Test: the recorded-holder row of
+`test_install_oneshot.py::test_the_reinstall_waits_for_a_running_background_sync_and_holds_its_lock` (the new token,
+and no `background` on the step's line).
 
 **Review fixes** (C2915, C2824). The structural check read a quoted or dotted header and a CRLF file as unparsed, so a
 well-formed config lost its link where no interpreter answers: a header of bare, basic or literal key parts, dotted,
