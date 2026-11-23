@@ -7877,6 +7877,11 @@ def _step_table(steps: list[tuple[str, dict[str, str]]], *, sign_in: str | None 
         said = v.get("note", "")
         if said == "timeout" and rc not in ("0", ""):  # the rc's words already say so (C1434)
             said = ""
+        # B13 round 45 C2843 (makes worse True for mirroring it into the shim): a config step that closed
+        # itself logs note=failed only so it can carry the inbox it could not add (B13 round 44 C2701); the
+        # note repeats result=failed, so the row reads `failed, rc N`, never `failed, rc N (failed)`
+        if name == "config" and said == "failed":
+            said = ""
         if name == "agentsync":
             said = _agentsync_note(said)
         elif name == "first-sync":

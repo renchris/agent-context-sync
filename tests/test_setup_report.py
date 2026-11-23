@@ -29573,6 +29573,28 @@ def test_a_non_ascii_digit_in_install_log_is_no_number_c2677(fake_mac: dict[str,
     assert setup_report._reread_since(r, parsed) == [], "the stopped sync's own run, its seconds read as 0"
 
 
+def test_a_self_closed_config_step_reads_failed_rc_n_with_no_bracket_c2843() -> None:
+    """B13 round 45 C2843 (makes worse True for mirroring it into the shim): C2701's self-closed config step
+    logs note=failed only to carry inbox=not-added, and the Installer table read `failed, rc 1 (failed)`. The
+    renderer drops a config step's note that repeats `failed`; another step's note and another config note
+    stay."""
+    for rc in ("1", "78"):
+        rows = setup_report._step_table(
+            [
+                (
+                    "config",
+                    {"seconds": "1", "rc": rc, "result": "failed", "note": "failed", "inbox": "not-added"},
+                )
+            ]
+        )
+        assert rows[-1].split("|")[3].strip() == f"failed, rc {rc}", rows
+        assert "(failed)" not in rows[-1], rows
+    kept = setup_report._step_table(
+        [("config", {"seconds": "1", "rc": "0", "result": "done", "note": "created"})]
+    )
+    assert "(" in kept[-1], kept
+
+
 def test_an_install_log_rc_is_read_from_ascii_digits_only_c2847(tmp_path: Path) -> None:
     """B13 round 45 C2847 (C2677's pattern): the end line's rc was read with `\\d`, which takes `\u0660`
     (ARABIC-INDIC DIGIT ZERO), so `end rc=\u0660` read as an exit 0 and the run as one that ended clean. Only

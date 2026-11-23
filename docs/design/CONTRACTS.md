@@ -45470,6 +45470,8 @@ which ends exit 1 on its own NEXT; the shell variable is `NO_FOLDER_CHOSEN_NEXT`
 with ` inbox=not-added` after their counts, and a failed or refused init or add-source that saw the warning closes
 its own step as `note=failed inbox=not-added` before `config_failed` (a leading note word, so a `key=value` reader
 never reads `note=inbox=not-added`). Test: `test_a_refused_config_step_keeps_the_inbox_it_could_not_add_c2701`.
+Amended 2026-11-23, §16.280 C2843: the agentsync report's Installer table reads that step `failed, rc N`, its
+`failed` note, which only repeats the result, left out; install.log keeps it.
 
 **The header says a refused step 2 prints its folder lines** (C2643). `config_failed` prints `docs repo:`, `inbox:`
 and `inbox state:` with no folders line; the header says so and that the folders line itself may be absent. Test:
@@ -45984,6 +45986,13 @@ rc 1 and at rc 0, a status timeout, rc 143 and no end line).
 **An install.log rc is ASCII digits only** (C2847; C2677's pattern). `read_install_runs` read the end line's rc with
 `\d`, which takes `\u0660`, so `end rc=\u0660` read as an exit 0 and the run as one that ended clean; it takes
 `-?[0-9]+` only, and that run has no rc. Test: `test_an_install_log_rc_is_read_from_ascii_digits_only_c2847`.
+
+**A self-closed config step reads `failed, rc N`** (C2843, makes worse True for mirroring it into the shim; amends
+§16.276 C2701). C2701's config step that closes itself logs `note=failed` only so it can carry `inbox=not-added`, and
+the Installer table read `failed, rc 1 (failed)`. `_step_table` drops a config step's note that is `failed`, so the
+row reads `failed, rc 1` (or `rc 78`); `_STEP_NOTE_WORDS`, `STOPPED_STEP_WORDS` and the shim are untouched, since
+mirroring the entry into the shim needed a `config failed ` line whose trailing space made an older renderer print
+`failed, rc 1 ()`. Test: `test_a_self_closed_config_step_reads_failed_rc_n_with_no_bracket_c2843`.
 
 ### 16.281 Round 45: the installer: the shell halves of rulings 188 and 189, the person's none honored at every NEXT, an inbox-state read that did not finish said so, and C2060 waits on the operator (2026-11-23, wave B13 round 45 lane RB)
 
