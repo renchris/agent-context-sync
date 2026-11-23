@@ -15144,6 +15144,9 @@ Amended 2026-11-04, §16.233 C962: "unless the shell sets one" means one its cur
 `CURL_CA_BUNDLE` of the shell's own, the shell's `SSL_CERT_DIR` is dead, and git's folder replaces it.
 Amended 2026-11-20, §16.268 C2304: the query is `git config -z --type=path --get-urlmatch http <NEMO_URL>`, its
 output split on NUL bytes and decoded with surrogateescape, no value stripped and an empty proxy kept.
+Amended 2026-11-23, §16.283 C2930: the heading's "trusts and routes as git does" holds with the exception the
+paragraph states: a CA the shell sets for curl itself (`CURL_CA_BUNDLE`, `SSL_CERT_FILE` or `SSL_CERT_DIR`) is
+curl's and stays over git's; speech.py's three summaries now say so.
 
 **The person's SwiftPM mirrors and registries reach the build (Q53; amends §16.48 R90).** `--config-path`
 replaces SwiftPM's shared configuration folder outright (Swift 6.2.4: a mirror resolved under its own
@@ -45956,6 +45959,17 @@ loading it). Tests:
 (a Word package and a deck named `.xlsx`, a Word package named `.pptx`, each with no `xmlns` on `<Types>`) and
 `test_convert_family.py::test_a_real_workbook_whose_content_types_have_no_namespace_still_converts_c2854` (the
 workbook converts, a foreign-namespace decoy gives no family).
+
+**The seed's summaries say a CA the shell sets for curl stays curl's** (C2930; `agentsync.convert.speech`; amends
+§16.54 Q52). `_CURL_FLAGS`', `_seed`'s and `_curl_env`'s one-line summaries said the seed's curl "trusts and
+routes as git does", but `_CURL_CA_VARS` (CURL_CA_BUNDLE, SSL_CERT_FILE, SSL_CERT_DIR) reach curl alone, which
+Xcode's git ignores, and git's bundle becomes CURL_CA_BUNDLE only when the shell names neither: with
+`GIT_SSL_CAINFO` at one bundle and `CURL_CA_BUNDLE` at another, git trusts the first and the seed's curl the
+second. Each summary now says curl routes as git does and trusts what git trusts, except where the shell sets a
+CA for curl itself, which curl keeps over git's; the `.curlrc` point (C2715) stays. The code is unchanged, and
+§16.54's heading, which `test_deploy_pack.py` pins, keeps its words, with a dated line. Test:
+`test_speech.py::test_the_seeds_docstrings_say_a_shell_ca_for_curl_stays_over_gits_c2930` (the behavior under
+both git configs, and the three summaries).
 
 ### 16.284 Round 45: the prompt goes to v42 (a none, a config path and an unread inbox state as setup gives them), the gate's part ceiling and CI's limit, dated lines, and the guides (2026-11-23, wave B13 round 45 lane D)
 

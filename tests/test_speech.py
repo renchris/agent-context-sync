@@ -8,6 +8,7 @@ up (Contoso).
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import logging
 import os
@@ -966,6 +967,32 @@ def test_the_seeds_curl_reads_no_curlrc_c2715(
     [call] = lines_of(curl.with_name("curl.calls"))
     assert call.split(" ")[0] == "--disable", call
     assert speech._CURL_FLAGS[0] == "--disable" and speech._CURL_FLAGS.count("--disable") == 1
+
+
+def test_the_seeds_docstrings_say_a_shell_ca_for_curl_stays_over_gits_c2930(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """B13 round 45 C2930: three summaries said the seed's curl "trusts and routes as git does", but
+    ``_curl_env`` passes the shell's CURL_CA_BUNDLE, SSL_CERT_FILE and SSL_CERT_DIR to curl alone (Xcode's git
+    ignores them) and makes git's bundle CURL_CA_BUNDLE only when the shell names neither. Each says the
+    exception now, beside the behavior it describes: with GIT_SSL_CAINFO and a curl bundle of the shell's,
+    curl trusts the shell's."""
+    for name in ("GIT_SSL_CAINFO", "CURL_CA_BUNDLE", "SSL_CERT_FILE", "SSL_CERT_DIR"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("GIT_SSL_CAINFO", "/Users/contoso/inspect.pem")
+    monkeypatch.setenv("CURL_CA_BUNDLE", "/etc/ssl/cert.pem")
+    for config in ({}, {"http.sslcainfo": "/Users/contoso/inspect.pem"}):
+        assert speech._curl_env(config)["CURL_CA_BUNDLE"] == "/etc/ssl/cert.pem", config
+    docs = {
+        "_curl_env": speech._curl_env.__doc__ or "",
+        "_seed": speech._seed.__doc__ or "",
+        "_CURL_FLAGS": inspect.getsource(speech).split("\n_CURL_FLAGS = ", 1)[1].split('"""', 2)[1],
+    }
+    for where, doc in docs.items():
+        flat = " ".join(doc.split())
+        assert "trusts and routes as" not in flat, where
+        assert "routes as" in flat and "except where the shell sets a CA for curl itself" in flat, where
+        assert "which curl keeps over git's" in flat, where
 
 
 def test_the_seeds_curl_is_the_systems_c2715() -> None:

@@ -573,9 +573,11 @@ def _git_config(git: str, *, cwd: Path, deadline: float) -> dict[str, str]:
 
 
 def _curl_env(git_config: Mapping[str, str]) -> dict[str, str]:
-    """:func:`_build_env` plus the shell's :data:`_CURL_CA_VARS`, for :func:`_seed`'s curl, which trusts and
-    routes as step 1's git does, from the environment and from git's config files (``git_config``, from
-    :func:`_git_config`), with git's precedence:
+    """:func:`_build_env` plus the shell's :data:`_CURL_CA_VARS`, for :func:`_seed`'s curl, which routes as
+    step 1's git does and trusts what git trusts, except where the shell sets a CA for curl itself
+    (CURL_CA_BUNDLE, SSL_CERT_FILE or SSL_CERT_DIR), which curl keeps over git's (B13 round 45 C2930), from
+    the environment and from git's config files (``git_config``, from :func:`_git_config`), with git's
+    precedence:
 
     * The bundle git trusts (GIT_SSL_CAINFO, else http.sslCAInfo; curl reads neither) becomes CURL_CA_BUNDLE,
       unless the shell names a bundle of curl's own (measured with /usr/bin/curl 8.7.1: CURL_CA_BUNDLE at an
@@ -663,8 +665,10 @@ _CURL_FLAGS = (
 """HTTPS only, through redirects (GitHub serves releases from another host); a stall of a minute below
 1 KB/s ends the fetch rather than the build's twenty minutes.  ``--disable`` comes first, right after
 :data:`_CURL`, where curl reads it: the person's ``.curlrc`` (an ``insecure`` or a ``noproxy``) is never
-read, so only the flags and the environment the seed builds apply, and it trusts and routes as git does,
-whose libcurl reads no ``.curlrc`` (B13 round 44 C2715)."""
+read, so only the flags and the environment the seed builds apply: it routes as git does and trusts what
+git trusts, except where the shell sets a CA for curl itself (CURL_CA_BUNDLE, SSL_CERT_FILE or
+SSL_CERT_DIR), which curl keeps over git's (:func:`_curl_env`; B13 round 45 C2930), and git's libcurl reads
+no ``.curlrc`` either (B13 round 44 C2715)."""
 _PROXIES = ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy")
 """The variables that route an https url through a proxy, for curl and git alike: both ignore HTTP_PROXY for
 an https url (measured with /usr/bin/curl 8.7.1: HTTP_PROXY at a closed port still fetched directly), and
@@ -707,8 +711,9 @@ def _swift_too_old(swift: str, *, cwd: Path, deadline: float) -> bool:
 def _seed(artifacts: Path, *, git: str, swift: str, cwd: Path, deadline: float) -> None:
     """Behind a proxy set in the environment or in git's config (``git``, the build's), put FluidAudio's
     binary artifact where SwiftPM looks before it downloads (it then prints "Fetched ... from cache"): curl,
-    which trusts and routes as git does (:func:`_curl_env`), fetches
-    :data:`NEMO_URL` to a temporary file, and only a file whose SHA-256 is :data:`NEMO_SHA256` is renamed into
+    which routes as git does and trusts what git trusts, except where the shell sets a CA for curl itself,
+    which curl keeps over git's (:func:`_curl_env`; B13 round 45 C2930), fetches :data:`NEMO_URL` to a
+    temporary file, and only a file whose SHA-256 is :data:`NEMO_SHA256` is renamed into
     place.  Any failure removes the temporary file and leaves SwiftPM to download it as before; SwiftPM checks
     the checksum again either way.  A run stopped mid-fetch by SIGTERM or SIGKILL never reaches the
     ``finally``, so every run first removes the temporary files earlier runs left.  A ``swift`` older than
