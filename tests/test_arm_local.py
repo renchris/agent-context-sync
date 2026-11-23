@@ -1442,7 +1442,8 @@ def test_inbox_withholds_files_inside_the_quiescence_window(tmp_path: Path) -> N
     res = arm.scan(None, full=True)  # written just now: every file is inside the window
     assert res.items == ()
     assert res.enumeration_complete is False
-    assert any("withheld" in a for a in res.alarms)
+    # the withheld alarm is the cycle's since B13 round 45 C2813, built from the scan's withheld paths
+    assert res.withheld_paths == ("settled.pdf",) and al.withheld_alarm(res.withheld_paths, 60) is not None
     arm._clock = lambda: time.time_ns() + 120 * 1_000_000_000
     res = arm.scan(None, full=True)
     assert [i.rel_path for i in res.items] == ["settled.pdf"]
@@ -1520,7 +1521,7 @@ def test_inbox_settle_waits_for_a_fresh_file_beside_a_future_dated_one(
         res = arm.scan(None, full=True)
     assert len(sleeps) == 1 and 0 < sleeps[0] <= 60
     assert [i.rel_path for i in res.items] == ["fresh.eml"]
-    assert res.enumeration_complete is False and any("fromzip.eml" in a for a in res.alarms)
+    assert res.enumeration_complete is False and "fromzip.eml" in res.withheld_paths
     # B13 round 17 U18: said before the sleep, its noun counted, and a live progress notice, which the CLI's
     # stderr handler prints as a plain indented line, never a timestamped "WARNING agentsync.arm_local:" one
     [record] = [r for r in caplog.records if "still settling" in r.getMessage()]
@@ -1530,7 +1531,9 @@ def test_inbox_settle_waits_for_a_fresh_file_beside_a_future_dated_one(
     assert cli._Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s").format(record) == (
         f"  {record.getMessage()}"
     )
-    (alarm,) = [a for a in res.alarms if "withheld" in a]
+    # the alarm is the cycle's since B13 round 45 C2813, from the scan's withheld paths
+    alarm = al.withheld_alarm(res.withheld_paths, arm.cfg.quiescence_s)
+    assert alarm is not None and not [a for a in res.alarms if "withheld" in a], res.alarms
     assert alarm.startswith("1 inbox item withheld: "), alarm  # U102: by the count, no "(s)"
 
 

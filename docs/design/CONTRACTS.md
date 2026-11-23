@@ -45973,6 +45973,18 @@ every reader that finds tombstones by `status: deleted` (makes worse True). `lin
 `_repair_outputs` write the new one. Tests: `test_a_superseded_tombstone_body_names_its_successor_c2613`,
 `test_a_whole_page_replaced_by_units_names_its_first_new_page_and_counts_no_deletion_c2205`.
 
+**materialise never calls a file it names withheld or unknown** (C2813). The `withheld ... (still being written?)`
+alarm was `InboxArm.scan`'s, added before the cycle knew which paths a `materialise PATH` run names, so a forced run
+that read and converted a settling file still said it was withheld, and a new settling file with no row yet read `is
+not a known file`. The alarm is built in the cycle (`arm_local.withheld_alarm`, from `ScanResult.withheld_paths`)
+once the forced paths are known, the named paths left out; `_forced_ids` gives a named path with no row that the walk
+withheld `materialise: <rel> is still being written (changed within the last <quiescence_s>s); run materialise again
+once it settles`, the configured quiescence. Only the messages change: the INCOMPLETE mark and the cursor hold stay,
+since marking the pass complete recorded a listing that held a file back as complete and skewed doctor's
+incomplete-pass count and the removal and work filters (makes worse True). Test:
+`test_materialise_never_calls_a_file_it_names_withheld_or_unknown_c2813` (a known and a new file, an unnamed settling
+file still reported).
+
 ### 16.283 Round 45: the converters: a failed zero-byte re-read's books put back, an Office file's container and family parse in its answer and key, and a source's own banner line (2026-11-23, wave B13 round 45 lane E)
 
 Each item is built as its verifier corrected it, as the lead's rulings 188 to 197 settle it. A dated line this

@@ -209,6 +209,20 @@ UNKNOWN_MISSING = "missing"
 UNKNOWN_NOTDIR = "not-a-folder"
 
 
+def withheld_alarm(paths: Sequence[str], quiescence_s: int | float) -> str | None:
+    """The alarm for inbox files a walk withheld as still settling (``ScanResult.withheld_paths``), the first
+    five by name; None for none. Built by the cycle, which leaves out the paths a ``materialise PATH`` run
+    names: it reads such a file, or says it is still being written (B13 round 45 C2813)."""
+    if not paths:
+        return None
+    shown = ", ".join(repr(p) for p in paths[:5])
+    more = f" (+{len(paths) - 5} more)" if len(paths) > 5 else ""
+    return (
+        f"{plural(len(paths), 'inbox item')} withheld: changed within the last {quiescence_s}s "
+        f"(still being written?): {shown}{more}"
+    )
+
+
 class UnknownDir(NamedTuple):
     """One folder a walk could not take as listed (``WalkStats.unknown_why``)."""
 
@@ -1740,13 +1754,8 @@ class InboxArm(LocalArm):
                 extra={PROGRESS: True},
             )
             self._sleep(wait_s)
-        if withheld:
-            shown = ", ".join(repr(p) for p in withheld[:5])
-            more = f" (+{len(withheld) - 5} more)" if len(withheld) > 5 else ""
-            alarms.append(
-                f"{plural(len(withheld), 'inbox item')} withheld: changed within the last "
-                f"{self.cfg.quiescence_s}s (still being written?): {shown}{more}"
-            )
+        # the withheld alarm is the cycle's (withheld_alarm): a ``materialise PATH`` run reads a named file
+        # the walk withheld, so only the cycle knows which paths it still holds back (B13 round 45 C2813)
         complete = stats.sentinel_present is not False and not stats.unknown_dirs and not withheld
         log.info(
             "%s: inbox walk %d files (%d withheld, %d excluded); complete=%s",

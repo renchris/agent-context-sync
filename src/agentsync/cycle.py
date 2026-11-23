@@ -62,6 +62,7 @@ from agentsync.arm_local import (
     WalkStats,
     cloud_provider_root,
     fold_conflict_suffix,
+    withheld_alarm,
 )
 from agentsync.classifier import (
     ClassifyContext,
@@ -4791,6 +4792,13 @@ class _Cycle:
         self.lock.beat(f"work:{src.id}")
         queue = self.manifest.pending_work(src.id)
         forced = self._forced_ids(src)
+        named = self.forced_paths.get(src.id, set()) if self.forced_paths else set()
+        # the withheld alarm, built here (B13 round 45 C2813): a path this materialise run names is read,
+        # or told as still being written, so it is never also reported withheld; INCOMPLETE and the cursor
+        # hold stay, as the walk did hold it back
+        alarm = withheld_alarm([p for p in scan.withheld_paths if p not in named], src.quiescence_s)
+        if alarm is not None:
+            acc.alarms.append(alarm)
         if forced is not None:
             for sid in sorted(forced - {r.stable_id for r in queue}):
                 self.manifest.set_verdict(src.id, sid, Verdict.MAYBE_CHANGED)
@@ -6389,7 +6397,13 @@ class _Cycle:
         out: set[str] = set()
         for rel in sorted(wanted):
             row = self.manifest.item_by_path(src.id, rel)
-            if row is None:
+            if row is None and rel in self._withheld.get(src.id, (frozenset(), frozenset()))[1]:
+                # a new inbox file the walk withheld as settling has no row yet: not unknown (C2813)
+                self._acc(src).alarms.append(
+                    f"materialise: {rel} is still being written (changed within the last "
+                    f"{src.quiescence_s}s); run materialise again once it settles"
+                )
+            elif row is None:
                 self._acc(src).alarms.append(f"materialise: {rel} is not a known file of {src.id}")
             elif not row.is_dir:
                 out.add(row.stable_id)

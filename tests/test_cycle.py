@@ -8492,6 +8492,54 @@ def test_materialise_reads_a_settling_inbox_file_it_names_c2645(
         assert page_path.read_bytes() != page
 
 
+@pytest.mark.parametrize("known", [True, False])
+def test_materialise_never_calls_a_file_it_names_withheld_or_unknown_c2813(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch, known: bool
+) -> None:
+    """B13 round 45 C2813 (makes worse True for marking the pass complete): ``materialise PATH`` of a settling
+    inbox file printed the arm's ``withheld ... (still being written?)`` alarm beside the read that converted
+    it, and for a new file with no row yet ``is not a known file``. The cycle builds the withheld alarm with
+    the named paths left out; a new settling file named at once reads ``is still being written (changed
+    within the last 600s)``. The pass stays INCOMPLETE and an unnamed settling file is still reported."""
+    ahead = [3600 * 1_000_000_000]
+
+    class FakeClockInbox(al.InboxArm):
+        def __init__(self, cfg: Any) -> None:
+            super().__init__(cfg)
+            self._clock = lambda: time.time_ns() + ahead[0]
+            self._sleep = lambda _s: None
+
+    monkeypatch.setattr(cycle_mod, "InboxArm", FakeClockInbox)
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    name, other = "Contoso notes.txt", "Contoso draft.txt"
+    if known:
+        (inbox / name).write_text("The purchase order is approved.\n", encoding="utf-8")
+    sources = INBOX_SOURCE.format(path=inbox).replace("quiescence_s = 0", "quiescence_s = 600")
+    config = config_with(tmp_path, local_source_dir, sources)
+    monkeypatch.setattr(loop_mod.launchd, "agents_installed", lambda _c: False)
+    assert run(config, mode=None, only=["inbox"]).exit_code == 0
+    ahead[0] = 0
+    if known:
+        os.utime(inbox / name)  # rewritten in place: inside the window
+    else:
+        (inbox / name).write_text("The invoice is paid.\n", encoding="utf-8")
+    (inbox / other).write_text("Not named.\n", encoding="utf-8")
+    report = run(config, mode=None, materialise_paths=[inbox / name])
+    (box,) = [r for r in report.sources if r.source_id == "inbox"]
+    assert box.enumeration_complete is False, "the walk held a file back: INCOMPLETE stays"
+    withheld = [a for a in box.alarms if "withheld" in a]
+    assert withheld == [
+        "1 inbox item withheld: changed within the last 600s (still being written?): 'Contoso draft.txt'"
+    ], box.alarms
+    assert not any("not a known file" in a for a in box.alarms), box.alarms
+    settling = (
+        f"materialise: {name} is still being written (changed within the last 600s); run materialise again "
+        "once it settles"
+    )
+    assert (settling in box.alarms) is not known, box.alarms
+
+
 def test_a_no_media_recording_stub_stays_uncounted_and_unplanned_c2039(
     tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
 ) -> None:
