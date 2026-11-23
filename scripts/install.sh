@@ -3989,8 +3989,9 @@ redaction_pairs() {
 	# counter of its own, as setup_report numbers a configured, a listed (depth 2) and a vanished source's
 	# library; the first registration of a name wins whichever kind it took, as Redactor._known finds it, so a
 	# library and a folder of one name read one placeholder in both reports (B13 round 43 ruling 159, C2471). A
-	# LATE path (install.log's --source-local words, which Python never numbers) numbers no library unless it is
-	# a folder on disk, whose library the agentsync report's CloudStorage listing gives at depth 2 (C2471)
+	# LATE path (the --source-local words of install.log) is numbered by both reports after every other value
+	# (setup_report._logged_cloud_folders, B13 round 44 C2668), its first part a library only when the path is a
+	# folder on disk, the same rule on both sides (C2471; B13 round 45 C2916)
 	folder_parts() { # listed|late|"" PATH...: listed for step 1's list, late for install.log's words
 		local only="$1" f rel part whole k lib first new
 		shift
