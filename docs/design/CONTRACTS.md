@@ -45921,6 +45921,16 @@ and its pin are lane RA's, sent these words first. Test:
 `test_ops_doctor.py::test_a_helper_whose_version_did_not_answer_in_time_is_a_warn_that_says_so_c915` (both forms,
 three helpers, with and without developer tools).
 
+**`_CONVERTER_DISTS`' docstring names the distributions as the ones in the digest** (C2853 with C2857, one
+defect from two finders, built once; makes worse True for both finders' wordings; `agentsync.cycle`). C2655's
+`, except lxml, whose installed versions are in _Cycle._capabilities` gave `whose` lxml as its antecedent, the one
+distribution the digest leaves out. It reads `The distributions the converters read files with (pyproject.toml's
+dependencies) except lxml; their installed versions are in _Cycle._capabilities`: the exception is restrictive,
+`their` is the distributions', and `except lxml`, which the C2655 test asserts, stays (both finders' rewordings
+dropped it and turned that test red). Test:
+`test_cycle.py::test_the_converter_libraries_docstring_names_lxml_as_left_out_c2655`, which now also refuses
+`except lxml, whose`.
+
 ### 16.284 Round 45: the prompt goes to v42 (a none, a config path and an unread inbox state as setup gives them), the gate's part ceiling and CI's limit, dated lines, and the guides (2026-11-23, wave B13 round 45 lane D)
 
 Reserved for round 45 lane D of B13.
