@@ -19664,14 +19664,6 @@ _WORD_HEADS = "|".join(
     for head, rule in report_cuts.PATH_HEADS
     if head.startswith(("--", "add-source")) and rule != "cwd_name"
 )
-_QUOTED_HEAD_RE = re.compile(rf"""(['"])({_WORD_HEADS})""")
-"""B13 round 43 C2466 (ruling 158; privacy): a one-shell-word head of :data:`_SOURCE_LOCAL_RE` right after a
-``'`` or ``"`` that wraps the whole argument (``args='--cwd=~/Wombat Ledger/x'``, ``"--source-local ..."``,
-``'add-source ...'``): the quote is the value's own, so the value runs to its closing quote
-(:func:`_closing_quote`) or the line's end, where the one-word read cut it at its first blank and printed
-the rest of a name with a blank (``~/<path> Ledger/<folder-1>``). Ruling 148's "never the form whose quote
-wraps the whole argument" clause is lifted. B13 round 44 ruling 173 (C2666) keeps it as the special case of
-:data:`_ANY_HEAD_RE`'s rule."""
 _ANY_HEAD_RE = re.compile(rf"(?<![\w-])({_WORD_HEADS})")
 """B13 round 44 ruling 173 (C2666; privacy; amending ruling 158): any one-shell-word head with a ``'`` or
 ``"`` earlier on its line, not only right after one: a quote that opens a whole command
@@ -19690,12 +19682,20 @@ own head's rule, so a second head's configured folder keeps its ``<folder-N>`` (
 
 def _quoted_value_end(line: str, m: re.Match[str]) -> int | None:
     """Where the value of ``m``'s head (:data:`_ANY_HEAD_RE`) ends under ruling 173 (B13 round 44 C2666), or
-    None when the one-word read takes it: right after a quote, that quote's close (:data:`_QUOTED_HEAD_RE`,
-    ruling 158's special case); else, with a ``'`` or ``"`` anywhere before the head, the nearest quote after
-    it of a kind that stands before it, by :func:`_closing_quote`'s rule, or the line's end. None with no
-    quote before the head, for a value that opens with a quote of its own (a quoted word, which the one-word
-    read takes to its close) and for a ``printf %q`` value holding an escaped blank."""
+    None when the one-word read takes it: right after a quote, that quote's close (a quote at
+    ``line[h - 1]``, ruling 158's special case, B13 round 43 C2466); else, with a ``'`` or ``"`` anywhere
+    before the head, the nearest quote after it of a kind that stands before it, by :func:`_closing_quote`'s
+    rule, or the line's end. None with no quote before the head, for a value that opens with a quote of its
+    own (a quoted word, which the one-word read takes to its close) and for a ``printf %q`` value holding an
+    escaped blank."""
     h = m.start()
+    # B13 round 43 C2466 (ruling 158; privacy): a head right after a ``'`` or ``"`` that wraps the whole
+    # argument (``args='--cwd=~/Wombat Ledger/x'``, ``"--source-local ..."``, ``'add-source ...'``): the quote
+    # is the value's own, so the value runs to its closing quote (:func:`_closing_quote`) or the line's end,
+    # where the one-word read cut it at its first blank (``~/<path> Ledger/<folder-1>``); ruling 148's "never
+    # the form whose quote wraps the whole argument" clause lifted, and ruling 173 (C2666) keeps it as this
+    # special case (B13 round 45 C2845 with C2916: the regex that named it, _QUOTED_HEAD_RE, was dead and is
+    # gone)
     if h > 0 and line[h - 1] in "'\"":
         k = _closing_quote(line[h - 1 :], line[h - 1])
         return len(line) if k < 0 else h - 1 + k

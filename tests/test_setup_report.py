@@ -29573,6 +29573,16 @@ def test_a_non_ascii_digit_in_install_log_is_no_number_c2677(fake_mac: dict[str,
     assert setup_report._reread_since(r, parsed) == [], "the stopped sync's own run, its seconds read as 0"
 
 
+def test_no_dead_quoted_head_regex_is_left_c2845_c2916() -> None:
+    """B13 round 45 C2845 with C2916: since C2666 the head-after-a-quote case is `_quoted_value_end`'s inline
+    check, so `_QUOTED_HEAD_RE` matched nothing any code ran and its docstring described a live rule. It is
+    gone, its ruling 158 rationale kept beside the check, and no docstring names it."""
+    assert not hasattr(setup_report, "_QUOTED_HEAD_RE")
+    doc = setup_report._quoted_value_end.__doc__ or ""
+    assert "_QUOTED_HEAD_RE" not in doc and "ruling 158's special case" in doc, doc
+    assert "C2466" in inspect.getsource(setup_report._quoted_value_end)
+
+
 def test_a_self_closed_config_step_reads_failed_rc_n_with_no_bracket_c2843() -> None:
     """B13 round 45 C2843 (makes worse True for mirroring it into the shim): C2701's self-closed config step
     logs note=failed only to carry inbox=not-added, and the Installer table read `failed, rc 1 (failed)`. The

@@ -45994,6 +45994,12 @@ row reads `failed, rc 1` (or `rc 78`); `_STEP_NOTE_WORDS`, `STOPPED_STEP_WORDS` 
 mirroring the entry into the shim needed a `config failed ` line whose trailing space made an older renderer print
 `failed, rc 1 ()`. Test: `test_a_self_closed_config_step_reads_failed_rc_n_with_no_bracket_c2843`.
 
+**The dead quoted-head regex is gone** (C2845 with C2916). Since C2666 the head-after-a-quote case is
+`_quoted_value_end`'s inline check (a quote at `line[h - 1]`), so `_QUOTED_HEAD_RE` matched nothing any code ran while
+its docstring described a live rule. It is deleted, its ruling 158 rationale (C2466) kept as a comment on that check
+and the docstring naming the check itself; install.sh's stale comment on the late `--source-local` numbering is lane
+RB's (§16.281). Test: `test_no_dead_quoted_head_regex_is_left_c2845_c2916`.
+
 ### 16.281 Round 45: the installer: the shell halves of rulings 188 and 189, the person's none honored at every NEXT, an inbox-state read that did not finish said so, and C2060 waits on the operator (2026-11-23, wave B13 round 45 lane RB)
 
 Round 45's lane RB items (`docs/plans/bring-back-ocr.md`, "B13 round 45"; specs `round45/items/C<n>.md`, the
