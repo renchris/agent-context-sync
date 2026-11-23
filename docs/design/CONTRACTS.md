@@ -46089,6 +46089,11 @@ error; a step 3 error before a step 2 error that has its end line; both reports 
 `test_the_shell_report_computes_no_other_outcome` and
 `test_a_step_3_sync_stop_with_no_end_line_is_bounded_by_the_attempts_last_write` that now compute.
 
+C2889 stays unbuilt (ruling 190): decision c0777e12a523 (C2060's port of round 41's refused install.sh edit) was
+still open at this lane's start and before its last land, so the shell half of
+`test_report_redaction.py`'s ruling-142 test keeps its strict xfail (lane RA's C2873 split it, the agentsync report
+asserted unconditionally), and no install.sh change writes its decode another way.
+
 ### 16.282 Round 45: an inbox that is not a folder never named as kept, its state read by lstat and stat, a `~user` AGENTSYNC_CONFIG refused, and every waiting stub and tombstone rendered again under STUB_RENDER 8 (2026-11-23, wave B13 round 45 lane B)
 
 Round 45's lane B items (`docs/plans/bring-back-ocr.md`, "B13 round 45"; specs `round45/items/C<n>.md`, the
