@@ -81,7 +81,7 @@ for id in $(gh run list --commit "$(git rev-parse HEAD)" --json databaseId --jq 
 done
 ```
 
-The list can be empty for a few seconds after the push; retry. `ci` takes about 18 to 81 minutes once its job starts
+The list can be empty for a few seconds after the push; retry. `ci` takes about 18 to 86 minutes once its job starts
 (measured October and November 2026; 24 at 5120 tests, and the same tests and source ran 24 and then 21 minutes on two
 runs; the eight jobs from eaed1034 to fcafd734 took 18:05 to 28:34; the nine from fcafd734 to 7a54f938 took 19:29 to
 31:21; the thirteen from ed901cd3 to b1f4a087 took 24:34 to 32:18; the ten from c93fcd96 to 3ec66a92 took 30:06 to
@@ -116,14 +116,17 @@ step 74:19; the seven after it, from 60835dd7 to 87ec6fee, took 59:30 to 78:52, 
 on attempt 1, the slowest on 62a72e6c, 8972 tests and pytest's step 78:19; bd65e0e1, round 43's base, took 72:55, 8973
 tests and pytest's step 72:23; the ten after it, from 7acb0255 to 5affa1ab, took 69:10 to 79:30, all past 60 and nine
 past 70, all green on attempt 1, the slowest on 5affa1ab, 9282 tests and pytest's step 79:07; d1b028b4, round 44's
-base, took 72:31, 9282 tests and pytest's step 72:26; one run took 34 on a runner loaded 5 to 8 per core), plus any wait
-for a macOS runner, counted from
+base, took 72:31, 9282 tests and pytest's step 72:26; the eight after it, from d6b9f61f to e9396380, took 67:09 to 85:06
+on their last attempts, all past 60, six past 70 and three past 80, the slowest on e9396380, 9502 tests and pytest's
+step 84:36, one attempt failed a test at 79:31, 13b58a12's first, and its rerun was green at 69:04, and one, 3aa3bfda's
+first, was cancelled at 46:25 and its rerun was green at 67:09; 2390257d, round 45's base, took 75:54, 9499 tests and
+pytest's step 75:28; one run took 34 on a runner loaded 5 to 8 per core), plus any wait for a macOS runner, counted from
 the run appearing to its job starting (one waited 63 minutes, on ef12f28f, another 50, one 21, on d8385ef6, one 25, on
 820c69dd, one 16, on 0c6b1207, one 38, on 19b1f575, one 36, on 63a12d0c, one 31, on c2ab2d12, one 22, on 877a47ab, one
 17, on 5bf1911e, one 16, on c6d8227c, one 50, on 293c8081, one 39, on 4d3ba971's rerun, counted from the rerun's start,
 one 32, on 526fa1e2, one 52, on ffefbe0f, one 31, on 10845acb, one 29, on 4041089d's rerun, counted from the
-rerun's start, one 26, on c72c736b, one 25, on 60835dd7, one 55, on dea3fabc, one 16, on bb3cf651, and earlier ones
-48 and 46); the job's limit is 100
+rerun's start, one 26, on c72c736b, one 25, on 60835dd7, one 55, on dea3fabc, one 16, on bb3cf651, one 14, on
+13b58a12's rerun, counted from the rerun's start, and earlier ones 48 and 46); the job's limit is 105
 minutes (`timeout-minutes` in ci.yml), and a wait does not count against it.
 
 A loop that prints nothing has read nothing: an empty list is not green. If ship-land's line says `no CI run for

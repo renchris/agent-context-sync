@@ -94,6 +94,12 @@ name: ci
 # passed round 39's 80:33, so the guides' head of 81 stays; runner waits reached 54:54 (dea3fabc) and 15:34
 # (bb3cf651), not counted against timeout-minutes (B13 round 44 C2679). d1b028b4, round 44's base, took 72:31
 # (pytest's step 72:26 at 9282 tests).
+# Round 44's eight jobs (d6b9f61f to e9396380) took 67:09 to 85:06 on their last attempts, all past 60, six past 70 and
+# three past 80; the slowest was e9396380 at 85:06 (pytest's step 84:36 at 9502 tests), which left 100 only 14:54 above
+# it, so it is 105: 19:54 above it, and the guides' head is 86; 13b58a12's first attempt failed a test at 79:31, its
+# rerun green at 69:04, and 3aa3bfda's first was cancelled at 46:25, its rerun green at 67:09; runner waits reached
+# 13:55 (13b58a12's rerun, counted from the rerun's start), not counted against timeout-minutes (B13 round 45 C2878).
+# 2390257d, round 45's base, took 75:54 (pytest's step 75:28 at 9499 tests).
 on:
   workflow_dispatch:
   push:
@@ -110,7 +116,7 @@ concurrency:
 jobs:
   test:
     runs-on: macos-15
-    timeout-minutes: 100
+    timeout-minutes: 105
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

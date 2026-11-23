@@ -26118,7 +26118,9 @@ after a job took 49:59. **Amended 2026-10-26, §16.207 C372:** the bound is now 
 is now well under the ci job's 80 minutes, `timeout-minutes` in ci.yml, raised from 70 after a job took 59:43.
 **Amended 2026-11-10, §16.244 C1290:** the bound is now well under the ci job's 90 minutes, `timeout-minutes` in
 ci.yml, raised from 80 after a job took 66:14. **Amended 2026-11-13, §16.249 C1460:** the bound is now well under the ci job's
-100 minutes, `timeout-minutes` in ci.yml, raised from 90 after a job took 75:09.
+100 minutes, `timeout-minutes` in ci.yml, raised from 90 after a job took 75:09. **Amended 2026-11-23, §16.284 C2878:**
+the bound is now well under the ci job's 105 minutes, `timeout-minutes` in ci.yml, raised from 100 after a job took
+85:06.
 
 ### 16.145 Round 19: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 19 lane D)
 
@@ -46566,6 +46568,20 @@ writes only 1.14x headroom before a stop with no verdict after holding the land 
 still stops a hang; the plan's 13,200 mention is the lead's. Test: `tests/test_gate_journal.py`
 `::test_the_ceiling_is_about_twice_the_slowest_part_and_each_record_keeps_its_duration_c2273` (its literal and assert
 moved, its name kept).
+
+**CI's time is the time of round 44's jobs, the head is 86 and the limit 105** (C2878; `CLAUDE.md`, `docs/lanes/COMMON.md`,
+ci.yml, `tests/test_convert_recording.py`; dated line at §16.144 W70; a fix that raises the head alone makes things
+worse). Round 44's eight ci jobs on main (d6b9f61f to e9396380, re-timed with `gh api .../attempts/<n>/jobs`) took 67:09
+to 85:06 on their last attempts, all past 60, six past 70 and three past 80: 31e2a017 82:29, 468d1c94 84:53 and
+e9396380 85:06 (pytest's step 84:36 at 9502 tests), past the guides' head of 81. 13b58a12's first attempt failed a test
+at 79:31 and its rerun was green at 69:04 after a 13:55 runner wait; 3aa3bfda's first was cancelled at 46:25 and its
+rerun was green at 67:09; 2390257d, round 45's base, took 75:54. Raising the head to 86 with the limit at 100 leaves
+14 minutes, under the 15 ci.yml's C1866 sentence keeps, and leaves COMMON.md's 81 disagreeing with CLAUDE.md; so both
+guides say 86 (COMMON.md `the slowest, 85:06, in round 44`), `timeout-minutes` is 105, 19:54 above the slowest by
+C571's margin, ci.yml's note and CLAUDE.md add the bracket, the wait and the base, and the recording tests' docstring
+and the W70 paragraph name 105. Older sentences keep the 100 they measured against. Tests:
+`tests/test_deploy_pack.py::test_claude_md_gives_cis_time_and_its_limit` and
+`::test_the_recording_tests_limit_names_cis_own_limit`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
