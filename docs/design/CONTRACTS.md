@@ -42937,6 +42937,9 @@ backslash under `LC_ALL=C` awk, each `\ooo` its byte, `\n`, `\t` and `\r` theirs
 classifier when the lane ran it, and it waits on the operator's decision 1476293d00a3; if they allow it, it is a
 round 42 item. Test: `test_report_redaction.py::test_both_reports_cut_a_folder_step_1_listed_but_not_configured_ruling_142`,
 a strict xfail naming C2060 and that decision, so it fails the day the decode lands and the mark comes off with it.
+Amended 2026-11-23, §16.280 C2873, C2882: the agentsync report's twin of the decode is built (ruling 190), so the
+test splits and the strict xfail holds the shell half alone, its reason naming decision c0777e12a523, which replaces
+1476293d00a3; the shell half stays unbuilt until the operator's Allow on it.
 
 **Every debug head on a line is cut** (C2029; ruling 142; privacy; data integrity; `scripts/install.sh`; dated line
 at §16.256 C1832). `dbcwd` and `dbunder` cut the first occurrence of their head and returned, so a second
@@ -45904,6 +45907,25 @@ Plans` printed in clear where the shell numbered them; it ends only at a space, 
 reads the `$'..'` words in a second loop, so two runs' folders took opposite numbers: it takes the start lines' args
 once each, sorted by code point, their bare words first, then the `$'..'` words once each, sorted by their sed form
 (`\'` read as `'`). Both reports print one line under C and en_US.UTF-8.
+
+**A listed name step 1 escaped is decoded in the agentsync report** (C2873 with C2882; ruling 190; privacy: C2060's
+Python twin, built ungated by the lead's call 1; amends §16.261 C2060). `_add_listed` registered step 1's escaped
+spelling of a listed name alone, never the bytes it stands for, so a listed folder gone from disk printed its TOML,
+safe_text and split words in clear in the agentsync report as well, hidden by the strict xfail that holds the shell
+half. `listed_folder_rows` marks a row that opened with `ESCAPED_MARK`, `ESCAPED_KEPT_MARK` or their `_OLD` words, and
+only such a row's name is decoded (`listed_name_decodings`): each `\ooo` the byte it names, `\t` a TAB, `\r` a CR,
+the bytes read back as UTF-8 as install.out is read, and `\n` both as a newline and as 0x1E, the twin pair install.sh
+writes alike; a `TWIN_MARK` or plain row keeps its backslash as the name's own, and the old `?` spelling (escq) is
+lossy and left as it was. The decoding already registered, else the first, is registered in the name's place, and the
+escaped spelling and the other decoding are aliases of its one number, each with every spelling `_alias_escaped`
+gives (its new `of=`), so the numbering stays the shell's. The C2060 test splits:
+`test_the_agentsync_report_cuts_a_folder_step_1_listed_but_not_configured_c2873` asserts the agentsync report
+unconditionally (both locales, an RS and an LF name among the rows), and
+`test_both_reports_cut_a_folder_step_1_listed_but_not_configured_ruling_142` keeps the strict xfail for the shell
+half alone, its reason naming the live packet, `C2060 unbuilt: install.sh's decode of a listed part awaits operator
+decision c0777e12a523`, on one line (C2882), as test_deploy_pack.py's caveat pin reads it; lane RB's port, only on
+the operator's Allow, builds on this commit. Test:
+`test_a_listed_escaped_name_is_decoded_under_one_number_and_the_old_form_left_c2873`.
 
 ### 16.281 Round 45: the installer: the shell halves of rulings 188 and 189, the person's none honored at every NEXT, an inbox-state read that did not finish said so, and C2060 waits on the operator (2026-11-23, wave B13 round 45 lane RB)
 

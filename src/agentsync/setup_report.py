@@ -4508,15 +4508,41 @@ first five, then may carry one of the others, so they are stripped in this order
 folder."""
 
 
-def listed_folder_names(text: str, home: str) -> tuple[bool, list[tuple[str, int, str]]]:
-    """(whether install.out holds a ``--list-folders`` run that printed a folder, and (provider folder, depth,
-    name) of every folder those runs printed), from install.out's ``text``: the folders the setup prompt's
-    step 1 showed the agent, read from a file, with no folder inside a File Provider domain touched. A printed
-    path is ``<home>/Library/CloudStorage/<provider>/<name>[/<name>]``, with one of :data:`_LIST_MARKS`
-    before it for a folder the config syncs, one inside such a folder or one that holds one (a folder inside
-    a synced one was dropped, so its name stayed in clear, B13 round 9 K45); depth 2 and 3 only, as
-    :func:`cloud_folder_names` gives them (B13 round 8 J69)."""
-    out: list[tuple[str, int, str]] = []
+_ESCAPED_LIST_MARKS = (_LIST_MARKS[0], _LIST_MARKS[2], _LIST_MARKS[3], _LIST_MARKS[4])
+"""The marks of a row install.sh's LIST_ESC_AWK escaped (``ESCAPED_MARK``, ``ESCAPED_KEPT_MARK`` and their
+``_OLD`` words): only there is a backslash an escape, never in a ``TWIN_MARK`` or plain row, where it is the
+name's own (B13 round 45 C2873)."""
+
+_LIST_ESCAPE_RE = re.compile(r"\\([0-3][0-7]{2}|[tnr])")
+"""One of LIST_ESC_AWK's escapes: a byte as ``\\ooo``, a TAB ``\\t``, a CR ``\\r``, and ``\\n`` for an 0x1E
+(install.sh's line-break stand-in), which a name holding a newline reads as too."""
+
+
+def listed_name_decodings(name: str) -> list[str]:
+    """The names step 1's escaped spelling ``name`` stands for (B13 round 45 C2873 with C2882, ruling 190;
+    privacy: C2060's Python twin): each ``\\ooo`` the byte it names, ``\\t`` a TAB, ``\\r`` a CR, the bytes
+    read back as UTF-8 as install.out is read (``errors="replace"``), and ``\\n`` both as a newline and as
+    0x1E, the twin pair install.sh writes alike, newline first. Empty when ``name`` holds no escape. The old
+    ``?`` spelling (``escq``, rounds 36 to 39) loses its bytes and is never decoded."""
+    if _LIST_ESCAPE_RE.search(name) is None:
+        return []
+    out = []
+    for newline in (b"\n", b"\x1e"):
+        raw, pos = bytearray(), 0
+        for m in _LIST_ESCAPE_RE.finditer(name):
+            raw += name[pos : m.start()].encode("utf-8", "replace")
+            code = m.group(1)
+            raw += {"t": b"\t", "r": b"\r", "n": newline}.get(code) or bytes([int(code, 8)])
+            pos = m.end()
+        raw += name[pos:].encode("utf-8", "replace")
+        out.append(raw.decode("utf-8", errors="replace"))
+    return [c for c in dict.fromkeys(out) if c != name]
+
+
+def listed_folder_rows(text: str, home: str) -> tuple[bool, list[tuple[str, int, str, bool]]]:
+    """:func:`listed_folder_names`, each entry with whether its row opened with one of
+    :data:`_ESCAPED_LIST_MARKS` (B13 round 45 C2873), so only such a row's name is decoded."""
+    out: list[tuple[str, int, str, bool]] = []
     heads = (f"{home.rstrip('/')}/Library/CloudStorage/", "~/Library/CloudStorage/")
     listing = False
     for line in _text_lines(text):  # install.out, split as the Installer section reads it (C1249)
@@ -4524,6 +4550,7 @@ def listed_folder_names(text: str, home: str) -> tuple[bool, list[tuple[str, int
             listing = _LIST_RUN_RE.match(line) is not None
             continue
         path = line if listing else ""
+        escaped = path.startswith(_ESCAPED_LIST_MARKS)
         for m in _LIST_MARKS:
             path = path.removeprefix(m)
         head = next((h for h in heads if path.startswith(h)), None)
@@ -4531,11 +4558,24 @@ def listed_folder_names(text: str, home: str) -> tuple[bool, list[tuple[str, int
             continue
         parts = [p for p in path[len(head) :].split("/") if p]
         if 2 <= len(parts) <= 3 and not any(p.startswith(".") for p in parts):
-            out.extend((parts[0], depth, parts[depth - 1]) for depth in range(2, len(parts) + 1))
+            out.extend((parts[0], depth, parts[depth - 1], escaped) for depth in range(2, len(parts) + 1))
         if len(out) >= _LISTING_MAX:
             break
     # a list run that printed no folder (cut short, every provider denied) is no list in the listing's place
     return bool(out), out[:_LISTING_MAX]
+
+
+def listed_folder_names(text: str, home: str) -> tuple[bool, list[tuple[str, int, str]]]:
+    """(whether install.out holds a ``--list-folders`` run that printed a folder, and (provider folder, depth,
+    name) of every folder those runs printed), from install.out's ``text``: the folders the setup prompt's
+    step 1 showed the agent, read from a file, with no folder inside a File Provider domain touched. A printed
+    path is ``<home>/Library/CloudStorage/<provider>/<name>[/<name>]``, with one of :data:`_LIST_MARKS`
+    before it for a folder the config syncs, one inside such a folder or one that holds one (a folder inside
+    a synced one was dropped, so its name stayed in clear, B13 round 9 K45); depth 2 and 3 only, as
+    :func:`cloud_folder_names` gives them (B13 round 8 J69). A name is as step 1 spelled it (escaped);
+    :func:`listed_folder_rows` says which rows to decode."""
+    found, rows = listed_folder_rows(text, home)
+    return found, [(provider, depth, name) for provider, depth, name, _escaped in rows]
 
 
 def cloud_folder_names(root: Path | None = None, limit: int = _LISTING_MAX) -> list[tuple[str, int, str]]:
@@ -5696,7 +5736,7 @@ def _unconfigured_roots(config: Config, ids: Sequence[str]) -> list[Path]:
     return [Path(root) for root in sorted(roots) if root]
 
 
-def _alias_escaped(red: Redactor, value: str) -> None:
+def _alias_escaped(red: Redactor, value: str, *, of: str | None = None) -> None:
     """Register ``value``'s spelling in a TOML string, as add-source echoes the path it adds
     (``path = "~/Projects/Zephyrine\\tQuarry"``, :func:`config.toml_string`), under the placeholder ``value``
     already has (B13 round 21 Y2: a TAB, a ``"`` or a ``\\`` in a folder's name left that echo in clear in
@@ -5704,12 +5744,17 @@ def _alias_escaped(red: Redactor, value: str) -> None:
     for DEL, which it writes ``\\u007F``: that spelling and ``\\u007f`` (:data:`report_cuts.DEL_ESCAPED`) are
     aliased for the name and for its shown spelling, since an exact alias matches one case only (B13 round 40
     C1840 with C1887: add-source's echo printed a DEL folder in clear in both reports). An alias, never a
-    second number for one folder; nothing for a name with none of those characters."""
+    second number for one folder; nothing for a name with none of those characters. ``of``: another value's
+    number, ``value`` itself aliased to it first (B13 round 45 C2873: step 1's escaped spelling of a listed
+    name, under the decoded name's number)."""
+    if of is not None:
+        red.alias(value, of)
+    target = of if of is not None else value
     for spelling in _toml_spellings(value):
-        red.alias(spelling, value)
+        red.alias(spelling, target)
     for spelling in folder_spellings(value):  # B13 round 38 C1414, C1439 (ruling 126)
         if spelling != value:
-            red.alias(spelling, value)
+            red.alias(spelling, target)
     shown = safe_text(value).strip()
     if shown != value and len(shown) >= 2:
         if len(_tokens(shown)) == 1:
@@ -5721,9 +5766,9 @@ def _alias_escaped(red: Redactor, value: str) -> None:
             if _norm(shown) in report_words():
                 red.stripped_word_named = True  # never an alias that cuts the report's own words
                 return
-        red.alias(shown, value)
+        red.alias(shown, target)
         for spelling in _toml_spellings(shown):
-            red.alias(spelling, value)
+            red.alias(spelling, target)
 
 
 def _legacy_toml_body(value: str) -> str:
@@ -6240,16 +6285,23 @@ def _build_redactor(r: _Run) -> Redactor:
     # Then the folders step 1's lists printed into install.out, the ones the agent saw and may quote: after
     # the listing, so a listing that finished keeps its numbers, and in its place when it did not. A listing
     # that did not finish with no list in install.out makes the report private only (B13 round 8 J69).
-    printed: list[tuple[str, int, str]] = []
+    printed: list[tuple[str, int, str, bool]] = []
     has_list = False
     with contextlib.suppress(Exception):
         out_path = install_out_path(r.install_log)
         if out_path.is_file() and not out_path.is_symlink():
-            has_list, printed = listed_folder_names(
+            has_list, printed = listed_folder_rows(
                 out_path.read_text(encoding="utf-8", errors="replace"), home_path()
             )
     red.listing_unread = not listing_ok and not has_list
-    _add_listed(red, [*listed, *printed])
+    _add_listed(red, listed)
+    # B13 round 45 C2873 (ruling 190; privacy): an escaped row's name as the bytes it stands for, its escaped
+    # spelling an alias of that one number
+    _add_listed(
+        red,
+        [(provider, depth, name) for provider, depth, name, _escaped in printed],
+        decoded={name: listed_name_decodings(name) for _prov, _depth, name, escaped in printed if escaped},
+    )
     own_value: dict[Path, str] = {}  # a project folder -> the value its whole path is registered as
     for path in project_paths:
         values = _project_values(path)
@@ -20072,12 +20124,23 @@ def _local_work_line() -> str | None:
     return None
 
 
-def _add_listed(red: Redactor, entries: Iterable[tuple[str, int, str]]) -> None:
+def _add_listed(
+    red: Redactor, entries: Iterable[tuple[str, int, str]], *, decoded: Mapping[str, list[str]] | None = None
+) -> None:
     """Register the folders a CloudStorage listing or step 1's list gave: a SharedLibraries entry at depth 2
     is a library, any other a folder; a generic folder name or one of the agent's words is left out, and
     noted in :attr:`Redactor.kept_listed` unless a configured folder has it (B13 round 12 N3). A name no
-    configured folder has, numbered here first, is noted in :attr:`Redactor.listed_only`."""
-    for provider, depth, name in entries:
+    configured folder has, numbered here first, is noted in :attr:`Redactor.listed_only`.
+
+    B13 round 45 C2873 with C2882 (ruling 190; privacy: C2060's Python twin): ``decoded`` maps an escaped
+    row's name to the names it stands for (:func:`listed_name_decodings`). The one already registered, else
+    the first, is registered in its place, as a folder on disk is, and the escaped spelling and the other
+    decoding are aliases of its one number, each with every spelling :func:`_alias_escaped` gives: step 1's
+    escaped spelling alone was registered, so a listed folder gone from disk printed its TOML, safe_text and
+    split words in clear."""
+    for provider, depth, written in entries:
+        names = (decoded or {}).get(written) or []
+        name = next((c for c in names if red._known(c) is not None), names[0]) if names else written
         if name in _GENERIC_FOLDERS or _agent_words(name):
             if name.casefold() not in red.configured_names:
                 red.kept_listed.add(name)
@@ -20086,6 +20149,8 @@ def _add_listed(red: Redactor, entries: Iterable[tuple[str, int, str]]) -> None:
         fresh = red._known(name) is None
         red.add("library" if shared and depth == 2 else "folder", name, fuzzy=True)
         _alias_escaped(red, name)  # its list, $'...' and safe_text spellings too (ruling 126)
+        for other in dict.fromkeys(c for c in (written, *names) if c != name):
+            _alias_escaped(red, other, of=name)
         placeholder = red._known(name)
         if fresh and placeholder is not None and name.casefold() not in red.configured_names:
             red.listed_only.add(placeholder)  # B13 round 39 C1656 with C1601

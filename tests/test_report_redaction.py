@@ -3031,12 +3031,81 @@ def test_both_reports_register_no_inbox_beside_a_docs_repo_under_the_root_c2430(
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
 @pytest.mark.parametrize(
+    "names",
+    [
+        ["Alder29\x1eBirch29", "Alder30\x7fBirch30"],
+        ["Alder31\tBirch31", "Q3\x08Plans"],
+        ["Alder32\x1eBirch32", "Alder33\nBirch33"],
+    ],
+)
+def test_the_agentsync_report_cuts_a_folder_step_1_listed_but_not_configured_c2873(
+    env: dict[str, str],  # noqa: F811
+    names: list[str],
+    locale: str,
+) -> None:
+    """B13 round 45 C2873 (ruling 190; privacy: C2060's Python twin): the agentsync report registered step
+    1's escaped spelling of a listed name alone, never the bytes it stands for, so a listed folder gone from
+    disk printed its TOML, safe_text and split words in clear (6 and 2 lines), hidden by the strict xfail
+    that holds the shell half. An escaped row's name is decoded and registered under one number, its
+    escaped spelling an alias: the agentsync report holds no fragment and one line per row, in both locales,
+    an RS and an LF name among them, asserted whatever the shell half does."""
+    said = [ln for n, name in enumerate(names) for ln in _hostile_lines(n, name, locale, home=env["HOME"])]
+    _shell, python, _sp, _pp = _both_reports(
+        env, ["Juniper Notes"], said, locale, shell=False, listed=names, vanish=True
+    )
+    assert len(python) == len(said), (len(python), len(said))
+    leaks = [ln for ln in python for f in _fragments(names) if f in ln]
+    assert not leaks, (len(leaks), leaks[:4])
+
+
+def test_a_listed_escaped_name_is_decoded_under_one_number_and_the_old_form_left_c2873() -> None:
+    """B13 round 45 C2873 (ruling 190): only a row that opened with an escaped mark is decoded, `\\ooo` per
+    byte, `\\t`, `\\r` and `\\n` as both LF and 0x1E; a twin-marked or plain row keeps its backslash as the
+    name's own; the old `?` spelling (escq) is lossy and never decoded, a known limit. The decoded name and
+    its escaped spelling read as one placeholder."""
+    assert setup_report.listed_name_decodings("Alder29\\nBirch29") == [
+        "Alder29\nBirch29",
+        "Alder29\x1eBirch29",
+    ]
+    assert setup_report.listed_name_decodings("Q3\\010Plans\\tx\\ry") == ["Q3\x08Plans\tx\ry"]
+    assert setup_report.listed_name_decodings("Caf\\303\\251") == ["Caf\u00e9"]
+    assert setup_report.listed_name_decodings("Alder30?Birch30") == []  # the old form: a known limit
+    assert setup_report.listed_name_decodings("Plain Folder") == []
+    home = "/Users/dana"
+    root = f"{home}/Library/CloudStorage/OneDrive-Contoso"
+    marks = setup_report._LIST_MARKS
+    text = (
+        "# run=r1 2026-11-23T00:00:00Z install.sh --list-folders\n"
+        f"{marks[0]}{root}/Alder29\\nBirch29\n"
+        f"{marks[1]}{root}/Wombat\\nLedger\n"
+        f"{marks[3]}{root}/Alder30?Birch30\n"
+        f"{root}/Back\\tslash\n"
+    )
+    _found, rows = setup_report.listed_folder_rows(text, home)
+    assert [(name, escaped) for _p, _d, name, escaped in rows] == [
+        ("Alder29\\nBirch29", True),
+        ("Wombat\\nLedger", False),
+        ("Alder30?Birch30", True),
+        ("Back\\tslash", False),
+    ]
+    red = setup_report.Redactor()
+    red.add("home", home)
+    entries = [(p, d, n) for p, d, n, _e in rows]
+    decoded = {n: setup_report.listed_name_decodings(n) for _p, _d, n, e in rows if e}
+    setup_report._add_listed(red, entries, decoded=decoded)
+    one = red._known("Alder29\nBirch29")
+    assert one is not None and red._known("Alder29\x1eBirch29") == one == red._known("Alder29\\nBirch29")
+    assert red._known("Wombat\\nLedger") not in (None, one) and red._known("Wombat\nLedger") is None
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize(
     "names", [["Alder29\x1eBirch29", "Alder30\x7fBirch30"], ["Alder31\tBirch31", "Q3\x08Plans"]]
 )
 @pytest.mark.xfail(
     _R142_SHELL,
     strict=True,
-    reason="C2060 unbuilt: install.sh's decode of a listed part awaits operator decision 1476293d00a3",
+    reason="C2060 unbuilt: install.sh's decode of a listed part awaits operator decision c0777e12a523",
 )
 def test_both_reports_cut_a_folder_step_1_listed_but_not_configured_ruling_142(
     env: dict[str, str],  # noqa: F811
@@ -3049,13 +3118,16 @@ def test_both_reports_cut_a_folder_step_1_listed_but_not_configured_ruling_142(
     among them (step 1 spells it `\\n`): no fragment of a name, each raw split word and safe_text's apart, in
     either report, both reports one line and one verdict. Since B13 round 44 C2669 both reports list
     CloudStorage, which gives a folder on disk its own bytes, so each name is gone from disk once listed
-    (`vanish`): install.out's list alone names it, the case C2060's decode is for."""
+    (`vanish`): install.out's list alone names it, the case C2060's decode is for. Since B13 round 45 C2873
+    (ruling 190) the agentsync report's half is asserted unconditionally
+    (test_the_agentsync_report_cuts_a_folder_step_1_listed_but_not_configured_c2873), so this strict xfail
+    holds the shell half alone: its leaks and the two reports' parity."""
     said = [ln for n, name in enumerate(names) for ln in _hostile_lines(n, name, locale, home=env["HOME"])]
     shell, python, shell_private, python_private = _both_reports(
         env, ["Juniper Notes"], said, locale, shell=_R142_SHELL, listed=names, vanish=True
     )
-    assert len(python) == len(said), (len(python), len(said))
-    leaks = [ln for ln in [*python, *shell] for f in _fragments(names) if f in ln]
+    assert len(shell) == len(said), (len(shell), len(said))
+    leaks = [ln for ln in shell for f in _fragments(names) if f in ln]
     assert not leaks, (len(leaks), leaks[:4])
     if _R142_SHELL:
         assert shell == python and shell_private == python_private, [

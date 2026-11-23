@@ -14642,10 +14642,11 @@ def test_the_guide_reads_the_configurations_inbox_and_convert_lines_c2207_c2210(
 
 def test_the_folder_row_names_c2060s_gap_only_while_its_strict_xfail_stands_c2259() -> None:
     """B13 round 42 C2259 (ruling 150): the folder row said both reports cut every folder step 1 listed,
-    while C2060, unbuilt behind the operator's decision 1476293d00a3, leaves a listed-only name spelled with
-    an escaped byte in clear in the shell fallback report. The row names that gap exactly while
-    test_report_redaction's strict xfail for C2060 stands, so C2263's commit, which drops the mark, must
-    drop the caveat too; the row's pinned phrase stays."""
+    while C2060, unbuilt behind the operator's decision c0777e12a523 (which replaces 1476293d00a3), leaves a
+    listed-only name spelled with an escaped byte in clear in the shell fallback report. The row names that
+    gap exactly while test_report_redaction's strict xfail for C2060 stands, so C2263's commit, which drops
+    the mark, must drop the caveat too; the row's pinned phrase stays. Since B13 round 45 C2882 (ruling 190)
+    that xfail holds the shell half alone, the agentsync report's half asserted unconditionally (C2873)."""
     guide = (ROOT / "docs" / "deploy" / "setup-feedback.md").read_text(encoding="utf-8")
     folders = next(line for line in guide.splitlines() if line.startswith("| `<library-N>`, `<folder-N>`,"))
     caveat = (
