@@ -45527,6 +45527,11 @@ Tests: lane RA's rows (§16.275), `test_both_reports_number_a_cloudstorage_folde
 listed folder on disk is registered by its own bytes, so round 41's C2060 xfail
 (`test_both_reports_cut_a_folder_step_1_listed_but_not_configured_ruling_142`) removes each name from disk once
 step 1 listed it (`_both_reports(vanish=True)`): install.out's list alone names it, the case C2060's decode is for.
+Amended 2026-11-23, §16.284 C2940: "as `cloud_folder_names` does" holds for the depths, the pruning, the order and
+the 2000 kept, not for the work: the shell reads each provider in full with one `find` under `with_timeout`, 3 s in
+all, then sorts into Python's order and keeps the first 2000, where `cloud_folder_names` stops walking at 2000
+entries. A tree with 2000 or more entries before a slow or very large provider is listed by the agentsync report and
+can still be unfinished in the shell report, which is then private only (the safe side); install.sh is unchanged.
 
 ### 16.277 Round 44: the inbox's state read once and an unread state said so, rule 4's NEXT naming whose move it is, a tombstone's facts following their source, and a named recording read through its settle hold (2026-11-22, wave B13 round 44 lane B)
 
@@ -46601,6 +46606,28 @@ marker is added for a narrow case that heals itself. Test: `tests/test_convert_p
 `::test_a_legacy_sidecar_written_under_the_skip_reads_back_without_its_banner_line_c2858` (both legacy shapes read
 back, the empty-line-2 one byte for byte the new guard's sidecar of its text, and the dated line's words); the line is
 pinned in `tests/test_deploy_pack.py`'s `_ROUND_45_D_PARAGRAPH_AMENDS`.
+
+**The guide's numbering order names install.log's CloudStorage parts** (C2864; `docs/deploy/setup-feedback.md`). Since
+round 44's C2668, `_build_redactor` numbers the CloudStorage folders that only install.log's `--source-local` words name
+after every value it numbered before (agentsync's own folders, the ids and the hold scopes included) and before a
+listing that finished after its 3-second bound, which `_late_listing` registers after every other value. The guide's
+order for the agentsync report left that step out; it now names it in its place, "which no configuration or finished
+listing numbered" (a folder a late listing also names takes install.log's number). The shell fallback's order already
+named install.log. Test: `tests/test_deploy_pack.py`
+`::test_the_guides_redaction_rows_name_own_moved_folders_and_dotted_remotes` (the sentence, and the call's place
+between the own-folder values and `_late_listing`).
+
+**The shell's CloudStorage listing is said with its real bounds** (C2940; `docs/deploy/setup-feedback.md`; ruling 186).
+C2669 says the shell lists `~/Library/CloudStorage` as `cloud_folder_names` does. It reads each provider in full with
+one `find` under `with_timeout`, 3 s in all, and keeps the first 2000 after sorting into Python's order, where
+`cloud_folder_names` stops walking at 2000 entries: a tree with 2000 or more entries before a slow provider (a probe:
+2100 folders, then a provider whose `find` took 10 s) is listed by the agentsync report in 0.36 s and `unread` in the
+shell's, which is then private only, the safe side. A dated line under §16.276's shell-halves paragraph says so, and
+the guide adds a sentence after its shell sentence. install.sh is unchanged: cutting the shell's read on a count that
+does not match Python's would leave names unregistered, and a walk per folder would run out of time more often. The
+guide's "prints this line too" already names the Private only line, so the finder's second half needs nothing. Test:
+`tests/test_deploy_pack.py::test_the_guide_names_step_1s_folder_list_as_a_redaction_source` (the sentence, Python's two
+early returns and the shell's cut after its whole read); the line is pinned in `_ROUND_45_D_PARAGRAPH_AMENDS`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

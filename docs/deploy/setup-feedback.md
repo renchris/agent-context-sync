@@ -126,7 +126,10 @@ for this reason, its Environment line reads `- redaction: the CloudStorage listi
 for redaction`, and the Configuration line's count of folders named only with coding-agent words still says `could
 not list ~/Library/CloudStorage`. The shell fallback report lists CloudStorage as the agentsync report does (depth 2
 and 3, within 3 seconds, in the same order) and prints this line too when its listing did not finish and install.out
-holds no folder list; it never uses a listing that finishes late.
+holds no folder list; it never uses a listing that finishes late. It reads the whole of each provider within those 3
+seconds and keeps the first 2000 folders, where the agentsync report stops walking at 2000, so a tree with 2000 or more
+folders before a slow or very large provider can be listed by the agentsync report and still be unfinished in the
+shell report, which is then Private only: the safe side.
 
 Both reports are Private only, too, when a legal or records hold's reason or owner is one word that report also
 prints (an owner `Page`; since B13 round 26 E72 also a two-letter one either report prints, while `HR` stays
@@ -218,7 +221,9 @@ words) is yours to remove. The CLI always redacts.
   be section 1's numbering. A report numbers values in the order it registers them (configured CloudStorage
   folders, then the CloudStorage listing, then the folders step 1's `--list-folders` runs printed into
   install.out, then configured folders elsewhere, then, in both reports, agentsync's own folders that
-  sources.toml moves from their defaults, and last a listing that finished after its 3-second bound but in
+  sources.toml moves from their defaults, then (since B13 round 44 C2668) the CloudStorage folders that only
+  install.log's `--source-local` words name, which no configuration or finished listing numbered, and last a
+  listing that finished after its 3-second bound but in
   time for the report, so no earlier number moves; the shell fallback report: that run's `--source-local` folders,
   then sources.toml, then install.log, then the CloudStorage listing, then install.out's step 1 list), so an added folder, a listing past its
   3-second bound (step 1's list then stands in its place) or a fallback report gives a folder another number,

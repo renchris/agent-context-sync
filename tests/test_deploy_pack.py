@@ -8604,9 +8604,12 @@ _ROUND_45_D_PARAGRAPH_AMENDS = (
         "§16.278 C2723 (with C2712): the guard writes the banner line and an empty line on every text",
         "§16.284 C2858, C2926, C2941",
     ),
+    ("16.276", "**The shell halves of rulings 171 to 173** (privacy; one run with lane", "§16.284 C2940"),
 )
-"""Round 45 lane D's dated lines no claim of §16.284 holds alone: C2858's (with C2926 and C2941) under C2723's
-line in §16.268's comment-sidecar paragraph (a legacy sidecar loses its banner line, and an empty line 2)."""
+"""Round 45 lane D's dated lines no claim of §16.284 holds alone: C2858's (with C2926 and C2941) under
+C2723's line in §16.268's comment-sidecar paragraph (a legacy sidecar loses its banner line, and an empty
+line 2), and C2940's under §16.276's shell-halves paragraph (the shell reads each provider in full, Python
+stops at 2000)."""
 
 _ROUND_42_E_PARAGRAPH_AMENDS = (
     ("16.42", "`subprocess` reports a child a signal stopped as the negative signal", "§16.268 C2252"),
@@ -12590,6 +12593,14 @@ def test_the_guide_names_step_1s_folder_list_as_a_redaction_source() -> None:
     assert f"(`{line.group(1)} ...`)" in page
     # B13 round 44 C2669: the shell report lists CloudStorage too, before install.out's list
     assert "The shell fallback report lists CloudStorage as the agentsync report does" in page
+    # B13 round 45 C2940: the shell reads each provider in full within the 3 s, where Python stops at 2000
+    assert (
+        "It reads the whole of each provider within those 3 seconds and keeps the first 2000 folders, where"
+        " the agentsync report stops walking at 2000"
+    ) in page
+    walk = inspect.getsource(setup_report.cloud_folder_names)
+    assert walk.count("if len(out) >= limit:\n") == 2 and setup_report._LISTING_MAX == 2000
+    assert "LC_ALL=C cut -f 2- | LC_ALL=C awk 'NR <= 2000'" in installer  # cut after the whole read
     listing = installer.index("done < <(cloud_listed | LC_ALL=C sed 1d)")
     assert installer.index("done < <(listed_folder_lines)", listing) - listing < 2000, (
         "the list right after it"
@@ -13831,8 +13842,13 @@ def test_the_guides_redaction_rows_name_own_moved_folders_and_dotted_remotes() -
     page = " ".join(_feedback_page().split())
     assert (
         "then configured folders elsewhere, then, in both reports, agentsync's own folders that"
-        " sources.toml moves from their defaults, and last a listing that finished after its 3-second bound"
+        " sources.toml moves from their defaults, then (since B13 round 44 C2668) the CloudStorage folders"
+        " that only install.log's `--source-local` words name, which no configuration or finished listing"
+        " numbered, and last a listing that finished after its 3-second bound"
     ) in page
+    # B13 round 45 C2864: install.log's CloudStorage parts are numbered after agentsync's own folders and
+    # before a late listing (C2668's comment in _build_redactor, _late_listing's "after every other value")
+    assert own < source.index("_logged_cloud_folders(r.install_log)") < source.index("def _late_listing")
     assert 'section.startswith("remote.")' in source and "dotted [remote.<name>] (Z76)" in script
     [hosts] = [ln for ln in _feedback_page().splitlines() if ln.startswith("| `<email-N>`, `<guid-N>`")]
     assert (
