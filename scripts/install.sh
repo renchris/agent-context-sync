@@ -7590,13 +7590,6 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	# and a one-word hold reason or owner that is such a word, where the body cut it (redact_stream's flag h,
 	# HOLD_WORD_SHOWN, the count of distinct words cut), as the agentsync report says it (B13 round 25 D80), in
 	# the plural at two or more words (B13 round 30 C339, as C133 made the agentsync report's)
-	# a CloudStorage listing that did not finish, with no folder list of step 1 in install.out in its place, as
-	# the agentsync report's listing_unread says it (B13 round 8 J69; round 44 ruling 172, C2669)
-	if [ "$(cloud_listed | LC_ALL=C sed -n 1p)" = unread ] && [ -z "$(listed_folder_lines)" ]; then
-		say "Private only: the listing of ~/Library/CloudStorage for redaction did not finish and install.out holds"
-		say "no folder list of step 1, so a folder name may show in clear."
-		PRIVATE_ONLY=1
-	fi
 	if [ "${HOLD_WORD_SHOWN:-0}" -ge 2 ] 2>/dev/null; then
 		say "Private only: hold reasons or owners are also words this report prints, so where <value> stands in the"
 		say "report's own text they can be read back."
@@ -7604,6 +7597,14 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	elif [ -n "${HOLD_WORD_SHOWN:-}" ]; then
 		say "Private only: a hold's reason or owner is also a word this report prints, so where <value> stands in the"
 		say "report's own text it can be read back."
+		PRIVATE_ONLY=1
+	fi
+	# a CloudStorage listing that did not finish, with no folder list of step 1 in install.out in its place, as
+	# the agentsync report's listing_unread says it (B13 round 8 J69; round 44 ruling 172, C2669), after the
+	# hold line, as the agentsync report orders them: word-name, hold, listing, config (B13 round 45 C2850)
+	if [ "$(cloud_listed | LC_ALL=C sed -n 1p)" = unread ] && [ -z "$(listed_folder_lines)" ]; then
+		say "Private only: the listing of ~/Library/CloudStorage for redaction did not finish and install.out holds"
+		say "no folder list of step 1, so a folder name may show in clear."
 		PRIVATE_ONLY=1
 	fi
 	# a sources.toml that does not parse, in setup_report.py's sentence word for word: the agentsync report's

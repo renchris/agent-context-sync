@@ -27632,3 +27632,22 @@ def test_install_sh_names_the_persons_choice_as_the_reports_constant_c2849() -> 
     assert words.startswith("the person chose no folder, so this Mac syncs none of their folders: "), words
     assert not re.search(r"(?m)^\s*NO_FOLDER_NEXT=|\$\{?NO_FOLDER_NEXT\b", text)
     assert len(re.findall(r'next="\$NO_FOLDER_CHOSEN_NEXT"', text)) == 3
+
+
+def test_both_reports_say_their_private_only_lines_in_one_order_c2850() -> None:
+    """B13 round 45 C2850: the shell's CloudStorage private-only block sat between the hold check and its
+    comment, so the shell said listing, then hold, where the agentsync report says hold, then listing. Both
+    say word-name, hold, listing, config (C2840's line last), each read from its own code."""
+    keys = {
+        "word": "Private only: one of your folder",
+        "hold": "Private only: hold reasons or owners",
+        "listing": "Private only: the listing of ~/Library/CloudStorage",
+        "config": "Private only: sources.toml does not load",
+    }
+    shell = _shell_function("fallback_redaction")
+    python = inspect.getsource(setup_report)
+    python = python[python.index(keys["word"].split(",")[0]) :]
+    for text in (shell, python):
+        at = {k: text.find(v) for k, v in keys.items()}
+        assert all(i >= 0 for i in at.values()), at
+        assert sorted(at, key=at.__getitem__) == ["word", "hold", "listing", "config"], at

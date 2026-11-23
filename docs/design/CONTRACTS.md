@@ -46054,6 +46054,13 @@ strict UTF-8, the export word copied as UTF-8 text) and
 `test_cli.py::test_install_shs_shown_arg_writes_a_word_a_copy_keeps_under_utf8_c2944` (U+3000 and U+0085 under
 en_US.UTF-8).
 
+**The shell says its private-only lines in the agentsync report's order** (C2850). The CloudStorage listing's
+private-only block sat between the hold check and its comment, so the shell said listing, then hold, where
+`_redaction_section` says hold, then listing. It follows the hold block now: word-name, hold, listing, then C2840's
+config line, as the agentsync report orders them. Test:
+`test_install_oneshot.py::test_both_reports_say_their_private_only_lines_in_one_order_c2850` (each read from its own
+code).
+
 ### 16.282 Round 45: an inbox that is not a folder never named as kept, its state read by lstat and stat, a `~user` AGENTSYNC_CONFIG refused, and every waiting stub and tombstone rendered again under STUB_RENDER 8 (2026-11-23, wave B13 round 45 lane B)
 
 Round 45's lane B items (`docs/plans/bring-back-ocr.md`, "B13 round 45"; specs `round45/items/C<n>.md`, the
