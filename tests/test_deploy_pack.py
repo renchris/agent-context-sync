@@ -822,6 +822,31 @@ def test_the_twins_rule_names_a_line_a_script_can_check_c2887() -> None:
     assert "name each twin in your note, and add one test" not in lanes
 
 
+def test_rulings_150_and_183_keep_their_words_and_dated_lines_name_round_45s_changes_c2882_c2851() -> None:
+    """B13 round 45 C2882 (ruling 190) and C2851 (ruling 195), ruling 186's keep-the-words convention: ruling
+    150 names decision 1476293d00a3, which the lead's recheck superseded with c0777e12a523, and ruling 183
+    says "with no STUB_RENDER bump", false for a home that ran 7 before its loop existed. Each keeps its words
+    and a dated line right after it says what changed, held to the strict xfail's reason and to
+    publish.STUB_RENDER."""
+    lanes = _page("docs/lanes/COMMON.md")
+    words150 = (
+        "after it, lane RB's commit drops the caveat and its pin, the one docs/deploy edit outside lane D."
+    )
+    line150 = (
+        "(2026-11-23) The lead's recheck superseded decision 1476293d00a3 with class C decision c0777e12a523:"
+        " read this ruling's 1476293d00a3 as c0777e12a523, as ruling 190 does, and the strict xfail's reason"
+        " names c0777e12a523 (round 45 C2882)."
+    )
+    assert lanes.index(words150) + len(words150) + 1 == lanes.index(line150) < lanes.index("(151) The inbox")
+    redaction = (ROOT / "tests" / "test_report_redaction.py").read_text(encoding="utf-8")
+    assert "awaits operator decision c0777e12a523" in redaction
+    words183 = "replan_waiting_recording's docstring names each case it writes (C2651)."
+    line183 = '(2026-11-23) Ruling 195 amends this one: "with no STUB_RENDER bump" was false for a home that'
+    at = lanes.index(line183)
+    assert lanes.index(words183) + len(words183) + 1 == at < lanes.index("(184) An xlsx cut")
+    assert "with no STUB_RENDER bump" in lanes and publish.STUB_RENDER == 8
+
+
 def test_ruling_166_keeps_its_words_and_a_dated_line_records_call_5s_decline_c2673() -> None:
     """B13 round 44 C2673: ruling 166 still described C2470's v2 pass as built, and §16.273 said C2470 is not
     built "by the lead's ruling" with no record of it. As C2069 did for ruling 138, the ruling keeps its

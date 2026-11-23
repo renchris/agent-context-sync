@@ -1749,6 +1749,8 @@ lead. Otherwise round 41's strict xfail stays and §16.266 says C2263 stays unbu
 install.sh change another way. Lane D's guide says what is true at its land: while C2263 is unbuilt, the folder row
 names the listed-only gap in a caveat pinned to that xfail, with §16.264 C2051's dated line (C2259); if C2263 lands
 after it, lane RB's commit drops the caveat and its pin, the one docs/deploy edit outside lane D.
+(2026-11-23) The lead's recheck superseded decision 1476293d00a3 with class C decision c0777e12a523: read this ruling's
+1476293d00a3 as c0777e12a523, as ruling 190 does, and the strict xfail's reason names c0777e12a523 (round 45 C2882).
 (151) The inbox is one folder, known by identity, and every reader says what sits on it (data integrity: lane B
 first, then lanes RB, RA and D; C2318, C2309, C2207, C2258). One paths.same_folder (lexical equality, then the
 collision_key gate, then samefile, OSError False; cli._same_folder kept as an alias) answers "is this the inbox
@@ -2163,6 +2165,10 @@ or DATALESS row whose state_reason is RECORDING_WAITS and whose page already say
 replan_waiting_recording, which writes only when the page differs, with no STUB_RENDER bump and a public publisher
 helper in place of _stub_says; a test with STUB_RENDER patched to 6 and the label to REFUSED shows `# [WAITING]` after
 one sync and no commit after the next (C2647). replan_waiting_recording's docstring names each case it writes (C2651).
+(2026-11-23) Ruling 195 amends this one: "with no STUB_RENDER bump" was false for a home that ran 7 before this loop
+existed, which never rendered its waiting stubs again; publish.STUB_RENDER is 8, its 8 clause naming the waiting
+recording stubs and every tombstone again (C2646, C2613), and _rerender_stubs writes the marker only once no stub was
+left unrendered (round 45 C2851 with C2917, C2918; lane B).
 (184) An xlsx cut is costed as it renders and a list-sidecar record parses one way, completing rulings 167 and 168 (lane
 E; C2710 with C2652 and C2721, C2711 with C2694). _CODE_RUNS takes CR and CRLF as its last run (a CR with an optional
 LF), the ASCII run no longer taking a CR, so kinds 1 to 5 keep their numbers, and _code_steps charges a CR or a CRLF one

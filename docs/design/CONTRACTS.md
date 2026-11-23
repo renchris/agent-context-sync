@@ -46725,6 +46725,14 @@ in place of `inbox=not-added` when init or add-source printed lane B's `inbox: n
 Configuration `inbox:` row and install.log row say so. Test: `tests/test_deploy_pack.py`
 `::test_the_guides_inbox_rows_name_the_shells_not_checked_line_and_not_read_c2810_c2808` (held to install.sh's words).
 
+**Rulings 150 and 183 keep their words, and dated lines name round 45's changes** (C2882, C2851; rulings 186, 190,
+195; `docs/lanes/COMMON.md`). Ruling 150 names decision 1476293d00a3, which the lead's recheck superseded with class C
+decision c0777e12a523, the id lane RA's strict xfail reason now names (C2882); ruling 183 says "with no STUB_RENDER
+bump", false for a home that ran 7 before its loop existed, which lane B's ruling 195 corrects with STUB_RENDER 8
+(C2851 with C2917 and C2918). A dated line right after each says so, the rulings' words kept. Test:
+`tests/test_deploy_pack.py::test_rulings_150_and_183_keep_their_words_and_dated_lines_name_round_45s_changes_c2882_c2851`
+(held to the xfail's reason and to `publish.STUB_RENDER`).
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units
