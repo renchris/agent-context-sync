@@ -46745,6 +46745,11 @@ space or tab (C2939). Test: `tests/test_deploy_pack.py`
 `::test_the_guides_loop_paragraph_and_section_4_read_a_none_as_the_report_does_c2848_c2863` (held to setup_report's
 constants).
 
+**The guide names install.log's new lock-holder note** (C2829; `docs/deploy/setup-feedback.md`, lane RB's words).
+install.log's `step=agentsync` note for any recorded lock holder is `waited-for-another-sync`; older logs keep
+`waited-for-a-background-sync`, which lane RA's report reads with the same words. The guide names both. Test:
+`tests/test_deploy_pack.py::test_the_guide_names_install_logs_waited_for_another_sync_note_c2829`.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units

@@ -4842,6 +4842,23 @@ def test_the_guides_loop_paragraph_and_section_4_read_a_none_as_the_report_does_
     assert "the word ends at a space or tab, as bash splits it, never at another blank" in page
 
 
+def test_the_guide_names_install_logs_waited_for_another_sync_note_c2829() -> None:
+    """B13 round 45 C2829 (lane RB's words): install.log's step=agentsync note for any recorded lock holder is
+    `waited-for-another-sync`, and older logs keep `waited-for-a-background-sync`, which the report reads with
+    the same words; the guide names both, held to install.sh and the report's note words."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    assert "waited-for-another-sync" in SCRIPTS[0].read_text(encoding="utf-8")
+    words = setup_report._AGENTSYNC_NOTE_WORDS
+    assert words["waited-for-another-sync"] == words["waited-for-a-background-sync"]
+    page = _page("docs/deploy/setup-feedback.md")
+    assert (
+        "notes what step 2 saw: `waited-for-another-sync` for any recorded lock holder (since B13 round 45"
+        " C2829; older logs say `waited-for-a-background-sync`, and the setup report shows both as"
+        ' "waited for another sync to end":'
+    ) in page
+
+
 def test_the_guide_and_contracts_quote_the_reinstall_tickers_words_c2423() -> None:
     """B13 round 43 C2423 (lane RB's 88a60a073): the bare-lock reinstall ticker reads `reinstalling once the
     lock is free`, and the guide and two contracts quoted the old `reinstalling after the lock is free`; RB

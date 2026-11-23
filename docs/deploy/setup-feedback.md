@@ -1294,9 +1294,10 @@ time was skipped on purpose: the reinstall held its lock, and launchd starts the
 report's Recent errors shows that skip as `WARNING agentsync.cli: skipped: lock held by an unrecorded holder
 (install.sh while it reinstalls agentsync, a status or doctor check, or a cycle starting)`, and doctor's lock line during the wait
 reads `held by an unrecorded holder (...)` with no cycle named: the reinstall writes no lock body.
-The install log's `step=agentsync` line notes what step 2 saw: `waited-for-a-background-sync` (the setup report
-shows it as "waited for another sync to end": the note does not say who started that sync, and doctor's lock line
-names it when the sidecar says),
+The install log's `step=agentsync` line notes what step 2 saw: `waited-for-another-sync` for any recorded lock
+holder (since B13 round 45 C2829; older logs say `waited-for-a-background-sync`, and the setup report shows both as
+"waited for another sync to end": the note does not say who started that sync, and doctor's lock line names it when
+the sidecar says),
 `wait-ran-out-after-<N>s` (the reinstall then ran without the lock; the report says "waited <N>s for another sync,
 then reinstalled while it was still running") or `lock-not-taken-rc<N>` ("could not take the sync lock, lockf exit
 <N>; reinstalled without waiting"). A lock held with an empty body, which no sync need hold, notes
