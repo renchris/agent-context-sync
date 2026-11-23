@@ -586,7 +586,7 @@ def test_a_whole_page_replaced_by_units_names_its_first_new_page_and_counts_no_d
     assert first == "mirror/src/contoso-clip.xlsx.d/00-index.md", first
     fm, body = parse_mirror_page(env.text(stub))
     assert fm.status is PageStatus.DELETED and fm.reason == "unit-removed" and fm.superseded_by == first
-    assert body.split("\n")[2].startswith("# [NO LONGER PRODUCED] ") and first in body, body
+    assert body.split("\n")[2].startswith("# [REPLACED] ") and first in body, body  # C2812
     assert "removed upstream" not in body and "DELETED UPSTREAM" not in body
     assert publish._counts_text(ch).endswith(" 0d"), publish._counts_text(ch)
     assert gitops.commit_subject(ch, ["src"]).endswith(" 0d src")
@@ -770,7 +770,8 @@ def test_a_superseded_tombstone_body_names_its_successor_c2613(env: Env) -> None
     lint's required fields and dropped the page from every reader that finds tombstones by status: deleted):
     the page keeps status: deleted, reason:, superseded_by: and its `# [NO LONGER PRODUCED]` heading, and only
     its body's first sentence names the live page that replaced it; the other reasons keep the tombstone
-    sentence."""
+    sentence. B13 round 45 C2812 (makes worse True for a superseded status, as above): its heading only reads
+    `# [REPLACED]`, the front matter kept, the lint passing it and a page with the old heading."""
     item = env.observe("vol:7", "contoso-clip.xlsx")
     env.publish(item, result(unit()))
     stub = "mirror/src/contoso-clip.xlsx.md"
@@ -781,7 +782,10 @@ def test_a_superseded_tombstone_body_names_its_successor_c2613(env: Env) -> None
     fm, body = parse_mirror_page(env.text(stub))
     assert fm.status is PageStatus.DELETED and fm.reason == "unit-removed" and fm.superseded_by == first
     lines = body.splitlines()
-    assert lines[2].startswith("# [NO LONGER PRODUCED] "), lines[:3]
+    assert lines[2].startswith("# [REPLACED] "), lines[:3]
+    assert fm.deleted_at is not None and "superseded" not in env.text(stub).split("\n---", 1)[0].replace(
+        "superseded_by", ""
+    ), "the front matter keeps status: deleted and deleted_at"
     assert lines[4] == (
         f"This page was replaced by {first} on {row.deleted_at}: its source still exists, and agentsync now "
         "mirrors it there. This body was cleared so no search hit here can be mistaken for current content; "
@@ -789,6 +793,10 @@ def test_a_superseded_tombstone_body_names_its_successor_c2613(env: Env) -> None
     ), lines[4]
     assert body.lower().count("this page is") <= 1, body
     assert lints.lint_mirror_frontmatter(env.repo, [stub]) == [], "the mirror lint still passes it"
+    # a replaced page committed before C2812 keeps its old heading, and the lint still passes it
+    page = env.repo / stub
+    page.write_text(page.read_text(encoding="utf-8").replace("# [REPLACED] ", "# [NO LONGER PRODUCED] "))
+    assert [f for f in lints.lint_mirror_frontmatter(env.repo, [stub]) if "tombstone" in f.message] == []
 
 
 def test_a_repaired_tombstone_keeps_its_committed_title_c2672(env: Env) -> None:

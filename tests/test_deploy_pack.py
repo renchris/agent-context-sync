@@ -8504,6 +8504,27 @@ _ROUND_44_B_PARAGRAPH_AMENDS = (
 """Round 44 lane B's dated line no claim of §16.277 holds alone: C2704's at §16.12's run_changes table (the
 flag stored in a nullable column, the join kept for an older build's rows)."""
 
+_ROUND_45_B_PARAGRAPH_AMENDS = (
+    (
+        "16.267",
+        "**A unit the source still has is no longer produced, never deleted upstream** (C2205;",
+        "§16.282 C2812",
+    ),
+    (
+        "16.277",
+        "**A tombstone's successor, unit-removed flag and title follow what they derive from**",
+        "§16.282 C2812",
+    ),
+    (
+        "16.277",
+        "**A file a person names is read whatever its settle hold, and a waiting recording stub",
+        "§16.282 C2851",
+    ),
+)
+"""Round 45 lane B's dated lines no claim of §16.282 holds alone (ruling 186): C2812's at §16.267's tombstone
+headings sentence and §16.277's C2613 paragraph (a replaced page reads ``# [REPLACED]``), and C2851's at
+§16.277's C2647 paragraph (STUB_RENDER 8, amending ruling 183's "no bump")."""
+
 _ROUND_44_RB_PARAGRAPH_AMENDS = (
     (
         "16.74",
@@ -8786,6 +8807,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_43_B_PARAGRAPH_AMENDS,
         *_ROUND_44_B_PARAGRAPH_AMENDS,
         *_ROUND_44_RB_PARAGRAPH_AMENDS,
+        *_ROUND_45_B_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")

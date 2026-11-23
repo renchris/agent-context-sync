@@ -322,7 +322,7 @@ M45), so ten relative paths at macOS's 1024-character limit fit with their reaso
 tails and the advice; at 6000, sized for five, the mixed alarm lost its advice and its last names (round
 12 N73), and at :data:`_REASON_MAX` five nested OneDrive paths lost their last names and the tail (round 7
 H48). Errors, skipped reasons and lint messages keep 300."""
-STUB_RENDER = 7
+STUB_RENDER = 8
 """The version of a stub page's rendering (``Publisher._plan_stub``): bump it whenever a stub's text changes
 for a reason the stored state already holds. An unchanged refused row is never planned again, so the cycle
 re-renders the stubs it can rebuild without reading a byte, once per version (``Cycle._rerender_stubs``).
@@ -334,8 +334,11 @@ G77). 5: a tombstone with no ``last_commit`` gets the newest commit on its path 
 recovery line of one that has none names no position (B13 round 7 H77). 6: the tombstones of a source deleted
 from sources.toml are rendered again too (B13 round 8 J74, round 9 K70). 7: a stub that waits for the
 recording pass or the OCR helper reads ``# [WAITING]`` with a ``waiting:`` summary, its status still refused
-(B13 round 43 C2413); a waiting recording stub, whose row is live or dataless, is rendered again too, with no
-bump, so a home that ran 7 before it re-renders it once (B13 round 44 C2647)."""
+(B13 round 43 C2413); a waiting recording stub, whose row is live or dataless, is rendered again too (B13
+round 44 C2647). 8: a home that ran 7 before C2647 renders its waiting recording stubs (a live or dataless row
+with RECORDING_WAITS) again, and every tombstone again for a superseded_by that follows its source (C2646) and
+the still-exists sentence (C2613), which a home at 7 skipped (B13 round 45 C2851 with C2917, ruling 195), and
+for a replaced page's ``# [REPLACED]`` heading (C2812)."""
 STUB_WAITING_LABEL = "WAITING"
 """The heading label of a stub that waits (``# [WAITING] <title>``), and, lower-cased, its summary's head."""
 _CHANGELOG_HEADING = re.compile(r"^## (\d{4}-\d{2}-\d{2}) · run (\d+) · (.*)$")
@@ -708,8 +711,10 @@ def _tombstone_body(
         # the source is still there: a neutral heading, never "deleted upstream" (B13 round 42 C2205); a
         # replaced whole page names its live successor in the body's first sentence, the front matter kept
         # (status: deleted, reason:, superseded_by:), and says its source still exists only while the item is
-        # not a tombstone (B13 round 44 C2613, ruling 182; makes worse True for a superseded status)
-        heading = "NO LONGER PRODUCED"
+        # not a tombstone (B13 round 44 C2613, ruling 182; makes worse True for a superseded status); its
+        # heading is ``# [REPLACED]`` when it names a successor, the front matter still kept, and a removed
+        # part with none keeps ``# [NO LONGER PRODUCED]`` (B13 round 45 C2812)
+        heading = "REPLACED" if superseded_by else "NO LONGER PRODUCED"
         what = "its source no longer contains this part"
         if superseded_by:
             still = ": its source still exists, and agentsync now mirrors it there" if source_exists else ""

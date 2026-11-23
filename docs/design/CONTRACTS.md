@@ -43834,6 +43834,9 @@ page itself, and repair from the item's live pages. `MirrorChange.unit_removed` 
 run record, so it leaves the `d` count. `lints.py`'s tombstone headings take `# [NO LONGER PRODUCED]` in the
 same commit. Tests: `test_a_whole_page_replaced_by_units_names_its_first_new_page_and_counts_no_deletion_c2205`,
 `test_removed_unit_is_tombstoned_and_can_come_back` (the removed sheet's heading, no `superseded_by`, `0d`).
+Amended 2026-11-23, §16.282 C2812: a unit-removed tombstone that names a successor (`superseded_by`) reads `#
+[REPLACED]`, and `lints.py`'s tombstone headings take `# [REPLACED]` beside `# [NO LONGER PRODUCED]`, which a removed
+part with no successor keeps and a page committed before C2812 still passes with.
 Amended 2026-11-21, §16.272 C2507, C2445, C2409, C2510: a run carried after a crash derives `unit_removed` from
 the same run's `unit-removed` tombstone, so it still counts M; the CHANGELOG's path line prints the counted letter
 and ` (part no longer produced)`; curate reads `reason:` and `superseded_by:` (SOURCE-SUPERSEDED); and a re-render,
@@ -45546,6 +45549,9 @@ git read for it (C2672, reversing round 43's call 16). Tests:
 deleted-upstream control), `test_a_superseded_tombstone_body_names_its_successor_c2613`,
 `test_a_repaired_tombstone_keeps_its_committed_title_c2672`,
 `test_a_repaired_tombstone_with_no_history_takes_the_item_name_c2672`.
+Amended 2026-11-23, §16.282 C2812: of the kept parts, the heading of a page that names a successor is now `#
+[REPLACED]` (`status: deleted`, `deleted_at:`, `reason:` and `superseded_by:` still kept; a superseded status stays
+makes worse True).
 
 **A file a person names is read whatever its settle hold, and a waiting recording stub is rendered again once**
 (C2645 with C2705, C2647, C2651; ruling 183; dated line at §16.272 C2509). C2509's hold made
@@ -45563,6 +45569,9 @@ is missing or not the row's `page_sha256`, or this build plans another body (C26
 each named inside a 600-second window: the fetch, the converter run and a row that no longer waits),
 `test_a_waiting_recording_stub_is_rendered_again_once_c2647` (`STUB_RENDER` patched to 6 and the label to
 `REFUSED`: `# [WAITING]` after one sync, no commit after the next).
+Amended 2026-11-23, §16.282 C2851: "with no STUB_RENDER bump" was false for a home that ran 7 before this loop
+existed: `_rerender_stubs` returns at once on a meta equal to STUB_RENDER, so such a home kept `# [REFUSED]`, and
+its tombstones skipped C2646's and C2613's rendering; STUB_RENDER is 8 (ruling 195, amending ruling 183).
 
 **Every isdigit() that feeds int() takes ASCII digits only** (C2677). A superscript `²` passes `str.isdigit()`
 and `int()` raises ValueError on it (an Arabic-Indic digit reads as a number nobody wrote): ruling 169 guarded
@@ -45922,6 +45931,30 @@ place of `was not fully listed: a later sync lists a file that was still being w
 missing-root wait. It stays a note, never a wait: it gates no baseline question, and a wait would block the NEXT on
 the person's file. A local source's root of that kind keeps its wait and its listable check. Test:
 `test_an_inbox_that_is_not_a_folder_is_a_note_naming_it_as_typed_c2814`.
+
+**Every home renders its stubs and tombstones again once, and the marker waits for every page** (C2851 with C2917,
+C2918; ruling 195, amending ruling 183). `publish.STUB_RENDER` is 8: a home that ran 7 before C2647's loop stored meta
+7, and `_rerender_stubs` returns at once on a meta equal to STUB_RENDER, so its waiting recording stubs (a live or
+dataless row with `RECORDING_WAITS`) kept `# [REFUSED]` and its tombstones never took C2646's successor rule and
+C2613's still-exists sentence. Its docstring's 8 clause names both; the 7 clause loses "with no bump". A bump, not a
+second once-only key (C2917's fix): the tombstone changes sit behind the same gate, and a page is written only where
+it differs. `says_recording_wait`'s page read is inside the try that holds `replan_waiting_recording`, so an
+unreadable waiting stub no longer stops the sync with PermissionError; that branch and the REFUSED and QUARANTINED
+loop's log the warning and mark the run pending, and the meta is written only when nothing is pending, since writing
+it after a failed page lost the upgrade for good (C2918's finder fix, makes worse True). Tests:
+`test_a_home_at_stub_render_7_renders_its_waiting_stubs_and_tombstones_again_c2851` (meta 7 and label REFUSED:
+`# [WAITING]` and every tombstone walked after one sync, no commit and no walk after the next),
+`test_an_unreadable_waiting_stub_is_rendered_once_it_is_readable_c2918` (a waiting stub at mode 000: the warning, the
+meta left at 7, `# [WAITING]` once it is readable).
+
+**A replaced page is headed `# [REPLACED]`** (C2812). A unit-removed tombstone that names its successor read `#
+[NO LONGER PRODUCED]` above "This page was replaced by ...": `publish._tombstone_body` heads it `# [REPLACED]` when
+`superseded_by` is set, and a removed part with none keeps the old heading. Only the heading changes: the finder's
+`status: superseded` with no `deleted_at` failed `lint_mirror_frontmatter`'s required fields and dropped the page from
+every reader that finds tombstones by `status: deleted` (makes worse True). `lints.py`'s tombstone tuple takes `#
+[REPLACED]` and keeps the old heading, so a page committed before passes; STUB_RENDER 8's tombstone pass and
+`_repair_outputs` write the new one. Tests: `test_a_superseded_tombstone_body_names_its_successor_c2613`,
+`test_a_whole_page_replaced_by_units_names_its_first_new_page_and_counts_no_deletion_c2205`.
 
 ### 16.283 Round 45: the converters: a failed zero-byte re-read's books put back, an Office file's container and family parse in its answer and key, and a source's own banner line (2026-11-23, wave B13 round 45 lane E)
 

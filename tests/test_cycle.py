@@ -7824,7 +7824,9 @@ def test_a_waiting_recording_stub_is_rendered_again_once_c2647(
     _rerender_stubs walked only REFUSED and QUARANTINED rows, so a waiting recording stub, whose row is LIVE
     (RECORDING_WAITS), written before 7 kept its REFUSED heading for good. _rerender_stubs passes each LIVE or
     DATALESS row whose page already says the wait through replan_waiting_recording, which writes only when
-    the page differs: one sync rewrites it, the next commits nothing, with no STUB_RENDER bump."""
+    the page differs: one sync rewrites it, the next commits nothing. Amended 2026-11-23 (B13 round 45 C2851,
+    ruling 195): a home that ran 7 before this loop existed never reached it, so STUB_RENDER went to 8 (the
+    test below starts from 7)."""
     config = config_with(tmp_path, meetings)
     monkeypatch.setattr(loop_mod.launchd, "agents_installed", lambda _c: False)
     monkeypatch.setattr(cycle_mod.media, "probe", lambda _c, _d: ("ready", ""))
@@ -7853,6 +7855,94 @@ def test_a_waiting_recording_stub_is_rendered_again_once_c2647(
     assert fm["status"] == "refused" and fm["reason"] == publish_mod.RECORDING_PASS_WAIT_REASON, fm
     assert rec.worked == [], "no recording was read"
     assert run(config, mode=None).commit_sha is None, "the next sync writes nothing"
+
+
+def _waiting_stub_at(
+    tmp_path: Path, meetings: Path, monkeypatch: pytest.MonkeyPatch, render: int
+) -> tuple[Config, Path]:
+    """A waiting recording stub written as REFUSED by a build at rendering ``render``, its meta stored."""
+    config = config_with(tmp_path, meetings)
+    monkeypatch.setattr(loop_mod.launchd, "agents_installed", lambda _c: False)
+    monkeypatch.setattr(cycle_mod.media, "probe", lambda _c, _d: ("ready", ""))
+    monkeypatch.setattr(publish_mod, "STUB_WAITING_LABEL", "REFUSED")
+    monkeypatch.setattr(publish_mod, "STUB_RENDER", render)
+    monkeypatch.setattr(cycle_mod, "STUB_RENDER", render)
+    _fail_ocr(monkeypatch)
+    stub_recording(meetings / MEETING, 10)
+    assert run(config, mode=None).exit_code == 0
+    _use_ocr(monkeypatch, tmp_path)
+    assert run(config, mode=None).exit_code == 0
+    fm, body = _recording_page(config, MEETING)
+    assert fm["reason"] == publish_mod.RECORDING_PASS_WAIT_REASON and "\n# [REFUSED] " in body, body
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(cycle_mod._STUB_RENDER_META) == str(render)
+    monkeypatch.setattr(publish_mod, "STUB_WAITING_LABEL", "WAITING")
+    monkeypatch.setattr(publish_mod, "STUB_RENDER", STUB_RENDER_NOW)
+    monkeypatch.setattr(cycle_mod, "STUB_RENDER", STUB_RENDER_NOW)
+    return config, config.docs_repo / "mirror"
+
+
+STUB_RENDER_NOW = publish_mod.STUB_RENDER
+
+
+def test_a_home_at_stub_render_7_renders_its_waiting_stubs_and_tombstones_again_c2851(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 45 C2851 with C2917 (ruling 195): a home that ran STUB_RENDER 7 before C2647's loop stored
+    meta 7, and _rerender_stubs returns at once on a meta equal to STUB_RENDER, so its waiting recording stubs
+    kept ``# [REFUSED]`` and its tombstones never took C2646's and C2613's rendering. STUB_RENDER is 8: one
+    sync over a meta at 7 gives ``# [WAITING]`` and walks every tombstone again, and the next commits
+    nothing."""
+    assert STUB_RENDER_NOW == 8
+    config, _ = _waiting_stub_at(tmp_path, meetings, monkeypatch, 7)
+    walked: list[str] = []
+    again = cycle_mod._Cycle._rerender_tombstones
+
+    def spy(self: Any, source_id: str) -> int:
+        walked.append(source_id)
+        return again(self, source_id)
+
+    monkeypatch.setattr(cycle_mod._Cycle, "_rerender_tombstones", spy)
+    assert run(config, mode=None).exit_code == 0
+    fm, body = _recording_page(config, MEETING)
+    assert "\n# [WAITING] " in body and fm["summary"].startswith("waiting: "), (fm, body)
+    assert walked, "every tombstone is rendered again on a home at 7"
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(cycle_mod._STUB_RENDER_META) == "8"
+    walked.clear()
+    assert run(config, mode=None).commit_sha is None, "the next sync writes nothing"
+    assert walked == [], "once per version"
+    assert rec.worked == [], "no recording was read"
+
+
+@pytest.mark.usefixtures("rec")
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads a mode-000 page")
+def test_an_unreadable_waiting_stub_is_rendered_once_it_is_readable_c2918(
+    tmp_path: Path, meetings: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """B13 round 45 C2918 (ruling 195): says_recording_wait read the page outside the try, so a waiting stub
+    at mode 000 stopped the sync with PermissionError; moving the read into the try alone still wrote the
+    render meta, and the stub kept ``# [REFUSED]`` for good. The read is in the try, the warning logged, the
+    meta left at 7, and once the page is readable the next sync renders it ``# [WAITING]``."""
+    config, _ = _waiting_stub_at(tmp_path, meetings, monkeypatch, 7)
+    page = config.docs_repo / slug.mirror_rel_path(SID, MEETING)
+    page.chmod(0)
+    try:
+        with caplog.at_level(logging.WARNING, logger="agentsync"):
+            run(config, mode=None)  # the land gate may refuse a page it cannot read; the cycle runs on
+        with Manifest(config.state_paths.db) as m:
+            meta = m.get_meta(cycle_mod._STUB_RENDER_META)
+    finally:
+        page.chmod(0o600)
+    assert "a stub could not be rendered again" in caplog.text, caplog.text
+    stopped = [r.getMessage() for r in caplog.records if "failed" in r.getMessage() and r.exc_info]
+    assert not stopped, stopped  # the unreadable page no longer stops the cycle
+    assert meta == "7", "a stub left unrendered keeps the meta, so the next sync tries again"
+    assert run(config, mode=None).exit_code == 0
+    fm, body = _recording_page(config, MEETING)
+    assert "\n# [WAITING] " in body, (fm, body)
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(cycle_mod._STUB_RENDER_META) == "8"
 
 
 def test_a_recording_first_seen_in_an_ocr_outage_is_counted_and_read_again_once_the_helper_works_c2039(

@@ -292,10 +292,17 @@ def _lint_one_page(repo: Path, path: str) -> list[LintFinding]:
             )
         )
     # A tombstone opens with the banner, then its heading (B13 round 4 Q9); one written before that opens
-    # with the heading. Both are tombstones.
+    # with the heading. Both are tombstones. A replaced page reads ``# [REPLACED]`` (B13 round 45 C2812); one
+    # committed before it keeps ``# [NO LONGER PRODUCED]``, still a tombstone.
     tomb = body.lstrip("\n").removeprefix(policy.UNTRUSTED_BANNER).lstrip("\n")
     if status is PageStatus.DELETED and not tomb.startswith(
-        ("# [DELETED UPSTREAM]", "# [MOVED OUT OF SCOPE]", "# [RETIRED]", "# [NO LONGER PRODUCED]")
+        (
+            "# [DELETED UPSTREAM]",
+            "# [MOVED OUT OF SCOPE]",
+            "# [RETIRED]",
+            "# [NO LONGER PRODUCED]",
+            "# [REPLACED]",
+        )
     ):
         findings.append(
             LintFinding("FRONTMATTER", path, "status deleted but the body is not a tombstone stub")

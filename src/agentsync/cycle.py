@@ -3011,13 +3011,15 @@ class _Cycle:
         J74), and every waiting recording stub whose page already says the wait, through
         ``Publisher.replan_waiting_recording`` (B13 round 44 C2647). A page is written only where the plan
         differs from the intact page there (as ``_stub_stands`` compares); no verdict or count moves. The
-        meta key is written after the last row, so an interrupted run tries again, and only on a run that
-        covers every live source."""
+        meta key is written after the last row, so an interrupted run tries again, only on a run that covers
+        every live source, and only when no stub was left unrendered: a stub that could not be read, planned
+        or written is logged, the run goes on, and the next sync tries again, where writing the key would have
+        lost its upgrade for good (B13 round 45 C2918, ruling 195)."""
         if self.manifest.get_meta(_STUB_RENDER_META) == str(STUB_RENDER):
             return
         if {s.id for s in self.config.live_sources()} - {s.id for s in self.selected}:
             return  # a run of some sources only: the next full one re-renders them all
-        rewritten = 0
+        rewritten, pending = 0, False
         for src in self.config.live_sources():
             for row in list(
                 self.manifest.iter_items(src.id, states=(RowState.REFUSED, RowState.QUARANTINED))
@@ -3036,22 +3038,26 @@ class _Cycle:
                     self.changes += self.publisher.write_pages(row, pages, self.run_id)
                 except (PublishError, OSError) as exc:
                     log.warning("%s: a stub could not be rendered again (%s); it keeps its page", src.id, exc)
+                    pending = True
                     continue
                 self.stub_pages.update(p.output_path for p in pages)
                 rewritten += 1
             # a recording stub that waits for the recording pass: its row is live or dataless, so the loop
             # above never reached it, and a page written before C2413 kept its REFUSED heading; only a page
             # that already says this wait is planned again, written only where it differs (B13 round 44
-            # C2647, ruling 183; no STUB_RENDER bump)
+            # C2647; STUB_RENDER 8 runs it on a home that ran 7 before it, B13 round 45 C2851, ruling 195).
+            # The page read that tells the wait is in the try too: an unreadable page stopped the sync
+            # (C2918)
             for row in list(self.manifest.iter_items(src.id, states=(RowState.LIVE, RowState.DATALESS))):
                 if row.state_reason != RECORDING_WAITS:
                     continue
-                if not self.publisher.says_recording_wait(row.source_id, row.stable_id):
-                    continue
                 try:
+                    if not self.publisher.says_recording_wait(row.source_id, row.stable_id):
+                        continue
                     done = self.publisher.replan_waiting_recording(src, row, self.run_id)
                 except (PublishError, OSError) as exc:
                     log.warning("%s: a stub could not be rendered again (%s); it keeps its page", src.id, exc)
+                    pending = True
                     continue
                 if done:
                     self.changes += done
@@ -3064,7 +3070,8 @@ class _Cycle:
         }
         for sid in sorted(ids):
             rewritten += self._rerender_tombstones(sid)
-        self.manifest.set_meta(_STUB_RENDER_META, str(STUB_RENDER))
+        if not pending:
+            self.manifest.set_meta(_STUB_RENDER_META, str(STUB_RENDER))
         if rewritten:
             log.info("%d stub or tombstone page(s) re-rendered for stub rendering %d", rewritten, STUB_RENDER)
 

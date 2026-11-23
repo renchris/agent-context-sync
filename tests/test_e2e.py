@@ -928,7 +928,13 @@ def test_a_label_stub_from_an_older_rendering_is_rendered_again_once(
 
     with Manifest(config.state_paths.db) as m:  # review of Q75: a row that cannot be planned stops no sync
         m.set_meta(cycle_mod._STUB_RENDER_META, "")
+    planned = publish.Publisher.plan_pages
     monkeypatch.setattr(publish.Publisher, "plan_pages", no_path)
+    assert run(config).exit_code == 0
+    # B13 round 45 C2918 (ruling 195): and the render meta waits for it, so the next sync tries it again
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(cycle_mod._STUB_RENDER_META) == ""
+    monkeypatch.setattr(publish.Publisher, "plan_pages", planned)
     assert run(config).exit_code == 0
     with Manifest(config.state_paths.db) as m:
         assert m.get_meta(cycle_mod._STUB_RENDER_META) == str(publish.STUB_RENDER)
