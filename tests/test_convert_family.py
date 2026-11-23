@@ -709,7 +709,8 @@ def test_the_zero_byte_pass_keeps_what_the_recording_replan_keeps_c2703() -> Non
     """B13 round 44 C2703 with C2650 (ruling 175): the zero-byte pass is the recording replan's twin, and it
     kept none of what the replan's savepoint cannot roll back. Both now take the same snapshot before a
     row's savepoint and hand it to the one ``_put_back``; the zero-byte pass restores ``read again``'s
-    counters too."""
+    counters too. B13 round 45 C2925: the zero-byte pass and the family re-read share one loop,
+    ``_read_rows_once``, which holds the snapshot, so it is the zero-byte pass's side of the twin."""
     snapshot = (
         "files = self._page_files(src.id, row.stable_id)",
         "row.stable_id in acc.deferred_ids,",
@@ -717,12 +718,14 @@ def test_the_zero_byte_pass_keeps_what_the_recording_replan_keeps_c2703() -> Non
         "len(self._recording_queue.get(src.id, [])),",
         "src, row.stable_id, acc, files=files, books=books, changes=self.changes[mark:]",
     )
-    for twin in (cycle_mod._Cycle._replan_recording_stubs, cycle_mod._Cycle._reread_zero_byte_stubs):
+    for twin in (cycle_mod._Cycle._replan_recording_stubs, cycle_mod._Cycle._read_rows_once):
         code = inspect.getsource(twin)
         for line in snapshot:
             assert code.count(line) == 1, (twin.__name__, line)
         assert code.index("self._put_back(") < code.index("del self.changes[mark:]"), twin.__name__
-    zero = inspect.getsource(cycle_mod._Cycle._reread_zero_byte_stubs)
+    for once in (cycle_mod._Cycle._reread_zero_byte_stubs, cycle_mod._Cycle._reread_family_stubs):
+        assert inspect.getsource(once).count("self._read_rows_once(src, acc, rows, ") == 1, once.__name__
+    zero = inspect.getsource(cycle_mod._Cycle._read_rows_once)
     assert "reread = (self._reread_n, self._reread_s)" in zero
     assert "self._reread_n, self._reread_s = reread" in zero
     # B13 round 45 C2923 (ruling 196): the counts a first read moved go back with the row too
@@ -2430,3 +2433,118 @@ def test_a_real_workbook_whose_content_types_have_no_namespace_still_converts_c2
     parts["[Content_Types].xml"] = parts["[Content_Types].xml"].replace(b"</Types>", decoy.encode())
     deck.unlink()
     assert common_mod._ooxml_family(make_zip(deck, parts)) is None
+
+
+def _decoy_potx(path: Path) -> Path:
+    """A ``.potx`` whose real Override is spelled ``presentation&#109;l`` and whose part holds a Word
+    main-type literal in a comment: round 44's family rule (C2708) reads it as a deck, the build before it as
+    a Word document (B13 round 45 C2925)."""
+    return _types_in(build_potx(path), "utf-8", lambda t: _decoyed(t, _WORD_MAIN, "utf-8"))
+
+
+def _older_family_rule(old: pytest.MonkeyPatch) -> None:
+    """The build before C2925: the byte read told the decoy a Word document, and the key had no
+    ``family_parse``."""
+    real_family = common_mod._ooxml_family
+
+    def older_family(src: Path) -> str | None:
+        try:
+            with zipfile.ZipFile(src) as zf:
+                types = zf.read("[Content_Types].xml")
+        except (KeyError, OSError, zipfile.BadZipFile):
+            return real_family(src)
+        return "word" if b"presentation&#109;l" in types else real_family(src)
+
+    def older_hash(conv: Converter, name: str) -> str:
+        opts = {**conv.options(), "input_suffix": convert_pkg._suffix(name)}
+        if convert_pkg._suffix(name) in policy_mod.OOXML_SUFFIXES or convert_pkg._suffix(name) == ".msg":
+            opts["empty_screen"] = 1
+        return options_hash(opts)
+
+    old.setattr(common_mod, "_ooxml_family", older_family)
+    old.setattr(convert_pkg, "effective_options_hash", older_hash)
+
+
+_DECK_STUB = "not-ooxml: a Word document, not a deck (not the type its name says)"
+
+
+def test_an_older_family_answer_in_the_cache_is_not_served_under_the_new_key_c2925(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 45 C2925 (ruling 196): C2708 changed what the family check says of some packages and moved no
+    key, so the older ``not the type its name says`` stub, cached UNREADABLE, was served to the same bytes
+    with ``from_cache`` True. Every Office name's key carries ``family_parse`` now: the older entry stays
+    under the older key, and the conversion is a page, not from the cache."""
+    from agentsync.convert.canonical import canonical_hash  # noqa: PLC0415
+
+    src = _decoy_potx(tmp_path / "Contoso template.potx")
+    registry, cache = Registry.default(CFG), ConverterCache(tmp_path / "cache")
+
+    def convert():  # type: ignore[no-untyped-def]
+        return convert_file(
+            src,
+            name=src.name,
+            content_sha256=hashlib.sha256(src.read_bytes()).hexdigest(),
+            canonical_sha256=canonical_hash(src, suffix=".potx").sha256,
+            registry=registry,
+            cache=cache,
+        )
+
+    with monkeypatch.context() as old:
+        _older_family_rule(old)
+        older = convert()
+        assert (older.status, older.reason) == (ConversionStatus.UNREADABLE, _DECK_STUB), older
+        assert convert().from_cache, "the older build served its own stub from the cache"
+    now = convert()
+    assert (now.status, now.from_cache) == (ConversionStatus.OK, False), now
+    assert now.action_key != older.action_key and now.options_hash != older.options_hash
+    assert cache.get(older.action_key) is not None, "the older entry stays under the older key"
+    for conv in registry.converters():
+        for ext in conv.extensions:
+            opts = dict(conv.options())
+            hashed = convert_pkg.effective_options_hash(conv, f"x{ext}")
+            with_flag = {**opts, "input_suffix": ext, "family_parse": 1}
+            if ext in policy_mod.OOXML_SUFFIXES:
+                assert hashed == options_hash({**with_flag, "empty_screen": 1}), ext
+            else:
+                assert "family_parse" not in opts and hashed != options_hash(with_flag), ext
+
+
+def test_a_published_family_mismatch_stub_is_read_once_under_the_new_key_c2925(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 45 C2925 (ruling 196): a stub an older family rule published was never read again (the Office
+    converters' ``outdated`` reads no stub by its reason), and a re-read under the old key would get the
+    cached stub back. The ``family-parse-v1`` pass reads each Office row whose reason has the family-mismatch
+    form once, under the new key: the decoy template becomes a page, a real Word document named ``.pptx``
+    keeps its stub (read once, its key moved, no commit), and a ``.docx`` whose bytes are no ZIP
+    (``NOT_OOXML_REASON``) is never read. Once every such row is read the token holds and the marks go, so
+    nothing is read again."""
+    config, src = make_env(tmp_path)
+    with monkeypatch.context() as old:
+        _older_family_rule(old)
+        _decoy_potx(src / "Contoso template.potx")
+        word_package(src / "Contoso notes.pptx")
+        (src / "Contoso plain.docx").write_bytes(b"Contoso plain text, no ZIP header\n")
+        assert run(config).exit_code == 0
+    assert _row(config, "Contoso template.potx").state_reason == _DECK_STUB
+    assert _row(config, "Contoso notes.pptx").state_reason == _DECK_STUB
+    assert _row(config, "Contoso plain.docx").state_reason == NOT_OOXML_REASON
+    head = git(config.docs_repo, "rev-parse", "HEAD").strip()
+    tries = _tries(monkeypatch)
+    report = run(config)
+    assert report.exit_code == 0
+    assert sorted(tries) == ["Contoso notes.pptx", "Contoso template.potx"], tries
+    assert _row(config, "Contoso template.potx").state is RowState.LIVE
+    assert _row(config, "Contoso notes.pptx").state_reason == _DECK_STUB, "a real mismatch keeps its stub"
+    assert report.read_again == 2 and sum(s.converted for s in report.sources) == 0, report
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(cycle_mod._FAMILY_PARSE_META + "src") == "done"
+        assert (
+            m.get_meta(f"{cycle_mod._FAMILY_PARSE_META}src:{item_id(config, 'Contoso notes.pptx')}") is None
+        )
+    changed = git(config.docs_repo, "diff", "--name-only", head, "HEAD")
+    assert "contoso-template" in changed.lower() and "contoso-notes" not in changed.lower(), changed
+    tries.clear()
+    assert run(config).exit_code == 0
+    assert tries == [], "the token holds: no family re-read again"

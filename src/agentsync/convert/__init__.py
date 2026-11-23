@@ -122,6 +122,14 @@ def _identity(conv: Converter, name: str) -> tuple[str, str]:
     taking it out would move those keys again (B13 round 39 C1645). Keyed on the name, not on the converter's
     suffixes: with an OCR engine pandoc is two converters, and ``.rtf`` keeps the one key it has on a Mac
     without an engine.
+
+    An Office package name also carries ``family_parse`` (B13 round 45 C2925, ruling 196): round 44's C2708
+    made ``_common._ooxml_family`` parse ``[Content_Types].xml`` first, which tells some packages an older
+    build called another family, and moved no version, so a cached ``not the type its name says`` stub stayed
+    under the same key and was served to those bytes.  The option moves every Office key (pandoc's ``.docx``,
+    xlsx, pptx and diagram's ``.vsdx`` alike) with no emitter version moving, since the page format did not
+    change; it costs a cache miss per Office file at the upgrade, and ``cycle._Cycle._reread_family_stubs``
+    reads each published family-mismatch stub once under it.
     """
     return conv.version(), effective_options_hash(conv, name)
 
@@ -133,6 +141,8 @@ def effective_options_hash(conv: Converter, name: str) -> str:
     opts = {**conv.options(), "input_suffix": suffix}
     if suffix in OOXML_SUFFIXES or suffix == ".msg":
         opts["empty_screen"] = 1
+    if suffix in OOXML_SUFFIXES:
+        opts["family_parse"] = 1  # B13 round 45 C2925: the parse-first family rule (_identity)
     return options_hash(opts)
 
 

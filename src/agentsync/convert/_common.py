@@ -113,6 +113,13 @@ _FAMILY_NOUN = {
     "spreadsheet": "an Excel workbook",
     "presentation": "a PowerPoint deck",
 }
+FAMILY_MISMATCH_RE = re.compile(
+    rf"not-ooxml: (?:{'|'.join(map(re.escape, _FAMILY_NOUN.values()))}), not .+ "
+    r"\(not the type its name says\)"
+)
+"""The whole reason :func:`_check_ooxml_family` raises (``not-ooxml: <noun>, not <noun> (not the type its name
+says)``), never ``policy.NOT_OOXML_REASON`` (bytes that are not a ZIP): the stubs
+``cycle._Cycle._reread_family_stubs`` reads once more after the family rule changed (B13 round 45 C2925)."""
 
 
 def _ooxml_family(src: Path) -> str | None:

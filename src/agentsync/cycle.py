@@ -258,6 +258,14 @@ again (B13 round 42 C2219, ruling 155's one amendment of ruling 132 for C930's s
 set, takes those marks away (B13 round 43 C2512, ruling 166)."""
 
 
+_FAMILY_PARSE_META = "family-parse-v1:"
+"""``family-parse-v1:<source_id>``, a local or inbox source's one-shot family re-read token: set once
+``_Cycle._reread_family_stubs`` has read every Office row of the source settled with a family mismatch, so
+each is read once under the ``family_parse`` key and never again (B13 round 45 C2925, ruling 196; modeled on
+:data:`_ZERO_BYTES_META`).  Until then ``family-parse-v1:<source_id>:<stable_id>`` marks each row it read,
+whatever the answer, and the token, once set, takes those marks away."""
+
+
 def _zero_byte_mismatches() -> frozenset[str]:
     """The converters' own type-mismatch answers an older build gave a file of no bytes (before C930, C1050,
     C1647 and C2001 said ``empty`` for it): a zero-byte row settled with one of these is read once more
@@ -4795,6 +4803,7 @@ class _Cycle:
             try:
                 self._replan_recording_stubs(src, arm, acc, skip)  # reads no recording byte (C2039)
                 self._reread_zero_byte_stubs(src, arm, acc, skip)  # reads no byte (C2219)
+                self._reread_family_stubs(src, arm, acc, skip)  # each family-mismatch stub once (C2925)
                 self._reread_source(src, arm, acc, skip)
             except Exception as exc:
                 # Reading files again is extra work on a source that has synced: what stops it is reported
@@ -5738,6 +5747,23 @@ class _Cycle:
             for r in unmarked
             if r.last_seen_run == self.run_id and r.stable_id not in skip and arm.in_scope(r.rel_path)
         ]
+        self._read_rows_once(src, acc, rows, lambda row: self._zero_byte_reread(src, arm, row, acc))
+        if len(rows) == len(unmarked):  # no row left unmarked: the token holds, and the marks go
+            with self.manifest.savepoint():
+                self.manifest.set_meta(key, "done")
+                self.manifest.delete_meta_prefix(key + ":")
+
+    def _read_rows_once(
+        self, src: SourceConfig, acc: _SourceAcc, rows: Sequence[ItemRow], read: Callable[[ItemRow], None]
+    ) -> None:
+        """Read each of ``rows`` with ``read``, for the one-shot re-reads (:meth:`_reread_zero_byte_stubs`,
+        :meth:`_reread_family_stubs`), each row under a savepoint of its batch's transaction: a row that
+        raises rolls back its own writes and mark alone, the rows before it commit, and the error goes on to
+        the caller, whose token stays unset (B13 round 43 C2442, ruling 166).  What the savepoint cannot roll
+        back goes back with the row, as the recording replan keeps it: its pages on disk, the cycle's books
+        and the re-read counters (:meth:`_put_back`; B13 round 44 C2703 with C2650, ruling 175), and what its
+        first read counted (:meth:`_row_books`; B13 round 45 C2923, ruling 196).  One loop for both passes, so
+        a twin cannot keep less than the other (C2925)."""
         for start in range(0, len(rows), _WORK_BATCH):
             self.lock.beat(f"work:{src.id}")
             failure: BaseException | None = None
@@ -5757,7 +5783,7 @@ class _Cycle:
                     counted = self._row_books(row, acc)
                     try:
                         with self.manifest.savepoint():
-                            self._zero_byte_reread(src, arm, row, acc)
+                            read(row)
                     except BaseException as exc:
                         # the rows before it commit; this row's own writes and mark roll back, its pages,
                         # books and re-read counters go back with them, and the token stays unset, so the
@@ -5776,10 +5802,69 @@ class _Cycle:
                 self._flush_changes()
             if failure is not None:
                 raise failure
-        if len(rows) == len(unmarked):  # no row left unmarked: the token holds, and the marks go
+
+    def _reread_family_stubs(self, src: SourceConfig, arm: LocalArm, acc: _SourceAcc, skip: set[str]) -> None:
+        """Read once more each Office row of ``src`` settled with a family mismatch, ``not-ooxml: <noun>, not
+        <noun> (not the type its name says)`` (``convert._common.FAMILY_MISMATCH_RE``), never the not-a-ZIP
+        ``NOT_OOXML_REASON``, which the family rule does not decide (B13 round 45 C2925, ruling 196).  Round
+        44's C2708 made the family check parse ``[Content_Types].xml`` first, which tells some packages an
+        older build called another family, and moved no version, so such a stub was never read again: the
+        Office converters' ``outdated`` rules read no stub by its reason.  The read goes through the new key
+        (``convert.effective_options_hash``'s ``family_parse``), so the older answer is not served from the
+        cache and a new page is stored.  Modeled on :meth:`_reread_zero_byte_stubs`: only a row listed this
+        pass, not dataless, in scope, not in the queue and not withheld as settling is read, from this Mac and
+        never downloaded (a fetch with a budget of no bytes), as a re-read (a conversion that gives the stub
+        it has moves only its key), with each row marked whatever the answer; a row whose converter cannot
+        run is left unmarked for a cycle where it can.  Once no such row of the source is left unmarked, the
+        source's :data:`_FAMILY_PARSE_META` token is set and the marks go, so the read is never repeated.
+        Each row is read through :meth:`_read_rows_once`, the zero-byte pass's loop.  Never in a dry run."""
+        key = _FAMILY_PARSE_META + src.id
+        if self.dry or self.manifest.get_meta(key):
+            return
+        named = [
+            row
+            for row in self.manifest.iter_items(src.id, states=(RowState.QUARANTINED,))
+            if not row.is_dir
+            and not row.dataless
+            and row.name.lower().endswith(content_policy.OOXML_SUFFIXES)
+            and convert_common.FAMILY_MISMATCH_RE.fullmatch(row.state_reason or "") is not None
+        ]
+        rows = [
+            r
+            for r in named
+            if not self.manifest.get_meta(f"{key}:{r.stable_id}")
+            and r.last_seen_run == self.run_id
+            and r.stable_id not in skip
+            and arm.in_scope(r.rel_path)
+        ]
+        self._read_rows_once(src, acc, rows, lambda row: self._family_reread(src, arm, row, acc))
+        if all(self.manifest.get_meta(f"{key}:{r.stable_id}") for r in named):  # none left unmarked
             with self.manifest.savepoint():
                 self.manifest.set_meta(key, "done")
                 self.manifest.delete_meta_prefix(key + ":")
+
+    def _family_reread(self, src: SourceConfig, arm: LocalArm, row: ItemRow, acc: _SourceAcc) -> None:
+        """One row of :meth:`_reread_family_stubs`: marked read, fetched from this Mac with no download, and
+        converted again as a re-read, counted in ``read again`` (C2925).  A row whose converter cannot run now
+        (pandoc missing for a ``.docx``) is left unmarked, so the token waits for a cycle where it can."""
+        conv = self.registry.for_name(row.name)
+        if conv is None or not self._runs(conv):
+            return
+        self.manifest.set_meta(f"{_FAMILY_PARSE_META}{src.id}:{row.stable_id}", "1")
+        try:
+            fetched = arm.fetch(_item_from_row(row), self.staging, ByteBudget(0, 1))
+        except Exception as exc:  # evicted, gone or unreadable since the walk: it stays as it is
+            log.info("%s: %s was not read again for the family rule: %s", row.source_id, row.rel_path, exc)
+            return
+        try:
+            started = _reread_clock()
+            self._reread_n += 1
+            try:
+                self._after_fetch(src, row, fetched, acc, reread=True)
+            finally:
+                self._reread_s += _reread_clock() - started
+        finally:
+            _discard_staged(fetched, self.staging)
 
     def _row_sets(self) -> tuple[set[tuple[str, str]], ...]:
         """The cycle's per-row sets one conversion joins, in :class:`_RowBooks`' ``member`` order."""

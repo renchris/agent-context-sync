@@ -45686,6 +45686,10 @@ Amended 2026-11-23, §16.283 C2854: openpyxl reads Override and Default by local
 part whose `<Types>` has no `xmlns` is read by it too; `_ooxml_family` reads them in any namespace or none
 (`tree.iter("{*}Override", "{*}Default")`), and only python-pptx reads the namespaced two alone. A decoy Override of
 another namespace beside the real one gives two families, so None, and the file converts.
+Amended 2026-11-23, §16.283 C2925: the parse-first rule moved no key, so an older build's cached `not the type its
+name says` stub was served to the bytes it now reads as their own family, and a published one was never read
+again; every Office name's key carries `family_parse` now, and a one-time pass reads each published
+family-mismatch stub once under it.
 
 **The .potx retype reads the parse, a literal replace only for a part it cannot read** (C2722 with C2709, makes worse
 True for a parse-only rule; ruling 185; `agentsync.convert.pptx`; amends §16.221 C781 and §16.273 C2517).
@@ -45970,6 +45974,35 @@ CA for curl itself, which curl keeps over git's; the `.curlrc` point (C2715) sta
 §16.54's heading, which `test_deploy_pack.py` pins, keeps its words, with a dated line. Test:
 `test_speech.py::test_the_seeds_docstrings_say_a_shell_ca_for_curl_stays_over_gits_c2930` (the behavior under
 both git configs, and the three summaries).
+
+**The family rule moves the Office key, and each family-mismatch stub is read once** (C2925; ruling 196;
+`agentsync.convert`, `agentsync.convert._common`, `agentsync.cycle`; amends §16.278 C2708). Round 44's C2708
+(0d03af89e) changed what `_ooxml_family` tells some packages (a `.potx` whose real Override is spelled
+`presentation&#109;l` beside a Word literal in a comment is a deck now, a Word document before) and moved no
+converter version or option, so the action key (converter, version, options hash, H1) stayed: the verifier's old
+build cached `not-ooxml: a Word document, not a deck (not the type its name says)` under its key, and the
+new build served it from the cache; a published stub was never read again, since the Office converters'
+`outdated` rules read no stub by its reason, and a re-read under the old key would get the cached stub back
+(`put` is write-once). `convert.effective_options_hash` (so `_identity`) adds `family_parse: 1` for every
+`OOXML_SUFFIXES` name, the precedent of `empty_screen`, with no `_EMITTER_VERSION` moving (the page format did not
+change, and pptx's would move only the decks while the rule serves pandoc's `.docx`, xlsx and the `.vsdx` diagram
+too); the cost is a cache miss per Office file at the upgrade, and no page is read again for the key alone
+(C2270). `cycle._Cycle._reread_family_stubs` reads, once, each Office row of a local or inbox source whose stored
+reason fully matches `_common.FAMILY_MISMATCH_RE` (`not-ooxml: <noun>, not <noun> (not the type its name says)`),
+never `NOT_OOXML_REASON`, the not-a-ZIP answer the family rule does not decide: only a row listed this pass, not
+dataless, in scope, not queued and not withheld, fetched from this Mac with a budget of no bytes, converted as a
+re-read under the new key (a page, or the stub it has with its key moved and nothing committed), and counted in
+`read again`. Each row read is marked `family-parse-v1:<source>:<stable id>` whatever the answer; a row whose
+converter cannot run (pandoc missing) is left unmarked for a cycle where it can. Once no such row is left unmarked
+the token `family-parse-v1:<source>` is set and the marks go, so the read is never repeated. The pass runs right
+after the zero-byte pass, inside the same catch, and both read their rows through one loop, `_read_rows_once`,
+which holds the C2703 snapshot and C2923's `_row_books`, so the twins cannot drift. Tests:
+`test_convert_family.py::test_an_older_family_answer_in_the_cache_is_not_served_under_the_new_key_c2925` (the
+older stub cached under the older key, the new conversion a page not from the cache, and `family_parse` in every
+Office suffix's options hash and no other), `test_convert_family.py::test_a_published_family_mismatch_stub_is_read_once_under_the_new_key_c2925`
+(the decoy template a page, a Word document named `.pptx` keeping its stub with no commit, a no-ZIP `.docx` never
+read, `read again 2`, the token set, nothing read on the next sync) and the C2703 shape test, which now reads the
+shared loop.
 
 ### 16.284 Round 45: the prompt goes to v42 (a none, a config path and an unread inbox state as setup gives them), the gate's part ceiling and CI's limit, dated lines, and the guides (2026-11-23, wave B13 round 45 lane D)
 
