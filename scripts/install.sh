@@ -6134,6 +6134,38 @@ friction_step1_stated() {
 			}
 		}' "$f" 2>/dev/null || true
 }
+# The step of the friction log's latest attempt's error that compute_outcome's no-install-run branch scores: the
+# last error line with no later `end` line of the same step before the attempt's first `end | finished` line
+# (setup_report._unresolved_error), else its last error line; nothing when it has none. The attempt boundaries are
+# friction_step1_stated's (B13 round 45 ruling 193, C2824).
+friction_error_step() {
+	local f
+	f="$(friction_file)"
+	[ -f "$f" ] || return 0
+	LC_ALL=C awk -v gap="$NEW_SESSION_GAP" -v s1="$STEP1_ERROR_RE" "$FRICTION_AWK"'
+		BEGIN { stamp = "^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z" }
+		function fresh() { n = 0; cut = 0; ended = "" }
+		{ q = track($0) }
+		NH { NH = 0; fresh() }
+		/^Attempt:/ { fresh(); next }
+		q { fresh() }
+		ended != "" && $0 ~ s1 && secs($0) - secs(ended) > gap { fresh(); restate($0) }
+		$0 !~ (stamp " [|]") { next }
+		/\| end \| finished[[:space:]]*$/ { if (ended == "") cut = n; ended = substr($0, 1, 20); next }
+		$0 ~ (stamp " [|] step [0-9]+ [|] [a-z]+ ") {
+			k = $0; sub(stamp " [|] step ", "", k); st[++n] = k + 0
+			sub(/^[0-9]+ [|] /, "", k); sub(/ .*/, "", k); kd[n] = k
+		}
+		END {
+			m = ended != "" ? cut : n
+			for (i = m; i > 0; i--) {
+				if (kd[i] != "error") continue
+				for (j = i + 1; j <= m; j++) if (kd[j] == "end" && st[j] == st[i]) break
+				if (j > m) { print st[i]; exit }
+			}
+			for (i = n; i > 0; i--) if (kd[i] == "error") { print st[i]; exit }
+		}' "$f" 2>/dev/null || true
+}
 # Whether the friction log's latest attempt holds a timed "<UTC> | step N | ..." line, with parse_friction's
 # attempt boundaries: the unbroken run of step 1 lines after an end line goes to the next Attempt: header (B13
 # round 13 O24), which friction_step1_stated does not carry. Its Attempt:, Prompt: and Agent: lines and its
@@ -6510,6 +6542,18 @@ fallback_sync_stop_line() { # RC FILE OWNER KIND[/LOST] [F<n>]
 # reason and not a gap. OUTCOME_LINE_HEAD is how write_fallback_report finds the computed line again, after
 # redaction, for the link.
 OUTCOME_LINE_HEAD="- outcome: failed at step 1 (computed: no install run; step 1 logged an error) · prompt: v"
+# The same head for step N: compute_outcome's no-install-run branch scores any step's error (B13 round 45 ruling
+# 193, C2824), and the issue form's option for it, as setup_report.Outcome.form_label gives it (v7's layout and
+# later: step 3 is the sync loop; a step past 4 is the form's 4).
+outcome_head() { printf '%s' "- outcome: failed at step $1 (computed: no install run; step $1 logged an error) · prompt: v"; } # STEP
+failed_step_label() { # STEP
+	case "$1" in
+	1) printf 'Failed at step 1 (preflight)' ;;
+	2) printf 'Failed at step 2 (install and start)' ;;
+	3) printf 'Failed at step 3 (sync loop and report)' ;;
+	*) printf 'Failed at step 4 (finish)' ;;
+	esac
+}
 # Where macOS keeps throwaway files: paths.TEMPORARY_ROOTS (a test keeps them equal).
 TEMPORARY_ROOTS="/tmp /private/tmp /var/folders /private/var/folders"
 # The run type the agentsync report computes when no install run says launchd=simulated (compute_run_type, by
@@ -6575,9 +6619,22 @@ run_type_why() {
 # friction log does not hold (B13 round 9 K8); the link fills that run type, and the latest attempt's Prompt
 # version and Agent where it states them, as _issue_link does with or without an outcome (B13 round 10 L2).
 fallback_outcome_line() {
-	local stated="" n note="" agent hdr=0 choose why bracket stops k paired persons=""
+	local stated="" n note="" agent hdr=0 choose why bracket stops k paired persons="" es="" said=""
 	! attempt_ran_no_install || stated="$(friction_step1_stated)"
-	if [ -n "$stated" ]; then
+	# no stated step 1 error and no install run: the step of the attempt's unresolved error, else its last error,
+	# as compute_outcome's no-install-run branch scores it, with the attempt's Prompt: (v7 or later) and Agent:
+	# headers; the refusal of a relative AGENTSYNC_CONFIG still writes nothing (B13 round 45 ruling 193, C2824)
+	if [ -z "$stated" ] && attempt_ran_no_install; then
+		es="$(friction_error_step)"
+		said="$(friction_latest_said <"$(friction_file)" 2>/dev/null || true)"
+		n="$(prompt_number "${said%%$'\t'*}")"
+		case "$n" in '' | *[!0-9]*) es="" ;; *) [ "$n" -ge 7 ] || es="" ;; esac
+	fi
+	if [ -n "$es" ]; then
+		agent="${said#*$'\t'}"
+		[ "$said" != "$agent" ] || agent=""
+		say "$(outcome_head "$es")$n · run: $(run_type_label) (computed: $(run_type_why))${agent:+ · agent: $agent}"
+	elif [ -n "$stated" ]; then
 		n="${stated%%$'\t'*}"
 		agent="${stated#*$'\t'}"
 		case "${agent#*$'\t'}" in
@@ -7675,12 +7732,18 @@ prompt_number() {
 LINK=""
 LINK_FIELDS=""
 fallback_issue_link() { # REDACTED-BODY-FILE
-	local line n agent run said fail="Failed at step 1 (preflight)"
+	local line n agent run said fail step
 	LINK="$ISSUE_URL"
 	LINK_FIELDS=""
 	run="$(run_type_label)"
-	line="$(LC_ALL=C awk -v p="$OUTCOME_LINE_HEAD" '$0 == "## Agent friction log" { exit } index($0, p) == 1 { print; exit }' "$1" 2>/dev/null || true)"
-	n="${line#"$OUTCOME_LINE_HEAD"}"
+	# the computed line of any step (C2824), its link filling that step's Outcome option
+	line="$(LC_ALL=C awk '$0 == "## Agent friction log" { exit }
+		/^- outcome: failed at step [0-9]+ \(computed: no install run; step [0-9]+ logged an error\) · prompt: v/ { print; exit }' "$1" 2>/dev/null || true)"
+	step="${line#- outcome: failed at step }"
+	step="${step%% *}"
+	case "$step" in '' | *[!0-9]*) step=1 ;; esac
+	fail="$(failed_step_label "$step")"
+	n="${line#"$(outcome_head "$step")"}"
 	n="${n%% *}"
 	case "$n" in
 	"" | *[!0-9]*)

@@ -7763,11 +7763,25 @@ def test_the_shell_report_computes_no_other_outcome(
     """H24's rule is narrow on purpose: a wider copy of ``compute_outcome`` in shell would drift from it.
     Every other attempt has a Summary line that says no outcome is computed, and a link with no outcome that
     fills the run type and what the latest attempt states (B13 round 10 L2: it was bare), named on the Send
-    it line."""
+    it line. B13 round 45 ruling 193, C2824: with no install run, an attempt whose Prompt (v7 or later) is
+    known and that logged an error is computed as compute_outcome's no-install-run branch computes it, the
+    step of its last unresolved error: the two rows whose stated line another step's line follows or
+    precedes."""
     for step, kind, what in logged:
         assert install_sh(env, "--log", step, kind, what, "-").returncode == 0
     assert install_sh(env, "--report-only").returncode == 0
     text = report_path(env).read_text()
+    if len(logged) == 2:
+        step = [s for s, k, _ in logged if k == "error"][-1]
+        assert _summary(text)[2] == (
+            f"- outcome: failed at step {step} (computed: no install run; step {step} logged an error) "
+            "· prompt: v15 · run: Sandbox (computed: HOME is under a temporary folder) · agent: Contoso Agent"
+        ), _summary(text)
+        label = setup_report.Outcome("failed", int(step), (), 15).form_label
+        assert label and f"outcome={urllib.parse.quote(label)}" in text.splitlines()[-1], text.splitlines()[
+            -1
+        ]
+        return
     assert _summary(text)[2] == (NOT_COMPUTED if logged else NO_STEP_LINE.format(""))  # B13 round 11 M15
     link = text.splitlines()[-1]
     assert link == _uncomputed_link(env, text) and "outcome=" not in link
@@ -8019,15 +8033,13 @@ def test_a_step_3_sync_stop_with_no_end_line_is_bounded_by_the_attempts_last_wri
         assert install_sh(env, "--report-only").returncode == 0
         text = report_path(env).read_text()
         outcome = _summary(text)[2]
-        assert outcome.startswith(NOT_COMPUTED.split("; the link fills", maxsplit=1)[0]), outcome
+        if want:  # B13 round 45 ruling 193, C2824: no install run, and the step 3 error is the unresolved one
+            assert outcome.startswith(
+                "- outcome: failed at step 3 (computed: no install run; step 3 logged an error) · prompt: v32"
+            ), outcome
         if want == 2:
-            assert "; agentsync logged 2 step-3 sync stops in sync-stops.log beside install.log" in outcome
             assert "agentsync's heartbeat file" in text and "agentsync's lock file" in text, text
-        elif want:
-            assert (
-                "; agentsync logged 1 step-3 sync stop in sync-stops.log beside install.log (the Installer "
-                "section lists it); the link fills "
-            ) in outcome, outcome  # round 25 ruling 11: "the sync exited 1" names no chmod, so no pair
+        elif want:  # round 25 ruling 11: "the sync exited 1" names no chmod, so no pair
             assert "exited 1 on agentsync's heartbeat file" in text, text
             assert "agentsync's lock file" not in text, text
         else:
@@ -9100,10 +9112,19 @@ def test_the_shell_reports_link_fills_the_latest_attempts_version_and_agent(
     fields = urllib.parse.parse_qs(urllib.parse.urlsplit(link).query)
     assert fields.get("prompt_version") == ([prompt] if prompt else None)
     assert fields.get("agent") == ([agent] if agent else None)
-    assert "outcome" not in fields and fields["run_type"] == ["Sandbox"]
-    assert fields["title"] == [f"Setup report: Sandbox{f' · {prompt}' if prompt else ''}"]
-    assert link == _uncomputed_link(env, text), "the agentsync report's reading of the same log"
+    # B13 round 45 ruling 193, C2824: with no install run, an attempt stating a Prompt (v7 or later) whose
+    # last unresolved error is step 2's computes failed at step 2, as compute_outcome does; with no Prompt,
+    # none
+    label = "Failed at step 2 (install and start)" if prompt else None
+    assert fields.get("outcome") == ([label] if label else None) and fields["run_type"] == ["Sandbox"], fields
+    assert fields["title"] == ["Setup report: " + " · ".join(x for x in (label, "Sandbox", prompt) if x)]
+    if label is None:
+        assert link == _uncomputed_link(env, text), "the agentsync report's reading of the same log"
+    else:  # the agentsync report's link for the same outcome, field by field
+        py = setup_report.build_issue_url(outcome=label, run_type="Sandbox", prompt=prompt, agent=agent)
+        assert fields == urllib.parse.parse_qs(urllib.parse.urlsplit(py).query), py
     want = "Run type, Prompt version, and Agent tool and model fields" if prompt else "Run type field"
+    want = f"Outcome, {want}" if label else want
     assert f'opens a new "Setup report" issue with the {want} filled in (nothing else); ' in text
 
 
@@ -27710,3 +27731,61 @@ def test_the_report_still_runs_over_a_config_path_step_2_refuses_c2816(
     section = report_path(env).read_text().split("\n## Configuration\n\n", 1)[1].split("\n\n", 1)[0]
     shown = "~/<path>" if value != "~" else "~"  # a config path but the default is cut (C2238)
     assert section.splitlines()[0] == f"- config: {shown} (missing)", section
+
+
+@pytest.mark.parametrize(
+    ("rows", "step"),
+    [
+        (["step 2 | error | install.sh stopped: AGENTSYNC_CONFIG is a relative path"], 2),
+        # the step 2 error has its end line, so the step 3 error before it is the unresolved one
+        (
+            ["step 3 | error | the sync did not end", "step 2 | error | a stub error", "step 2 | end | done"],
+            3,
+        ),
+    ],
+)
+def test_both_reports_compute_a_failed_step_with_no_install_run_c2824(
+    env: dict[str, str], rows: list[str], step: int
+) -> None:
+    """B13 round 45 ruling 193, C2824 (makes worse True for an install.log line from the refusal): with no
+    install run, the shell report computed an outcome only from a stated step 1 error, so step 2's refused
+    AGENTSYNC_CONFIG (which writes nothing) left it `not computed` where the agentsync report said `failed at
+    step 2`. It computes the step of the attempt's last unresolved error, as compute_outcome's no-install-run
+    branch does, and its link fills that step's Outcome option; both reports read the same files alike."""
+    (_cloud(env) / "OneDrive-Contoso" / "FY26 Projects").mkdir(parents=True)
+    assert install_sh(env, "--list-folders").returncode == 0, "install.log holds a --list-folders run alone"
+    lines = "".join(f"2026-11-23T10:00:{n:02d}Z | {r} | -\n" for n, r in enumerate(rows, 1))
+    friction_path(env).parent.mkdir(parents=True, exist_ok=True)
+    friction_path(env).write_text(
+        "Attempt: 2026-11-23T10:00:00Z\nPrompt: v41\nAgent: Contoso Agent\n"
+        f"{lines}2026-11-23T10:00:59Z | end | finished\n",
+        encoding="utf-8",
+    )
+    before = install_log(env)
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0 and "shell fallback" in cp.stdout, cp.stdout + cp.stderr
+    shell = report_path(env).read_text(encoding="utf-8")
+    head = f"- outcome: failed at step {step} (computed: no install run; step {step} logged an error)"
+    want = f"{head} · prompt: v41"
+    [line] = [ln for ln in shell.splitlines() if ln.startswith("- outcome: ")]
+    assert line.startswith(want), line
+    label = setup_report.Outcome("failed", step, (), 41).form_label
+    assert label and f"outcome={urllib.parse.quote(label)}" in shell, shell[-600:]
+    assert [ln for ln in install_log(env) if " step=" in ln and "list-folders" not in ln] == [
+        ln for ln in before if " step=" in ln and "list-folders" not in ln
+    ]
+    out = Path(env["HOME"]) / "agentsync-report.md"
+    py = subprocess.run(
+        [sys.executable, "-m", "agentsync", "setup-report", "--out", str(out)],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+        env={**env, "AGENTSYNC_OCR": "0", "AGENTSYNC_TM_EXCLUDE": "0"},
+        stdin=subprocess.DEVNULL,
+    )
+    assert py.returncode == 0, py.stdout + py.stderr
+    [pyline] = [ln for ln in out.read_text(encoding="utf-8").splitlines() if "outcome:" in ln][:1]
+    assert f"failed at step {step}" in pyline and f"no install run; step {step} logged an error" in pyline, (
+        pyline
+    )
