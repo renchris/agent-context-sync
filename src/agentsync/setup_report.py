@@ -405,6 +405,30 @@ EARLIER_BRING_BACK = (
 fixed line for one line, amending C1112 (B13 round 44 C2618): the earlier run's path beside this run's own
 report read as the file to bring back, where this run's NEXT names it, if any. The ``bring back: `` head is
 kept, so install.sh's stopped-copy rewrite still drops it and counts it as left out."""
+EARLIER_CONFIG = "config: (an earlier run's, not shown: the Configuration section names this report's)"
+"""An earlier run's ``config: <path>`` or ``config: <path> exists`` line as the Installer section's copy of
+install.out shows it, one fixed line for one line, only when its path is not the report's own config (B13
+round 45 C2823, the twin of C2618's bring back: rule): an earlier run's file beside the Configuration
+section's read as this run's. The ``config: `` head is kept; a line naming the report's own config, and the
+ticker's ``config: reading and updating ...`` lines, stay as written."""
+
+
+def _earlier_config(line: str, config_path: Path | None) -> bool:
+    """Whether install.out's ``line`` is a ``config:`` line naming another file than ``config_path``
+    (:data:`EARLIER_CONFIG`, B13 round 45 C2823)."""
+    if config_path is None or not line.startswith("config: ") or line.startswith("config: reading and "):
+        return False
+    written = line[len("config: ") :].removesuffix(" exists")
+    if not written.strip():
+        return False
+    named, own = expand(written), expand(config_path)
+    if named == own:
+        return False
+    with contextlib.suppress(OSError, RuntimeError):
+        return named.resolve() != own.resolve()
+    return True
+
+
 ISSUE_TITLE = "Setup report: "
 """The issue form's ``title:`` (the report's link appends the outcome, run type and prompt version)."""
 ISSUE_FIELDS = {
@@ -8369,12 +8393,15 @@ def _installer_output(r: _Run) -> list[str]:
         elif read_first is not None:
             r.facts.first_sync_first_read = (converted, again, int(read_first.group(1)))
     # B13 round 36 C1112: an earlier run's issue link is one fixed line with no URL, so the report's own,
-    # its last line, is the one link it holds; B13 round 44 C2618: its bring-back line one fixed line too
+    # its last line, is the one link it holds; B13 round 44 C2618: its bring-back line one fixed line too;
+    # B13 round 45 C2823: and a config: line naming another file than the Configuration section's
     shown = [
         EARLIER_LINK
         if ln.lstrip().startswith(ISSUE_LINK_LABEL)
         else EARLIER_BRING_BACK
         if ln.startswith("bring back: ")
+        else EARLIER_CONFIG
+        if _earlier_config(ln, r.config_path)
         else _labelled(ln, r.install_runs)
         for ln in lines[-INSTALL_OUT_TAIL:]
     ]

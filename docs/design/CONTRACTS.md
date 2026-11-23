@@ -46000,6 +46000,14 @@ its docstring described a live rule. It is deleted, its ruling 158 rationale (C2
 and the docstring naming the check itself; install.sh's stale comment on the late `--source-local` numbering is lane
 RB's (§16.281). Test: `test_no_dead_quoted_head_regex_is_left_c2845_c2916`.
 
+**An earlier run's `config:` line is one fixed line** (C2823; the twin of §16.275 C2618's `bring back:` rule). The
+Installer tail showed an earlier run's `config: <path> exists` beside the Configuration section's different config,
+read as this run's. `_installer_output` replaces a tail line `config: <path>` or `config: <path> exists` whose path,
+`~` expanded, is not the report's own config (resolved too) with `EARLIER_CONFIG`, `config: (an earlier run's, not
+shown: the Configuration section names this report's)`, one line for one, the `config: ` head kept; a line naming
+the report's own config, which is what the agent saw, and the ticker's `config: reading and updating ...` lines stay
+as written. Test: `test_an_earlier_runs_config_line_is_one_fixed_line_c2823`.
+
 ### 16.281 Round 45: the installer: the shell halves of rulings 188 and 189, the person's none honored at every NEXT, an inbox-state read that did not finish said so, and C2060 waits on the operator (2026-11-23, wave B13 round 45 lane RB)
 
 Round 45's lane RB items (`docs/plans/bring-back-ocr.md`, "B13 round 45"; specs `round45/items/C<n>.md`, the

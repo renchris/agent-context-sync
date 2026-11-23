@@ -29573,6 +29573,44 @@ def test_a_non_ascii_digit_in_install_log_is_no_number_c2677(fake_mac: dict[str,
     assert setup_report._reread_since(r, parsed) == [], "the stopped sync's own run, its seconds read as 0"
 
 
+def test_an_earlier_runs_config_line_is_one_fixed_line_c2823(tmp_path: Path) -> None:
+    """B13 round 45 C2823 (the twin of C2618's bring back: rule): the Installer tail showed an earlier run's
+    `config: <path> exists` beside this report's own config, read as this run's. A `config:` line naming
+    another file reads EARLIER_CONFIG, one line for one, its neighbors kept; one naming the report's own
+    config and the ticker's `config: reading and updating ...` line stay as written."""
+    home = Path.home()
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text(default_config_text(), encoding="utf-8")
+    setup = home / "agent-context" / "setup"
+    setup.mkdir(parents=True, exist_ok=True)
+    tail = [
+        "before the earlier config",
+        f"config: {home}/Old Place/sources.toml exists",
+        "config: ~/agent-context/sources.toml exists",
+        f"config: {cfg}",
+        f"config: reading and updating {cfg}, still running, 5s",
+        "after them",
+    ]
+    (setup / "install.out").write_text("".join(f"{ln}\n" for ln in tail), encoding="utf-8")
+    (setup / "install.log").write_text(
+        f"2026-11-23T10:00:00Z run=20261123T100000Z-1 start install.sh compat=41 source={home}/src args=\n"
+        "2026-11-23T10:00:09Z run=20261123T100000Z-1 end rc=0\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "r.md"
+    assert cli.main(["setup-report", "--out", str(out)]) == 0
+    installer = section(out.read_text(encoding="utf-8"), "Installer").splitlines()
+    assert "Old Place" not in "\n".join(installer), installer
+    first = next(i for i, ln in enumerate(installer) if ln.endswith("before the earlier config"))
+    shown = [
+        ln.split("] ", 1)[-1] if ln.startswith("[") else ln for ln in installer[first : first + len(tail)]
+    ]
+    assert shown[0].endswith("before the earlier config") and shown[-1].endswith("after them"), shown
+    assert shown[1].endswith(setup_report.EARLIER_CONFIG), shown
+    assert [ln.endswith(setup_report.EARLIER_CONFIG) for ln in shown[2:5]] == [False, False, False], shown
+
+
 def test_no_dead_quoted_head_regex_is_left_c2845_c2916() -> None:
     """B13 round 45 C2845 with C2916: since C2666 the head-after-a-quote case is `_quoted_value_end`'s inline
     check, so `_QUOTED_HEAD_RE` matched nothing any code ran and its docstring described a live rule. It is
