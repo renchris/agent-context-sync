@@ -4815,6 +4815,33 @@ def test_the_guides_inbox_rows_name_the_shells_not_checked_line_and_not_read_c28
     ) in page
 
 
+def test_the_guides_loop_paragraph_and_section_4_read_a_none_as_the_report_does_c2848_c2863() -> None:
+    """B13 round 45 C2848 with C2863 (ruling 192, lane RA's words): the Loop-line paragraph said two changes
+    were the report's own and left out the no-folder NEXT it puts in place of status's; it names three, the
+    none's, the first run's and the default no-folder words, each held to setup_report's constant. Section 4
+    says a none is scored only when args= holds --no-folder as a shell word and the run ended rc 0 with no
+    failed step; the field table names the Stopped option; line 102 says where the word ends (C2939)."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    page = _page("docs/deploy/setup-feedback.md")
+    assert "Three more changes are the report's own, each only on its condition." in page
+    assert "Two more changes are the report's own" not in page
+    for name in ("NO_FOLDER_CHOSEN_NEXT", "NO_FOLDER_FIRST_NEXT", "NO_FOLDER_NEXT", "STOPPED_FORM_OPTION"):
+        assert f"`{name}`" in page or f"`setup_report.{name}`" in page, name
+        assert hasattr(setup_report, name), name
+    chose = setup_report.NO_FOLDER_CHOSEN_NEXT
+    assert chose.startswith("the person chose no folder, so this Mac syncs none of their folders: go on to")
+    assert f"`{chose.split(' go on to', 1)[0]} go on to the report;" in page
+    assert setup_report.STOPPED_FORM_OPTION == "Stopped at step 1 (preflight)"
+    assert (
+        "holds --no-folder as a shell word of args= (v41's step 2 after the person answered the question"
+        " which folders to sync with none;"
+    ) in page
+    assert "and ended rc 0 with no failed step and no blocking status note" in page
+    assert "`Worked with help`, `Stopped at step 1 (preflight)` (every stopped outcome with a step" in page
+    assert "the word ends at a space or tab, as bash splits it, never at another blank" in page
+
+
 def test_the_guide_and_contracts_quote_the_reinstall_tickers_words_c2423() -> None:
     """B13 round 43 C2423 (lane RB's 88a60a073): the bare-lock reinstall ticker reads `reinstalling once the
     lock is free`, and the guide and two contracts quoted the old `reinstalling after the lock is free`; RB
@@ -12764,14 +12791,16 @@ def test_the_guide_names_the_late_listing_and_the_local_work_line() -> None:
     assert "format-patch origin/main..<branch> -o" not in page
     assert "Documents" in setup_report._GENERIC_FOLDERS
     # B13 round 44 C2669 (lane RB's 8171f2056): the shell fallback report lists CloudStorage too; C2668
-    # (lane RB's 75b32155b, lane RA's cbe601105): both reports register install.log's --source-local parts
+    # (lane RB's 75b32155b, lane RA's cbe601105): both reports register install.log's --source-local parts;
+    # B13 round 45 C2939 (ruling 189): the word ends at a space or tab only
     assert (
         "each folder the CloudStorage listing showed (the agentsync report's, and since B13 round 44 C2669 "
         "the shell fallback report's too, which lists `~/Library/CloudStorage` as the agentsync report does, "
         "depth 2 and 3 within 3 seconds, numbered in the same order, a listing that did not finish with no "
         "printed list making it Private only), each part below the provider of every `--source-local` word "
-        "install.log holds under `~/Library/CloudStorage` (both reports, since B13 round 44 C2668), and each "
-        "folder step 1's "
+        "install.log holds under `~/Library/CloudStorage` (both reports, since B13 round 44 C2668; the word "
+        "ends at a space or tab, as bash splits it, never at another blank, since B13 round 45 C2939), and "
+        "each folder step 1's "
         "`--list-folders` runs printed into install.out (both reports), except a generic name such as "
         "`Documents`" in page
     )

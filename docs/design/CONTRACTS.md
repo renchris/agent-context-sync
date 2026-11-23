@@ -46733,6 +46733,18 @@ bump", false for a home that ran 7 before its loop existed, which lane B's rulin
 `tests/test_deploy_pack.py::test_rulings_150_and_183_keep_their_words_and_dated_lines_name_round_45s_changes_c2882_c2851`
 (held to the xfail's reason and to `publish.STUB_RENDER`).
 
+**The guide reads a none as the report does** (C2848, C2863; ruling 192; `docs/deploy/setup-feedback.md`, lane RA's
+words). The Loop-line paragraph said two changes were the report's own, while since round 44's C2601 the report puts
+install.sh's no-folder NEXT in place of status's; it now names three, the first being that one in its three forms
+(`setup_report.NO_FOLDER_CHOSEN_NEXT` for a none that ended clean, `NO_FOLDER_FIRST_NEXT` for the no-folder first run,
+`NO_FOLDER_NEXT` otherwise), read from the attempt's latest install run past list runs with no Doctor [FAIL]. Section
+4's ruling-178 passage says a none is scored only when args= holds --no-folder as a shell word and the run ended rc 0
+with no failed step and no blocking status note, any other `--no-folder` run by its own failure words; the field
+table names the form's `Stopped at step 1 (preflight)` option; line 102 says a logged `--source-local` word ends at a
+space or tab (C2939). Test: `tests/test_deploy_pack.py`
+`::test_the_guides_loop_paragraph_and_section_4_read_a_none_as_the_report_does_c2848_c2863` (held to setup_report's
+constants).
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units
