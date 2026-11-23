@@ -5831,6 +5831,7 @@ class _Cycle:
             if not row.is_dir
             and row.name.lower().endswith(content_policy.OOXML_SUFFIXES)
             and convert_common.FAMILY_MISMATCH_RE.fullmatch(row.state_reason or "") is not None
+            and not self._under_family_key(row)
         ]
         rows = [
             r
@@ -5846,6 +5847,22 @@ class _Cycle:
             with self.manifest.savepoint():
                 self.manifest.set_meta(key, "done")
                 self.manifest.delete_meta_prefix(key + ":")
+
+    def _under_family_key(self, row: ItemRow) -> bool:
+        """True when ``row``'s stub was made under this build's options for its name, ``family_parse``
+        included (``convert.effective_options_hash``): the family rule that made it is today's, so
+        :meth:`_reread_family_stubs` has nothing to read again (a home whose stubs this build made reads
+        none). False when its converter's options cannot be read now, so the row is read (B13 round 45
+        C2925)."""
+        conv = self.registry.for_name(row.name)
+        if conv is None:
+            return False
+        try:
+            current = effective_options_hash(conv, row.name)
+        except Exception:
+            return False
+        outs = [o for o in self.manifest.outputs_for(row.source_id, row.stable_id) if o.options_hash]
+        return bool(outs) and all(o.options_hash == current for o in outs)
 
     def _family_reread(self, src: SourceConfig, arm: LocalArm, row: ItemRow, acc: _SourceAcc) -> None:
         """One row of :meth:`_reread_family_stubs`: marked read, fetched from this Mac with no download, and

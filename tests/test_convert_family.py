@@ -936,8 +936,11 @@ def test_only_an_office_name_or_msg_carries_the_empty_screen_option_c1450(name: 
     conv = Registry.default(ConvertConfig()).for_name(name)
     assert conv is not None
     base = {**conv.options(), "input_suffix": convert_pkg._suffix(name)}
-    want = options_hash({**base, "empty_screen": 1} if screened else base)
-    assert convert_pkg._identity(conv, name) == (conv.version(), want)
+    if screened:
+        base["empty_screen"] = 1
+    if convert_pkg._suffix(name) in policy_mod.OOXML_SUFFIXES:  # B13 round 45 C2925: the family rule
+        base["family_parse"] = 1
+    assert convert_pkg._identity(conv, name) == (conv.version(), options_hash(base))
 
 
 @pytest.mark.parametrize(

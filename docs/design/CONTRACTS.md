@@ -45993,7 +45993,10 @@ change, and pptx's would move only the decks while the rule serves pandoc's `.do
 too); the cost is a cache miss per Office file at the upgrade, and no page is read again for the key alone
 (C2270). `cycle._Cycle._reread_family_stubs` reads, once, each Office row of a local or inbox source whose stored
 reason fully matches `_common.FAMILY_MISMATCH_RE` (`not-ooxml: <noun>, not <noun> (not the type its name says)`),
-never `NOT_OOXML_REASON`, the not-a-ZIP answer the family rule does not decide: only a row listed this pass, not
+never `NOT_OOXML_REASON`, the not-a-ZIP answer the family rule does not decide, and never a stub whose output rows
+already carry this build's options hash for its name (`_under_family_key`: today's rule made it, so a home whose
+stubs this build made reads none, and C1033's Word package named `.vsdx` is still read once over three syncs):
+only a row listed this pass, not
 dataless, in scope, not queued and not withheld, fetched from this Mac with a budget of no bytes, converted as a
 re-read under the new key (a page, or the stub it has with its key moved and nothing committed), and counted in
 `read again`. Each row read is marked `family-parse-v1:<source>:<stable id>` whatever the answer; a row whose
