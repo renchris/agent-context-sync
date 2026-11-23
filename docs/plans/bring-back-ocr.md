@@ -3159,6 +3159,10 @@ six converters' keys, C2296's picture piece is keyed on `_PIECE_REVISION` and C2
 (ruling 155 chose C2296's design), and C2268's full path keeps its flat 4,096-byte reserve (lane E); ruling 156's "K62
 row" is K63, since K62 is v37's, C2317's final inventory still reads the config file that step 2's or status's `config:`
 line names, and C2256's optional code is not built (lane D).
+(dated 2026-11-22) Ruling 147's C2230 with C2284 (`84244e49`) was ordered to land alone first. Lane RB's first land
+carried it with C2317's installer half and C2313 (gate verdict 2026-11-20T20:15:24Z, rc=1). That land went red on an
+install.sh comment that test_setup_report.py pins, so the item rode the joint run `c2560376..9523d015` as lane RB's
+first commit (lane note lanes/r42-RB.md).
 
 For later lanes and the rehearsal, from each lane note's closing section: status prints `inbox: <path>` as its third
 line, after `config:` and `docs repo:`, and setup's config step prints `docs repo:` and `inbox:` after `folders:`;
@@ -3192,6 +3196,10 @@ request ran out of retries. A successor, E2, took its branch tip and its uncommi
 items, after three land runs that stopped with nothing pushed (a rebase conflict with lane B's C2293 in cycle.py, 7 red
 tests from moved pins and an import doctor defers, and GitHub's API rate limit while reading trunk's CI). Lane D's CI
 job on `1433dd16` ran 64:51, and its land gate's rest part 56:04 under load.
+
+CORRECTED (2026-11-22): 05:46Z is `87ec6fee`'s commit time. It landed at about 07:05Z (its push ci `44878616091` was
+created at 07:05:43Z; its land gate verdict was at 06:43:08Z in gate-verdicts.log), so launch to last land took about 16
+hours (16 hours 16 minutes), on the basis round 43's corrected line uses.
 
 Round 43: the round 42 workflow (`round42/round42-workflow.js` through `round43/tools/edit.py` and `edit-xvendor.py`,
 codex-only: the allow rule for `~/.claude/scripts/agy-review.sh` is the operator's) with the harvest list in
@@ -3374,6 +3382,10 @@ fifth found in its fix pass. The machine's test-slot queue ran hours deep, so la
 were cut and each of its lands' full `scripts/gate.sh` was the gate of record; lane D's three land gates took 3,155,
 3,362 and 3,053 seconds.
 
+CORRECTED (2026-11-22): 04:19Z is `5affa1ab`'s commit time. It landed at about 05:24Z (its push ci `44989244934` was
+created at 05:24:04Z, after trunk's ci `44984122069` ended at 05:23:07Z; its land gate verdict was at 05:11:44Z in
+gate-verdicts.log), so launch to last land took about 19 hours (18 hours 56 minutes).
+
 Round 44: the round 43 workflow (`round43/round43-workflow.js` through `round44/tools/edit.py` and `edit-xvendor.py`,
 codex-only: the allow rule for `~/.claude/scripts/agy-review.sh` is the operator's) with the harvest list in
 `round44/tools/harvest-lead.txt`, on this section's landed tip passed as its full 40-hex sha, BASE `7acb0255`, ids C2601
@@ -3485,6 +3497,151 @@ reason) and call 21 (split: C2480's test pin in `7acb0255`, C2465, C2486 and C24
 `89a8c7bd`), and call 16 was not built as drafted. The packet now carries that evidence. The no-fetch rule
 (`docs/lanes/COMMON.md` "No fetch", round 43 C2486) reached the lanes only through lane D's commit: lanes B and E each
 fetched 4 times and lane RB 9 times during their lands; round 45's lane briefs point at the rule.
+
+### B13 round 44 landed (2026-11-23)
+
+All five lanes landed, and the prompt is now v41 (`9acf0c54`, lane D's commit for C2727 with C2656 and C2717, C2718 with
+C2731 and C2657, C2608, C2604, C2659, C2619 with C2634 and C2664, C2660, C2606's sentence and C2658's `--no-folder`
+words, ruling 187). Notes `lanes/r44-<lane>.md`, lead notes `round29/lead-notes.md`. Of the 118 confirmed items, 97 are
+built on trunk: the triage gave the lanes 94 (RA 18, RB 15, B 22, E 16, D 23), the lead's round-start commit 4 (C2681
+with C2615, C2620 and C2625, moved from lane D) and the lead 20 (lane L), and the count is the 118 less the 20 lane L
+items, which went into claude-infrastructure (C2622), round 45's kit and brief, the lead's log and this record, not into
+shipped files, less C2667 (lane RB's, unbuilt), so 118 - 20 - 1 = 97. The lead's `d6b9f61f` carries rulings 171 to 187,
+reserves §16.275 to §16.279 and carries C2681 with C2615, C2620 and C2625 (ci `45021177243` success); on it the lanes
+landed 51 commits (`git log --oneline d6b9f61f..e9396380`), each landed tip's CI read back green by the lead
+(`e9396380`'s CI: ci `45161944299` and diagrams `45161944128` success). Lane B's first land came first,
+`e3db6eb0..60cc127e` (2, ci `45034822545` success), then lane E's 16 items, `5f14ff2c` to `28b042fd` (6, ci
+`45046851313` success; no diagrams run, the diff touching none of that workflow's paths), and lane B's second,
+`4d4879f7..13b58a12` (4, ci `45057248480`: attempt 1 red on one test outside lane B's diff, lane RB's
+`test_install_oneshot.py` c1001 shell-reader test, on `printf: write error: Interrupted system call`, and attempt 2, the
+failed job run again, success; diagrams `45057248288` success). Lane D's first land, `d2bc0219` to `3aa3bfda` (9, its 10
+items outside the prompt), followed (ci `45072863193`: attempt 1 cancelled 46 minutes into pytest with no later push to
+main, attempt 2 success; diagrams `45072863075` success). Lanes RA and RB then landed in one `scripts/ship-land.sh` run,
+`fff23433` to `31e2a017` (17: lane RA's Python halves of rulings 171 to 173, `fff23433`, `c81d8beb` and `cbe60110`, then
+lane RB's 14, with the other lanes' shell halves C2666 in `5d949372` and C2668 with C2637 in `75b32155`), so no trunk
+commit carries one half (ci `45115753498` and diagrams `45115753445` success). Lane RA's other 10 followed, `dcc9f2b0`
+to `468d1c94` (ci `45149027306` success), and last lane D's second land, `9acf0c54` to `e9396380` (3: v41, the setup
+guide's rows from lanes RA's and RB's words, and §16.279's last paragraph; prompt v41 at `9acf0c54`, ci `45161944299`
+and diagrams `45161944128` success). Three runs of that land pushed nothing before it (lane D's note names the last
+two): one was killed while it queued for a gate slot, one went red on a ruff E501 in a moved pin (fixed in `26d1578a`),
+and one was SIGKILLed under load.
+
+C2667 (round 43's C2469, round 42's C2263, round 41's C2060) is not built: the operator's class C decision
+`1476293d00a3` was still open at lane RB's start and before its land, so round 41's strict xfail stays, re-pinned by
+lane RB to the off-disk case (its test removes each listed name from disk after step 1's list, so all four rows xfail
+again once both reports list CloudStorage), and §16.276 says so. On 2026-11-23 the lead filed the fresh class C packet
+`c0777e12a523` (ceiling permission) the triage asked for, whose Allow names the port onto trunk with C2667's three
+porting points, and rechecked `1476293d00a3` as superseded by it. No ported diff was written or checked, because writing
+one would reword the install.sh edit the classifier refused (operator ruling: a refused command is never re-run or
+reworded). Of the lead's 20 (lane L), C2622, validate-bash.sh's false `git restore` deny, was built in
+claude-infrastructure (`1feb89f2`, landed and live); the kit and brief items went into round 45's kit (`round45/tools`,
+kit workflow `wf_f4ac98cb-a58`, 1367 checks passing in its own `kit-test.sh`), not into shipped files; C2692 was done at
+20:12Z on 2026-11-22: `r42-e` was removed after its diff was stashed, and the lead ruled `b13/r41-b`, `b13/r41-d-2051`,
+`b13/r41-ra`, `b13/r41-ra-142` and `b13/r37-rb-121-prerebase` superseded, every commit of each having a same-subject
+trunk commit, with a bundle backup (`round44/scratch-lead-c2692/`); C2690 and C2691 are the dated lines in round 42's
+and round 43's landed sections; C2695 and C2691's lead-note corrections are appended to the lead's log; and under C2688
+every close names both operator items. The class B packet `a2c3d66d991d` (the triage's 14 calls, rulings 171 to 187) has
+every course on origin/main, each call built as drafted: call 1 in `606592f2`, `a85536ca` and `9acf0c54`, 2 in
+`e3db6eb0`, 3 in `e3db6eb0` and `9acf0c54`, 4 in `dcc9f2b0`, 5 in `60cc127e` and `13b58a12`, 6 in `5f14ff2c`, 7 in
+`18c138e1`, 8 in `c49bf673`, 9 in the joint run `fff23433` to `31e2a017`, 10 in `83537a52` and `682239c3`, 11 in
+`62ef6451`, `e3db6eb0` and `03dc386b`, 12 in `9acf0c54`, 13 in `fdedf3f0` and 14 in `4d4879f7`. Call 1's course keeps
+ruling 178's one read of C2605's shape, built by lane RA in `a85536ca`: a no-folder first run (config created, first
+sync skipped with no sources, no failed step, end rc 2) followed by a logged step 1 deviation is `stopped at step 1 (no
+folder answer came)`, not the person's choice.
+
+Choices that differ from a spec's words, each with its measured reason in the lane's note: C2666 keeps the one-word read
+for a value that opens with its own quote and for a `%q` value holding an escaped blank, both read whole already; the
+C-locale `$'...'` debug word is registered too (`_dollar_q_forms`), so both reports print `debug: pandoc ~/<path>` for
+it; C2637's both-reports link rows pass without the fix inside pytest's temp tree, where `_HOME_LIKE` already cuts the
+path, so its proof is the in-process test with that rule off; a non-default inbox on the Loop line replaces the whole
+clause (C2631); and an unparseable sources.toml makes the report private only with its own line, the manifest's and the
+purge queue's ids not read for it (C2609; lane RA). C2701's log note is `note=failed inbox=not-added`, since the
+verifier's `note=inbox=not-added` reads as note's value; a provider whose listing is refused is listed as far as find
+reaches, only a timeout unread, as Python's os.scandir does, and names are carried with backslash doubled and newline as
+`\n`, never tr's `\036` (C2669); C2671 needed a TAB-blank variant of the `$'..'` debug words and a flag-c pair cut
+before redact_stream's generic stage; and the land gate's finds were fixed in the landed commits (lane RB). Ruling 181's
+words replaced C2603's and C2630's finder fixes, the move following `; ` after NOTHING_TO_DRAFT, and C2719's per-state
+suggestions are not built; ruling 180 put C2636's guard in `config.inbox_state`, not `cli._status_lines`; round 43's
+not-built reason for C2672 was wrong, and §16.272 has a dated line saying so (`cycle._content_commit_at`); C2704's flag
+column is read through `_has_column`, so a read-only open of a manifest no read-write open has given the column reads
+NULL and derives the flag; and the review pass (`13b58a12`) found two twins the specs missed, a kept unit-removed part
+tombstone that still said its source exists and a rule 4 that walked the mirror on every next_step (lane B). C2708's
+over-cap part never reaches `_ooxml_family`'s byte fallback, which runs only for a part that does not parse, and a
+comment decoy matches the byte regex only with `ContentType="..."`; and no reviewer subagent ran, the machine's capacity
+gate refusing the spawn, so the review was inline (lane E). C2724's optional run_lost half is built; v41's Finish says
+install.sh --report-only reads a relative AGENTSYNC_CONFIG from the folder it runs in; v41's step 2 also shows `inbox
+state: not read (<why>)` (ruling 180); C2619's v40 line was 265 columns (236 without its code span), not 186; and the
+first run of lane D's first land stopped on a rebase conflict under §16.273's C2470 paragraph, both lines kept (lane D).
+Lane RB's note counts 15 commits from `62ef6451` to `31e2a017`; git counts 14.
+
+For later lanes and the rehearsal, from each lane note's closing section: a v41 report should show the Loop line's
+no-folder NEXT on an inbox-only re-run (C2601), `stopped at step 1 (the person chose no folder)` after `install.sh
+--no-folder` and `stopped at step 1 (no folder answer came)` after a no-folder first run with a step 1 deviation
+(C2605), `EARLIER_BRING_BACK` in place of an earlier run's bring-back path (C2618), the private-only line for an
+unparseable sources.toml (C2609) and `the inbox (~/agent-context/inbox)` kept whole on the Loop line (C2631), and a test
+of an outside-home registration in pytest's tmp tree must switch `setup_report._HOME_LIKE` off in-process (lane RA); the
+shell report now lists ~/Library/CloudStorage (3 seconds), so a provider macOS keeps waiting can make it private only
+when install.out holds no list; C2632's older-render twin is not built, since install.sh's older-render rewrite (C2639,
+`82f06c6f`) writes `its last walk had no file to list: the mirror holds none for it`, which reads the fact twice after
+an older line that carries `; the mirror holds no file below it;`; and a folder name with both a space and a TAB at its
+blanks has its `$'..'` debug word cut only in the all-space and all-TAB spellings (C2671's residual; lane RB);
+`manifest.parse_convert_options` and `paths.CONFIG_BLANKS` are on trunk at `e3db6eb0`; rule 4's NEXT says adding a
+folder or putting files in a synced folder or the inbox is the operator's choice, naming the inbox only when it is live;
+a `materialise <inbox recording>` inside its quiescence window now reads it, while a poll or plain sync still holds it
+(C2645); a home that ran STUB_RENDER 7 renders a waiting recording stub again once, to `# [WAITING]`, on its next full
+sync, with no STUB_RENDER bump (C2647); and a manifest opened by this build gains `run_changes.unit_removed`, which an
+older build keeps working on (lane B); a sidecar reader drops line 1 when it is the banner, then line 2 when it is
+empty, and a sidecar written before this build keeps the old form until its source changes; and xlsx list-sidecar
+records read `<ref> (<author with \) >): <text>`, `chart <n>: <kind> "<title with \">" at <anchor>` and `pivot table:
+"<name with \">" at <location>`, xlsx 1.0.6 re-keying every xlsx conversion (lane E); and v41's Finish reads step 2's
+`config:` line, else `printenv AGENTSYNC_CONFIG` run just before the report in the same folder, so a rehearsal with a
+custom AGENTSYNC_CONFIG checks that the Finish names the real file, never the report's cut `~/<path>`; v41's step 2
+reads `inbox state:` before sources.toml, so the INBOXF act (a file on the inbox's name) is told as could not be added
+with both lines shown, every non-live case naming the other live inbox sources; a none runs `install.sh --no-folder`;
+and a ship-land not-read line ends with gh's first error line, a lost runner on a spent limit read as not read, not red
+(lane D).
+
+| Lane | Landed (lane commits) |
+|---|---|
+| B | `e3db6eb0..60cc127e` (2), `4d4879f7..13b58a12` (4); 22 items |
+| E | `5f14ff2c` to `28b042fd` (6, 16 items) |
+| D | `d2bc0219` to `3aa3bfda` (9), `9acf0c54` to `e9396380` (3; v41 at `9acf0c54`); 23 items |
+| RA | `fff23433` to `cbe60110` in the joint run (3), `dcc9f2b0` to `468d1c94` (10); 18 items |
+| RB | `62ef6451` to `31e2a017` in the joint run (14); 15 items, 14 built, C2667 unbuilt |
+| Joint (RA, RB) | `fff23433` to `31e2a017` (17) |
+
+Learnings: from the round's launch (2026-11-22 09:00Z) to the last lane land (`e9396380`, whose push's ci `45161944299`
+was created at 11:05:21Z on 2026-11-23, its land gate verdict at 11:02:09Z; the basis C2691 sets) took about 26 hours
+(26 hours 5 minutes). Gates ran 1 to 3.5 hours each under the shared land lock and the machine's gate slots: the land
+gates' rest parts took from 1:21:20 (`e9396380`) to 3:13:28 (`468d1c94`), lane RB's green run 3:09:45 and lane E's
+2:02:19. gate-verdicts.log holds 18 land verdicts from the launch to the last land: 8 green, one for each landed tip; 6
+red, four of them lane RB's, each on a different test and each fixed before the next run
+(`test_every_dated_line_from_round_11_on_is_held_by_a_test` at 17:04Z,
+`test_the_deploy_guide_names_the_no_folder_re_runs_own_next_c2661` at 21:37Z, 13 rows of six report tests in
+`test_install_oneshot.py` and `test_report_redaction.py` at 23:28Z, and
+`test_the_guide_names_step_1s_folder_list_as_a_redaction_source` at 01:29Z on 2026-11-23), one lane RA's at 05:13Z (the
+Loop-line guide test its C2631 commit now covers) and one lane D's at 05:59Z (the ruff E501); 3 SIGKILLed (rc=137), lane
+RA's at 05:59Z and 06:10Z and lane D's at 06:19Z on 2026-11-23; and 1 killed while queued for a gate slot (rc=143, lane
+D's, at 01:44Z). The lead's log lists the 05:59Z red and the 06:19Z SIGKILL as lane RA's and the 01:44Z kill among lane
+RB's runs; each of the three verdicts' trees is a lane D commit's, as lane D's ship-land logs show. Lane RA's green gate
+had 2 tests fail under load and pass alone (test_install_oneshot.py's
+`test_step_2_gives_the_persons_next_over_a_lock_heartbeat_or_governance_file_not_a_file[audit-folder]` and
+test_report_redaction.py's `test_both_reports_cut_a_configured_pandoc_path_in_every_spelling_c2432[Zephyr
+Quarry-None-dotted key-C]`), and lane RB's green gate 2 more. Every lane note passed the note check
+(`round45/tools/notes-check.sh 44`).
+
+Round 45: the round 44 workflow (`round44/round44-workflow.js` through `round45/tools/edit.py` and `edit-xvendor.py`,
+codex-only: Codex runs beside Claude, and Gemini only once the operator adds the allow rule for
+`~/.claude/scripts/agy-review.sh`, backlog `8ed9dae0fbc0`) with the harvest list in `round45/tools/harvest-lead.txt`, on
+this section's landed tip passed as its full 40-hex sha, BASE `d6b9f61f`, ids C2801 and up, prompt v41 (v40's block from
+`5cf1b540` as scenario C's first old copy), outputs `round45/`. Its harvest opens with the privacy residuals, C2667
+first, now under `c0777e12a523`, and carries the c1001 test's printf EINTR on the runner (ci `45057248480` attempt 1,
+lane RB's test), the two load-flaky tests in lane RA's gate, lane D's ci attempt cancelled with no later push to main
+(`45072863193` attempt 1, its cause unread) and lane RA's leftover scratch worktree `round44/scratch-RA/stackwt`, which
+the worktree guard would not remove; `harvest-lead.txt` was written before these and does not yet name `c0777e12a523` or
+the four carried items, so the lead adds them before the render. While its slots run, the lead reads trunk with
+`round45/tools/trunk.sh`, never a fetch in the operator checkout (C1470, C1661, C2066). The stop rule names Codex and
+Gemini: a clean round without Gemini goes to the operator before the loop closes.
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
