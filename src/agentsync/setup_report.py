@@ -5988,8 +5988,14 @@ def _scanned_source_ids(text: str) -> list[str]:
     return list(dict.fromkeys(out))
 
 
-_LOGGED_SOURCE_LOCAL_RE = re.compile(r"(?:^|[ \t])--source-local[ \t]+(\$'(?:[^'\\]|\\.)*'|(?:\\.|[^\s\\])+)")
-"""A ``--source-local`` word on install.log's start line, written with ``printf %q`` (B13 round 44 C2668)."""
+_LOGGED_SOURCE_LOCAL_RE = re.compile(
+    r"(?:^|[ \t])--source-local[ \t]+(\$'(?:[^'\\]|\\.)*'|(?:\\.|[^ \t\n\\])+)"
+)
+r"""A ``--source-local`` word on install.log's start line, written with ``printf %q`` (B13 round 44 C2668).
+B13 round 45 C2939 with C2912 (ruling 189; privacy): a bare word ends only where bash's ``read -a`` ends it,
+at a space, tab or newline, never at a Unicode space such as the NBSP a UTF-8 run's ``%q`` writes raw
+(``\s`` cut ``Kestrel<NBSP>Quarry/Zephyr\ Plans`` to ``Kestrel`` and printed the rest), and never through
+shlex, which misreads a ``$'..'`` word."""
 
 
 def _logged_cloud_folders(log: Path) -> list[tuple[list[str], bool]]:
@@ -5997,32 +6003,43 @@ def _logged_cloud_folders(log: Path) -> list[tuple[list[str], bool]]:
     ~/Library/CloudStorage, placed as install.sh's logged_source_local places it (B13 round 44 C2668): ``~/``
     and absolute words as written, a word holding ``Library/CloudStorage/`` from there, a relative one only
     when its first part is a CloudStorage entry; with whether the first part is a SharedLibraries folder's
-    library (its folder on disk). install.log has no working directory, so no other word is placed."""
+    library (its folder on disk). install.log has no working directory, so no other word is placed.
+
+    B13 round 45 C2912 (ruling 189): in install.sh's order, not log order, so both reports number a log-only
+    folder alike: the start lines' args, each once, sorted by code point (``LC_ALL=C sort -u``), their bare
+    words first, then every ``$'..'`` word once, sorted by its sed form (``\\'`` read as ``'``), as
+    install.sh's second loop reads them."""
     home = Path(home_path())
     cs = cloud_storage_root()
     out: list[tuple[list[str], bool]] = []
-    for _run, fields, _lines in _install_runs(log):
-        for m in _LOGGED_SOURCE_LOCAL_RE.finditer(fields.get("start", {}).get("args", "")):
-            word = _shell_unquote(m.group(1))
-            if word == "~" or word.startswith("~/"):
-                placed = home / word[2:]
-            elif word.startswith("/"):
-                placed = Path(word)
-            elif "Library/CloudStorage/" in word:
-                placed = cs / word.split("Library/CloudStorage/", 1)[1]
-            else:
-                rel = word.removeprefix("./")
-                first = rel.split("/", 1)[0]
-                if first in ("", ".", "..") or not (cs / first).exists():
-                    continue
-                placed = cs / rel
-            parts = _cloud_parts(placed)
-            if parts is None or not parts[1]:
+    starts = (fields.get("start", {}).get("args", "") for _run, fields, _lines in _install_runs(log))
+    words = [
+        m.group(1)
+        for a in sorted({a for a in starts if "--source-local" in a})
+        for m in _LOGGED_SOURCE_LOCAL_RE.finditer(a)
+    ]
+    dollar = {w.replace("\\'", "'"): w for w in words if w.startswith("$'")}
+    for logged in [*(w for w in words if not w.startswith("$'")), *(dollar[k] for k in sorted(dollar))]:
+        word = _shell_unquote(logged)
+        if word == "~" or word.startswith("~/"):
+            placed = home / word[2:]
+        elif word.startswith("/"):
+            placed = Path(word)
+        elif "Library/CloudStorage/" in word:
+            placed = cs / word.split("Library/CloudStorage/", 1)[1]
+        else:
+            rel = word.removeprefix("./")
+            first = rel.split("/", 1)[0]
+            if first in ("", ".", "..") or not (cs / first).exists():
                 continue
-            provider, comps = parts
-            comps = [c for c in comps if c not in ("", ".", "..")]
-            library = provider.startswith("OneDrive-SharedLibraries-") and placed.is_dir()
-            out.append((comps, library))
+            placed = cs / rel
+        parts = _cloud_parts(placed)
+        if parts is None or not parts[1]:
+            continue
+        provider, comps = parts
+        comps = [c for c in comps if c not in ("", ".", "..")]
+        library = provider.startswith("OneDrive-SharedLibraries-") and placed.is_dir()
+        out.append((comps, library))
     return out
 
 

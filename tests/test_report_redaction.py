@@ -3649,6 +3649,57 @@ def test_both_reports_number_install_log_cloudstorage_parts_under_one_skip_c2668
     assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
 
 
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+def test_both_reports_read_a_logged_word_whole_and_number_it_in_install_shs_order_c2939_c2912(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+) -> None:
+    """B13 round 45 C2939 with C2912 (ruling 189; privacy): the agentsync report ended a bare install.log word
+    at `\\s`, which matches the NBSP a UTF-8 run's printf %q writes raw, so `Kestrel<NBSP>Quarry/Zephyr Plans`
+    was cut to `Kestrel` and `Quarry` and `Zephyr Plans` printed in clear where the shell numbered them; and
+    it numbered the log-only folders in log order, where install.sh sorts the args lines and reads the
+    `$'..'` words after the bare ones, so two runs' folders took opposite numbers. A word ends at a space,
+    tab or newline, and both reports number in install.sh's order, under C and UTF-8 alike."""
+    home, cs = env["HOME"], "Library/CloudStorage/OneDrive-Contoso"
+    names = ["Zebra Wombat", "Alder Kestrel", "Kestrel\u00a0Quarry/Zephyr Plans"]  # a $'..' word under C
+    log = install_log_path(env)
+    log.parent.mkdir(parents=True, exist_ok=True)
+    lines = []
+    for n, name in enumerate(names):  # log order: Zebra first
+        start = f"2026-11-23T10:00:0{n}Z run=20261123T100000Z-{4240 + n}"
+        word = _printf_q(f"{home}/{cs}/{name}", locale)
+        lines += [
+            f"{start} start install.sh compat=41 kind=checkout source=- args=--source-local {word}",
+            f"{start} end rc=2 seconds=1",
+        ]
+    log.write_bytes(("\n".join(lines) + "\n").encode("utf-8"))
+    said = [
+        "first Zebra Wombat",
+        "second Alder Kestrel",
+        "the Kestrel\u00a0Quarry folder",
+        "my Zephyr Plans folder",
+    ]
+    shell, python, shell_private, python_private = _both_reports(env, ["Project Alpha"], said, locale)
+    leaks = [ln for ln in python for w in ("Quarry", "Zephyr", "Zebra", "Alder") if w in ln]
+    assert not leaks, python
+    assert shell == python and shell_private == python_private, list(zip(shell, python, strict=True))
+    first, second = (int(m.group(1)) for ln in python[:2] if (m := re.search(r"<folder-(\d+)>", ln)))
+    assert second < first, python  # `Alder\ Kestrel`'s args line sorts before `Zebra\ Wombat`'s
+
+
+def test_a_logged_word_ends_only_where_bash_ends_it_c2939(tmp_path: Path) -> None:
+    """B13 round 45 C2939 (ruling 189): `_logged_cloud_folders` reads a UTF-8 run's raw NBSP inside the word,
+    as bash's `read -a` does, and ends it at a space or tab."""
+    log = tmp_path / "install.log"
+    start = "2026-11-23T10:00:00Z run=20261123T100000Z-1"
+    word = "~/Library/CloudStorage/OneDrive-Contoso/Kestrel\u00a0Quarry/Zephyr\\ Plans"
+    log.write_text(
+        f"{start} start install.sh compat=41 args=--source-local {word}\t--debug\n{start} end rc=0\n",
+        encoding="utf-8",
+    )
+    assert setup_report._logged_cloud_folders(log) == [(["Kestrel\u00a0Quarry", "Zephyr Plans"], False)]
+
+
 def test_the_loop_line_and_install_sh_say_one_no_folder_next_c2601(
     real_env: dict[str, str],  # noqa: F811
     wheel: Path,  # noqa: F811
