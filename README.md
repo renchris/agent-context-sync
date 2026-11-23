@@ -758,7 +758,7 @@ The block logs every friction line with `install.sh --log`, never with a `>>` re
 documentation says a `>>` target that starts with `~` always needs approval, whatever the rules say. The four
 agentsync rules are exact: they cover the loop's `sync`, `curate` and `status` and step 3's
 `sync --materialise-budget 0`, and never `purge`, `hold` or `offboard`, so any other command a `NEXT:` line
-names still asks.
+names still asks. Step 3's `printenv AGENTSYNC_CONFIG` has an exact rule of its own, last in both lists.
 
 ```json
 {
@@ -775,7 +775,8 @@ names still asks.
       "Bash(~/.local/bin/agentsync sync)",
       "Bash(~/.local/bin/agentsync sync --materialise-budget 0)",
       "Bash(~/.local/bin/agentsync curate)",
-      "Bash(~/.local/bin/agentsync status)"
+      "Bash(~/.local/bin/agentsync status)",
+      "Bash(printenv AGENTSYNC_CONFIG)"
     ]
   }
 }
@@ -786,7 +787,7 @@ Its documentation does not say how it matches a command run by its path or one p
 it may still ask for some of them.
 
 ```sh
-cd ~ && copilot --allow-tool='shell(export GIT_CEILING_DIRECTORIES="$HOME/src"), shell(sw_vers:*), shell(xcode-select -p), shell(git clone:*), shell(git -C ~/src/agent-context-sync pull:*), shell(~/src/agent-context-sync/scripts/install.sh:*), shell(~/.local/bin/agentsync sync), shell(~/.local/bin/agentsync sync --materialise-budget 0), shell(~/.local/bin/agentsync curate), shell(~/.local/bin/agentsync status)'
+cd ~ && copilot --allow-tool='shell(export GIT_CEILING_DIRECTORIES="$HOME/src"), shell(sw_vers:*), shell(xcode-select -p), shell(git clone:*), shell(git -C ~/src/agent-context-sync pull:*), shell(~/src/agent-context-sync/scripts/install.sh:*), shell(~/.local/bin/agentsync sync), shell(~/.local/bin/agentsync sync --materialise-budget 0), shell(~/.local/bin/agentsync curate), shell(~/.local/bin/agentsync status), shell(printenv AGENTSYNC_CONFIG)'
 ```
 
 </details>

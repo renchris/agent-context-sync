@@ -46545,7 +46545,18 @@ leading blank lines, and the default registry's Markdown converter) and
 
 ### 16.284 Round 45: the prompt goes to v42 (a none, a config path and an unread inbox state as setup gives them), the gate's part ceiling and CI's limit, dated lines, and the guides (2026-11-23, wave B13 round 45 lane D)
 
-Reserved for round 45 lane D of B13.
+Round 45's lane D items (`docs/plans/bring-back-ocr.md`, "B13 round 45"; specs `round45/items/C<n>.md`, the verifier's
+corrected fix built, as the lead's rulings 188 to 197 settle it). A dated line this round writes reads
+`Amended 2026-11-23, §16.284 C<n>`.
+
+**Step 3's printenv has an allow rule of its own** (C2862; `README.md`, `tests/test_deploy_pack.py`). v41's step 3 runs
+`printenv AGENTSYNC_CONFIG` just before the report command, and the README's approval part says its rules let the
+block's commands run without asking, but neither list covered it, and the rule-coverage test passed only because its
+command pattern skipped `printenv`. `Bash(printenv AGENTSYNC_CONFIG)` and `shell(printenv AGENTSYNC_CONFIG)` sit last in
+the two lists, so step 1's first eight rules stay the first eight, and the part says the rule is exact. The block is
+unchanged, so the prompt keeps its version. Test: `tests/test_deploy_pack.py`
+`::test_readme_pre_allow_rules_cover_every_command` (`printenv ` in the command pattern, PRINTENV in the command lists
+between the no-download sync and the report command, the rules last in both lists).
 
 **The gate's ceiling stays about twice the slowest part** (C2876; `scripts/gate.sh`, `tests/test_gate_journal.py`;
 amends §16.269 C2273, §16.274 C2483). Round 44 lane RA's land of 468d1c94 ran its rest part 11,608.96 s (8,930 tests

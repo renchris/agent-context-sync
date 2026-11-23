@@ -1633,7 +1633,9 @@ def _spans(text: str) -> list[str]:
     return re.findall(r"`([^`]+)`", text)
 
 
-_COMMAND_RE = re.compile(r"^(?:~/|git |export |mkdir |umask |sw_vers|xcode-select |test |printf |date )")
+_COMMAND_RE = re.compile(
+    r"^(?:~/|git |export |mkdir |umask |sw_vers|xcode-select |test |printf |date |printenv )"
+)
 """A code span that is a command the agent runs (not a path, a value or a line format)."""
 
 
@@ -1935,6 +1937,11 @@ missing or out of date, or a Graph source signed out, status's NEXT is that step
 UNKNOWN_FIRST = "(these two unknown cases come before the others)"
 """What closes :data:`UNLOADED_CONFIG` since v22 (B13 round 13 O28): the finish joins its folder cases with
 "or", and nothing said which wins when the file also has, or lacks, a kind = "local" source."""
+
+PRINTENV = "printenv AGENTSYNC_CONFIG"
+"""Setup prompt v41 step 3's read of AGENTSYNC_CONFIG just before the report command (B13 round 44 C2727). Its
+allow rules sit last in both of the README's lists, and :data:`_COMMAND_RE` reads it as a command, so the rule
+coverage test checks it (B13 round 45 C2862)."""
 
 REPORT_COMMAND = f"{INSTALL_SH} --report-only"
 """Setup prompt v7 step 3's last command, the report, which first appends the friction log's end line (KISS
@@ -3614,7 +3621,7 @@ def test_readme_step3_runs_the_loop_then_the_report() -> None:
     block = _one_prompt_block()
     steps = _prompt_steps()
     step3 = steps[3]
-    assert _commands(step3) == [*LOOP_COMMANDS, SYNC_NO_DOWNLOAD, REPORT_COMMAND]
+    assert _commands(step3) == [*LOOP_COMMANDS, SYNC_NO_DOWNLOAD, PRINTENV, REPORT_COMMAND]
     assert f"Run `{AGENTSYNC} sync` and do what its NEXT: line says" in step3
     flat = " ".join(step3.split())
     assert 'Repeat until the NEXT: line itself says "session done".' in flat
@@ -5861,6 +5868,7 @@ def _agent_commands() -> list[str]:
         INSTALL_NO_FOLDER,
         *LOOP_COMMANDS,
         SYNC_NO_DOWNLOAD,
+        PRINTENV,
         REPORT_COMMAND,
     ], commands
     return commands
@@ -5939,6 +5947,10 @@ def test_readme_pre_allow_rules_cover_every_command() -> None:
     exact = [r for r in claude if r.startswith(f"Bash({AGENTSYNC} ")]
     assert len(exact) == 4 and not any("*" in r for r in exact)
     assert "The four agentsync rules are exact" in " ".join(_approval_section().split())
+    # B13 round 45 C2862: step 3's printenv has an exact rule of its own in both lists, last, so step 1's
+    # first eight rules stay the first eight.
+    assert claude[-1] == f"Bash({PRINTENV})" and copilot[-1] == PRINTENV
+    assert "`printenv AGENTSYNC_CONFIG` has an exact rule of its own" in " ".join(_approval_section().split())
 
 
 def _redirects(cmd: str) -> list[str]:
