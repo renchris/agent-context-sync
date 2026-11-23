@@ -45308,6 +45308,9 @@ install.sh's order, the args lines sorted and the `$'..'` words after the bare o
 Amended 2026-11-23, §16.280 C2839, C2815: a config that does not load also reads its docs repo's remote and registers
 its pandoc cut from the raw value, and one that does not parse registers its `[[source]]` ids, line-scanned, while
 it stays private only.
+Amended 2026-11-23, §16.281 C2840, C2915: the shell report reads a sources.toml that does not parse to the same
+verdict, with tomllib through an interpreter install.sh resolves (a structural check only where none answers), and
+prints the same private-only sentence (ruling 172's shell half, ruling 188).
 
 **The Loop line says install.sh's no-folder NEXT where install.sh does** (C2601 with C2638; ruling 179; amends §16.271
 C2401). On a config with no folder but the inbox, install.sh's closing NEXT replaces status's skill-missing one by
@@ -45929,7 +45932,46 @@ the operator's Allow, builds on this commit. Test:
 
 ### 16.281 Round 45: the installer: the shell halves of rulings 188 and 189, the person's none honored at every NEXT, an inbox-state read that did not finish said so, and C2060 waits on the operator (2026-11-23, wave B13 round 45 lane RB)
 
-Reserved for round 45 lane RB of B13.
+Round 45's lane RB items (`docs/plans/bring-back-ocr.md`, "B13 round 45"; specs `round45/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's rulings 188 to 197 settle it). Rulings 188 and 189's shell halves land
+with lane RA's Python halves (§16.280) in one run. A dated line this round writes reads `Amended 2026-11-23, §16.281
+C<n>`.
+
+**A sources.toml that does not parse makes the shell report private only too** (C2840 with C2915; ruling 188;
+privacy; amends §16.275 C2609). The shell report never parsed the file, so over a `[[source]` header, a garbage line
+or an unterminated path it stayed public and ended on the issue link where the agentsync report was private only.
+fallback_redaction asks `config_toml_state`: tomllib through the installed agentsync's interpreter, else a python3.11
+or later uv already holds, under with_timeout, the verdict a fixed word and stderr never read. TOMLDecodeError,
+UnicodeDecodeError or ValueError prints setup_report.py's sentence word for word and sets PRIVATE_ONLY=1, an OSError
+stays public, and only where no interpreter answers does a structural check decide (a `[` line that is not a whole
+header of bare keys, a source table's id or path line the awk readers do not read as a basic string, a line outside
+every multi-line value that is no key, header or comment), never a blanket private only. Tests:
+`test_report_redaction.py::test_both_reports_reach_one_verdict_on_a_config_that_does_not_parse_c2840_c2915` (both
+locales, with an interpreter and with none) and `test_a_config_that_parses_keeps_the_shell_reports_issue_link_c2915`.
+
+**The shell's TOML readers read a value and count a source as tomllib does** (C2913, C2934; ruling 188; privacy).
+agentsync_dir_values' basic() took a line-ending backslash with blanks after it as an escape of a blank, and its
+inline-table skip counted a `}`, `]` or `,` inside a quoted value, so `principal = "Contoso, Inc"` hid the state folder
+beside it: a backslash with only blanks after it joins the next line, and a quoted value is skipped whole (C2913).
+non_inbox_sources counted `[[source]]` lines by a pattern, so `[[ "source" ]]` counted 0 and a quoted `"kind" =
+"inbox"` 1, where the report's twin reads config.sources: it counts with the installed interpreter's tomllib
+(stdlib alone), state-blind, the line reader its fallback (C2934). Tests:
+`test_install_oneshot.py::test_the_toml_reader_reads_a_blank_ended_continuation_and_quoted_inline_values_c2913` and
+`test_install_sh_counts_sources_as_the_report_reads_them_c2934` (each config read by both twins).
+
+**A listed name is read whole, and a pandoc path's true value is cut** (C2877, C2880 with C2914; ruling 189; privacy).
+listed_folder_lines wrote each row with bash 3.2's builtin printf, which a SIGCHLD broke with EINTR while -e stopped
+the function part way (429 of 3000 rows): awk writes them, the CloudStorage root through ENVIRON, listed_folder_names
+prints its rows once after its loop, and fallback_redaction reads them through `$()` and a here-string (C2877).
+agentsync_dir_values folded a TAB to a space for every caller, so a pandoc folder whose blanks mix a TAB and a space
+matched neither of the shell's guesses and read `<path>` where the agentsync report read `~/<path>`: given a third
+word (the pandoc caller alone) it writes `\\`, `\t` and `\n`, which that caller decodes once (awk, never `printf
+%b`), registering the true value's debug_path word under both locales and the folded copy for every plain and quoted
+spelling; its seven other callers are unchanged (C2880 with C2914). Tests:
+`test_install_oneshot.py::test_the_folder_list_reader_keeps_every_row_under_a_sigchld_with_errexit_live_c2877`,
+`test_the_toml_reader_escapes_its_value_for_the_pandoc_caller_alone_c2880_c2914`, and the four mixed-blank leaves and
+the joined multi-line spelling of
+`test_report_redaction.py::test_both_reports_cut_a_configured_pandoc_path_in_every_spelling_c2432`.
 
 ### 16.282 Round 45: an inbox that is not a folder never named as kept, its state read by lstat and stat, a `~user` AGENTSYNC_CONFIG refused, and every waiting stub and tombstone rendered again under STUB_RENDER 8 (2026-11-23, wave B13 round 45 lane B)
 
