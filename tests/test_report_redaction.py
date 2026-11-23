@@ -2661,8 +2661,13 @@ def test_both_reports_cut_the_inbox_beside_a_docs_repo_outside_the_home_c2430(
         assert shell == python and sp == pp, (shell, python, sp, pp)
         conf = [[ln for ln in t.splitlines() if ln.startswith(("- docs repo: ", "- inbox: "))] for t in texts]
         # the shell prints these lines only through an installed agentsync (config_folder_lines), which this
-        # stub harness has none of: where it prints them they are the agentsync report's (lane RB, C2430)
-        assert conf[1] and conf[0] in ([], conf[1]), conf
+        # stub harness has none of: where it prints them they are the agentsync report's (lane RB, C2430).
+        # B13 round 45 ruling 194, C2810: beside the config, the shell's own inbox line says it was not
+        # checked and why, never a path; it names no part of the parent either (the leak scan above holds it)
+        own = [ln for ln in conf[0] if ln.startswith("- inbox: not checked (")]
+        assert own == ["- inbox: not checked (agentsync is not installed)"], conf
+        rest = [ln for ln in conf[0] if ln not in own]
+        assert conf[1] and rest in ([], conf[1]), conf
 
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])

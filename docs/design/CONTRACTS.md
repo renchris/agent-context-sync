@@ -20640,6 +20640,8 @@ whole-word clause too. With no body every clause is printed. Tests:
 and `- [[source]] table headers (not parsed): N`. No TOML check: a syntax-only one reads yes for a schema error, and
 `/usr/bin/python3` 3.9 has no tomllib. Test: `test_the_shell_report_says_it_did_not_check_whether_the_config_loads`
 (agentsync not installed; setup-report failed).
+Amended 2026-11-23, §16.281 C2948, C2810: `- inbox: not checked (<the same reason>)` follows the loads line, the shell
+report's twin of the agentsync report's `inbox:` line, never a guess from the disk.
 
 **A mixed-case proxy host stays redacted after it is unset** (N42; amends §16.93 M29). `record_proxy_hosts` kept the
 lower-case host only, and the shell matches a plain pair byte for byte, so `Egress.Northwind-LAN.invalid` in a
@@ -44573,6 +44575,10 @@ stands alone (C2410). install.log's `inbox=not-added` also fires on another kind
 ` (<kind>, <state>)` follows the quoted id). Tests:
 `test_install_oneshot.py::test_step_2_prints_the_inbox_state_after_the_inbox_line_c2410` (five states, four builds) and
 `test_another_kinds_source_on_the_inbox_folder_logs_inbox_not_added_c2440`.
+Amended 2026-11-23, §16.281 C2948, C2868, C2935, C2808: a state read that raised, stopped at its 10 s limit or printed
+no state no longer leaves the bare `inbox:` line, which read as a live inbox: it prints `inbox state: not checked
+(<why>)`, so the line is absent only for a read live state; init's or add-source's `inbox: not read:` line ends the
+config step's log line with `inbox=not-read`.
 
 **A lock no sync recorded is booked as one** (C2540's installer half). install.sh books
 `waited-for-an-unrecorded-holder` on the probe's empty-body busy lock or on `cli.LOCK_WAITED_UNRECORDED_MARK`, read
@@ -45998,6 +46004,24 @@ status timeout), `test_install_sh_names_the_persons_choice_as_the_reports_consta
 `test_no_folder_is_refused_beside_a_folder_c2658` pinned to its exact usage error, the `--list-folders` row the
 folder list's generic guard (C2844). The fresh bare run still exits 2 on `no folder to sync yet`
 (`test_a_bare_rerun_over_an_inbox_only_config_says_no_folder_is_synced_yet_c2401`).
+
+**A state read that did not finish says so, and the shell report never guesses the inbox** (C2948 with C2868 and
+C2935, C2810, C2808's installer half; ruling 194; data integrity; makes worse True for an explicit live line and for
+a disk guess; amends §16.271 C2410 and §16.99 N25, dated lines there). config_folder_lines printed the bare `docs
+repo:` and `inbox:` lines when its state read raised or met the 10 s limit, which v41 reads as a live inbox. The
+snippet writes `not checked (<the exception's type name>)` for an exception, the shell `not checked (it did not
+finish within 10 s)` on rc 143 even after a third record (the stop may have cut it) and `not checked (no state was
+printed)` when none came back, so `inbox state: not checked (<why>)` prints whenever the inbox line printed and no
+state was read; the line is absent only for a read live state, never printed as `live`, which INBOX_STATE_LINE's
+contract and v41 read as no line. inbox_not_added() also matches lane B's `inbox: not read: <folder>: <strerror>
+(inbox state says what to do)`, which inbox_not_read() tells apart, and the config step's log line ends
+`inbox=not-read` for it (C2808). The shell report prints `- inbox: not checked (<why>)` after its loads line, the
+loads line's why, never a guess from the disk: a `[ -e ] || [ -L ]` test called a link into a folder this account
+cannot search not a folder (C2810). Tests: the four failing builds of
+`test_install_oneshot.py::test_step_2_prints_the_inbox_state_after_the_inbox_line_c2410` (a raising read, the limit
+before and after a third record, no state printed), the `not read` row of
+`test_another_kinds_source_on_the_inbox_folder_logs_inbox_not_added_c2440` and
+`test_the_shell_report_says_it_did_not_check_whether_the_config_loads`.
 
 ### 16.282 Round 45: an inbox that is not a folder never named as kept, its state read by lstat and stat, a `~user` AGENTSYNC_CONFIG refused, and every waiting stub and tombstone rendered again under STUB_RENDER 8 (2026-11-23, wave B13 round 45 lane B)
 

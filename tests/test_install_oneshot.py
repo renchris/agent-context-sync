@@ -1364,7 +1364,7 @@ def test_a_file_named_inbox_is_not_called_an_ensured_inbox_c2207(
 
 
 @pytest.mark.parametrize("with_folder", [False, True], ids=["init", "add-source"])
-@pytest.mark.parametrize("said", ["not added", "another kind", "another kind, split", "added"])
+@pytest.mark.parametrize("said", ["not added", "another kind", "another kind, split", "added", "not read"])
 def test_another_kinds_source_on_the_inbox_folder_logs_inbox_not_added_c2440(
     env: dict[str, str], wheel: Path, folder: Path, with_folder: bool, said: str
 ) -> None:
@@ -1373,7 +1373,9 @@ def test_another_kinds_source_on_the_inbox_folder_logs_inbox_not_added_c2440(
     not added, prints `inbox: <path> is source '<id>' (<kind>, <state>), not an inbox source`
     (cli._ensure_inbox). Both lines now end the config step's log line with inbox=not-added; init's or
     add-source's line for an inbox it added does not. The path is printed raw, so a newline in the docs
-    repo's parent splits the second line: it is matched on its tail."""
+    repo's parent splits the second line: it is matched on its tail. B13 round 45 ruling 194, C2808: lane B's
+    `inbox: not read: <folder>: Permission denied (inbox state says what to do)`, a kept inbox entry this
+    account cannot read, ends it with inbox=not-read."""
     inbox = Path(env["HOME"]) / "agent-context" / "inbox"
     lines = {
         "not added": f"inbox: not added: {inbox} is not a folder",
@@ -1381,12 +1383,15 @@ def test_another_kinds_source_on_the_inbox_folder_logs_inbox_not_added_c2440(
         "another kind, split": f"inbox: {inbox.parent}/Con\ntoso/inbox is source 'contoso-2' (graph_drive, "
         "retired), not an inbox source",
         "added": f"added inbox source 'inbox' ({inbox}): drop files here",
+        "not read": f"inbox: not read: {inbox}: Permission denied (inbox state says what to do)",
     }
     args = [str(wheel), *(["--source-local", str(folder)] if with_folder else [])]
     cp = install_sh({**env, "STUB_INBOX_ERR": lines[said]}, *args)
     assert cp.returncode in (0, 2), cp.stdout + cp.stderr
     assert f"\n{lines[said]}\n" in f"\n{cp.stderr}", cp.stderr
-    assert _config_line(env).endswith(" inbox=not-added") is (said != "added"), _config_line(env)
+    flag = {"added": "", "not read": " inbox=not-read"}.get(said, " inbox=not-added")
+    line = _config_line(env)
+    assert line.endswith(flag) and (flag or "inbox=" not in line), line
 
 
 @pytest.mark.parametrize("warned", [True, False], ids=["warned", "quiet"])
@@ -1476,7 +1481,19 @@ def test_a_refused_step_2_names_its_docs_repo_and_inbox_when_the_config_loads_c2
     assert (ctx / "inbox").is_dir()
 
 
-@pytest.mark.parametrize("build", ["current", "older", "failing", "no agentsync"])
+_STATE_BUILDS = [
+    "current",
+    "older",
+    "failing",
+    "no agentsync",
+    "time limit",
+    "time limit after a state",
+    "no state",
+]
+"""B13 round 45 ruling 194 (C2948 with C2868 and C2935): the last three, a state read that did not finish."""
+
+
+@pytest.mark.parametrize("build", _STATE_BUILDS)
 @pytest.mark.parametrize("case", ["live", "paused", "other kind", "not a folder", "no source", "firmlink"])
 def test_step_2_prints_the_inbox_state_after_the_inbox_line_c2410(
     env: dict[str, str], build: str, case: str
@@ -1488,7 +1505,13 @@ def test_step_2_prints_the_inbox_state_after_the_inbox_line_c2410(
     reading the state prints the two lines alone, and an interpreter that fails prints none.
     config_folder_lines run under /bin/bash 3.2. An inbox source typed through the /System/Volumes/Data
     firmlink is the same folder on disk but not paths.same_folder's, so no source sits there: the older
-    build's words matched it by samefile alone and read it live."""
+    build's words matched it by samefile alone and read it live.
+
+    B13 round 45 ruling 194, C2948 with C2868 and C2935 (data integrity; makes worse True for an explicit live
+    line): a state read that raised or hit the 10 s limit printed the two lines alone, which the prompt reads
+    as a live inbox. It prints `inbox state: not checked (<why>)`: the exception's type name, `it did not
+    finish within 10 s` at the limit even after a third record, or `no state was printed`; the line is absent
+    only for a read live state."""
     home = Path(env["HOME"])
     ctx = home / "agent-context"
     inbox = ctx / "inbox"
@@ -1518,7 +1541,12 @@ def test_step_2_prints_the_inbox_state_after_the_inbox_line_c2410(
     elif build == "no agentsync":  # an interpreter that prints lines and fails: no path in them, no line
         py = _tool_python(env)
         _write_exe(py, "#!/bin/bash\nprintf 'OCR helper: stub\\nsecond line\\nthird line\\n'\nexit 1\n")
-    else:  # an inbox_state that raises: the bare lines
+    elif build == "no state":  # the two lines and no third record, exit 0
+        py = _tool_python(env)
+        _write_exe(py, f"#!/bin/bash\nprintf '%s\\n' '{ctx / 'docs'}' '{inbox}'\nexit 0\n")
+    elif build.startswith("time limit"):
+        py = _tool_python(env)
+    else:  # an inbox_state that raises
         py = _tool_python(env)
         shim = "import sys, agentsync.config as _m\n_m.inbox_state = lambda c: 1 / 0\ndel _m\n"
         shim += 'exec(compile(sys.argv.pop(1), "<string>", "exec"))\n'
@@ -1534,7 +1562,10 @@ def test_step_2_prints_the_inbox_state_after_the_inbox_line_c2410(
             "set -uo pipefail",
             "say() { printf '%s\\n' \"$*\"; }",
             "list_name() { printf '%s\\n' \"$1\"; }",
-            'with_timeout() { shift; "$@"; }',
+            {
+                "time limit": 'with_timeout() { shift; "$@" | head -n 2; return 143; }',
+                "time limit after a state": 'with_timeout() { shift; "$@"; return 143; }',
+            }.get(build, 'with_timeout() { shift; "$@"; }'),
             _shell_function("config_folder_lines"),
             "config_folder_lines",
         ]
@@ -1558,9 +1589,17 @@ def test_step_2_prints_the_inbox_state_after_the_inbox_line_c2410(
         "firmlink": f"not added (no source on {inbox})",
     }[case]
     assert words == want, words
+    unread = {
+        "failing": "not checked (ZeroDivisionError)",
+        "time limit": "not checked (it did not finish within 10 s)",
+        "time limit after a state": "not checked (it did not finish within 10 s)",
+        "no state": "not checked (no state was printed)",
+    }
     if build == "no agentsync":
         assert cp.stdout == "", cp.stdout + cp.stderr
-    elif build == "failing" or case == "live":
+    elif build in unread:
+        assert cp.stdout.splitlines() == [*bare, f"inbox state: {unread[build]}"], cp.stdout + cp.stderr
+    elif case == "live":
         assert cp.stdout.splitlines() == bare, cp.stdout + cp.stderr
     else:
         assert cp.stdout.splitlines() == [*bare, f"inbox state: {want}"], cp.stdout + cp.stderr
@@ -4805,12 +4844,13 @@ def test_the_header_names_each_field_and_line_the_config_step_prints_c2439() -> 
     lines = script.splitlines()
     end = next(i for i, ln in enumerate(lines[1:], 1) if not ln.startswith("#"))
     header = " ".join(" ".join(ln.lstrip("#") for ln in lines[:end]).split())
-    values = " ".join(re.findall(r'^\s*(?:\[.*\] \|\| )?FOLDER_COUNTS="([^"\n]*)"', script, re.M))
+    # an assignment may sit in a case arm (`read) FOLDER_COUNTS=...`, B13 round 45 C2808)
+    values = " ".join(re.findall(r'^\s*(?:\[.*\] \|\| |[a-z*]+\) )?FOLDER_COUNTS="([^"\n]*)"', script, re.M))
     # a literal value is kept whole (inbox=not-added); a counted one is its name (kept=, added=)
     words = {
         m[0] + (m[1] if m[1].isalpha() or "-" in m[1] else "") for m in re.findall(r" ([a-z]+=)(\S*)", values)
     }
-    assert words == {"kept=", "added=", "inbox=not-added"}, words
+    assert words == {"kept=", "added=", "inbox=not-added", "inbox=not-read"}, words
     for word in words:
         assert word in header, word
     assert "kept=N added=M (then inbox=not-added" in header
@@ -7339,7 +7379,10 @@ def test_the_shell_report_says_it_did_not_check_whether_the_config_loads(
     """B13 round 12 N25: with a broken last table the shell report printed "- [[source]] tables: 2" and no
     loads line, so the prompt's finish, which keys "does not load" on the report's "loads: no", sent the agent
     to parse a file agentsync rejects. The shell checks no TOML (a syntax-only check reads yes for a schema
-    error): it says the file was not checked, and why, and that the count reads headers only."""
+    error): it says the file was not checked, and why, and that the count reads headers only. B13 round 45
+    ruling 194, C2810 (makes worse True for a guess from the disk): the agentsync report's `inbox:` line had
+    no shell twin; the shell says the inbox was not checked either, with the loads line's why, never a disk
+    guess, which called a link into a folder this account cannot search not a folder."""
     home = Path(env["HOME"])
     cs = _cloud(env)
     tables = [local_source_table(n, cs / "OneDrive-Contoso" / n) for n in ("alpha", "beta")]
@@ -7353,9 +7396,10 @@ def test_the_shell_report_says_it_did_not_check_whether_the_config_loads(
     cp = install_sh(e, "--report-only")
     assert cp.returncode == 0 and f"(shell fallback: {why})" in cp.stdout, cp.stdout + cp.stderr
     section = report_path(env).read_text().split("\n## Configuration\n\n", 1)[1].split("\n\n", 1)[0]
-    assert section.splitlines()[:3] == [
+    assert section.splitlines()[:4] == [
         "- config: ~/agent-context/sources.toml (exists)",
         f"- loads: not checked ({why})",
+        f"- inbox: not checked ({why})",
         "- [[source]] table headers (not parsed): 2",
     ], section
 

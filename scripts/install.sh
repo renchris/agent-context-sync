@@ -229,7 +229,7 @@
 # (steps 4 to 6); --source-local adds to them. Step 4 says which it was, in counts: one line, "folders: kept
 # the N already synced (none added)", "folders: M added to the N already synced" or "folders: M added (none
 # was synced before)", and its log line carries kept=N added=M (then inbox=not-added when the inbox could not be
-# added).
+# added, or inbox=not-read when this account could not read it).
 #
 # Friction log: --log-start and --log only append to $AGENTSYNC_FRICTION_LOG (default
 # ~/agent-context/setup/friction.md; the directory is made 0700 and the file 0600, under umask 077, and
@@ -326,7 +326,9 @@
 #      source ...") the first call prints. After the folders line, when there is one, the step prints `docs
 #      repo: <path>` and then `inbox: <path>`, the config's own docs repo and its inbox folder in list_name's
 #      spelling; the setup prompt's step 2 reads these two lines. Only when no live inbox source sits on that
-#      folder, an `inbox state: <words>` line follows, the words agentsync status prints (B13 round 43 C2410).
+#      folder, an `inbox state: <words>` line follows, the words agentsync status prints (B13 round 43 C2410);
+#      a state read that raised, timed out or printed none reads `inbox state: not checked (<why>)`, so the
+#      line is absent only for a read live state (B13 round 45 ruling 194, C2948).
 #      A step 2 that agentsync refuses (config_failed) prints the same lines with no folders line, after
 #      agentsync's error and before the step's own failure line, since init and add-source make the inbox
 #      before they refuse (B13 round 43 ruling 170, C2463; round 44 C2643). None of them is printed in a dry run or when the installed agentsync cannot load the config within 10 s
@@ -7139,6 +7141,10 @@ fallback_body() {
 		# that one on "loads: no:", with the colon this line does not have, and reads this one first. The count
 		# says it reads headers only (B13 round 12 N25, round 13 O44).
 		say "- loads: not checked ($why)"
+		# the inbox's state is config.inbox_state's to read, so the line says it was not checked and why, never a
+		# guess from the disk, which called a link into a folder this account cannot search not a folder (B13
+		# round 45 ruling 194, C2810)
+		say "- inbox: not checked ($why)"
 		say "- [[source]] table headers (not parsed): $(grep -c '^[[:space:]]*\[\[source\]\]' "$CONFIG" 2>/dev/null || true)"
 		say "$(source_excludes_line "$CONFIG")"
 	else
@@ -12663,8 +12669,11 @@ synced_count() {
 # 43 ruling 162, C2410). An installed build older than inbox_state gets the same words from the snippet itself:
 # the folder matched by paths.same_folder where that build has it, as inbox_state matches it (B13 round 43
 # C2410: samefile alone matched a firmlink spelling the helper does not), else by os.path.samefile, else by
-# its spelling. Any failure there (an exception, the 10 s limit) prints the two lines alone: they are written
-# and flushed before the state is read.
+# its spelling. The two lines are written and flushed before the state is read, and a read that did not finish
+# says so in a line of its own, never read as a live inbox: `inbox state: not checked (<why>)`, the exception's
+# type name, `it did not finish within 10 s` when the limit stopped it (even after a third record, which the stop
+# may have cut), or `no state was printed`; the line is absent only for a read live state (B13 round 45 ruling
+# 194, C2948 with C2868 and C2935).
 # Nothing in a dry run, or when that agentsync cannot load the config within 10 s. -I: nothing from the folder
 # this runs in is imported.
 config_folder_lines() {
@@ -12730,8 +12739,8 @@ except ImportError:  # an installed build older than B13 round 43: the same word
 
 try:
     sys.stdout.buffer.write(rec(inbox_state(config)[1]))
-except Exception:
-    pass
+except Exception as exc:
+    sys.stdout.buffer.write(rec(f"not checked ({type(exc).__name__})"))
 ' "$CONFIG" 2>/dev/null)" || rc=$?
 	fi
 	# only a run that ended well, or one stopped at its limit after the two lines: any other exit is a config
@@ -12740,13 +12749,17 @@ except Exception:
 	repo="${out%%"$nl"*}"
 	rest="${out#*"$nl"}"
 	inbox="${rest%%"$nl"*}"
-	[ "$rc" -ne 0 ] || [ "$rest" = "$inbox" ] || state="${rest#*"$nl"}"
+	if [ "$rc" -eq 143 ]; then
+		state="not checked (it did not finish within 10 s)"
+	elif [ "$rest" != "$inbox" ]; then
+		state="${rest#*"$nl"}"
+	fi
 	case "$inbox" in "" | "$out") return 0 ;; esac
-	case "$state" in *"$nl"*) state="" ;; esac
+	case "$state" in "" | *"$nl"*) state="not checked (no state was printed)" ;; esac
 	[ -n "$repo" ] || return 0
 	say "docs repo: $(list_name "$repo")"
 	say "inbox: $(list_name "$inbox")"
-	case "$state" in "" | "live "*) ;; *) say "inbox state: $(list_name "$state")" ;; esac
+	case "$state" in "live "*) ;; *) say "inbox state: $(list_name "$state")" ;; esac
 }
 # 0 when init's or add-source's stderr, the file $1, says the inbox was not added: `inbox: not added ...`, or
 # `inbox: <path> is source '<id>' (<kind>, <state>), not an inbox source` (cli._ensure_inbox), another kind's
@@ -12754,10 +12767,13 @@ except Exception:
 # ruling 162, C2440). The second form is matched on its tail alone, never from `inbox: `: the path is printed
 # raw, so a newline in the docs repo's parent splits the line. The tail holds config.SOURCE_ID_RE's id (repr
 # quotes it in single quotes), a SourceKind value and a SourceState value.
+# `inbox: not read: <folder>: <strerror> (inbox state says what to do)` too, cli.INBOX_NOT_READ's line for a
+# kept inbox entry this account cannot read, which inbox_not_read tells apart (B13 round 45 ruling 194, C2808).
 inbox_not_added() {
-	LC_ALL=C grep -q -e '^inbox: not added' \
+	LC_ALL=C grep -q -e '^inbox: not added' -e '^inbox: not read' \
 		-e " is source '[a-z0-9][a-z0-9-]*' ([a-z_]*, [a-z]*), not an inbox source\$" "$1" 2>/dev/null
 }
+inbox_not_read() { LC_ALL=C grep -q '^inbox: not read' "$1" 2>/dev/null; }
 # How many remotes of the docs repo [governance] refuses, as init and add-source read them (cli._refuse_remotes):
 # a number only when the agentsync step 2 installed loads the config and its [governance] table and reads the
 # repo, within 10 s; empty when it cannot say. -I: nothing from the folder this runs in is imported.
@@ -13363,7 +13379,10 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 	(exit "$rc") || fail "$@"
 }
 KEPT=0 # the folders synced before this step, and below the ones it added: both in its log line
-inbox_flag() { [ "${INBOX_NOT_ADDED:-0}" -eq 0 ] || printf ' inbox=not-added'; } # the config line's inbox field
+# the config line's inbox field: inbox=not-read for an inbox this account could not read (C2808)
+inbox_flag() {
+	case "${INBOX_NOT_ADDED:-0}" in 0) ;; read) printf ' inbox=not-read' ;; *) printf ' inbox=not-added' ;; esac
+}
 [ "$CONFIG_STATE" = "created" ] || KEPT="$(synced_count)"
 # add-source ends every call on two summary lines, "docs repo ..." and "sources: ..." (cli._ensure_setup).
 # With several folders that block came once per folder (field reports 2026-10-06 and 2026-10-07: 16 source
@@ -13424,6 +13443,7 @@ if [ "${#FOLDERS[@]}" -gt 0 ]; then
 		run "$AGENTSYNC" add-source "$f" --config "$CONFIG" </dev/null 2>"$ERRF" | add_source_filter "$nth" "${#FOLDERS[@]}" "$HELD" "$MARK" || HELD_RC=$?
 		cat "$ERRF" >&2
 		! inbox_not_added "$ERRF" || INBOX_NOT_ADDED=1
+		! inbox_not_read "$ERRF" || INBOX_NOT_ADDED="read"
 		: >"$ERRF" # printed: on_exit prints only what a signal kept from this line
 		[ "$HELD_RC" -ne 0 ] || continue
 		[ -z "$HELD" ] || { cat "$HELD" && rm -f "$HELD"; }
@@ -13451,7 +13471,7 @@ if [ "${#FOLDERS[@]}" -gt 0 ]; then
 		rm -f "$MARK" "$ERRF"
 		# a call that refused before adding the folder closes the step itself when it saw the inbox warning, so
 		# the failed config line keeps inbox=not-added; fail's own step_end is then a no-op (B13 round 44 C2701)
-		[ "$HELD_RC" -eq 0 ] || [ -z "$(inbox_flag)" ] || step_end failed "$HELD_RC" "failed inbox=not-added"
+		[ "$HELD_RC" -eq 0 ] || [ -z "$(inbox_flag)" ] || step_end failed "$HELD_RC" "failed$(inbox_flag)"
 		(exit "$HELD_RC") || config_failed "$WHY"
 	done
 	[ -z "$HELD" ] || rm -f "$HELD"
@@ -13463,9 +13483,10 @@ else
 	run "$AGENTSYNC" init --config "$CONFIG" </dev/null 2>"$ERRF" || INIT_RC=$?
 	cat "$ERRF" >&2
 	! inbox_not_added "$ERRF" || INBOX_NOT_ADDED=1
+	! inbox_not_read "$ERRF" || INBOX_NOT_ADDED="read"
 	rm -f "$ERRF"
 	ERRF=""
-	[ "$INIT_RC" -eq 0 ] || [ -z "$(inbox_flag)" ] || step_end failed "$INIT_RC" "failed inbox=not-added" # C2701, as above
+	[ "$INIT_RC" -eq 0 ] || [ -z "$(inbox_flag)" ] || step_end failed "$INIT_RC" "failed$(inbox_flag)" # C2701, as above
 	(exit "$INIT_RC") || config_failed "agentsync init failed (see the error above)"
 	# what became of the inbox is init's own line to say (`added inbox source ...`, `inbox: not added: ...`,
 	# `inbox: <path> is source ...`): this line claimed `(inbox ensured)` after `inbox: not added` (B13 round 42
@@ -13494,7 +13515,11 @@ if [ -n "$KEPT" ] && [ -n "$NOW" ] && [ "$NOW" -ge "$KEPT" ]; then
 	fi
 fi
 config_folder_lines
-[ "${INBOX_NOT_ADDED:-0}" -eq 0 ] || FOLDER_COUNTS="$FOLDER_COUNTS inbox=not-added"
+case "${INBOX_NOT_ADDED:-0}" in # the config line's inbox field, as inbox_flag gives it (C2808)
+0) ;;
+read) FOLDER_COUNTS="$FOLDER_COUNTS inbox=not-read" ;;
+*) FOLDER_COUNTS="$FOLDER_COUNTS inbox=not-added" ;;
+esac
 if [ "$CONFIG_STATE" = "created" ]; then
 	step_end "done" 0 "created$FOLDER_COUNTS"
 elif [ "${#FOLDERS[@]}" -gt 0 ]; then
