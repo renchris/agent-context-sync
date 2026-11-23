@@ -45996,6 +45996,13 @@ operator's `separators = "="` (makes worse True without the pin), and an alias o
 case, renamed the key (measured; an alias from another token to it changes nothing, and git warns once when the
 operator has one). Test: `test_every_run_reader_reads_a_trailer_as_git_does_c2920`.
 
+**A lost first-open race on `run_changes.unit_removed` is no failure** (C2852). The column is added on open by
+an unlocked check and an ALTER, so of two first opens of a pre-upgrade manifest that both saw it missing, the
+second's ALTER failed with a duplicate column and that command stopped. `_ensure_run_changes_flag` takes an ALTER
+failure as the lost race only when the column then exists, and raises any other; the check stays unlocked, since a
+BEGIN IMMEDIATE on every open would make status and doctor wait on a sync's write lock. Test:
+`test_two_first_opens_that_both_miss_the_unit_removed_column_both_open_c2852`.
+
 ### 16.283 Round 45: the converters: a failed zero-byte re-read's books put back, an Office file's container and family parse in its answer and key, and a source's own banner line (2026-11-23, wave B13 round 45 lane E)
 
 Each item is built as its verifier corrected it, as the lead's rulings 188 to 197 settle it. A dated line this

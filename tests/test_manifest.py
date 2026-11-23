@@ -1851,3 +1851,37 @@ def test_the_sweep_removes_a_two_hour_old_copy_holding_a_side_folder_it_cannot_l
         assert fresh.is_dir()
     finally:
         (fresh / "manifest.sqlite-shm").chmod(0o700)
+
+
+def test_two_first_opens_that_both_miss_the_unit_removed_column_both_open_c2852(
+    db_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 45 C2852: run_changes.unit_removed is added on open by an unlocked check then an ALTER, so
+    of two first opens of a pre-upgrade manifest that both saw it missing, the second's ALTER failed with a
+    duplicate column and that open raised. The loser takes the column it finds as a lost race; any other
+    ALTER failure is still raised."""
+    with Manifest(db_path):
+        pass
+    conn = sqlite3.connect(db_path)
+    conn.execute("ALTER TABLE run_changes DROP COLUMN unit_removed")  # a manifest from before C2704
+    conn.commit()
+    conn.close()
+    real = manifest_mod._has_column
+    missed: list[bool] = []
+
+    def stale_first(c: sqlite3.Connection, table: str, column: str) -> bool:
+        if column == "unit_removed" and not missed:
+            missed.append(True)  # this open's check ran before the other open's ALTER landed
+            return False
+        return real(c, table, column)
+
+    with Manifest(db_path) as first:
+        assert real(first._db, "run_changes", "unit_removed")  # the winner added it
+        monkeypatch.setattr(manifest_mod, "_has_column", stale_first)
+        with Manifest(db_path) as second:  # the loser: its ALTER finds the column there
+            assert real(second._db, "run_changes", "unit_removed")
+    assert missed == [True]
+    # not the race: an ALTER that fails while the column is still missing is raised
+    monkeypatch.setattr(manifest_mod, "_has_column", lambda _c, _t, _col: False)
+    with pytest.raises(sqlite3.OperationalError), Manifest(db_path):
+        pass

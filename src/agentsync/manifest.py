@@ -1600,9 +1600,18 @@ class Manifest:
     def _ensure_run_changes_flag(self) -> None:
         """Add ``run_changes.unit_removed`` (a nullable INTEGER) when it is missing, on the additive path with
         no schema-version bump: an older build names its columns in both its INSERT and its SELECT, so it
-        keeps working and its rows read NULL (B13 round 44 C2704 with C2648, ruling 182)."""
-        if not _has_column(self._db, "run_changes", "unit_removed"):
+        keeps working and its rows read NULL (B13 round 44 C2704 with C2648, ruling 182). The check takes no
+        lock, so two first opens can both see it missing: the loser's ALTER fails with a duplicate column,
+        which is a lost race only when the column then exists; any other failure is raised (B13 round 45
+        C2852). No BEGIN IMMEDIATE around the check: status and doctor would take the write lock on every
+        open."""
+        if _has_column(self._db, "run_changes", "unit_removed"):
+            return
+        try:
             self._db.execute("ALTER TABLE run_changes ADD COLUMN unit_removed INTEGER")
+        except sqlite3.OperationalError:
+            if not _has_column(self._db, "run_changes", "unit_removed"):
+                raise  # not the race: a real failure
 
     @classmethod
     def migrate(cls, db_path: Path) -> list[int]:
