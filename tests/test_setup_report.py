@@ -4055,7 +4055,9 @@ def test_issue_fields_match_the_form() -> None:
     outcome = fields[setup_report.ISSUE_FIELDS["outcome"]]["attributes"]["options"]
     labels = {setup_report.Outcome(k, None, ()).form_label for k in ("fully one command", "worked with help")}
     labels |= {setup_report.Outcome("failed", n, ()).form_label for n in setup_report.PROMPT_STEPS}
+    labels |= {setup_report.Outcome("stopped", 1, ()).form_label}  # B13 round 45 C2803
     assert None not in labels and labels <= set(outcome), labels - set(outcome)
+    assert tuple(outcome) == setup_report.FORM_OUTCOME_OPTIONS, "the form's options, in its order"
     run_types = fields[setup_report.ISSUE_FIELDS["run_type"]]["attributes"]["options"]
     assert set(setup_report.ISSUE_RUN_TYPES.values()) <= set(run_types)
 
@@ -14330,6 +14332,8 @@ def test_a_none_is_read_from_install_log_and_scored_as_the_persons_choice_c2605(
     assert words in " ".join((*outcome.why, outcome.note)), outcome
     if kind == "stopped":
         assert outcome.text.startswith("stopped at step 1 (") and "fully one command" not in outcome.text
+        # B13 round 45 C2803: the person's none, and an answer that never came, never prefill a Failed outcome
+        assert outcome.form_label == setup_report.STOPPED_FORM_OPTION, outcome.form_label
 
 
 @pytest.mark.parametrize(
@@ -25766,7 +25770,8 @@ def test_an_attempt_that_only_stopped_for_the_folder_answer_is_stopped_not_faile
     stopped = setup_report.compute_outcome(only, ())
     assert (stopped.kind, stopped.step) == ("stopped", 1)
     assert stopped.why == ("no install run and no error; step 1 logged only a deviation (F4)",)
-    assert stopped.form_label == "Failed at step 1 (preflight)", "the form has no stopped option"
+    # B13 round 45 C2803: the form has a Stopped option now, and a stopped attempt did not fail
+    assert stopped.form_label == "Stopped at step 1 (preflight)" == setup_report.STOPPED_FORM_OPTION
     # the title says what the Summary says (B13 round 7 H42); a v5 attempt's step 1 has v5's name
     assert stopped.title_label == "Stopped at step 1 (preflight)"
     write_friction(fake_mac, head + wait)  # the latest attempt, read by a direct setup-report
@@ -25774,7 +25779,7 @@ def test_an_attempt_that_only_stopped_for_the_folder_answer_is_stopped_not_faile
     assert summary.strip().startswith("- **outcome: stopped at step 1 (waiting for the folder answer)**")
     link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
     assert link["title"][0].startswith("Setup report: Stopped at step 1 (preflight) · "), link["title"]
-    assert link["outcome"] == ["Failed at step 1 (preflight)"]
+    assert link["outcome"] == ["Stopped at step 1 (preflight)"]
     # B13 round 8 J36: the open attempt's WARNING told this session, which may still be waiting, to run
     # install.sh --report-only, whose end line turns "stopped" into "failed at step 1". It names no command.
     [warning] = [ln for ln in summary.splitlines() if ln.startswith("- WARNING: attempt 1 ")]

@@ -6058,16 +6058,19 @@ def test_setup_report_issue_form_structure() -> None:
 
 
 def test_setup_report_form_outcomes_match_the_readme_prompt() -> None:
-    """Fully one command, worked with help, and one 'Failed at step N (<step title>)' per v6 step (KISS K16b
-    keeps v6's options so older reports keep theirs). Each README step's title starts with its layout title in
-    setup_report.PROMPT_LAYOUTS and maps through ``form_step`` to exactly one of those options."""
+    """Fully one command, worked with help, Stopped at step 1 (B13 round 45 C2803), and one 'Failed at step N
+    (<step title>)' per v6 step (KISS K16b keeps v6's options so older reports keep theirs). Each README
+    step's title starts with its layout title in setup_report.PROMPT_LAYOUTS and maps through ``form_step``
+    to exactly one of those options."""
     from agentsync import setup_report  # noqa: PLC0415
 
     outcome = _field("outcome")
     assert outcome["type"] == "dropdown" and outcome["validations"]["required"] is True
     options: list[str] = outcome["attributes"]["options"]
     assert options[:2] == ["Fully one command", "Worked with help"]
-    failed = [re.fullmatch(r"Failed at step (\d+) \(([^)]+)\)", o) for o in options[2:]]
+    # B13 round 45 C2803: one Stopped option, for an attempt that stopped at step 1 and did not fail
+    assert options[2] == "Stopped at step 1 (preflight)", options
+    failed = [re.fullmatch(r"Failed at step (\d+) \(([^)]+)\)", o) for o in options[3:]]
     assert all(failed), options
     titles = {int(m.group(1)): m.group(2) for m in failed if m}
     options_of = getattr(setup_report, "FORM_OUTCOME_OPTIONS", None)
@@ -6996,7 +6999,9 @@ def test_setup_feedback_states_the_report_rules_of_round_6() -> None:
         assert f"`{stopped.form_label}`" in page
     assert "**Stopped at step 1**: no install run, no `error` line and no `end | finished` line" in page
     assert "failing that the last step logged (unless the attempt only stopped at step 1, below)" in page
-    assert "the form has no stopped option, so it records a stopped attempt as step 1's failure" in page
+    # B13 round 45 C2803: the form has a Stopped option, and the guide says so
+    assert "option records a stopped attempt, which did not fail" in page
+    assert "the form has no stopped option" not in page
     assert "and they do not change the outcome. They" not in page
     # B13 round 8 J58: since round 7 H40 a step 1 question, click, approval or prompt line beside a deviation
     # also reads stopped (`_WAIT_OK_KINDS`); the guide said every line must be a deviation

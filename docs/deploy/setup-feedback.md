@@ -290,8 +290,8 @@ version joined by ` · `. A failed step is named in the title by the number and 
 it (a v7 or later attempt's step 2 is `install and start`, its step 3 `sync loop and report`; a v5 attempt uses its
 own six steps, so its step 3 reads `Failed at step 3 (install and start)`), while the `outcome` field takes the
 form's option below, the same words where the form has them and otherwise the option for the same work, such as
-`Failed at step 2 (install and start)`, so the link always fills a valid option. A stopped attempt's title reads `Stopped at step 1 (preflight)` and its field `Failed at step 1
-(preflight)`):
+`Failed at step 2 (install and start)`, so the link always fills a valid option. A stopped attempt's title reads `Stopped at step 1 (preflight)` and its field
+`Stopped at step 1 (preflight)` (since B13 round 45 C2803, never a Failed option)):
 
 | Field id | Type | Value |
 |---|---|---|
@@ -345,7 +345,8 @@ for zero.
 ### The computed outcome
 
 setup-report works the outcome out from what the person saw and did, never from the agent's words, and the
-form's Outcome copies it (the form has no stopped option, so it records a stopped attempt as step 1's failure). It
+form's Outcome copies it (the form's `Stopped at step 1 (preflight)` option records a stopped attempt, which did not fail, since B13
+round 45 C2803). It
 reads the last attempt in friction.md and that attempt's last install run in
 install.log (a `--list-folders` run is not an install run):
 
@@ -498,7 +499,7 @@ install.log (a `--list-folders` run is not an install run):
   deviations' words only), and `stopped at step 1 (a deviation, no install run and no error)` otherwise; the
   Summary's reason names the other lines (`step 1 logged a deviation (F5), 1 approval and nothing else`). It shows
   so in the Summary's outcome line, in its `earlier:` clause and in the friction section's attempt lines. The
-  form's Outcome records it as `Failed at step 1 (preflight)`. An end line, an error, a `start` line, a line of a
+  form's Outcome records it as `Stopped at step 1 (preflight)`. An end line, an error, a `start` line, a line of a
   later step or an untyped line keeps the attempt failed (at step 1 or the step logged); an install run gives the
   outcome of the bullets above. One exception (since round 8, J9): an attempt whose step 1 error is install.sh's
   `--log-start` stop of a copy newer than the installer (`this checkout is older than the prompt`) is stopped, not failed, though it holds that error and its end line, when the next attempt

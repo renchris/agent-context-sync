@@ -33,6 +33,7 @@ body:
       options:
         - Fully one command
         - Worked with help
+        - Stopped at step 1 (preflight)
         - Failed at step 1 (preflight)
         - Failed at step 2 (install and start)
         - Failed at step 3 (IT request and report)

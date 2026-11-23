@@ -16376,6 +16376,8 @@ deviation; the wait is read from the deviations alone, and the why then reads `s
 kind(s)> and nothing else`. Amended 2026-10-13, §16.69 H42: the issue title says `Stopped at step 1 (…)`.
 Amended 2026-10-15, §16.92 M31: the Summary's line is `- attempt: N of N; earlier: …`, so an outcome's own note
 bracket is the line's only one.
+Amended 2026-11-23, §16.280 C2803: the issue form has a `Stopped at step 1 (preflight)` option, and `form_label`
+gives it for every stopped outcome with a step, never step 1's Failed option.
 Amended 2026-11-04, §16.234 C972 (by §16.225 C817): the why's `no install.sh run and no error` above reads `no install
 run and no error`.
 
@@ -17004,6 +17006,8 @@ beside at least one step 1 deviation; an error, an install run, an end line, a l
 does not set it. `Outcome.title_label` says `Stopped at step N (<the layout's step name>)` for a stopped attempt (v5:
 `preflight and code`), so the title no longer contradicts the Summary; `form_label` keeps the Failed option, the
 only one the form has. Test: `tests/test_setup_report.py::test_an_attempt_that_only_stopped_for_the_folder_answer_is_stopped_not_failed`.
+Amended 2026-11-23, §16.280 C2803: `form_label` no longer keeps the Failed option: the form has `Stopped at step 1
+(preflight)`, and a stopped attempt's link and title both say stopped.
 
 **The Installer table shows the config step's folder counts** (H10). `_step_table` appended only the note, so a run
 that kept 2 folders and added none read `config | done (add-source)`. When a step logs both `kept=` and `added=` as
@@ -46007,6 +46011,18 @@ read as this run's. `_installer_output` replaces a tail line `config: <path>` or
 shown: the Configuration section names this report's)`, one line for one, the `config: ` head kept; a line naming
 the report's own config, which is what the agent saw, and the ticker's `config: reading and updating ...` lines stay
 as written. Test: `test_an_earlier_runs_config_line_is_one_fixed_line_c2823`.
+
+**A stopped attempt's link says it stopped** (C2803; ruling 192; amends §16.64 G23 and §16.69 H42). The issue link
+prefilled `Failed at step 1 (preflight)` for every stopped outcome, the person's own none included, since the form had
+no stopped option. The form's Outcome dropdown gains `Stopped at step 1 (preflight)` after `Worked with help`
+(`STOPPED_FORM_OPTION`, in `FORM_OUTCOME_OPTIONS` in the form's order), and `form_label` gives it for every stopped
+outcome with a step (each is at step 1: the folder answer, the person's none, a list with no report); no option is
+removed, so old links stay valid. setup-feedback.md's three sentences a test holds (the field rule, the outcome
+table's stopped rule and the stopped case) say the option, in this commit; the field table's row is lane D's.
+Tests: `test_issue_fields_match_the_form` (a stopped label is an option; the form's options are
+`FORM_OUTCOME_OPTIONS` in order), the C2605 test (a stopped outcome's label),
+`test_an_attempt_that_only_stopped_for_the_folder_answer_is_stopped_not_failed` and test_deploy_pack.py's
+`test_setup_report_form_outcomes_match_the_readme_prompt`.
 
 ### 16.281 Round 45: the installer: the shell halves of rulings 188 and 189, the person's none honored at every NEXT, an inbox-state read that did not finish said so, and C2060 waits on the operator (2026-11-23, wave B13 round 45 lane RB)
 

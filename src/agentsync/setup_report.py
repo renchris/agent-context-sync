@@ -234,16 +234,21 @@ PROMPT_STEPS = {
 """Setup prompt v6's four step names, the issue form's first Outcome step options, kept in v7 (KISS K16b) so
 older reports keep their option; each layout's ``form_step`` maps its steps onto them where the form has no
 option of the layout's own (:attr:`Outcome.form_label`)."""
+STOPPED_FORM_OPTION = f"Stopped at step 1 ({PROMPT_STEPS[1]})"
+"""The issue form's Outcome option for a stopped attempt (B13 round 45 C2803, ruling 192): every stopped
+outcome is at step 1 (the folder answer, the person's none, a list with no report), which did not fail."""
 FORM_OUTCOME_OPTIONS = (
     "Fully one command",
     "Worked with help",
+    STOPPED_FORM_OPTION,
     *(f"Failed at step {n} ({name})" for n, name in PROMPT_STEPS.items() if n < 4),
     "Failed at step 3 (sync loop and report)",
     f"Failed at step 4 ({PROMPT_STEPS[4]})",
 )
 """The issue form's Outcome options, in its order (.github/ISSUE_TEMPLATE/setup-report.yml): v6's, and v7's
 step 3 by its own name (B13 round 7 H11), so a v7 and later link's field names the step the person had; the v6
-name stays an option, so old links stay valid, and triage of step 3 adds both."""
+name stays an option, so old links stay valid, and triage of step 3 adds both. B13 round 45 C2803: and
+:data:`STOPPED_FORM_OPTION`, so a stopped attempt's link no longer says it failed; no option is removed."""
 FOLDER_QUESTION_STEP = 1
 """The step that asks the one question fully one command allows (which folders to sync). Prompt v6 does not
 log it (its ``question`` kind is "something other than which folders to sync"; since v11 the kind also covers
@@ -3442,17 +3447,21 @@ class Outcome:
     def form_label(self) -> str | None:
         """The issue form's Outcome option (None when there is none to prefill): the attempt's own step name
         when the form has it as an option (v7's step 3, "sync loop and report", B13 round 7 H11), else the
-        step mapped to v6's that does the same work (v5's step 4, the IT request, is 3)."""
+        step mapped to v6's that does the same work (v5's step 4, the IT request, is 3). A stopped outcome
+        with a step is :data:`STOPPED_FORM_OPTION` (B13 round 45 C2803), never a Failed option: it did not
+        fail."""
         if self.kind == "fully one command":
             return "Fully one command"
         if self.kind == "worked with help":
             return "Worked with help"
+        if self.kind == "stopped" and self.step is not None:  # B13 round 45 C2803: the form has it now
+            return STOPPED_FORM_OPTION
         own = prompt_layout(self.version).steps.get(self.step) if self.step is not None else None
-        if self.kind in ("failed", "stopped") and own is not None:
+        if self.kind == "failed" and own is not None:
             label = f"Failed at step {self.step} ({own})"
             if label in FORM_OUTCOME_OPTIONS:
                 return label
-        if self.kind in ("failed", "stopped") and self.step is not None:  # the form has no "stopped"
+        if self.kind == "failed" and self.step is not None:
             step = prompt_layout(self.version).form_step.get(self.step, self.step)
             step = max(1, min(step, max(PROMPT_STEPS)))
             return f"Failed at step {step} ({PROMPT_STEPS[step]})"
