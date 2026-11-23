@@ -46003,6 +46003,13 @@ failure as the lost race only when the column then exists, and raises any other;
 BEGIN IMMEDIATE on every open would make status and doctor wait on a sync's write lock. Test:
 `test_two_first_opens_that_both_miss_the_unit_removed_column_both_open_c2852`.
 
+**A lock body naming a pid no process can hold is broken as stale** (C2921). `LockInfo.parse` read a pid that
+passes `isdigit()` but is above macOS's 32-bit pid_t (2**31 - 1), and `pid_alive`'s `os.kill` raised OverflowError
+on it, so acquire never broke the stale lock; a 5000-digit pid raised in int() itself. parse returns None for a pid
+above `ops.lock._PID_MAX` or more than 10 digits (a boot time over 19), and `pid_alive` answers False on
+OverflowError. Test: `test_a_lock_body_naming_an_impossible_pid_is_broken_as_stale_c2921` (2**31, 10**30 and 5000
+digits: `broke_stale=True`, `previous=None`, this pid written).
+
 ### 16.283 Round 45: the converters: a failed zero-byte re-read's books put back, an Office file's container and family parse in its answer and key, and a source's own banner line (2026-11-23, wave B13 round 45 lane E)
 
 Each item is built as its verifier corrected it, as the lead's rulings 188 to 197 settle it. A dated line this

@@ -89,8 +89,11 @@ class LockInfo:
         pid_s, boot_s, started_at, label = parts
         if not (pid_s.isascii() and pid_s.isdigit() and boot_s.isascii() and boot_s.isdigit()):
             return None
+        if len(pid_s) > 10 or len(boot_s) > 19:  # int() raises past 4300 digits; no pid or boot is this long
+            return None
         pid, boot = int(pid_s), int(boot_s)
-        if pid <= 0 or _parse_iso(started_at) is None:
+        # above pid_t's maximum no process can hold it, and os.kill raised OverflowError on it (C2921)
+        if pid <= 0 or pid > _PID_MAX or _parse_iso(started_at) is None:
             return None
         return cls(pid=pid, boot_time=boot, started_at=started_at, label=label)
 
@@ -158,13 +161,19 @@ def boot_time() -> int:
     raise OSError(errno.ENOSYS, "cannot read the boot time: " + "; ".join(errors))
 
 
+_PID_MAX = 2**31 - 1
+"""The largest pid macOS's 32-bit pid_t holds: a lock body naming a larger one names no process (B13 round 45
+C2921: os.kill raised OverflowError on it, so a stale lock was never broken)."""
+
+
 def pid_alive(pid: int) -> bool:
-    """True if ``pid`` exists (os.kill(pid, 0); EPERM counts as alive)."""
+    """True if ``pid`` exists (os.kill(pid, 0); EPERM counts as alive). A pid pid_t cannot hold is no
+    process (C2921)."""
     if pid <= 0:
         return False
     try:
         os.kill(pid, 0)
-    except ProcessLookupError:
+    except (ProcessLookupError, OverflowError):
         return False
     except PermissionError:
         return True

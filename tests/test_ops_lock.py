@@ -93,6 +93,28 @@ def test_lockinfo_parse_rejects_malformed(text: str) -> None:
     assert LockInfo.parse(text) is None
 
 
+@pytest.mark.parametrize("pid", ["2147483648", str(10**30), "7" * 5000])
+def test_a_lock_body_naming_an_impossible_pid_is_broken_as_stale_c2921(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, pid: str
+) -> None:
+    """B13 round 45 C2921: a leftover lock body whose pid passes isdigit() but no pid_t holds (2**31 and up)
+    parsed as a LockInfo, and pid_alive's os.kill raised OverflowError on it, so acquire never broke the
+    stale lock; a 5000-digit pid raised in int() itself. Such a pid parses as no pid, pid_alive answers False
+    for one past pid_t, and acquire breaks the lock and writes its own pid."""
+    assert LockInfo.parse(f"{pid} {boot_time()} 2026-11-23T10:00:00Z reconcile") is None
+    assert lockmod.pid_alive(2**31) is False and lockmod.pid_alive(10**30) is False
+    path = tmp_path / "agentsync.lock"
+    path.write_text(f"{pid} {boot_time()} 2026-11-23T10:00:00Z reconcile\n", encoding="utf-8")
+    lk = SingleWriterLock(path, "poll")
+    acq = lk.acquire()
+    try:
+        assert acq == LockAcquisition(broke_stale=True, previous=None), acq
+        info = LockInfo.parse(path.read_text())
+        assert info is not None and info.pid == os.getpid() and info.label == "poll"
+    finally:
+        lk.release()
+
+
 # ------------------------------------------------------------------------------------------------ primitives
 
 
