@@ -29337,6 +29337,54 @@ def test_an_unloaded_config_registers_its_ids_and_folders_c2609(tmp_path: Path, 
     assert "Private only: sources.toml does not load and is not readable as TOML" in text, text
 
 
+def test_an_unloaded_config_cuts_its_pandoc_path_and_moved_docs_remote_c2839(tmp_path: Path) -> None:
+    """B13 round 45 C2839 (ruling 188; privacy): only a loaded config registered the pandoc cut and read the
+    moved docs repo's git remote, so with a top-level unknown key the Installer section printed
+    `[ok] convert.pandoc — ~/Tools/Zephyr Quarry/pandoc 3.1`, its `debug: pandoc` echo and the remote's
+    `https://git.wombatcorp.example/legal-team/kb.git/` in clear. The same sources.toml with and without the
+    unknown key prints those lines alike, each cut."""
+    home = Path.home()
+    docs = home / "Work" / "kb" / "docs"
+    (docs / ".git").mkdir(parents=True)
+    (docs / ".git" / "config").write_text(
+        '[remote "origin"]\n\turl = https://git.wombatcorp.example/legal-team/kb.git\n', encoding="utf-8"
+    )
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    body = (
+        default_config_text()
+        + '\n[agentsync]\ndocs_repo = "~/Work/kb/docs"\n'
+        + '\n[convert]\npandoc_path = "~/Tools/Zephyr Quarry/pandoc"\n'
+    )
+    setup = home / "agent-context" / "setup"
+    setup.mkdir(parents=True, exist_ok=True)
+    said = [
+        "[ok] convert.pandoc — ~/Tools/Zephyr Quarry/pandoc 3.1",
+        "debug: pandoc ~/Tools/Zephyr\\ Quarry/pandoc",
+        "fatal: unable to access 'https://git.wombatcorp.example/legal-team/kb.git/': 403",
+    ]
+    (setup / "install.out").write_text("".join(f"{line}\n" for line in said), encoding="utf-8")
+    (setup / "install.log").write_text(
+        f"2026-11-23T10:00:00Z run=20261123T100000Z-1 start install.sh compat=41 source={home}/src args=\n"
+        "2026-11-23T10:00:09Z run=20261123T100000Z-1 end rc=0\n",
+        encoding="utf-8",
+    )
+    shown = []
+    for text in (body, "bogus = 1\n" + body):
+        cfg.write_text(text, encoding="utf-8")
+        out = tmp_path / "r.md"
+        assert cli.main(["setup-report", "--out", str(out)]) == 0
+        report = out.read_text(encoding="utf-8")
+        assert ("unknown key(s) bogus" in report) == text.startswith("bogus"), report
+        installer = section(report, "Installer")
+        shown.append([ln for ln in installer.splitlines() if any(k in ln for k in ("pandoc", "fatal:"))])
+    loaded, unloaded = shown
+    assert loaded == unloaded, (loaded, unloaded)
+    assert len(loaded) == 3, loaded
+    assert not any(w in ln for ln in loaded for w in ("Zephyr", "Quarry", "wombatcorp", "legal-team")), loaded
+    assert any("~/<path>" in ln for ln in loaded) and any("<proxy-" in ln for ln in loaded), loaded
+
+
 def test_no_report_module_assigns_a_module_level_name_twice_c2640() -> None:
     """B13 round 44 C2640 with C2702 and C2733: round 43's quoted-head change left `_CWD_KEPT` assigned twice
     in a row, the first copy dead and the docstring attached to the second. No module-level name in

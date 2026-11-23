@@ -6311,7 +6311,9 @@ def _build_redactor(r: _Run) -> Redactor:
         _add_proxy_host(red, host)
     # A git remote's host last, as install.sh numbers it (B13 round 16 T88), the docs repo's after the rest
     # (round 17 U93), each as a rewrite base: its host, then its path when a company word is in it (U15)
-    docs = expand(r.config.docs_repo) if r.config is not None else default_docs_repo()
+    # B13 round 45 C2839 (ruling 188; privacy): from the raw config too, so a moved docs repo's remote is cut
+    # whether or not sources.toml loads
+    docs = expand(cfg.docs_repo) if cfg is not None else default_docs_repo()
     for found in filter(None, (_rewrite_values(url) for _host, url in _git_remotes(docs))):
         host, value, tail = found
         _add_proxy_host(red, host)
@@ -6360,8 +6362,15 @@ def _build_redactor(r: _Run) -> Redactor:
                 red.add("library" if library and i == 0 else "folder", c, fuzzy=True)
                 _alias_escaped(red, c)
     _add_config_cut(red, r.config_path)
-    if r.config is not None and r.config.convert.pandoc_path is not None:
-        _add_pandoc_cut(red, r.config.convert.pandoc_path, raw=_raw_pandoc_path(r.config_path))
+    # B13 round 45 C2839 (ruling 188; privacy): a config that does not load still cuts its pandoc path, read
+    # raw, stripped then expanded as config's _str and expand read it, as the shell report reads it either way
+    raw_pandoc = _raw_pandoc_path(r.config_path)
+    if r.config is not None:
+        pandoc = r.config.convert.pandoc_path
+    else:
+        pandoc = expand(raw_pandoc.strip()) if raw_pandoc else None
+    if pandoc is not None:
+        _add_pandoc_cut(red, pandoc, raw=raw_pandoc)
     return red
 
 
