@@ -765,6 +765,63 @@ def test_the_kit_note_gives_the_rehearsal_form_of_the_no_lock_no_remove_rule_c20
     assert lanes.count("no probe runs rm in any form") == 1
 
 
+def test_round_44s_cross_references_take_dated_lines_c2866_c2872() -> None:
+    """B13 round 45 C2866 and C2872 (ruling 186: dated lines, never rewrites). §16.276 put C2639's dated line
+    beside §16.115's plural paragraph, which is §16.116's; §16.279 said lanes RA and RB landed through
+    31e2a0173, but lane RA's ten later commits landed through 468d1c949. Each keeps its words and a dated line
+    right after it gives the right home or range; both are pinned in :data:`_ROUND_45_D_PARAGRAPH_AMENDS`."""
+    sections = dict(_contracts_numbered_sections())
+    plural = "**A known count takes its noun from the count, everywhere in the report**"
+    assert plural in sections["16.116"] and plural not in sections["16.115"]
+    assert "Amended 2026-11-22, §16.276 C2639:" in sections["16.116"]
+    assert (
+        "a dated line beside §16.115's plural paragraph.\nAmended 2026-11-23, §16.284 C2866: the plural"
+        " paragraph and C2639's line beside it are §16.116's"
+    ) in sections["16.276"]
+    flat = " ".join(sections["16.279"].split())
+    assert (
+        "Lanes RA and RB, landed through 31e2a0173, added no line inside §16.274 and none that amends a rule"
+        " it states. Amended 2026-11-23, §16.284 C2872: lane RA's ten later commits, dcc9f2b0d to 468d1c949,"
+        " landed after 31e2a0173, so lanes RA and RB landed through 468d1c949"
+    ) in flat
+
+
+def test_the_inventories_name_a_workbooks_and_a_recordings_folder_of_pages_c2943() -> None:
+    """B13 round 45 C2943: README's Every session row said one page per source file and data-governance.md's
+    mirror row one page per item, but ``Publisher.plan_pages`` gives one page per unit: a workbook is
+    ``00-index.md`` plus one page per sheet and a meeting recording ``00-index.md`` plus one page per five
+    minutes, both under a ``<name>.d/`` folder (CONTRACTS :76)."""
+    readme = _page("README.md")
+    governance = _page("docs/deploy/data-governance.md")
+    assert (
+        "one page per source file, or a `<name>.d/` folder of pages for a workbook (`00-index.md` plus one"
+        " page per sheet) or a meeting recording (`00-index.md` plus one page per five minutes);"
+    ) in readme
+    assert (
+        "| converted markdown, one or more pages per item (a workbook or a meeting recording is a `<name>.d/`"
+        " folder: `00-index.md` plus a page per sheet or per five minutes), plus git history |"
+    ) in governance
+    assert "one page per item, plus git history" not in governance
+    assert "`docs/mirror/<source>/…`, one page per source file;" not in readme
+    from agentsync import publish  # noqa: PLC0415
+
+    assert "OK -> one page per unit" in inspect.getsource(publish.Publisher.plan_pages)
+
+
+def test_the_twins_rule_names_a_line_a_script_can_check_c2887() -> None:
+    """B13 round 45 C2887: the regressions rule asked each note to name each fix's twins, in no fixed form,
+    and three round 44 notes named none; notes-check.sh (the lead's) can check only a fixed line. The rule
+    now asks for a line opening `Twins named:` (or `Twins named (<rule>):`), or `Twins named: none,
+    <reason>`."""
+    lanes = _page("docs/lanes/COMMON.md")
+    assert (
+        "name each twin in your note on a line that opens `Twins named:` (or `Twins named (<rule>):`),"
+        " listing each changed function or phrase with its twin and the test that feeds both, or `Twins"
+        " named: none, <reason>`"
+    ) in lanes
+    assert "name each twin in your note, and add one test" not in lanes
+
+
 def test_ruling_166_keeps_its_words_and_a_dated_line_records_call_5s_decline_c2673() -> None:
     """B13 round 44 C2673: ruling 166 still described C2470's v2 pass as built, and §16.273 said C2470 is not
     built "by the lead's ruling" with no record of it. As C2069 did for ruling 138, the ruling keeps its
@@ -8605,11 +8662,13 @@ _ROUND_45_D_PARAGRAPH_AMENDS = (
         "§16.284 C2858, C2926, C2941",
     ),
     ("16.276", "**The shell halves of rulings 171 to 173** (privacy; one run with lane", "§16.284 C2940"),
+    ("16.276", "**The older-render rewrite words a zero walk** (C2639)", "§16.284 C2866"),
+    ("16.279", "**Where round 44's other lanes moved round 43 lane D's §16.274** (docs)", "§16.284 C2872"),
 )
 """Round 45 lane D's dated lines no claim of §16.284 holds alone: C2858's (with C2926 and C2941) under
 C2723's line in §16.268's comment-sidecar paragraph (a legacy sidecar loses its banner line, and an empty
-line 2), and C2940's under §16.276's shell-halves paragraph (the shell reads each provider in full, Python
-stops at 2000)."""
+line 2), C2940's under §16.276's shell-halves paragraph (the shell reads each provider in full, Python
+stops at 2000), C2866's under §16.276's C2639 line and C2872's under §16.279's closing paragraph."""
 
 _ROUND_42_E_PARAGRAPH_AMENDS = (
     ("16.42", "`subprocess` reports a child a signal stopped as the negative signal", "§16.268 C2252"),

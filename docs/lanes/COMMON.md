@@ -2725,7 +2725,9 @@ either way (C2446, C2448, C2453, C2514). A fix has twins, and the twin left behi
 that renders a value and the code that costs, cuts, quotes or renders it again (_code and _code_steps, the replan's
 put-back and the zero-byte pass's, install.sh's NEXT and the report's Loop line, the live render and the older-render
 rewrite, an unforced run and a forced one). Before you land, grep for every function and phrase you changed, name each
-twin in your note, and add one test that feeds both twins the same input and asserts the same answer (round 44: C2601,
+twin in your note on a line that opens `Twins named:` (or `Twins named (<rule>):`), listing each changed function or
+phrase with its twin and the test that feeds both, or `Twins named: none, <reason>` (for example "docs-only items" or
+"no second renderer: grepped <names>") (round 45 C2887), and add one test that feeds both twins the same input and asserts the same answer (round 44: C2601,
 C2639, C2645, C2652, C2703). A choice the person makes is honored on every route its run can end on: when a flag records
 an answer (--no-folder), list every NEXT, exit code and report line that run can end on (the skill-missing and the
 rule-2 routes, a created and an existing config, a status [FAIL] and a timeout), and add one test per route with the

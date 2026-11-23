@@ -45497,6 +45497,8 @@ state-blind. Test (the real agentsync): `test_a_bare_rerun_counts_a_paused_or_re
 fails against a count that skips paused and retired tables.
 
 **The older-render rewrite words a zero walk** (C2639): a dated line beside §16.115's plural paragraph.
+Amended 2026-11-23, §16.284 C2866: the plural paragraph and C2639's line beside it are §16.116's (round 15's setup
+report), not §16.115's.
 
 C2667 stays unbuilt: decision 1476293d00a3 (C2060) was still open at this lane's start and before its last land
 (ruling 174), so round 41's strict xfail stays and no install.sh change writes its decode another way.
@@ -45930,6 +45932,9 @@ line, under §16.268's C2301 paragraph right after the C2415 line §16.274 wrote
 text sidecar opens with the banner and an empty line`): C2415's reader rule, drop two lines and only when line 1 is
 the banner, becomes drop line 1 when it is the banner, then line 2 when it is empty. Lanes RA and RB, landed through
 31e2a0173, added no line inside §16.274 and none that amends a rule it states.
+Amended 2026-11-23, §16.284 C2872: lane RA's ten later commits, dcc9f2b0d to 468d1c949, landed after 31e2a0173, so
+lanes RA and RB landed through 468d1c949; those ten added no line inside §16.274 either (its text is byte for byte
+the same at 31e2a0173 and 468d1c949) and none that amends a rule it states.
 
 ### 16.280 Round 45: the report: an unloaded or unusually spelled sources.toml cut to one verdict in both reports, a word ending where bash ends it, and a none read, scored and worded as install.sh made it (2026-11-23, wave B13 round 45 lane RA)
 
@@ -46628,6 +46633,29 @@ does not match Python's would leave names unregistered, and a walk per folder wo
 guide's "prints this line too" already names the Private only line, so the finder's second half needs nothing. Test:
 `tests/test_deploy_pack.py::test_the_guide_names_step_1s_folder_list_as_a_redaction_source` (the sentence, Python's two
 early returns and the shell's cut after its whole read); the line is pinned in `_ROUND_45_D_PARAGRAPH_AMENDS`.
+
+**Round 44's cross-references take dated lines** (C2866, C2872; ruling 186; docs). §16.276 says C2639's dated line sits
+beside §16.115's plural paragraph; the paragraph (`A known count takes its noun from the count`) and the line are both
+§16.116's. §16.279's closing paragraph says lanes RA and RB landed through 31e2a0173, but lane RA's ten later commits,
+dcc9f2b0d to 468d1c949, each editing CONTRACTS, landed after it; §16.274's text is byte for byte the same at both shas,
+so only the range was wrong. Each keeps its words, and a dated line right after it gives the right home or range.
+Test: `tests/test_deploy_pack.py::test_round_44s_cross_references_take_dated_lines_c2866_c2872`; both lines are pinned
+in `_ROUND_45_D_PARAGRAPH_AMENDS`.
+
+**The inventories name a workbook's and a recording's folder of pages** (C2943; `README.md`,
+`docs/deploy/data-governance.md`). README's Every session row said one page per source file and the data-governance
+mirror row one page per item, but `Publisher.plan_pages` gives one page per unit: a workbook is `00-index.md` plus a
+page per sheet and a meeting recording `00-index.md` plus a page per five minutes, under a `<name>.d/` folder (§1's
+path rule). Both rows now say so. publish.py's `_README_TEMPLATE` ("or per sheet") is lane B's file and the docs
+repo's own README, so it is left: a template change would add a commit to every docs repo on its next sync. Test:
+`tests/test_deploy_pack.py::test_the_inventories_name_a_workbooks_and_a_recordings_folder_of_pages_c2943`.
+
+**A note names its twins on a line a script can check** (C2887; `docs/lanes/COMMON.md`). The regressions rule asked
+each note to name each fix's twins in no fixed form, and round 44's RB, B and D notes named none while
+notes-check.sh, which checks only fixed lines, passed them. The rule now asks for a line opening `Twins named:` (or
+`Twins named (<rule>):`, the form RA's and E's notes used), listing each changed function or phrase with its twin and
+the test that feeds both, or `Twins named: none, <reason>`; notes-check.sh's check is the lead's. Test:
+`tests/test_deploy_pack.py::test_the_twins_rule_names_a_line_a_script_can_check_c2887`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
