@@ -14320,7 +14320,8 @@ def test_the_readme_says_the_options_note_comes_only_while_a_converter_that_can_
     were made under other converter options, while `_reread_notes` prints it only `if options and left`, and
     a file whose converter cannot start is counted only in `reread_waits`, the re-read's own note. The
     sentence says so, held to loop's notes. B13 round 44 C2720: and with a run that read some, those files
-    have a note of their own, never "sync again" when only they remain (README :230-232 moves with it)."""
+    have a note of their own, never "sync again" when only they remain (README :230-232 moves with it). B13
+    round 45 C2922: and with an OCR outage, only their note."""
     from agentsync import loop  # noqa: PLC0415
 
     waiting = loop._reread_notes(
@@ -14346,6 +14347,19 @@ def test_the_readme_says_the_options_note_comes_only_while_a_converter_that_can_
         ["s1"], [], [{"reread": 1, "reread_left": 0, "reread_waits": 1}], downloads=False
     )
     assert one == [f"1 file in s1 {loop._REREAD_WAITING_ONE}; it does not block the next step"], one
+    # B13 round 45 C2922: an OCR outage in a run that read some, with only converter waits left, added the
+    # outage's uncounted "file(s) ... read none of them" note beside the waits' own: only theirs remains
+    for count, words in (
+        (3, f"3 files in s1 {loop._REREAD_WAITING}"),
+        (1, f"1 file in s1 {loop._REREAD_WAITING_ONE}"),
+    ):
+        down = loop._reread_notes(
+            ["s1"],
+            [],
+            [{"reread": 1, "reread_left": 0, "reread_waits": count, "ocr_down": 1}],
+            downloads=False,
+        )
+        assert down == [f"{words}; it does not block the next step"], down
     readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
     assert (
         "and, while a converter that can run has such files left, a `note:` line after it counts them; files"

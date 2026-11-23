@@ -787,12 +787,14 @@ def _reread_notes(
         # their own after the others, and never "sync again" when only they remain (B13 round 44 C2720)
         waits = (new or {}).get("reread_waits", 0)
         apart = bool(waits and (new or {}).get("reread"))
-        if new is not None and new.get("ocr_down"):
+        if apart and not left:
+            # only they remain: their own note below says so, an OCR outage too, where the outage's note
+            # claimed an uncounted second backlog that "the last sync read none of" (B13 round 45 C2922)
+            pass
+        elif new is not None and new.get("ocr_down"):
             notes.append(said(looked, left if apart else left + waits, _REREAD_STUCK))
         elif waits and not apart:
             notes.append(said(looked, left + waits, _REREAD_STUCK))
-        elif apart and not left:
-            pass  # only they remain: their own note below says so
         elif new is None or not left or new.get("reread"):
             notes.append(SYNC_AGAIN + said(looked, left, _REREAD_AGAIN))
         elif not new.get("ocr_over"):

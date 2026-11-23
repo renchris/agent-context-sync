@@ -45947,6 +45947,13 @@ it after a failed page lost the upgrade for good (C2918's finder fix, makes wors
 `test_an_unreadable_waiting_stub_is_rendered_once_it_is_readable_c2918` (a waiting stub at mode 000: the warning, the
 meta left at 7, `# [WAITING]` once it is readable).
 
+**A re-read whose only remaining files wait for a converter prints only their note** (C2922). `loop._reread_notes`
+tested an OCR outage before "only converter waits remain", so a run that read some files, with `reread_left` 0 and
+`reread_waits` above 0, added the outage's uncounted `file(s) ... the last sync read none of them` note beside the
+waits' own, a second backlog that did not exist. `apart and not left` is tested first. Test: the `ocr_down` rows in
+`tests/test_deploy_pack.py::test_the_readme_says_the_options_note_comes_only_while_a_converter_that_can_run_has_files_c2461`
+(3 and 1 waits, plural and singular).
+
 **A replaced page is headed `# [REPLACED]`** (C2812). A unit-removed tombstone that names its successor read `#
 [NO LONGER PRODUCED]` above "This page was replaced by ...": `publish._tombstone_body` heads it `# [REPLACED]` when
 `superseded_by` is set, and a removed part with none keeps the old heading. Only the heading changes: the finder's
