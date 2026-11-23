@@ -46010,6 +46010,12 @@ above `ops.lock._PID_MAX` or more than 10 digits (a boot time over 19), and `pid
 OverflowError. Test: `test_a_lock_body_naming_an_impossible_pid_is_broken_as_stale_c2921` (2**31, 10**30 and 5000
 digits: `broke_stale=True`, `previous=None`, this pid written).
 
+**The refresh queue checks DEPENDS.tsv's header on the bytes its rows come from** (C2942).
+`_refresh_queue_file` read the rows from one read and checked the header by opening the file again, so a sync
+rewriting it in between decided rc 2 from another snapshot. `curate._depends_header_ok` holds the rule over bytes
+and checks the buffer already read; `_depends_usable` (for `apply_stale_banners`, which reads only the path) reads
+through it. Test: `test_the_refresh_queue_reads_its_header_from_the_rows_snapshot_c2942`.
+
 ### 16.283 Round 45: the converters: a failed zero-byte re-read's books put back, an Office file's container and family parse in its answer and key, and a source's own banner line (2026-11-23, wave B13 round 45 lane E)
 
 Each item is built as its verifier corrected it, as the lead's rulings 188 to 197 settle it. A dated line this

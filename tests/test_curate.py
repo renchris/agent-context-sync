@@ -1652,3 +1652,28 @@ def test_the_citation_lint_survives_hostile_pages_and_units(layout: DocsLayout, 
     assert set(cite_codes(layout, PAGE, entries)) == {"CITE-UNRESOLVED", "CITE-FRAME"}
     screen = WINDOW_2.replace("[00:05:00] NOTE: s004", "[00:05:00] SCREEN: [00:05:00] NOTE: s004")
     assert cite_codes(layout, PAGE, recording(layout, windows=(WINDOW_1, screen))) == ["CITE-FRAME"]
+
+
+def test_the_refresh_queue_reads_its_header_from_the_rows_snapshot_c2942(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 45 C2942: _refresh_queue_file read the rows from one read of DEPENDS.tsv and checked the
+    header by opening the file again, so a sync rewriting it in between decided rc 2 from another snapshot.
+    The header is checked on the bytes the rows come from."""
+    tsv = tmp_path / "DEPENDS.tsv"
+    tsv.write_bytes(b"page\tsource\tpinned_sha\trole\n")
+    reads: list[Path] = []
+    real = Path.read_bytes
+
+    def swap_after_first(self: Path) -> bytes:
+        data = real(self)
+        if self == tsv and not reads:
+            reads.append(self)
+            self.write_bytes(b"garbage without a header\n")  # a rewrite lands after the first read
+        return data
+
+    monkeypatch.setattr(Path, "read_bytes", swap_after_first)
+    rc, verdicts = curate._refresh_queue_file(tsv, tmp_path)
+    assert (rc, verdicts) == (0, []), "the first snapshot holds the header and no row"
+    assert curate._depends_header_ok(b"page\tsource\n") and not curate._depends_header_ok(b"")
+    assert not curate._depends_header_ok(b"pages\tsource\n")

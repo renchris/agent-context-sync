@@ -978,16 +978,19 @@ def write_by_entity(layout: DocsLayout, rows: Sequence[tuple[str, str]]) -> bool
 # ---------------------------------------------------------------------------------------------------------
 
 
+def _depends_header_ok(data: bytes) -> bool:
+    """The script's two rc-2 guards over bytes already read: non-empty, and the first field of line 1 is
+    ``page`` (B13 round 45 C2942: the one definition of the rule)."""
+    return bool(data) and data.split(b"\n", 1)[0].split(b"\t", 1)[0] == b"page"
+
+
 def _depends_usable(tsv: Path) -> bool:
-    """The script's two rc-2 guards: non-empty file whose first field of line 1 is ``page``."""
+    """The script's two rc-2 guards on the file at ``tsv`` (:func:`_depends_header_ok`); False when it
+    cannot be read."""
     try:
-        with tsv.open("rb") as fh:
-            first = fh.readline()
+        return _depends_header_ok(tsv.read_bytes())
     except OSError:
         return False
-    if not first:
-        return False
-    return first.rstrip(b"\n").split(b"\t", 1)[0] == b"page"
 
 
 def _read_mirror_head(root: Path, src: bytes) -> tuple[bytes, bytes, bool]:
@@ -1081,7 +1084,7 @@ def _refresh_queue_file(
         expected = curated is None or curated()
         _log.log(logging.WARNING if expected else logging.DEBUG, "%s: missing or empty", tsv)
         return 2, []
-    if not _depends_usable(tsv):
+    if not _depends_header_ok(data):  # the snapshot the rows come from, never a second open (C2942)
         _log.warning("%s: missing header (page/source/pinned_sha/role)", tsv)
         return 2, []
     records = data.split(b"\n")
