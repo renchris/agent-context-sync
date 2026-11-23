@@ -5804,28 +5804,31 @@ class _Cycle:
                 raise failure
 
     def _reread_family_stubs(self, src: SourceConfig, arm: LocalArm, acc: _SourceAcc, skip: set[str]) -> None:
-        """Read once more each Office row of ``src`` settled with a family mismatch, ``not-ooxml: <noun>, not
-        <noun> (not the type its name says)`` (``convert._common.FAMILY_MISMATCH_RE``), never the not-a-ZIP
-        ``NOT_OOXML_REASON``, which the family rule does not decide (B13 round 45 C2925, ruling 196).  Round
-        44's C2708 made the family check parse ``[Content_Types].xml`` first, which tells some packages an
-        older build called another family, and moved no version, so such a stub was never read again: the
-        Office converters' ``outdated`` rules read no stub by its reason.  The read goes through the new key
-        (``convert.effective_options_hash``'s ``family_parse``), so the older answer is not served from the
-        cache and a new page is stored.  Modeled on :meth:`_reread_zero_byte_stubs`: only a row listed this
-        pass, not dataless, in scope, not in the queue and not withheld as settling is read, from this Mac and
-        never downloaded (a fetch with a budget of no bytes), as a re-read (a conversion that gives the stub
-        it has moves only its key), with each row marked whatever the answer; a row whose converter cannot
-        run is left unmarked for a cycle where it can.  Once no such row of the source is left unmarked, the
-        source's :data:`_FAMILY_PARSE_META` token is set and the marks go, so the read is never repeated.
-        Each row is read through :meth:`_read_rows_once`, the zero-byte pass's loop.  Never in a dry run."""
+        """Read once more each Office row of ``src`` settled with a family mismatch, ``not-ooxml: <noun>,
+        not <noun> (not the type its name says)`` (``convert._common.FAMILY_MISMATCH_RE``), never the
+        not-a-ZIP ``NOT_OOXML_REASON``, which the family rule does not decide (B13 round 45 C2925, ruling
+        196).  Round 44's C2708 made the family check parse ``[Content_Types].xml`` first, which tells some
+        packages an older build called another family, and moved no version, so such a stub was never read
+        again: the Office converters' ``outdated`` rules read no stub by its reason.  The read goes through
+        the new key (``convert.effective_options_hash``'s ``family_parse``), so the older answer is not
+        served from the cache and a new page is stored.  Modeled on :meth:`_reread_zero_byte_stubs`: only a
+        row listed this pass, not dataless, in scope, not in the queue and not withheld as settling is
+        read, from this Mac and never downloaded (a fetch with a budget of no bytes; a dataless row holds the
+        token unset until it is read), as a re-read (a conversion that gives the stub it has moves
+        only its key), with each row marked whatever the answer; a row whose converter cannot run is left
+        unmarked for a cycle where it can.  Once no such row of the source is left unmarked, the source's
+        :data:`_FAMILY_PARSE_META` token is set and the marks go, so the read is never repeated. Each row
+        is read through :meth:`_read_rows_once`, the zero-byte pass's loop.  Never in a dry run."""
         key = _FAMILY_PARSE_META + src.id
         if self.dry or self.manifest.get_meta(key):
             return
+        # a dataless row stays among them, unmarked, so the token waits for it: a token set while it was
+        # online-only kept its stub for good, since its H1 is unchanged once it is back (the zero-byte pass's
+        # out-of-scope rule, C2512)
         named = [
             row
             for row in self.manifest.iter_items(src.id, states=(RowState.QUARANTINED,))
             if not row.is_dir
-            and not row.dataless
             and row.name.lower().endswith(content_policy.OOXML_SUFFIXES)
             and convert_common.FAMILY_MISMATCH_RE.fullmatch(row.state_reason or "") is not None
         ]
@@ -5833,6 +5836,7 @@ class _Cycle:
             r
             for r in named
             if not self.manifest.get_meta(f"{key}:{r.stable_id}")
+            and not r.dataless
             and r.last_seen_run == self.run_id
             and r.stable_id not in skip
             and arm.in_scope(r.rel_path)
@@ -8090,25 +8094,29 @@ _CONTAINER_REASONS = frozenset(
     )
 )
 """The stub reasons an Office name's container alone gives (``policy.screen_file``): bytes that are not a ZIP
-at offset 0.  Any other row of an Office name stands for bytes that are one (:func:`_container_moved`)."""
+at offset 0 (:func:`_container_moved`)."""
 
 
 def _container_moved(row: ItemRow, fetched: FetchResult) -> bool:
-    """True when the staged bytes of an Office name are a ZIP at offset 0 and ``row`` stands for bytes that
-    are not (its reason one of :data:`_CONTAINER_REASONS`), or the other way round (B13 round 45 C2924,
-    ruling 196).  H1 reads a ZIP's members, which zipfile finds behind a preamble, so such a save is
-    TOUCHED_NOT_CHANGED, which publishes nothing: a page stayed up for bytes the screen calls not-ooxml, and
-    a not-ooxml stub stayed for clean bytes with the same H1.  Such bytes are converted, where
-    ``convert_file`` screens the container first.  H1 stays as it is: a purge keys on it, as in
-    ``_Cycle._relabelled``.  Bytes that cannot be read move nothing (the conversion would fail the same
-    way)."""
+    """True when the staged bytes of an Office name are a ZIP at offset 0 and ``row`` is a stub the
+    container alone gave (its reason one of :data:`_CONTAINER_REASONS`), or are not one and ``row`` stands
+    for a page (present, no reason) (B13 round 45 C2924, ruling 196).  Any other row (a label refusal, an
+    inbox duplicate, an encrypted-pdf answer, a failed conversion) says nothing of the container, so it
+    moves nothing: calling those container stubs read every touch of them as a first read.  H1 reads a
+    ZIP's members, which zipfile finds behind a preamble, so such a save is TOUCHED_NOT_CHANGED, which
+    publishes nothing: a page stayed up for bytes the screen calls not-ooxml, and a not-ooxml stub stayed
+    for clean bytes with the same H1.  Such bytes are converted, where ``convert_file`` screens the
+    container first.  H1 stays as it is: a purge keys on it, as in ``_Cycle._relabelled``.  Bytes that
+    cannot be read move nothing (the conversion would fail the same way)."""
     if not row.name.lower().endswith(content_policy.OOXML_SUFFIXES):
         return False
     try:
         zip0 = content_policy.zip_at_offset_0(fetched.path)
     except OSError:
         return False
-    return zip0 is (row.state_reason in _CONTAINER_REASONS)
+    if zip0:
+        return row.state_reason in _CONTAINER_REASONS
+    return row.state_reason is None and row.state in (RowState.LIVE, RowState.DATALESS)
 
 
 def _stubbed_for_path(row: ItemRow) -> bool:

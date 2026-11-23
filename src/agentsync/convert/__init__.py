@@ -369,8 +369,10 @@ def _zero_bytes(src: Path) -> bool:
 def _label_refusal(registry: Registry, src: Path, name: str) -> str | None:
     """The policy-refusal reason when ``[policy]`` label rules are active and refuse ``src`` (else None).
 
-    Encryption stays with the converter guard (its UNREADABLE result is cached); only REFUSED screenings are
-    decided here, uncached, because the action key cannot see a relabel (C15 section 9 items 27 and 29).
+    Encryption stays with the converter guard (its UNREADABLE result is cached, but for an Office name, whose
+    container answer ``_container_screen`` gives before the cache, uncached; B13 round 45 C2924); only
+    REFUSED screenings are decided here, uncached, because the action key cannot see a relabel (C15 section 9
+    items 27 and 29).
     """
     content_policy = getattr(registry, "policy", None)
     screen = getattr(registry, "screen", None)

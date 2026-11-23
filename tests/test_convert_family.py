@@ -12,6 +12,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -2548,3 +2549,62 @@ def test_a_published_family_mismatch_stub_is_read_once_under_the_new_key_c2925(
     tries.clear()
     assert run(config).exit_code == 0
     assert tries == [], "the token holds: no family re-read again"
+
+
+def test_a_family_stub_online_only_when_the_pass_runs_holds_the_token_open_c2925(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 45 C2925, the review's finding: the family pass left a dataless row out of the rows it waits
+    for, so a stub that was online-only when the pass ran let the token be set, and once the file was back its
+    unchanged H1 kept the old stub for good. A dataless row is never read, never marked, and holds the token
+    unset; the first pass that finds it on this Mac reads it and sets the token."""
+    config, src = make_env(tmp_path)
+    with monkeypatch.context() as old:
+        _older_family_rule(old)
+        _decoy_potx(src / "Contoso template.potx")
+        assert run(config).exit_code == 0
+    assert _row(config, "Contoso template.potx").state_reason == _DECK_STUB
+    real = Manifest.iter_items
+
+    def online_only(self: Manifest, source_id: str, *, states=None):  # type: ignore[no-untyped-def]
+        for row in real(self, source_id, states=states):
+            yield dataclasses.replace(row, dataless=True) if row.name == "Contoso template.potx" else row
+
+    tries = _tries(monkeypatch)
+    with monkeypatch.context() as evicted:
+        evicted.setattr(Manifest, "iter_items", online_only)
+        assert run(config).exit_code == 0
+    assert tries == [] and _row(config, "Contoso template.potx").state_reason == _DECK_STUB
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(cycle_mod._FAMILY_PARSE_META + "src") is None, "the token waits for the row"
+    assert run(config).exit_code == 0
+    assert tries == ["Contoso template.potx"], tries
+    assert _row(config, "Contoso template.potx").state is RowState.LIVE
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(cycle_mod._FAMILY_PARSE_META + "src") == "done"
+
+
+def test_a_touched_office_stub_the_container_did_not_give_is_no_container_move_c2924(
+    tmp_path: Path,
+) -> None:
+    """B13 round 45 C2924, the review's finding: ``_container_moved`` read every Office row whose reason is
+    not a container's own as a page made from a ZIP, so a stub that says nothing of the container (a failed
+    conversion, a label refusal, an inbox duplicate) on non-ZIP bytes was a move on every touch, converted and
+    counted again. Only a container stub on a ZIP and a page on non-ZIP bytes move."""
+    config, src = make_env(tmp_path)
+    clean = _workbook(src / "Contoso book.xlsx")
+    assert run(config).exit_code == 0
+    page = _row(config, clean.name)
+    junk = tmp_path / "Contoso junk.xlsx"
+    junk.write_bytes(b"\x00Contoso junk")
+
+    def moved(reason: str | None, state: RowState, path: Path) -> bool:
+        row = dataclasses.replace(page, state=state, state_reason=reason)
+        return cycle_mod._container_moved(row, SimpleNamespace(path=path))  # type: ignore[arg-type]
+
+    others = ("conversion-failed: openpyxl cannot read the workbook", "refused: sensitivity label Contoso")
+    assert moved(None, RowState.LIVE, junk) and moved(NOT_OOXML_REASON, RowState.QUARANTINED, clean)
+    assert not moved(NOT_OOXML_REASON, RowState.QUARANTINED, junk) and not moved(None, RowState.LIVE, clean)
+    for reason in others:
+        for path in (junk, clean):
+            assert not moved(reason, RowState.QUARANTINED, path), (reason, path.name)

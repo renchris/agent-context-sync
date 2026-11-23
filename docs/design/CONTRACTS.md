@@ -45906,16 +45906,20 @@ its UNREADABLE rejection took the key and the clean workbook got the stub. `conv
 `encrypted-office` or `not-ooxml`, as UNREADABLE) and never calls `cache.put`, so a raw-container rejection never
 takes the clean package's key. A converter with no guard and bytes that cannot be read are left to the converter
 as before. In the cycle, `same` beside `_relabelled` gains `_container_moved(row, fetched)`: true when an Office
-name's staged bytes are a ZIP at offset 0 and the row's reason is one the container alone gives
-(`_CONTAINER_REASONS`: `not-ooxml`, `empty-output (the file holds 0 bytes)`, `encrypted-office`), or the other way
-round, so a page row whose bytes gained a preamble and a `not-ooxml` stub whose bytes are a clean ZIP again are
-both converted, where `convert_file` decides them. H1 is unchanged (a purge keys on it, as `_relabelled` says). An
+name's staged bytes are a ZIP at offset 0 and the row is a stub the container alone gave (`_CONTAINER_REASONS`:
+`not-ooxml`, `empty-output (the file holds 0 bytes)`, `encrypted-office`), or when they are not one and the row
+stands for a page (present, no reason), so a page row whose bytes gained a preamble and a `not-ooxml` stub whose
+bytes are a clean ZIP again are both converted, where `convert_file` decides them. A row whose reason says nothing
+of the container (a failed conversion, a label refusal, an inbox duplicate, `encrypted-pdf`) moves nothing: the
+lane's review found the first build calling every such row a page, so each touch of one on non-ZIP bytes was
+converted and counted again. H1 is unchanged (a purge keys on it, as `_relabelled` says). An
 UNREADABLE `not-ooxml` an older build cached under a clean package's key is not served after the upgrade either:
 C2925's `family_parse` moves every Office key. Tests:
 `test_convert_family.py::test_an_office_container_the_screen_rejects_never_shares_the_clean_packages_cache_c2924`
 (clean first and preamble first: the clean workbook is a page, the preamble copy `not-ooxml`, neither from the
-cache) and `test_convert_family.py::test_a_touched_office_file_whose_container_changes_is_converted_again_c2924`
-(clean, preamble, clean and the other way round through three syncs).
+cache), `test_convert_family.py::test_a_touched_office_file_whose_container_changes_is_converted_again_c2924`
+(clean, preamble, clean and the other way round through three syncs) and
+`test_convert_family.py::test_a_touched_office_stub_the_container_did_not_give_is_no_container_move_c2924`.
 
 **A helper's time-out fix builds it again only if it still does not answer** (C2817; `agentsync.ops.doctor`; amends
 §16.233 C915 and §16.243 C1227). Every helper's build goes through `ocr._build`, which runs `open_` (a `--version`
@@ -45993,7 +45997,10 @@ never `NOT_OOXML_REASON`, the not-a-ZIP answer the family rule does not decide: 
 dataless, in scope, not queued and not withheld, fetched from this Mac with a budget of no bytes, converted as a
 re-read under the new key (a page, or the stub it has with its key moved and nothing committed), and counted in
 `read again`. Each row read is marked `family-parse-v1:<source>:<stable id>` whatever the answer; a row whose
-converter cannot run (pandoc missing) is left unmarked for a cycle where it can. Once no such row is left unmarked
+converter cannot run (pandoc missing) is left unmarked for a cycle where it can, and so is a dataless row, which
+is never read but holds the token unset (the review's finding: a token set while the stub was online-only kept
+it for good, since its H1 is unchanged once it is back, as the zero-byte pass's out-of-scope rule says). Once no
+such row is left unmarked
 the token `family-parse-v1:<source>` is set and the marks go, so the read is never repeated. The pass runs right
 after the zero-byte pass, inside the same catch, and both read their rows through one loop, `_read_rows_once`,
 which holds the C2703 snapshot and C2923's `_row_books`, so the twins cannot drift. Tests:
@@ -46001,8 +46008,9 @@ which holds the C2703 snapshot and C2923's `_row_books`, so the twins cannot dri
 older stub cached under the older key, the new conversion a page not from the cache, and `family_parse` in every
 Office suffix's options hash and no other), `test_convert_family.py::test_a_published_family_mismatch_stub_is_read_once_under_the_new_key_c2925`
 (the decoy template a page, a Word document named `.pptx` keeping its stub with no commit, a no-ZIP `.docx` never
-read, `read again 2`, the token set, nothing read on the next sync) and the C2703 shape test, which now reads the
-shared loop.
+read, `read again 2`, the token set, nothing read on the next sync),
+`test_convert_family.py::test_a_family_stub_online_only_when_the_pass_runs_holds_the_token_open_c2925` and the
+C2703 shape test, which now reads the shared loop.
 
 **A source's own banner line never stands for the leading one** (C2929; ruling 196; `agentsync.policy`).
 `has_banner` took the banner anywhere in a body's first eight lines and `with_banner` returned such a body
