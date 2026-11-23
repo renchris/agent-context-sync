@@ -12396,8 +12396,15 @@ def test_the_guide_names_the_late_listing_and_the_local_work_line() -> None:
     # wrote each branch's 0001-local-changes-kept-before-update.patch over the one before
     assert "format-patch origin/main..<branch> -o" not in page
     assert "Documents" in setup_report._GENERIC_FOLDERS
+    # B13 round 44 C2669 (lane RB's 8171f2056): the shell fallback report lists CloudStorage too; C2668
+    # (lane RB's 75b32155b, lane RA's cbe601105): both reports register install.log's --source-local parts
     assert (
-        "each folder the agentsync report's CloudStorage listing showed, and each folder step 1's "
+        "each folder the CloudStorage listing showed (the agentsync report's, and since B13 round 44 C2669 "
+        "the shell fallback report's too, which lists `~/Library/CloudStorage` as the agentsync report does, "
+        "depth 2 and 3 within 3 seconds, numbered in the same order, a listing that did not finish with no "
+        "printed list making it Private only), each part below the provider of every `--source-local` word "
+        "install.log holds under `~/Library/CloudStorage` (both reports, since B13 round 44 C2668), and each "
+        "folder step 1's "
         "`--list-folders` runs printed into install.out (both reports), except a generic name such as "
         "`Documents`" in page
     )
