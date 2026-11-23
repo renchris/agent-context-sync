@@ -14814,14 +14814,15 @@ def _helper_late_head(r: _Run, helpers: Sequence[str]) -> str:
     """The Doctor line's clause for the helper warns :data:`_HELPER_LATE_RE` reads (B13 round 35 C915): which
     helper did not answer, the advice whole (:func:`_idle_again`, which install.sh keys on), and, as
     :func:`_cut_off_words` says it, what a second time when idle means: the helper is slow or hung, which
-    install.sh run again without --report-only builds again. A stopped copy gets its own words only."""
+    install.sh run again without --report-only builds again if it still does not answer (B13 round 45 C2817,
+    lane E's doctor words: it checks the helper first). A stopped copy gets its own words only."""
     who = " and the ".join(helpers)
     if r.facts.copy_stopped:
         return f"not judged (the {who} did not answer in time: {_idle_again(r)})"
     return (
         f"not judged (the {who} did not answer in time: {_idle_again(r)}; if a report written when it is "
         "idle says the same, the helper is slow or hung: run install.sh again without --report-only, which "
-        "builds it again, and send the report as it is)"
+        "builds it again if it still does not answer, and send the report as it is)"
     )
 
 

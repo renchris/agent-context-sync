@@ -38591,6 +38591,8 @@ E's 2fa5f9d66, matches `_HELPER_LATE_RE` on its own check).
 Amended 2026-11-08, §16.236 C1071: two or three helpers chain in the one bucket, `not judged (the <helper> and the
 <helper> ... did not answer in time: ...)`, and install.sh's `report_time_helps` now greps that form, the report's own
 words (ruling 114; 298fa1f17).
+Amended 2026-11-23, §16.280 C2817: the clause's advice reads `which builds it again if it still does not answer, and
+send the report as it is`, as lane E's doctor fix now says install.sh checks the helper before it builds it again.
 
 **A report that gave up on doctor names the check it was in** (ruling 105's report-level case, on lane B's
 f1f777bb0; tests only). Through the real `cli._report_hooks()` and the whole report, a hung git check and a later
@@ -46046,6 +46048,15 @@ failed none, a doctor FAIL, a folder and a usage error),
 `test_install_sh_prints_the_reports_none_and_first_run_nexts_by_content_c2946_c2802` and
 `test_report_redaction.py::test_one_real_no_folder_runs_next_is_the_loop_lines_c2946` (one real `install.sh
 --no-folder` run's NEXT and its report's Loop line).
+
+**A late helper is built again only if it still does not answer** (C2817, the report half; lane E's doctor words,
+§16.283; amends §16.230 C915). Doctor's helper time-out fix now says install.sh checks the helper again and builds
+it again only if it still does not answer, and the Doctor line's `not judged (the <helper> did not answer in time:
+...)` clause said install.sh `builds it again`. `_helper_late_head` reads `run install.sh again without
+--report-only, which builds it again if it still does not answer, and send the report as it is`; the `--version did
+not answer within <N>s: ` head `_HELPER_LATE_RE` reads is unchanged. Test:
+`test_a_helper_that_did_not_answer_in_time_is_not_judged_c915` (the clause pinned, its fixture copying lane E's
+fallback).
 
 ### 16.281 Round 45: the installer: the shell halves of rulings 188 and 189, the person's none honored at every NEXT, an inbox-state read that did not finish said so, and C2060 waits on the operator (2026-11-23, wave B13 round 45 lane RB)
 

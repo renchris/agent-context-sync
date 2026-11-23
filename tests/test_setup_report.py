@@ -3394,8 +3394,8 @@ def summary_of(
 _C915_LATE = (
     "the {helper} --version did not answer within 5s: the check ran out of time, so it could not say whether "
     "anything is wrong (fix: run ~/.local/bin/agentsync status again as it is; if this line comes back: "
-    "run ~/src/agent-context-sync/scripts/install.sh again without --report-only, which builds the {helper} "
-    "again)"
+    "run ~/src/agent-context-sync/scripts/install.sh again without --report-only, which checks the {helper} "
+    "again and builds it again if it still does not answer)"
 )
 
 
@@ -3405,7 +3405,8 @@ def test_a_helper_that_did_not_answer_in_time_is_not_judged_c915(fake_mac: dict[
     time-out; the report files those three checks' warns under `not judged (<helper> did not answer in time:
     ...)` before `unexpected`, with the advice whole (install.sh keys on it) and what a second time when idle
     means; a stopped copy gives its own words; any other warn, and these words on another check, stay
-    unexpected."""
+    unexpected. B13 round 45 C2817: install.sh builds the helper again only if it still does not answer, in
+    lane E's doctor words and the report's."""
     late = [
         f"[warn] ocr — {_C915_LATE.format(helper='OCR helper')}",
         f"[warn] speech — {_C915_LATE.format(helper='speech helper')}",
@@ -3416,8 +3417,8 @@ def test_a_helper_that_did_not_answer_in_time_is_not_judged_c915(fake_mac: dict[
     assert (
         "not judged (the OCR helper and the speech helper did not answer in time: "
         f"{setup_report._IDLE_AGAIN}; if a report written when it is idle says the same, the helper is slow "
-        "or hung: run install.sh again without --report-only, which builds it again, and send the report as "
-        "it is) 2: ocr warn, speech warn" in line
+        "or hung: run install.sh again without --report-only, which builds it again if it still does not "
+        "answer, and send the report as it is) 2: ocr warn, speech warn" in line
     ), line
     assert line.index("not judged (the OCR helper") < line.index("unexpected 1: logs warn"), line
     r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 5.0)
