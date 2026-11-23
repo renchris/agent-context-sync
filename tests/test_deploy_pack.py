@@ -12515,7 +12515,11 @@ def test_the_guide_names_step_1s_folder_list_as_a_redaction_source() -> None:
         r'"(Private only: the listing of ~/Library/CloudStorage for redaction did not finish) and "', source
     )
     assert line is not None and "red.listing_unread = not listing_ok and not has_list" in source
-    assert "_add_listed(red, [*listed, *printed])" in source  # after the listing, before the rest
+    # after the listing, before the rest; since B13 round 45 C2873 the printed rows in a call of their own,
+    # right after the listing's, so an escaped row's decoded name takes its number there
+    listed_call = source.index("_add_listed(red, listed)\n")
+    printed_call = source.index("for provider, depth, name, _escaped in printed]")
+    assert listed_call < printed_call < listed_call + 400
     installer = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
     assert installer.index("printed into install.out") > installer.index('"$SETUP_LOG" 2>/dev/null |')
     page = _page("docs/deploy/setup-feedback.md")
