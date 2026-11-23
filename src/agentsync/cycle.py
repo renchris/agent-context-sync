@@ -55,6 +55,7 @@ from agentsync import policy as content_policy
 from agentsync.arm_local import (
     UNKNOWN_EMPTY,
     UNKNOWN_MISSING,
+    UNKNOWN_NOTDIR,
     InboxArm,
     LocalArm,
     SettleBudget,
@@ -4651,11 +4652,13 @@ class _Cycle:
         *,
         root_missing: bool = False,
         root_path: Path | None = None,
+        root_notdir: bool = False,
     ) -> None:
         """Store this walk's zero-child cloud folders (:data:`_EMPTY_DIRS_META`), whether its root was
         unlisted (:data:`_ROOT_UNLISTED_META`), the other folders it could not list
         (:data:`_UNLISTED_DIRS_META`), the kind of each (:data:`_UNLISTED_KINDS_META`; ``root_missing``, a
-        root that does not exist, is ``UNKNOWN_MISSING`` for "." (B13 round 14 Q34)), what the provider folder
+        root that does not exist, is ``UNKNOWN_MISSING`` for "." (B13 round 14 Q34), and ``root_notdir``, one
+        that is not a folder, ``UNKNOWN_NOTDIR`` (B13 round 45 C2814)), what the provider folder
         of such a ``root_path`` says of its app's sign-in (:data:`_ROOT_MISSING_STATE_META`) and the
         ``sentinel`` it did not find (:data:`_SENTINEL_MISSING_META`), each written only on a change."""
         found = stats.empty_cloud_dirs if stats is not None else ()
@@ -4674,6 +4677,8 @@ class _Cycle:
                 from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module
 
                 missing_state = doctor.provider_state(provider)
+        elif stats is None and root_notdir:
+            kinds = {".": UNKNOWN_NOTDIR}
         for key, value in (
             (_EMPTY_DIRS_META + source_id, json.dumps(list(found), ensure_ascii=False) if found else ""),
             (_ROOT_UNLISTED_META + source_id, "1" if root else ""),
@@ -4758,6 +4763,7 @@ class _Cycle:
                         src.sentinel,
                         root_missing=arm.root_missing,
                         root_path=arm.root,
+                        root_notdir=arm.root_notdir,
                     )
                 self.manifest.record_source_pass(
                     self.run_id,

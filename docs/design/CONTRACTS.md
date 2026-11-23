@@ -45870,7 +45870,58 @@ Reserved for round 45 lane RB of B13.
 
 ### 16.282 Round 45: an inbox that is not a folder never named as kept, its state read by lstat and stat, a `~user` AGENTSYNC_CONFIG refused, and every waiting stub and tombstone rendered again under STUB_RENDER 8 (2026-11-23, wave B13 round 45 lane B)
 
-Reserved for round 45 lane B of B13.
+Round 45's lane B items (`docs/plans/bring-back-ocr.md`, "B13 round 45"; specs `round45/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's rulings 193 to 196 settle it). A dated line this round writes reads
+`Amended 2026-11-23, §16.282 C<n>`.
+
+**The kept inbox entry is read once, by lstat and stat** (C2936, C2807 with C2937; ruling 194). `config.inbox_entry`
+reads the folder `inbox` beside the docs repo with `os.lstat` and, for a link, `os.stat`: ENOENT or ENOTDIR on the
+entry is absent (`INBOX_ENTRY_ABSENT`), a folder or a link to one is a folder (`INBOX_ENTRY_FOLDER`), anything else (a
+file, a link to a file, a dangling or looping link) is not a folder (`INBOX_ENTRY_NOT_A_FOLDER`), and any other OSError
+is unread, `INBOX_ENTRY_UNREAD` followed by its own words. inbox_state reads `not read (<why>)` for an
+unread entry, so a docs repo whose parent this account cannot search no longer reads `live <folder>` or `not added (no
+source on <folder>)`: os.path.lexists turned that denial into False, and same_folder matched the configured path
+lexically. `config.live_inbox` reads the same entry and, when it is not a folder or cannot be read, drops every
+candidate same_folder with the kept path from both its branches, since that source's stored path was canonicalized
+into the file or the link's target; so AGENTS.md, CLAUDE.md and rule 4's `nothing to draft yet` never name a file, a
+dangling link's target or a linked-to file where inbox_state says `not added (<folder> is not a folder)`, a second
+live inbox elsewhere is named instead, and a link to a real folder is still the kept folder. Tests:
+`test_root_guide_never_names_a_kept_inbox_that_is_not_a_folder_c2807`,
+`test_nothing_to_draft_never_names_a_kept_inbox_that_is_not_a_folder_c2937`,
+`test_inbox_state_says_not_read_when_the_inbox_parent_cannot_be_searched_c2936`.
+
+**An inbox this account cannot read gets the person's fix, and says not read** (C2808; ruling 194). Doctor's
+`source.<id>.listable` [FAIL] on EACCES used `chmod u+rx <root>`, which a folder above refuses when the inbox is a
+link into a locked folder: its fix is now `_parent_fix(root)` when a folder above refuses a search (the person's,
+naming that folder, with `chmod u+rwx` of it when it is this account's own folder at a mode that refuses), else `the
+person runs chmod u+rx <root>`, so cli's NEXT reads it as the person's. The volume row after an unreadable listing is
+`volume UUID not checked: <shown> cannot be read (permission denied); the listable line above says what to do`, with
+no fix and never raw `[Errno` text, and a volume read error prints its strerror. Status no longer logs `loop: cannot
+read inbox` for a PermissionError, which the listable line and `inbox state: not read` already say. Step 2 prints
+`inbox: not read: <folder>: Permission denied (inbox state says what to do)` (`cli.INBOX_NOT_READ`) for a kept entry
+it cannot read, never `inbox: not added`; install.sh's inbox_not_added and the report's reader match it (lanes RB and
+RA). Test: `test_an_inbox_link_into_a_locked_folder_gets_the_persons_parent_fix_c2808`; the C1414 test's fix reads
+`the person runs chmod u+rx <word>`.
+
+**The source on a kept inbox that is not a folder is shown as typed, with the person's fix** (C2809; ruling 194).
+When inbox_state reads `not added (<folder> is not a folder)`, the source whose stored path is canonical_source_root
+of that folder is shown by the folder as typed, never the link's target, its listable detail is `<folder> is not a
+folder` and its fix (a dangling link's volume row too) is `restore <folder> as a folder: keeping a copy, move the file
+or link at that name aside, then run step 2 again` (`doctor.inbox_not_a_folder_fix`), which PERSONS_FIX_RE reads as
+the person's: the finder's `move the file or link ... aside` opening read as the agent's step, so the agent would
+have moved the person's file (makes worse True for that wording). Every other source keeps its config-path fixes.
+Test: `test_the_inbox_sources_fix_over_a_non_folder_is_the_persons_move_aside_c2809`.
+
+**A sync names an inbox that is not a folder in a note of its own** (C2814; ruling 194). LocalArm records
+`arm_local.UNKNOWN_NOTDIR` for "." when its root is a file or a link, and the cycle stores it in the unlisted kinds.
+Loop gives an inbox whose root is not a folder (that kind, or, for the source on the kept inbox, a missing root while
+`config.inbox_entry` says the kept entry is not a folder, since its stored path is the link's target) the note `the
+inbox (<id>) is not a folder: <folder as typed> is a file, a link to a file or a dangling link, and no later sync lists
+it until it is moved aside: keeping a copy, move it aside, then run step 2 again; it does not block the next step`, in
+place of `was not fully listed: a later sync lists a file that was still being written` and of a dangling link's
+missing-root wait. It stays a note, never a wait: it gates no baseline question, and a wait would block the NEXT on
+the person's file. A local source's root of that kind keeps its wait and its listable check. Test:
+`test_an_inbox_that_is_not_a_folder_is_a_note_naming_it_as_typed_c2814`.
 
 ### 16.283 Round 45: the converters: a failed zero-byte re-read's books put back, an Office file's container and family parse in its answer and key, and a source's own banner line (2026-11-23, wave B13 round 45 lane E)
 

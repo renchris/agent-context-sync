@@ -204,6 +204,9 @@ UNKNOWN_OTHER = "other"  # a provider error, a folder that vanished, anything el
 # the root itself does not exist (ENOENT): renamed, moved or deleted, or its sync app or volume is not there;
 # stored for "." only, so a wait names that cause, not access (B13 round 14 Q6, Q11, Q34)
 UNKNOWN_MISSING = "missing"
+# the root is there but is not a folder (a file, or a link the walk refuses): stored for "." only, so an
+# inbox's note names that cause, which no later sync clears, never "a later sync lists" (B13 round 45 C2814)
+UNKNOWN_NOTDIR = "not-a-folder"
 
 
 class UnknownDir(NamedTuple):
@@ -1241,6 +1244,7 @@ class LocalArm:
         self.root = cfg.path
         self.last_stats: WalkStats | None = None  # stats of the most recent scan (for STATE.md / reports)
         self.root_missing = False  # the most recent scan found no root (ENOENT), before or during the walk
+        self.root_notdir = False  # ... found a root that is not a folder (a file or a link; C2814)
         # stable_id -> stored H0 of this source (``Manifest.observation_index``), set by the cycle before a
         # scan: files whose lstat tuple still matches skip the per-file getattrlist (see ``walk``).
         self.known_h0: Mapping[str, _KnownStat] | None = None
@@ -1436,6 +1440,7 @@ class LocalArm:
 
         # The root's own metadata reads share the listings' time limit: a privacy prompt may hold them too.
         self.root_missing = False
+        self.root_notdir = False
         try:
             root_st, volume = call_with_timeout(root_reads, self.listing_timeout_s, name="agentsync-root")
         except CallTimedOutError:
@@ -1446,8 +1451,10 @@ class LocalArm:
         except OSError as exc:
             return self._incomplete(f"source root unreadable: {self.root}: {exc.strerror}")
         if stat.S_ISLNK(root_st.st_mode):
+            self.root_notdir = True
             return self._incomplete(f"source root is a symlink: {self.root}; configure the canonical path")
         if not stat.S_ISDIR(root_st.st_mode):
+            self.root_notdir = True
             return self._incomplete(f"source root is not a directory: {self.root}")
         if not isinstance(volume, str):
             return self._incomplete(f"volume UUID unavailable for {self.root}: {volume}")

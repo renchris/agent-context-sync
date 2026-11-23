@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import contextlib
+import errno
 import json
 import os
 import re
+import stat
 import tempfile
 import tomllib
 from collections.abc import Collection, Mapping
@@ -761,6 +763,39 @@ def ensure_inbox(config_path: Path) -> tuple[Config, SourceConfig | None]:
     return config, next(s for s in config.sources if s.id == sid)
 
 
+INBOX_ENTRY_ABSENT = "absent"
+INBOX_ENTRY_FOLDER = "folder"
+INBOX_ENTRY_NOT_A_FOLDER = "not-a-folder"
+INBOX_ENTRY_UNREAD = "unread: "  # followed by the OSError's own words, no path
+
+
+def inbox_entry(folder: Path) -> str:
+    """What sits at ``folder`` (the kept inbox's name, as typed), read once with ``os.lstat`` and, for a
+    link, ``os.stat`` (B13 round 45 C2936, ruling 194): :data:`INBOX_ENTRY_ABSENT` when the entry itself is
+    missing (ENOENT, or ENOTDIR on a parent that is a file), :data:`INBOX_ENTRY_FOLDER` for a folder or a link
+    to one, :data:`INBOX_ENTRY_NOT_A_FOLDER` for anything else or a link whose target is missing, not a folder
+    or loops, and :data:`INBOX_ENTRY_UNREAD` with the OSError's words for any other error, a parent this
+    account cannot search included.  os.path.lexists turns that denial into False and Path.is_dir on Python
+    3.14 swallows EACCES, so neither is used."""
+    try:
+        st = os.lstat(folder)
+    except OSError as exc:
+        if exc.errno in (errno.ENOENT, errno.ENOTDIR):
+            return INBOX_ENTRY_ABSENT
+        return f"{INBOX_ENTRY_UNREAD}{exc.strerror or type(exc).__name__}"
+    if stat.S_ISDIR(st.st_mode):
+        return INBOX_ENTRY_FOLDER
+    if not stat.S_ISLNK(st.st_mode):
+        return INBOX_ENTRY_NOT_A_FOLDER
+    try:
+        target = folder.stat()  # follows the link
+    except OSError as exc:
+        if exc.errno in (errno.ENOENT, errno.ENOTDIR, errno.ELOOP):
+            return INBOX_ENTRY_NOT_A_FOLDER  # a dangling or looping link, or one through a file
+        return f"{INBOX_ENTRY_UNREAD}{exc.strerror or type(exc).__name__}"
+    return INBOX_ENTRY_FOLDER if stat.S_ISDIR(target.st_mode) else INBOX_ENTRY_NOT_A_FOLDER
+
+
 # status's line after ``inbox:``, printed only when no live inbox source sits there
 INBOX_STATE_LINE = "inbox state: "
 INBOX_LIVE = "live "  # inbox_state's words for a live inbox source on the kept folder: ``live <folder>``
@@ -777,17 +812,18 @@ def inbox_state(config: Config) -> tuple[Path, str]:
     (:func:`canonical_source_root`) by identity (:func:`paths.same_folder`): an inbox source there reads its
     state and the folder (``live <folder>``, ``paused <folder>``, ``retired <folder>``; a live one first),
     another kind's source reads ``not added (<folder> is source '<id>' (<kind>, <state>), not an inbox
-    source)``, and none reads ``not added (no source on <folder>)``.  Reads the disk only through lexists,
-    is_dir and the readlinks canonical_source_root and same_folder already make.  An entry that cannot be read
-    (a link into a folder this account cannot search, a privacy refusal under CloudStorage) reads ``not read
-    (<why>)``, the OSError's own words with no path, never ``is not a folder``: os.path.isdir would call such
-    a link to a real folder not a folder (B13 round 44 C2644 with C2636, ruling 180)."""
+    source)``, and none reads ``not added (no source on <folder>)``.  Reads the disk only through
+    :func:`inbox_entry` (one lstat, and a stat for a link) and the readlinks canonical_source_root and
+    same_folder already make.  An entry that cannot be read (a link into a folder this account cannot search,
+    a parent this account cannot search, a privacy refusal under CloudStorage) reads ``not read (<why>)``, the
+    OSError's own words with no path, never ``is not a folder``: os.path.isdir would call such a link to a
+    real folder not a folder, and os.path.lexists would call a denied entry absent (B13 round 44 C2644 with
+    C2636, ruling 180; round 45 C2936, ruling 194)."""
     folder = expand(config.docs_repo).parent / "inbox"
-    try:
-        not_folder = os.path.lexists(folder) and not folder.is_dir()  # a file, a link to one, a dangling link
-    except OSError as exc:  # EACCES on a link into a locked folder, EPERM from a privacy refusal
-        return folder, f"not read ({exc.strerror or type(exc).__name__})"
-    if not_folder:
+    kind = inbox_entry(folder)
+    if kind.startswith(INBOX_ENTRY_UNREAD):
+        return folder, f"not read ({kind[len(INBOX_ENTRY_UNREAD) :]})"
+    if kind == INBOX_ENTRY_NOT_A_FOLDER:
         return folder, f"not added ({folder} is not a folder)"
     kept = canonical_source_root(folder)
     on = [s for s in config.sources if s.path is not None and same_folder(expand(s.path), kept)]
@@ -808,7 +844,13 @@ def live_inbox(config: Config) -> Path | list[tuple[Path, str]] | None:
     :func:`ensure_inbox` keeps (in its stored form, :func:`canonical_source_root`) when a live inbox source
     sits on it, matched by identity (:func:`paths.same_folder`: its id and spelling may differ), else the only
     live inbox source's path, else every live inbox source as ``(path, id)`` sorted by id, since no one of
-    them is the inbox, else None."""
+    them is the inbox, else None.
+
+    The kept entry is read once (:func:`inbox_entry`): when it is not a folder (a file, a link to one, a
+    dangling or looping link) or cannot be read, every candidate same_folder with it is dropped from both
+    branches, since its stored path was canonicalized into that file or that link's target, so neither guide
+    names what inbox_state calls ``not added (<folder> is not a folder)``; a link to a real folder is still
+    the kept folder (B13 round 45 C2807 with C2937, ruling 194)."""
     inboxes = sorted(
         (
             (s.path, s.id)
@@ -817,8 +859,11 @@ def live_inbox(config: Config) -> Path | list[tuple[Path, str]] | None:
         ),
         key=lambda pair: pair[1],
     )
-    kept = canonical_source_root(expand(config.docs_repo).parent / "inbox")
-    if any(same_folder(path, kept) for path, _ in inboxes):
+    folder = expand(config.docs_repo).parent / "inbox"
+    kept = canonical_source_root(folder)
+    if inbox_entry(folder) not in (INBOX_ENTRY_ABSENT, INBOX_ENTRY_FOLDER):
+        inboxes = [(path, sid) for path, sid in inboxes if not same_folder(path, kept)]
+    elif any(same_folder(path, kept) for path, _ in inboxes):
         return kept
     if len(inboxes) == 1:
         return inboxes[0][0]

@@ -18630,8 +18630,9 @@ def test_the_inbox_line_prints_the_helpers_answer_under_a_folder_that_refuses_a_
 ) -> None:
     """B13 round 43 C2460 with C2525 (ruling 162): a folder above the inbox folder that refuses a search no
     longer raises into `- inbox: not read (<why>)`: the line prints config.inbox_state's answer, as status's
-    `inbox state:` does (its lexists reads such an entry as absent), and the rest of Configuration still
-    prints."""
+    `inbox state:` does, and the rest of Configuration still prints. Amended 2026-11-23 (B13 round 45 C2936,
+    ruling 194): inbox_state reads the entry with lstat, so a denied lookup is `not read (Permission denied)`,
+    never the absent entry lexists made of it (`not added (no source on ...)`)."""
     locked = fake_mac["home"] / "Wombat Locked"
     (locked / "docs").mkdir(parents=True)
     cfg = fake_mac["config"]
@@ -18644,8 +18645,7 @@ def test_the_inbox_line_prints_the_helpers_answer_under_a_folder_that_refuses_a_
         locked.chmod(0o700)
     conf = section(text, "Configuration")
     [line] = [ln for ln in conf.splitlines() if ln.startswith("- inbox: ")]
-    assert line == "- inbox: not added (no source on ~/Wombat Locked/inbox)", line
-    assert want.endswith("Wombat Locked/inbox)") and "not read" not in line
+    assert line == "- inbox: not read (Permission denied)" == want, (line, want)
     assert "This section failed" not in conf and any(ln.startswith("- [convert]") for ln in conf.splitlines())
 
 

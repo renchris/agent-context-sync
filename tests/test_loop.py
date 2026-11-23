@@ -34,6 +34,7 @@ from agentsync.config import (
     canonical_source_root,
     ensure_inbox,
     inbox_source_table,
+    inbox_state,
     load_config,
     local_source_table,
     set_source_exclude,
@@ -2698,6 +2699,89 @@ def test_nothing_to_draft_names_only_an_inbox_that_is_read_c2602(tmp_path: Path,
     if case == "elsewhere":  # the root guide names the same folder
         manifest: Any = None  # root_guide reads the config alone
         assert want in publish.Publisher(config, manifest).root_guide(), want
+
+
+@pytest.mark.parametrize("entry", ["file", "dangling-link", "link-to-file"])
+@pytest.mark.parametrize("second", [False, True])
+def test_nothing_to_draft_never_names_a_kept_inbox_that_is_not_a_folder_c2937(
+    tmp_path: Path, entry: str, second: bool
+) -> None:
+    """B13 round 45 C2937 with C2807 (ruling 194): a file, a dangling link or a link to a file put where a
+    configured live inbox was made status say ``not added (<folder> is not a folder)`` while rule 4 still
+    offered that path (or the link's target) as the drop folder, since live_inbox matched the kept path
+    lexically. It drops every candidate on that entry from both branches; a second live inbox is named."""
+    root = tmp_path / "Contoso Gamma"
+    (root / "Gamma Empty").mkdir(parents=True)
+    config = _synced(tmp_path, root)
+    config, box = ensure_inbox(config.config_path)
+    assert box is not None
+    drop = tmp_path / "Contoso Drop"
+    if second:
+        drop.mkdir()
+        cfg = config.config_path
+        table = inbox_source_table("zz-drop", drop)
+        cfg.write_text(cfg.read_text(encoding="utf-8") + table, encoding="utf-8")
+    assert run_cycle(load_config(config.config_path), mode=None).exit_code == 0
+    kept = config.docs_repo.parent / "inbox"
+    kept.rename(tmp_path / "inbox-moved")  # moved aside, never removed
+    if entry == "file":
+        kept.write_text("contoso note\n", encoding="utf-8")
+    elif entry == "dangling-link":
+        kept.symlink_to(kept.parent / "contoso-missing")
+    else:
+        (kept.parent / "contoso-note.txt").write_text("x\n", encoding="utf-8")
+        kept.symlink_to(kept.parent / "contoso-note.txt")
+    config = load_config(config.config_path)
+    assert inbox_state(config)[1] == f"not added ({kept} is not a folder)"
+    clause = loop._inbox_clause(config)
+    guide = publish.Publisher(config, None).root_guide()  # type: ignore[arg-type]  # reads the config alone
+    for word in ("agent-context/inbox", "contoso-missing", "contoso-note.txt"):
+        assert word not in clause and word not in guide, (word, clause)
+    if second:
+        assert clause == f" or the inbox ({publish._display_path(drop)})", clause
+        assert f"into `{publish._display_path(drop)}`" in guide
+    else:
+        assert clause == "", clause
+    assert run_cycle(config, mode=None).exit_code == 0
+    step = loop.next_step(config)
+    assert step.rule == 4 and step.step.startswith(f"{loop.NOTHING_TO_DRAFT}: "), step
+    assert ("inbox (" in step.step) is second, step
+
+
+@pytest.mark.parametrize("entry", ["file", "dangling-link", "link-to-file"])
+def test_an_inbox_that_is_not_a_folder_is_a_note_naming_it_as_typed_c2814(tmp_path: Path, entry: str) -> None:
+    """B13 round 45 C2814 (ruling 194): a file (or a link that is not a folder) at the kept inbox's name gave
+    the sync's ``was not fully listed: a later sync lists a file that was still being written`` note, which
+    read as transient, or (a dangling link) a missing-root wait. LocalArm stores ``UNKNOWN_NOTDIR`` for its
+    root and the sync prints a note of its own naming the folder as typed with step 2's remedy: a note,
+    never a wait, the NEXT unchanged."""
+    root = tmp_path / "Contoso Gamma"
+    (root / "Gamma Empty").mkdir(parents=True)
+    config = _synced(tmp_path, root)
+    config, box = ensure_inbox(config.config_path)
+    assert box is not None and run_cycle(config, mode=None).exit_code == 0
+    before = loop.next_step(config)
+    kept = config.docs_repo.parent / "inbox"
+    kept.rename(tmp_path / "inbox-moved")  # moved aside, never removed
+    if entry == "file":
+        kept.write_text("contoso note\n", encoding="utf-8")
+    elif entry == "dangling-link":
+        kept.symlink_to(kept.parent / "contoso-missing")
+    else:
+        (kept.parent / "contoso-note.txt").write_text("x\n", encoding="utf-8")
+        kept.symlink_to(kept.parent / "contoso-note.txt")
+    config = load_config(config.config_path)
+    assert run_cycle(config, mode=None).exit_code == 0
+    step = loop.next_step(config)
+    note = (
+        f"the inbox ({box.id}) is not a folder: {loop._shown(kept)} is a file, a link to a file or a "
+        "dangling link, and no later sync lists it until it is moved aside: keeping a copy, move it aside, "
+        "then run step 2 again; it does not block the next step"
+    )
+    assert note in step.notes, step.notes
+    assert not any("a later sync lists" in n for n in step.notes), step.notes
+    assert not any("contoso-missing" in w or "contoso-note" in w for w in (*step.waits, *step.notes)), step
+    assert (step.rule, step.waits) == (before.rule, before.waits), (step, before)
 
 
 def test_an_empty_draft_over_an_empty_mirror_is_rule_4_beside_topic_pages_c2707(tmp_path: Path) -> None:

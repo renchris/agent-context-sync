@@ -37,7 +37,7 @@ from urllib.parse import quote
 from agentsync import arm_local, gitops, lints, materialise
 from agentsync.arm_local import LISTING_TIMEOUT_S as _ARM_LISTING_TIMEOUT_S
 from agentsync.arm_local import CallTimedOutError, call_with_timeout, cloud_provider_root
-from agentsync.config import RETIRE_ADVICE, Config, SourceConfig, canonical_source_root
+from agentsync.config import RETIRE_ADVICE, Config, SourceConfig, canonical_source_root, inbox_state
 from agentsync.convert import media, ocr, speech
 from agentsync.cycle import (
     VANISHED_FIX,
@@ -3029,6 +3029,33 @@ def _empty_root_fix(config: Config, src: SourceConfig, root: Path, image: Path) 
     )
 
 
+def inbox_not_a_folder_fix(folder: Path) -> str:
+    """The fix for the source on the kept inbox when a file or a link that is not a folder has its name (B13
+    round 45 C2809, ruling 194): the person's (``restore `` is a PERSONS_FIX_RE opening, so cli's NEXT and
+    install.sh's PERSONS_FAILS split never hand the agent the person's file), naming the folder as typed,
+    never a link's target, with step 2's own remedy."""
+    return (
+        f"restore {_shell_path(folder)} as a folder: keeping a copy, move the file or link at that name "
+        "aside, then run step 2 again"
+    )
+
+
+def _kept_inbox_not_a_folder(config: Config, src: SourceConfig) -> Path | None:
+    """The kept inbox folder as typed when ``src`` is the source on it and inbox_state reads ``not added
+    (<folder> is not a folder)``, else None (C2809). The source is matched by its stored path, compared as a
+    plain path with canonical_source_root of that folder: both follow the link alike, and same_folder cannot
+    match a missing target."""
+    if src.kind is not SourceKind.INBOX or src.path is None:
+        return None
+    try:
+        folder, words = inbox_state(config)
+        if words != f"not added ({folder} is not a folder)":
+            return None
+        return folder if expand(src.path) == canonical_source_root(folder) else None
+    except OSError:
+        return None
+
+
 def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[CheckResult]:
     """One local/inbox source: listable, sentinel present, volume UUID readable."""
     base = f"source.{src.id}"
@@ -3039,6 +3066,11 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
     root = expand(src.path)
     cloud = is_cloud_path(root)
     shown = list_spelling(root)  # every detail's spelling of the root, never raw (B13 round 38 C1414)
+    # the source on the kept inbox while a file or a link that is not a folder has its name: shown as typed,
+    # never the link's target, with the person's one fix on the listable and volume rows (C2809)
+    typed_inbox = _kept_inbox_not_a_folder(config, src)
+    if typed_inbox is not None:
+        shown = list_spelling(typed_inbox)
 
     # only once the listing has answered: the fix reads the provider folder, which a hidden Allow prompt
     # holds too (B13 round 13 O47: read first, it held status past the listing's bound); once, for the
@@ -3053,6 +3085,7 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
     look_fix = f"check that {shown} opens in Finder{sync_app}"
     out: list[CheckResult] = []
     listed = False
+    unread: str | None = None  # why the listing could not read the folder, for the volume row (C2808)
     try:
         first = call_with_timeout(lambda: _first_entry(root), _LISTING_TIMEOUT_S, name="doctor-listing")
         listed = True
@@ -3101,18 +3134,24 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
             )
         )
         return out
-    except FileNotFoundError:
-        out.append(_bad(f"{base}.listable", f"{shown} does not exist", fix=missing_fix()))
-    except NotADirectoryError:
-        out.append(
-            _bad(
-                f"{base}.listable",
-                f"{shown} is not a directory",
-                fix=f'point [[source]] id = "{src.id}" path at a folder',
+    except (FileNotFoundError, NotADirectoryError) as exc:
+        if typed_inbox is not None:
+            out.append(
+                _bad(f"{base}.listable", f"{shown} is not a folder", fix=inbox_not_a_folder_fix(typed_inbox))
             )
-        )
+        elif isinstance(exc, FileNotFoundError):
+            out.append(_bad(f"{base}.listable", f"{shown} does not exist", fix=missing_fix()))
+        else:
+            out.append(
+                _bad(
+                    f"{base}.listable",
+                    f"{shown} is not a directory",
+                    fix=f'point [[source]] id = "{src.id}" path at a folder',
+                )
+            )
     except PermissionError as exc:
         if exc.errno == errno.EPERM:
+            unread = "operation not permitted"
             out.append(
                 _bad(
                     f"{base}.listable",
@@ -3121,10 +3160,18 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
                 )
             )
         else:
-            out.append(
-                _bad(f"{base}.listable", f"{shown}: permission denied", fix=f"chmod u+rx {_shell_path(root)}")
+            # the folder that refuses is often one above the source (a link into a locked folder): the
+            # person's, named by _parent_fix's walk from /, never a chmod of a folder the chmod cannot reach;
+            # with none above refusing, the source folder's own chmod, still the person's (B13 round 45 C2808)
+            unread = "permission denied"
+            fix = (
+                _parent_fix(root)
+                if _unsearchable_above(root) is not None
+                else f"the person runs chmod u+rx {_shell_path(root)}"
             )
+            out.append(_bad(f"{base}.listable", f"{shown}: permission denied", fix=fix))
     except OSError as exc:
+        unread = (exc.strerror or type(exc).__name__).lower()
         out.append(_bad(f"{base}.listable", f"{shown}: {exc.strerror or exc}", fix=look_fix))
 
     if src.sentinel:
@@ -3173,7 +3220,18 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
             _bad(
                 f"{base}.volume",
                 f"{kind} UUID not checked: {shown} is missing",
-                fix=missing_fix(),
+                fix=missing_fix() if typed_inbox is None else inbox_not_a_folder_fix(typed_inbox),
+            )
+        )
+        return out
+    if unread is not None:
+        # the listing could not read the folder: the volume probe would only repeat it in raw errno text,
+        # with a fix (a mount check) wrong for the cause (B13 round 45 C2808)
+        out.append(
+            _ok(
+                f"{base}.volume",
+                f"{kind} UUID not checked: {shown} cannot be read ({unread}); the listable line above says "
+                "what to do",
             )
         )
         return out
@@ -3192,7 +3250,8 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
         out.append(
             _bad(
                 f"{base}.volume",
-                f"{kind} UUID unreadable for {shown}: {exc}; stable ids cannot be formed",
+                f"{kind} UUID unreadable for {shown}: {exc.strerror or type(exc).__name__}; stable ids "
+                "cannot be formed",
                 fix="check the volume is mounted (diskutil info <mount>)",
             )
         )

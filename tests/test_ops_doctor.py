@@ -2710,7 +2710,9 @@ def test_a_refused_listing_fix_reaches_a_folder_whose_name_holds_a_control_chara
         "\\302\\205x\\342\\200\\213y's: permission denied"
     )
     assert listable.detail == want, listable.detail
-    (word,) = re.findall(r"^chmod u\+rx (\S+)$", listable.fix or "")
+    # the source folder's own chmod is the person's (B13 round 45 C2808): no folder above it refuses a search
+    (word,) = re.findall(r"^the person runs chmod u\+rx (\S+)$", listable.fix or "")
+    assert doctor.is_persons_fix(listable.fix)
     assert word.startswith("~/$'Projects/Contoso\\e[7mInverse") and _ls_d(word) == str(root), word
     assert doctor.ansi_c_word("a\\b'c") == "$'a\\\\b\\'c'" and doctor._shell_path("/x/plain") == "'/x/plain'"
 
@@ -2902,8 +2904,13 @@ def test_a_sentinel_the_system_will_not_read_is_its_own_line(
     )
     volume = r["source.onedrive.volume"]
     assert "is missing" not in volume.detail, "a folder that cannot be read is not one that is gone"
-    assert volume.detail.startswith(f"volume UUID unreadable for {cloud}: ")
-    assert volume.fix == "check the volume is mounted (diskutil info <mount>)"
+    # B13 round 45 C2808 (ruling 194): after a listing that could not read the folder the volume probe is
+    # not run, so no raw error and no mount check, which the cause does not call for
+    assert volume.detail == (
+        f"volume UUID not checked: {cloud} cannot be read (operation timed out); the listable line above "
+        "says what to do"
+    ), volume.detail
+    assert volume.fix is None
 
 
 def test_cloud_source_without_sentinel_and_tcc_note(sample_config: Config) -> None:

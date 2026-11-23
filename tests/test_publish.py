@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from agentsync import cli, curate, cycle, gitops, lints, loop, policy, publish, skill, slug
-from agentsync.config import Config, SourceConfig, canonical_source_root, parse_config
+from agentsync.config import Config, SourceConfig, canonical_source_root, inbox_state, parse_config
 from agentsync.convert.registry import SIDECAR_DIGEST_PREFIX, _with_sidecar_digests
 from agentsync.curate import refresh_queue
 from agentsync.errors import PublishError, SidecarPathError
@@ -2096,6 +2096,51 @@ def test_root_guide_names_the_inbox_by_the_home_under_a_home_reached_through_a_l
     assert str(tmp_path.resolve()) not in text
     assert publish._display_path(tmp_path.resolve() / "state").startswith("~/")
     assert publish._display_path(Path("/elsewhere/x")) == "/elsewhere/x"
+
+
+@pytest.mark.parametrize("entry", ["file", "dangling-link", "link-to-file", "link-to-folder"])
+@pytest.mark.parametrize("second", [False, True])
+def test_root_guide_never_names_a_kept_inbox_that_is_not_a_folder_c2807(
+    env: Env, entry: str, second: bool
+) -> None:
+    """B13 round 45 C2807 with C2937 (ruling 194): with a live inbox source kept on ``inbox`` and a file, a
+    dangling link or a link to a file at that name, inbox_state says ``not added (<folder> is not a folder)``
+    while AGENTS.md and CLAUDE.md still told agents to save mail into ``inbox``, the missing target or the
+    linked-to file (canonical_source_root follows the link and same_folder matches lexically). live_inbox now
+    drops every candidate on that entry from both branches; a second live inbox elsewhere is named instead,
+    and a link to a real folder is still the kept inbox."""
+    raw = env.repo.parent / "inbox"
+    if entry == "file":
+        raw.write_text("contoso note\n", encoding="utf-8")
+    elif entry == "dangling-link":
+        raw.symlink_to(env.repo.parent / "contoso-missing")
+    elif entry == "link-to-file":
+        (env.repo.parent / "contoso-note.txt").write_text("x\n", encoding="utf-8")
+        raw.symlink_to(env.repo.parent / "contoso-note.txt")
+    else:
+        (env.repo.parent / "contoso-box").mkdir()
+        raw.symlink_to(env.repo.parent / "contoso-box", target_is_directory=True)
+    kept = canonical_source_root(raw)
+    sources = [SourceConfig(id="inbox", kind=SourceKind.INBOX, path=kept)]
+    drop = env.repo.parent / "Contoso Drop"
+    if second:
+        drop.mkdir()
+        sources.append(SourceConfig(id="zz-drop", kind=SourceKind.INBOX, path=drop))
+    config = dataclasses.replace(env.config, sources=(*env.config.sources, *sources))
+    state = inbox_state(config)[1]
+    text = Publisher(config, env.manifest, clock=lambda: NOW).root_guide()
+    if entry == "link-to-folder":
+        assert state == f"live {raw}", state
+        assert f"into `{publish._display_path(kept)}`; the next" in text, text
+        assert "Contoso Drop" not in text
+        return
+    assert state == f"not added ({raw} is not a folder)", state
+    for word in ("agent-context/inbox", "contoso-missing", "contoso-note.txt", "(inbox)"):
+        assert word not in text, (word, text)
+    if second:
+        assert f"into `{publish._display_path(drop)}`; the next" in text, text
+    else:
+        assert publish.root_guide(inbox=None) == text
 
 
 def test_root_guide_lists_every_live_inbox_when_none_is_the_kept_one(env: Env) -> None:

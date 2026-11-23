@@ -56,6 +56,7 @@ from agentsync.arm_local import (
     UNKNOWN_EMPTY,
     UNKNOWN_MISSING,
     UNKNOWN_MODE,
+    UNKNOWN_NOTDIR,
     UNKNOWN_OTHER,
     UNKNOWN_PRIVACY,
     _unexcluded,
@@ -63,7 +64,16 @@ from agentsync.arm_local import (
     files_below,
     split_empty,
 )
-from agentsync.config import INBOX_LIVE, Config, SourceConfig, canonical_source_root, inbox_state, live_inbox
+from agentsync.config import (
+    INBOX_ENTRY_NOT_A_FOLDER,
+    INBOX_LIVE,
+    Config,
+    SourceConfig,
+    canonical_source_root,
+    inbox_entry,
+    inbox_state,
+    live_inbox,
+)
 from agentsync.convert import NO_CONVERTER_PREFIX
 from agentsync.convert.recording import RecordingConverter
 from agentsync.cycle import (
@@ -892,6 +902,29 @@ def _unlisted_kinds(manifest: Manifest, src: SourceConfig, names: Sequence[str])
     return frozenset(str(stored[n]) for n in names)
 
 
+def _inbox_root_not_a_folder(config: Config, manifest: Manifest, src: SourceConfig) -> str:
+    """The inbox source's path as a person typed it when its last walk found its root not a folder, else ""
+    (B13 round 45 C2814): the walk stored ``UNKNOWN_NOTDIR`` for "." (a file, a link at the root), or, for
+    the source on the kept inbox, the walk found the link's target missing while the kept entry is a link
+    or file that is not a folder (:func:`config.inbox_entry`), since the stored path is the link's target.
+    The kept inbox is shown by its typed name, never the target."""
+    if not manifest.get_meta(_ROOT_UNLISTED_META + src.id) or src.path is None:
+        return ""
+    kinds = _unlisted_kinds(manifest, src, ["."])
+    typed = expand(config.docs_repo).parent / "inbox"
+    try:
+        kept = expand(src.path) == canonical_source_root(typed)
+        if kinds == frozenset({UNKNOWN_MISSING}) and not (
+            kept and inbox_entry(typed) == INBOX_ENTRY_NOT_A_FOLDER
+        ):
+            return ""
+    except OSError:
+        return ""
+    if kinds not in (frozenset({UNKNOWN_NOTDIR}), frozenset({UNKNOWN_MISSING})):
+        return ""
+    return _shown(typed) if kept else _display_path(src.path)
+
+
 def _missing_root_wait(config: Config, sid: str, pause: str, *, state: str = "") -> str:
     """The wait for a source whose last walk found no root folder (``UNKNOWN_MISSING``; B13 round 14 Q6, Q11,
     Q34): it was renamed, moved or deleted, or what holds it is not there. Status reads no folder for it (a
@@ -1279,6 +1312,7 @@ def next_step(
     # mirrored files the last walk missed)
     empty: list[tuple[SourceConfig, dict[str, int], list[str], list[str], int, int]] = []
     inbox_partial: list[str] = []  # an inbox listing ran but could not finish (often a file being written)
+    inbox_not_a_folder: dict[str, str] = {}  # an inbox whose root is not a folder: its id -> its path shown
     blocked: list[str] = []  # a Graph source the network policy fails: IT's to fix
     held: list[str] = []  # a local walk timed out on a read macOS holds for an Allow prompt (field N8)
     signin: list[str] = []
@@ -1352,6 +1386,13 @@ def next_step(
                                     )
                             elif other:
                                 inbox_partial.append(src.id)
+                        elif src.kind is SourceKind.INBOX and (
+                            shown_root := _inbox_root_not_a_folder(config, manifest, src)
+                        ):
+                            # a file or a link at the inbox's name: a note naming it as typed, with step 2's
+                            # remedy, never a wait (it gates no baseline question) and never "a later sync
+                            # lists" (B13 round 45 C2814)
+                            inbox_not_a_folder[src.id] = shown_root
                         elif manifest.get_meta(_ROOT_UNLISTED_META + src.id) and _unlisted_kinds(
                             manifest, src, ["."]
                         ) == frozenset({UNKNOWN_MISSING}):
@@ -1691,7 +1732,7 @@ def next_step(
                 "or let the sync client fill it, or grant Files and Folders access; to stop syncing it on "
                 f"purpose, {pause}"
             )
-            if root_kinds.get(sid) is None:
+            if root_kinds.get(sid) in (None, frozenset({UNKNOWN_NOTDIR})):
                 # a walk from before C1004 stored no kind for an empty root: its warn keeps this wait (C938)
                 checks.append(f"source.{sid}.listable")
         checks.append(f"heartbeat.{sid}")
@@ -1700,6 +1741,12 @@ def next_step(
         waits.append(
             f"the network refuses Microsoft Graph for {', '.join(sorted(blocked))} (proxy, TLS inspection or "
             f"PAC): IT must allow it; `{BIN} it-request --out {it_request.DEFAULT_OUT}` drafts the request"
+        )
+    for sid, shown_root in sorted(inbox_not_a_folder.items()):
+        notes.append(
+            f"the inbox ({sid}) is not a folder: {shown_root} is a file, a link to a file or a dangling "
+            "link, and no later sync lists it until it is moved aside: keeping a copy, move it aside, then "
+            "run step 2 again; it does not block the next step"
         )
     if inbox_partial:
         notes.append(
@@ -2005,7 +2052,11 @@ def status_line(config: Config) -> str:
         except ConfigError:
             return f"{name} not read (the configuration is refused)"
         except (OSError, AgentSyncError) as exc:
-            _log.warning("loop: cannot read %s: %s", name, exc)
+            # an inbox this account cannot read is said by doctor's listable [FAIL] (with the person's fix)
+            # and the ``inbox state: not read`` line: a WARNING here only repeated it, raw, on every status
+            # (B13 round 45 C2808)
+            if not (name == "inbox" and isinstance(exc, PermissionError)):
+                _log.warning("loop: cannot read %s: %s", name, exc)
             return f"{name} ?"
 
     def inbox() -> str:

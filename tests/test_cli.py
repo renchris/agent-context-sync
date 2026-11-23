@@ -56,6 +56,7 @@ from agentsync.config import (
     canonical_source_root,
     inbox_source_table,
     inbox_state,
+    live_inbox,
     load_config,
     local_source_table,
     set_source_exclude,
@@ -3943,6 +3944,128 @@ def test_status_keeps_its_lines_over_an_inbox_link_it_cannot_search_c2644(
         f"{INBOX_STATE_LINE}not read (Permission denied)",
     ], lines[at : at + 4]
     assert lines[at + 4].startswith("lock: "), lines[at + 4]
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a mode-0600 folder")
+@pytest.mark.parametrize("source", [True, False])
+def test_inbox_state_says_not_read_when_the_inbox_parent_cannot_be_searched_c2936(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: bool
+) -> None:
+    """B13 round 45 C2936 (ruling 194): inbox_state read the entry with os.path.lexists, which turns a
+    denied lookup into False, so with the docs repo's parent at mode 0600 it fell through to source matching
+    and said ``live <folder>`` (same_folder matches lexically) or ``not added (no source on <folder>)``. It
+    reads the entry with os.lstat and os.stat and says ``not read (Permission denied)`` either way."""
+    home = tmp_path / "home"
+    home.mkdir()
+    cfg = home / "sources.toml"
+    cfg.write_text(f"[agentsync]\ndocs_repo = {toml_string(str(home / 'docs'))}\n", encoding="utf-8")
+    monkeypatch.setenv(paths.CONFIG_ENV, str(cfg))
+    assert cli.main(["init"]) == cli.EXIT_OK
+    config = load_config(cfg)
+    folder = home / "inbox"
+    assert inbox_state(config)[1] == f"live {folder}", inbox_state(config)
+    if not source:
+        config = dataclasses.replace(config, sources=())
+        assert inbox_state(config)[1] == f"not added (no source on {folder})"
+    home.chmod(0o600)
+    try:
+        got = inbox_state(config)
+        listed = live_inbox(config)
+    finally:
+        home.chmod(0o700)
+    assert got == (folder, "not read (Permission denied)"), got
+    assert listed is None, listed  # an entry that cannot be read is never the guides' drop folder
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a mode-000 folder")
+def test_an_inbox_link_into_a_locked_folder_gets_the_persons_parent_fix_c2808(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 45 C2808 (ruling 194): with the kept inbox a link into a mode-000 folder, doctor's listable
+    [FAIL] told the agent ``chmod u+rx <the link's target>``, which the folder above refuses; the volume row
+    printed raw ``[Errno ...]`` text with a mount check; status logged ``loop: cannot read inbox`` on every
+    run; and step 2 said ``inbox: not added`` over a configured live inbox. The fix is _parent_fix's (the
+    person's, naming the locked folder), the volume row is ``not checked`` with no errno, status logs no
+    warning, and step 2 says ``inbox: not read: <typed>: Permission denied (inbox state says what to do)``."""
+    home = tmp_path / "home"
+    home.mkdir()
+    cfg = home / "sources.toml"
+    cfg.write_text(f"[agentsync]\ndocs_repo = {toml_string(str(home / 'docs'))}\n", encoding="utf-8")
+    monkeypatch.setenv(paths.CONFIG_ENV, str(cfg))
+    assert cli.main(["init"]) == cli.EXIT_OK
+    cli.main(["sync"])  # writes the skill, so status's NEXT is the [FAIL]'s
+    folder = home / "inbox"
+    folder.rename(tmp_path / "inbox-moved")  # moved aside, never removed
+    locked = tmp_path / "contoso-locked"
+    (locked / "drop").mkdir(parents=True)
+    folder.symlink_to(locked / "drop")
+    locked.chmod(0)
+    try:
+        config = load_config(cfg)
+        box = next(s for s in config.sources if s.kind is SourceKind.INBOX)
+        rows = {r.name: r for r in doctor._check_local_source(config, box, Path(sys.executable))}
+        capsys.readouterr()
+        cli._ensure_inbox(config)
+        step2 = capsys.readouterr().err
+        cli.main(["status"])
+        out, err = capsys.readouterr()
+    finally:
+        locked.chmod(0o700)
+    listable = rows[f"source.{box.id}.listable"]
+    assert listable.fix is not None and listable.fix.startswith(
+        f"the person gives this account search access to {doctor._shell_path(locked)}, a folder above "
+    ), listable.fix
+    assert "chmod u+rwx" in listable.fix and doctor.is_persons_fix(listable.fix)
+    volume = rows[f"source.{box.id}.volume"]
+    assert volume.detail.startswith("volume UUID not checked: ") and volume.detail.endswith(
+        "cannot be read (permission denied); the listable line above says what to do"
+    ), volume.detail
+    assert volume.fix is None and "[Errno" not in volume.detail
+    assert step2 == f"{cli.INBOX_NOT_READ}{folder}: Permission denied (inbox state says what to do)\n", step2
+    assert "cannot read inbox" not in err and "[Errno" not in out + err, err
+    assert "not a step for the agent" in out.splitlines()[0], out.splitlines()[0]
+
+
+@pytest.mark.parametrize("entry", ["file", "dangling-link", "link-to-file"])
+def test_the_inbox_sources_fix_over_a_non_folder_is_the_persons_move_aside_c2809(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, entry: str
+) -> None:
+    """B13 round 45 C2809 (ruling 194): over a file, a dangling link or a link to a file at the kept inbox,
+    doctor showed the link's target and fixed it with a [[source]] path edit, while step 2 said move it
+    aside. The source on that folder is shown as typed, and its listable (and a dangling link's volume) fix
+    is ``restore <inbox> as a folder: keeping a copy, move the file or link at that name aside, then run
+    step 2 again``, the person's by PERSONS_FIX_RE."""
+    home = tmp_path / "home"
+    home.mkdir()
+    cfg = home / "sources.toml"
+    cfg.write_text(f"[agentsync]\ndocs_repo = {toml_string(str(home / 'docs'))}\n", encoding="utf-8")
+    monkeypatch.setenv(paths.CONFIG_ENV, str(cfg))
+    assert cli.main(["init"]) == cli.EXIT_OK
+    folder = home / "inbox"
+    folder.rename(tmp_path / "inbox-moved")  # moved aside, never removed
+    if entry == "file":
+        folder.write_text("contoso note\n", encoding="utf-8")
+    elif entry == "dangling-link":
+        folder.symlink_to(home / "contoso-missing")
+    else:
+        (home / "contoso-note.txt").write_text("x\n", encoding="utf-8")
+        folder.symlink_to(home / "contoso-note.txt")
+    config = load_config(cfg)
+    box = next(s for s in config.sources if s.kind is SourceKind.INBOX)
+    rows = doctor._check_local_source(config, box, Path(sys.executable))
+    want = (
+        f"restore {doctor._shell_path(folder)} as a folder: keeping a copy, move the file or link at that "
+        "name aside, then run step 2 again"
+    )
+    listable = next(r for r in rows if r.name.endswith(".listable"))
+    assert listable.detail == f"{doctor.list_spelling(folder)} is not a folder", listable.detail
+    assert listable.fix == want and doctor.is_persons_fix(want), listable.fix
+    for row in rows:
+        assert "contoso-missing" not in row.detail + (row.fix or ""), row
+        assert "contoso-note.txt" not in row.detail + (row.fix or ""), row
+    if entry == "dangling-link":
+        volume = next(r for r in rows if r.name.endswith(".volume"))
+        assert volume.fix == want, volume
 
 
 def test_status_shows_the_policy_and_a_broken_policy_fails(

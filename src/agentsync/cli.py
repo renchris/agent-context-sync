@@ -73,6 +73,8 @@ from agentsync import (
 from agentsync import policy as content_policy
 from agentsync.arm_local import ECHOED_ALARM, PROGRESS, exclude_advice, exclude_globs
 from agentsync.config import (
+    INBOX_ENTRY_NOT_A_FOLDER,
+    INBOX_ENTRY_UNREAD,
     INBOX_LIVE,
     INBOX_STATE_LINE,
     Config,
@@ -82,6 +84,7 @@ from agentsync.config import (
     default_config_text,
     derive_source_id,
     ensure_inbox,
+    inbox_entry,
     inbox_state,
     load_config,
     local_source_table,
@@ -1651,6 +1654,11 @@ def _cmd_init(args: argparse.Namespace) -> int:
     return _ensure_setup(config)
 
 
+INBOX_NOT_READ = "inbox: not read: "
+"""Step 2's line for a kept inbox entry it cannot read (B13 round 45 C2808): install.sh's inbox_not_added
+and the setup report's reader match it beside ``inbox: not added``."""
+
+
 def _ensure_inbox(config: Config) -> Config:
     """:func:`agentsync.config.ensure_inbox` for init and add-source (KISS K05): prints the inbox it added.
     An inbox that cannot be added is a warning, never a failure of the command that asked for more, worded
@@ -1660,7 +1668,9 @@ def _ensure_inbox(config: Config) -> Config:
     OSError (a permission refused, a parent that is a file) gives its own
     words and the path, with no advice that would be wrong for it. A source of another kind already on the
     folder is kept as it is, and said so, by id, kind and state, since it is not an inbox drop folder
-    (C2309)."""
+    (C2309). An entry it cannot read (:func:`config.inbox_entry`: a link into a folder this account cannot
+    search) reads ``inbox: not read: <folder>: <why> (inbox state says what to do)``, never ``not added``
+    (B13 round 45 C2808)."""
     typed = expand(config.docs_repo).parent / "inbox"
     try:
         config, added = ensure_inbox(config.config_path)
@@ -1668,12 +1678,15 @@ def _ensure_inbox(config: Config) -> Config:
         _err(f"inbox: not added: {exc}")
         return config
     except OSError as exc:
-        try:
-            not_folder = isinstance(exc, FileExistsError) or (os.path.lexists(typed) and not typed.is_dir())
-        except OSError:  # a link into a folder this account cannot search: its own words below
-            not_folder = False
-        if not_folder:
+        entry = inbox_entry(typed)  # never raises: an entry it cannot read is its own kind
+        if isinstance(exc, FileExistsError) or entry == INBOX_ENTRY_NOT_A_FOLDER:
             _err(f"inbox: not added: {typed} is not a folder; move it aside and run step 2 again")
+        elif entry.startswith(INBOX_ENTRY_UNREAD):
+            # a link into a folder this account cannot search: the folder may hold the inbox source already,
+            # so "not added" was false; status's ``inbox state: not read`` line and doctor's listable [FAIL]
+            # say whose fix it is (B13 round 45 C2808, ruling 194)
+            why = exc.strerror or type(exc).__name__
+            _err(f"{INBOX_NOT_READ}{typed}: {why} (inbox state says what to do)")
         else:
             _err(f"inbox: not added: {exc.filename or typed}: {exc.strerror or exc}")
         return config
