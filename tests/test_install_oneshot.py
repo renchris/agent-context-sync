@@ -70,6 +70,7 @@ from agentsync.convert import speech
 from agentsync.cycle import UNRECORDED_LOCK_WAIT_QUIET, VANISHED_ADVICE, VANISHED_FIX
 from agentsync.cycle import vanished_add_back_tail as cycle_vanished_add_back_tail
 from agentsync.cycle import vanished_detail as cycle_vanished_detail
+from agentsync.errors import AccountHomeError
 from agentsync.manifest import Manifest, manifest_lost
 from agentsync.ops import doctor
 from agentsync.ops.lock import SingleWriterLock
@@ -9858,7 +9859,13 @@ def test_the_installer_reads_agentsync_config_as_the_cli_does_c2534(
     monkeypatch.setenv("HOME", env["HOME"])
     monkeypatch.setenv(paths.CONFIG_ENV, value)
     monkeypatch.chdir(cwd)
-    want = paths.default_config_path()
+    if value.strip().startswith("~n"):
+        # the CLI refuses it too, in install.sh's words (B13 round 45 C2822, ruling 193): both sides agree
+        with pytest.raises(AccountHomeError):
+            paths.default_config_path()
+        want = None
+    else:
+        want = paths.default_config_path()
     cp = install_sh(
         {**env, "AGENTSYNC_CONFIG": value}, "--cwd", str(cwd), str(wheel), "--source-local", str(folder)
     )

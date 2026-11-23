@@ -45954,6 +45954,16 @@ waits' own, a second backlog that did not exist. `apart and not left` is tested 
 `tests/test_deploy_pack.py::test_the_readme_says_the_options_note_comes_only_while_a_converter_that_can_run_has_files_c2461`
 (3 and 1 waits, plural and singular).
 
+**A config path under another account's home is a usage error** (C2822; ruling 193). `paths.expand` raises
+`errors.AccountHomeError` (a ConfigError) for a path that starts with `~` and is neither `~` nor `~/...`, so
+`default_config_path` and `--config` refuse it: expanduser raised a bare RuntimeError for a name with no account,
+which reached the CLI as a traceback and "This is a bug", exit 1, and read another account's home for one that
+exists, which install.sh refuses. The CLI maps it to exit 2 with `error: AGENTSYNC_CONFIG names another account's
+home; export it as an absolute path and run the command again` (install.sh's words) when the variable gave it,
+`error: --config names another account's home; give it as an absolute path and run the command again` when the flag
+did, else the path itself. `~` and `~/...` still read the home. Test:
+`test_a_config_under_another_accounts_home_is_a_usage_error_c2822`.
+
 **A replaced page is headed `# [REPLACED]`** (C2812). A unit-removed tombstone that names its successor read `#
 [NO LONGER PRODUCED]` above "This page was replaced by ...": `publish._tombstone_body` heads it `# [REPLACED]` when
 `superseded_by` is set, and a removed part with none keeps the old heading. Only the heading changes: the finder's

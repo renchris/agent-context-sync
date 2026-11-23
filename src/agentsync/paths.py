@@ -16,7 +16,16 @@ CLOUD_STORAGE_ROOT = Path("~/Library/CloudStorage")
 
 
 def expand(path: str | Path) -> Path:
-    """Expand ``~`` and return an absolute path (not resolved: symlinks are not followed)."""
+    """Expand ``~`` and return an absolute path (not resolved: symlinks are not followed). A ``~name`` form
+    (anything starting with ``~`` that is neither ``~`` nor ``~/...``) raises
+    :class:`agentsync.errors.AccountHomeError`: install.sh reads only ``~`` and ``~/`` as the home and refuses
+    another account's, and expanduser raised a bare RuntimeError for a name with no account, which reached
+    the CLI as "This is a bug" (B13 round 45 C2822, ruling 193)."""
+    text = os.fspath(path)
+    if text.startswith("~") and text != "~" and not text.startswith("~/"):
+        from agentsync.errors import AccountHomeError  # noqa: PLC0415 - paths stays light
+
+        raise AccountHomeError(text)
     p = Path(path).expanduser()
     return p if p.is_absolute() else Path.cwd() / p
 

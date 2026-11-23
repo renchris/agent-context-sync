@@ -64,6 +64,7 @@ from agentsync.config import (
 )
 from agentsync.cycle import HYDRATION_REFUSED, RECORDING_WAITS, run_cycle
 from agentsync.errors import (
+    AccountHomeError,
     AgentSyncError,
     AuthError,
     ConfigError,
@@ -4024,6 +4025,42 @@ def test_an_inbox_link_into_a_locked_folder_gets_the_persons_parent_fix_c2808(
     assert step2 == f"{cli.INBOX_NOT_READ}{folder}: Permission denied (inbox state says what to do)\n", step2
     assert "cannot read inbox" not in err and "[Errno" not in out + err, err
     assert "not a step for the agent" in out.splitlines()[0], out.splitlines()[0]
+
+
+@pytest.mark.parametrize("given", ["env", "flag"])
+def test_a_config_under_another_accounts_home_is_a_usage_error_c2822(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], given: str
+) -> None:
+    """B13 round 45 C2822 (ruling 193): AGENTSYNC_CONFIG or --config naming ``~name/...`` for an account
+    that does not exist raised expanduser's RuntimeError, so status printed a traceback and "This is a bug"
+    and exited 1; for one that does exist it read that account's home, which install.sh refuses. paths.expand
+    refuses every ``~name`` form with a typed error the CLI maps to exit 2, in install.sh's words, naming the
+    flag when the flag gave it; ``~/x`` still reads the home."""
+    value = "~contosonosuchuserzz/x/sources.toml"
+    if given == "env":
+        monkeypatch.setenv(paths.CONFIG_ENV, f" {value}\t")
+        argv = ["status"]
+        want = (
+            "error: AGENTSYNC_CONFIG names another account's home; export it as an absolute path and run the "
+            "command again\n"
+        )
+    else:
+        monkeypatch.delenv(paths.CONFIG_ENV, raising=False)
+        argv = ["status", "--config", value]
+        want = (
+            "error: --config names another account's home; give it as an absolute path and run the command "
+            "again\n"
+        )
+    capsys.readouterr()
+    assert cli.main(argv) == cli.EXIT_USAGE
+    out, err = capsys.readouterr()
+    assert err == want, err
+    assert "Traceback" not in out + err and "This is a bug" not in out + err
+    with pytest.raises(AccountHomeError):
+        paths.expand("~root/sources.toml")  # an account that exists is refused too, as install.sh refuses it
+    monkeypatch.setenv(paths.CONFIG_ENV, "~/x/sources.toml")
+    assert paths.default_config_path() == Path.home() / "x" / "sources.toml"
+    assert paths.expand("~") == Path.home()
 
 
 @pytest.mark.parametrize("entry", ["file", "dangling-link", "link-to-file"])

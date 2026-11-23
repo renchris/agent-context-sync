@@ -11,6 +11,18 @@ class ConfigError(AgentSyncError):
     """sources.toml is missing, unparseable or semantically invalid; the message names the key."""
 
 
+class AccountHomeError(ConfigError):
+    """A path that starts with ``~`` and is neither ``~`` nor ``~/...`` (``~name/...``): another account's
+    home, which install.sh refuses and Python's expanduser reads, or raises RuntimeError on for an unknown
+    name (B13 round 45 C2822, ruling 193). ``value`` is the path as given. A ConfigError, so every reader that
+    already survives a bad config survives it; the CLI maps it to exit 2 (a usage error), naming --config or
+    AGENTSYNC_CONFIG when one of them gave it."""
+
+    def __init__(self, value: str) -> None:
+        super().__init__(f"{value} names another account's home; give it as an absolute path")
+        self.value = value
+
+
 class ManifestSchemaError(AgentSyncError):
     """The SQLite manifest's schema or key-schema version does not match this build. Every opener migrates
     an older one, so this means a newer build wrote it: upgrade this install."""

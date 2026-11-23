@@ -111,6 +111,7 @@ from agentsync.cycle import (
     unowned_mirror_pages,
 )
 from agentsync.errors import (
+    AccountHomeError,
     AgentSyncError,
     AuthError,
     AuthRequiredError,
@@ -147,6 +148,8 @@ from agentsync.model import CycleMode, CycleReport, LintFinding, SourceKind, Ver
 from agentsync.ops import deadline, doctor, launchd
 from agentsync.ops.lock import EMPTY_BODY_HOLDER, SingleWriterLock, read_heartbeat
 from agentsync.paths import (
+    CONFIG_BLANKS,
+    CONFIG_ENV,
     DocsLayout,
     StatePaths,
     default_config_path,
@@ -5636,6 +5639,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         _running.args = None
 
 
+def _account_home_words(args: argparse.Namespace, value: str) -> str:
+    """The refusal of a ``~name`` path (C2822), naming what gave it: ``--config`` when the flag did,
+    AGENTSYNC_CONFIG in install.sh's own words when the variable did, else the path itself."""
+    tail = "names another account's home"
+    if getattr(args, "config", None) is not None and os.fspath(args.config) == value:
+        return f"--config {tail}; give it as an absolute path and run the command again"
+    if os.environ.get(CONFIG_ENV, "").strip(CONFIG_BLANKS) == value:
+        return f"{CONFIG_ENV} {tail}; export it as an absolute path and run the command again"
+    return f"{value} {tail}; give it as an absolute path and run the command again"
+
+
 def _unexpected(exc: Exception) -> int:
     """C-3 K10 (R283, R295): an error no arm of ``_main``'s ladder handles is a defect in agentsync. The
     person gets ``clio.bug_report`` (no message, path or argv), or one ``internal_error`` document under
@@ -5944,6 +5958,10 @@ def _main(argv: Sequence[str] | None) -> int:
         _misplaced_next(args, found[0], found[1])
         _json_error(exc, args, found[0])
         return EXIT_FAILED
+    except AccountHomeError as exc:
+        # a ``~name`` path: a usage error, as install.sh's own refusal of it, never a traceback and never
+        # "This is a bug" (B13 round 45 C2822, ruling 193)
+        return _refused(f"error: {_account_home_words(args, exc.value)}", EXIT_USAGE)
     except ConfigError as exc:
         _err(f"configuration error: {exc}")
         _json_error(exc, args, str(exc))
