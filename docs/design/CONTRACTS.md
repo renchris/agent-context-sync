@@ -46717,6 +46717,14 @@ ends exit 1 on that failure's own NEXT (lane RB's ruling 191). Test:
 `tests/test_deploy_pack.py::test_both_readmes_name_the_unread_inbox_forms_and_the_no_folder_exit_c2865_c2869` (held to
 install.sh's own words).
 
+**The guide's inbox rows name the shell's not-checked line and install.log's not-read mark** (C2810, C2808; ruling
+194; `docs/deploy/setup-feedback.md`). Lane RB's shell fallback report prints `- inbox: not checked (<why>)` right after
+its `- loads: not checked (<why>)` line, with the same why, never a guess from the disk (a guess called a link into a
+mode-000 folder not a folder, the false answer ruling 180 removed); and install.log's config line ends `inbox=not-read`
+in place of `inbox=not-added` when init or add-source printed lane B's `inbox: not read:` line. The guide's
+Configuration `inbox:` row and install.log row say so. Test: `tests/test_deploy_pack.py`
+`::test_the_guides_inbox_rows_name_the_shells_not_checked_line_and_not_read_c2810_c2808` (held to install.sh's words).
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units

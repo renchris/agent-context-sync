@@ -4771,6 +4771,25 @@ def test_both_readmes_name_the_unread_inbox_forms_and_the_no_folder_exit_c2865_c
     ) in _page("docs/deploy/README.md")
 
 
+def test_the_guides_inbox_rows_name_the_shells_not_checked_line_and_not_read_c2810_c2808() -> None:
+    """B13 round 45 C2810 (makes worse True for a guess from the disk) and C2808 (lane RB's words): the shell
+    fallback report prints `- inbox: not checked (<why>)` after its loads line, and install.log's config line
+    ends `inbox=not-read` when init or add-source printed lane B's `inbox: not read:` line; the guide's
+    Configuration and install.log rows say so, held to install.sh's own words."""
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    assert 'say "- inbox: not checked ($why)"' in script and "inbox=not-read" in script
+    page = _page("docs/deploy/setup-feedback.md")
+    assert (
+        "The shell fallback report, which cannot ask agentsync, prints `- inbox: not checked (<why>)` right"
+        " after its `- loads: not checked (<why>)` line, with the same why, never a guess from the disk"
+        " (since B13 round 45 C2810)."
+    ) in page
+    assert (
+        "since B13 round 45 (C2808) the line ends `inbox=not-read` in place of `inbox=not-added` when init or"
+        " add-source printed `inbox: not read: <folder>: <why> (inbox state says what to do)`."
+    ) in page
+
+
 def test_the_guide_and_contracts_quote_the_reinstall_tickers_words_c2423() -> None:
     """B13 round 43 C2423 (lane RB's 88a60a073): the bare-lock reinstall ticker reads `reinstalling once the
     lock is free`, and the guide and two contracts quoted the old `reinstalling after the lock is free`; RB
