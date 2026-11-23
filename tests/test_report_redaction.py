@@ -2897,6 +2897,9 @@ _C2432_SPELLINGS = {
     "triple basic": '[convert]\npandoc_path = """\n{s}"""\n',
     "multi-line value": '[convert]\npandoc_path = """\n{s}\n"""\n',
     "padded": "[convert]\npandoc_path = '  {s}\t '\n",
+    # B13 round 45 C2913: a line-ending backslash with blanks after it joins the next line, as tomllib reads
+    # it ({h} the path up to its last /, {t} the rest)
+    "joined multi-line": '[convert]\npandoc_path = """{h}\\  \t\n   {t}"""\n',
 }
 """B13 round 44 ruling 171 (C2698): each TOML spelling of `[convert] pandoc_path` a person can write, `{v}`
 the value as a one-line string and `{s}` the bare path; a leading `^` puts it above the tables, where a
@@ -2918,6 +2921,11 @@ top-level key must stand."""
         ("Z\u00e9phyr\u00a0Quarry Ledger", None, "table"),
         ("Zephyr\tQuarry", None, "table"),
         ("Zephyr\tQuarry", "basic", "table"),
+        # B13 round 45 ruling 189 (C2880 with C2914): blanks that mix a TAB and a space, literal and basic
+        ("Zephyr\tQuarry Ledger", None, "table"),
+        ("Zephyr\tQuarry Ledger", "basic", "table"),
+        ("Zephyr Quarry\tLedger", None, "table"),
+        ("Zephyr Quarry\tLedger", "basic", "table"),
         # C2698: every TOML spelling of the key and its value
         *(("Zephyr Quarry", None, k) for k in _C2432_SPELLINGS if k != "table"),
     ],
@@ -2945,7 +2953,12 @@ def test_both_reports_cut_a_configured_pandoc_path_in_every_spelling_c2432(
     a UTF-8 run's `Z\u00e9phyr\\ Quarry` whole; a non-ASCII leaf with an NBSP and a leaf whose blank is a
     TAB (a literal TAB and a basic string's `\\t`) are cut alike; and every TOML spelling of the key (a
     quoted table header or key, a dotted key, a one-line inline table, triple-quoted strings, a multi-line
-    value, a padded one) is read by both, its echo as written cut too."""
+    value, a padded one) is read by both, its echo as written cut too.
+
+    B13 round 45 ruling 189 (C2880 with C2914): a leaf whose blanks mix a TAB and a space matched neither of
+    the shell's guesses (every blank a space, every blank a TAB), so its debug_path word read `<path>` in the
+    shell report and `~/<path>` in the agentsync report; the shell reads the true value now (C2913's joined
+    multi-line spelling too)."""
     from agentsync.ops import doctor  # noqa: PLC0415 - as setup_report imports it
 
     home = Path(env["HOME"])
@@ -2953,7 +2966,8 @@ def test_both_reports_cut_a_configured_pandoc_path_in_every_spelling_c2432(
     spelled = written.format(home=home, leaf=leaf) if written and written != "basic" else str(pandoc)
     value = f"'{spelled}'" if leaf and "'" not in leaf and written != "basic" else json.dumps(spelled)
     table = local_source_table("s0", _cloud(env) / "OneDrive-Contoso" / "Juniper Notes")
-    fragment = _C2432_SPELLINGS[spelling].format(v=value, s=spelled)
+    head, _, tail = spelled.rpartition("/")
+    fragment = _C2432_SPELLINGS[spelling].format(v=value, s=spelled, h=f"{head}/", t=tail)
     if fragment.startswith("^"):
         body = f"{fragment[1:]}{default_config_text()}{table}"
     else:
@@ -3002,6 +3016,89 @@ def test_both_reports_cut_a_configured_pandoc_path_in_every_spelling_c2432(
     echo = "pandoc_path (  ~/<path>)" if spelling == "padded" else "pandoc_path (~/<path>)"  # blanks kept
     assert python[4:n] == ["debug: pandoc ~/<path>", "debug: pandoc ~/<path>", *([echo] * (n - 6))], python
     assert shell[n:] == ["pandoc_path (~/<path>)"] * len(shell_only), shell
+
+
+_UNPARSED_SAID = [
+    "I added ~/Projects/Wombat Ledger as a source",
+    "Sync of zephyr-plans stopped; folder ~/Development/ZephyrQuarry/notes was skipped.",
+]
+_UNPARSED_LINE = (
+    "Private only: sources.toml does not load and is not readable as TOML, so a source id or folder it names "
+    "may show in clear."
+)
+_UNPARSED_BODIES = {
+    "unterminated path beside id = =": (
+        '[[source]]\nid = = \nkind = "local"\npath = "~/Projects/Wombat Ledger\n'
+        '\n[[source]]\nid = "zephyr-plans"\nkind = "local"\npath = "~/Development/ZephyrQuarry/notes"\n'
+    ),
+    "half-closed header and a garbage line": (
+        '[[source]\nid = "zephyr-plans"\nkind = "local"\npath = "~/Development/ZephyrQuarry/notes"\n'
+        "this line is no TOML\n"
+    ),
+    "a garbage line after whole tables": (
+        '[[source]]\nid = "zephyr-plans"\nkind = "local"\npath = "~/Development/ZephyrQuarry/notes"\n'
+        "this line is no TOML\n"
+    ),
+}
+"""B13 round 45 ruling 188 (C2840 with C2915): sources.toml bodies tomllib does not parse."""
+
+
+def _tool_python(home: str) -> None:
+    """The installed agentsync's interpreter where install.sh's tool_python finds it: this test's Python."""
+    py = Path(home) / ".local" / "share" / "uv" / "tools" / "agentsync" / "bin" / "python"
+    py.parent.mkdir(parents=True, exist_ok=True)
+    py.symlink_to(sys.executable)
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize("python", ["tomllib", "none"])
+@pytest.mark.parametrize("body", list(_UNPARSED_BODIES))
+def test_both_reports_reach_one_verdict_on_a_config_that_does_not_parse_c2840_c2915(
+    env: dict[str, str],  # noqa: F811
+    body: str,
+    python: str,
+    locale: str,
+) -> None:
+    """B13 round 45 ruling 188, C2840 with C2915 (privacy): over a sources.toml tomllib does not parse, the
+    agentsync report said it was private only and gave no issue link, while the shell report stayed public,
+    its `Sync of zephyr-plans` row in clear under a `[[source]` header, and ended on the public link. The
+    shell reads the file with tomllib through the installed agentsync's interpreter (``tomllib``) and prints
+    setup_report.py's sentence word for word; where no interpreter has tomllib (``none``) the structural
+    check decides alike. Each report says it once and neither carries the link."""
+    if python == "tomllib":
+        _tool_python(env["HOME"])
+    texts: list[str] = []
+    _, _, shell_private, python_private = _both_reports(
+        env,
+        [],
+        _UNPARSED_SAID,
+        locale,
+        config=Path(env["HOME"]) / "agent-context" / "sources.toml",
+        config_body=_UNPARSED_BODIES[body],
+        texts_out=texts,
+    )
+    assert shell_private and python_private, texts
+    for text in texts:
+        assert text.splitlines().count(_UNPARSED_LINE) == 1, text
+        assert "issues/new" not in text, text
+
+
+@pytest.mark.parametrize("python", ["tomllib", "none"])
+def test_a_config_that_parses_keeps_the_shell_reports_issue_link_c2915(
+    env: dict[str, str],  # noqa: F811
+    python: str,
+) -> None:
+    """B13 round 45 ruling 188, C2915: a well-formed sources.toml keeps the shell report public whether or
+    not an interpreter with tomllib is there: no interpreter is never by itself a private-only verdict, which
+    would drop the link from every fallback report on a Mac with no developer tools."""
+    if python == "tomllib":
+        _tool_python(env["HOME"])
+    texts: list[str] = []
+    _, _, shell_private, python_private = _both_reports(
+        env, ["Juniper Notes"], ["the sync of Juniper Notes went on"], "C", texts_out=texts
+    )
+    assert not shell_private and not python_private, texts
+    assert "issues/new" in texts[0] and _UNPARSED_LINE not in texts[0], texts[0]
 
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])

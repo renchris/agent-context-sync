@@ -41,6 +41,7 @@ import subprocess
 import sys
 import threading
 import time
+import tomllib
 import unicodedata
 import urllib.parse
 import venv
@@ -57,6 +58,7 @@ from agentsync import cli, gitops, governance, lints, manifest, net, paths, repo
 from agentsync.config import (
     Config,
     SourceConfig,
+    SourceKind,
     canonical_source_root,
     default_config_text,
     derive_source_id,
@@ -27233,3 +27235,159 @@ def test_the_shell_report_leaves_a_report_with_a_generic_folder_public(env: dict
     assert install_sh({**env, "STUB_UV_INSTALL_RC": "2"}, *args).returncode == 1
     text = report_path(env).read_text(encoding="utf-8")
     assert "Contoso" not in text and "Private only:" not in text, text
+
+
+# ---- B13 round 45 lane RB: rulings 188 and 189's shell halves ----------------------------------------------
+
+
+def _dir_values(tmp_path: Path, body: str, *args: str) -> list[str]:
+    """agentsync_dir_values over a sources.toml holding ``body``, with ``args`` (TABLE KEY [esc])."""
+    config = tmp_path / "sources.toml"
+    config.write_text(body, encoding="utf-8")
+    harness = "\n".join(
+        [_shell_function("agentsync_dir_values"), 'CONFIG="$1"; shift; agentsync_dir_values "$@"']
+    )
+    cp = _bash_run(
+        [BASH32, "-c", harness, "x", str(config), *args],
+        capture_output=True,
+        env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)},
+    )
+    assert (cp.returncode, cp.stderr) == (0, b""), cp.stderr
+    return cp.stdout.decode("utf-8").splitlines()
+
+
+@pytest.mark.parametrize(
+    ("body", "table", "key"),
+    [
+        ('[convert]\npandoc_path = """~/Private\\   \n      Tool/pandoc"""\n', "convert", "pandoc_path"),
+        ('[convert]\npandoc_path = """~/Private\\ \t\n\n   Tool/pandoc"""\n', "convert", "pandoc_path"),
+        (
+            'agentsync = { principal = "Contoso}x", state_dir = "~/Contoso State" }\n',
+            "agentsync",
+            "state_dir",
+        ),
+        (
+            'agentsync = { principal = "Contoso, Inc", state_dir = "~/Contoso State" }\n',
+            "agentsync",
+            "state_dir",
+        ),
+        (
+            "agentsync = { principal = 'Contoso]x', state_dir = \"~/Contoso State\" }\n",
+            "agentsync",
+            "state_dir",
+        ),
+        ('agentsync = { principal = """a}b""", state_dir = "~/Contoso State" }\n', "agentsync", "state_dir"),
+        ('convert = { pandoc_path = "~/Contoso A}B/pandoc" }\n', "convert", "pandoc_path"),
+    ],
+)
+def test_the_toml_reader_reads_a_blank_ended_continuation_and_quoted_inline_values_c2913(
+    tmp_path: Path, body: str, table: str, key: str
+) -> None:
+    """B13 round 45 ruling 188, C2913 (privacy): agentsync_dir_values took a line-ending backslash followed
+    by blanks as an escape of a blank, so the shell registered `~/Private   Tool/pandoc` where tomllib reads
+    `~/PrivateTool/pandoc`; and its inline-table skip counted a `}`, `]` or `,` inside a quoted value, so a
+    `principal = "Contoso, Inc"` beside state_dir hid the state folder. Each reads as tomllib reads it."""
+    want = tomllib.loads(body)[table][key]
+    args = (table, key) if table == "convert" else ()
+    assert _dir_values(tmp_path, body, *args) == [f"{key}\t{want}"]
+
+
+def test_the_toml_reader_escapes_its_value_for_the_pandoc_caller_alone_c2880_c2914(tmp_path: Path) -> None:
+    """B13 round 45 ruling 189, C2880 with C2914: the reader folds a TAB or newline in a value to a space for
+    its seven callers that read a path (the pair format), and only given a third word writes it escaped
+    (``\\\\``, ``\\t``, ``\\n``), which the pandoc caller decodes to the true value its debug_path word is
+    made from: a folder whose blanks mix a TAB and a space matched neither of the shell's guesses."""
+    body = '[convert]\npandoc_path = "~/Tools/Zephyr Quarry\\tLedger/a\\\\b\\nc"\n'
+    assert tomllib.loads(body)["convert"]["pandoc_path"] == "~/Tools/Zephyr Quarry\tLedger/a\\b\nc"
+    assert _dir_values(tmp_path, body, "convert", "pandoc_path") == [
+        "pandoc_path\t~/Tools/Zephyr Quarry Ledger/a\\b c"
+    ]
+    assert _dir_values(tmp_path, body, "convert", "pandoc_path", "esc") == [
+        "pandoc_path\t~/Tools/Zephyr Quarry\\tLedger/a\\\\b\\nc"
+    ]
+    multi = '[convert]\npandoc_path = """\n~/Tools/Zephyr\nQuarry\\tLedger"""\n'
+    assert _dir_values(tmp_path, multi, "convert", "pandoc_path", "esc") == [
+        "pandoc_path\t~/Tools/Zephyr\\nQuarry\\tLedger"
+    ]
+    assert _dir_values(tmp_path, multi, "convert", "pandoc_path") == [
+        "pandoc_path\t~/Tools/Zephyr Quarry Ledger"
+    ]
+
+
+def test_the_folder_list_reader_keeps_every_row_under_a_sigchld_with_errexit_live_c2877(
+    tmp_path: Path,
+) -> None:
+    """B13 round 45 ruling 189, C2877: listed_folder_lines wrote each row with bash 3.2's builtin printf, and
+    a SIGCHLD that broke a write blocked on a full pipe failed it with EINTR; with -e live (a call under
+    `( ... ) ||`, as write_fallback_report's, or a plain call) the function stopped part way, 429 of 3000 rows
+    here. awk writes them now, so 3000 listed rows reach a reader that starts 3 s late while two children of
+    the writer exit."""
+    home = tmp_path / "home"
+    cs = home / "Library" / "CloudStorage" / "OneDrive-Contoso"
+    out = tmp_path / "install.out"
+    rows = [f"{cs}/Project {n:04d} Folder Name Padding/Sub {n:04d}" for n in range(3000)]
+    out.write_text(
+        "# run=1 2026-11-23T10:00:00Z install.sh --list-folders\n" + "".join(f"{r}\n" for r in rows)
+    )
+    harness = "\n".join(
+        [
+            "set -euo pipefail",
+            _shell_function("listed_folder_lines"),
+            "g() { sleep 1 & sleep 1.5 & listed_folder_lines; }",
+            "( g ) 2>/dev/null | { sleep 3; cat; }",
+        ]
+    )
+    cp = _bash_run(
+        [BASH32, "-c", harness],
+        capture_output=True,
+        text=True,
+        env={"HOME": str(home), "PATH": "/usr/bin:/bin", "INSTALL_OUT": str(out)},
+    )
+    assert cp.returncode == 0, cp.stderr
+    assert cp.stdout.splitlines() == rows, (len(cp.stdout.splitlines()), cp.stdout[-200:])
+
+
+@pytest.mark.parametrize(
+    ("header", "kind", "want"),
+    [
+        ('[[ "source" ]]', 'kind = "local"', 1),
+        ("[['source']]", 'kind = "local"', 1),
+        ("[[ source ]]", "kind = 'local'", 1),
+        ("[['source']]", '"kind" = "inbox"', 0),
+        ("[[source]]", "'kind' = 'inbox'", 0),
+        ("[[source]]", 'kind = "local"', 1),
+    ],
+)
+def test_install_sh_counts_sources_as_the_report_reads_them_c2934(
+    tmp_path: Path, header: str, kind: str, want: int
+) -> None:
+    """B13 round 45 ruling 188, C2934: non_inbox_sources counted `[[source]]` headers and `kind = "inbox"`
+    lines by a line pattern, so a valid `[[ "source" ]]` or `[['source']]` table counted 0 (HAVE_SOURCES=0
+    and the no-folder NEXT over a configured folder) and a quoted `"kind" = "inbox"` counted 1, where the
+    report's twin (_install_sh_said_no_folder) reads config.sources from tomllib. It counts with the installed
+    interpreter's tomllib now, state-blind, and both twins agree."""
+    folder = tmp_path / "Folder"
+    folder.mkdir()
+    config = tmp_path / "sources.toml"
+    config.write_text(
+        f'{header}\nid = "contoso-plans"\n{kind}\npath = {json.dumps(str(folder))}\nstate = "paused"\n',
+        encoding="utf-8",
+    )
+    harness = "\n".join(
+        [
+            _shell_function("watchdog"),
+            _shell_function("with_timeout"),
+            _shell_function("non_inbox_sources"),
+            'non_inbox_sources "$1"',
+        ]
+    )
+    cp = _bash_run(
+        [BASH32, "-c", harness, "x", str(config)],
+        capture_output=True,
+        text=True,
+        env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "TOOL_PY": sys.executable},
+    )
+    assert cp.returncode == 0, cp.stderr
+    assert cp.stdout == f"{want}\n", cp.stdout
+    report = any(s.kind is not SourceKind.INBOX for s in load_config(config).sources)
+    assert (int(cp.stdout) > 0) == report == bool(want)

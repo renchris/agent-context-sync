@@ -2972,31 +2972,35 @@ FIXED_VALUE_PHRASES+="|but a meeting recording's pages keep the cap they were ma
 # marks: what redaction_pairs registers from the lists, and what the legend reads (B13 round 9 K45). An escaped
 # row opens with $ESCAPED_MARK, then may carry another mark: both go (B13 round 36 C1001). Each first mark's words
 # before B13 round 38 C1447 (`holds a control character`) still go, since install.out keeps every run's rows.
+# awk alone writes them, the CloudStorage root through ENVIRON (-v would read its backslashes as escapes), and
+# only a row under "$cs"/*/*: no bash builtin writes in a loop, which bash 3.2 left part way when a SIGCHLD broke a
+# write with -e live in a process substitution (B13 round 45 ruling 189, C2877).
 listed_folder_lines() {
-	local cs="$HOME/Library/CloudStorage" line
 	[ -f "$INSTALL_OUT" ] && [ ! -L "$INSTALL_OUT" ] || return 0
-	while IFS= read -r line; do
-		case "$line" in "$cs"/*/*) printf '%s\n' "$line" ;; esac
-	done < <(LC_ALL=C awk '/^# run=/ { list = ($0 ~ / install[.]sh( .*)? --list-folders( |$)/); next }
+	CS="$HOME/Library/CloudStorage" LC_ALL=C awk '/^# run=/ { list = ($0 ~ / install[.]sh( .*)? --list-folders( |$)/); next }
 		list { sub(/^\[name (holds a (hidden or )?control character(: rename it to sync it)?|reads as another folder there: rename one of them to sync it)\] /, "")
-			sub(/^\[(synced|inside a synced folder|contains a synced folder)\] /, ""); print }' "$INSTALL_OUT" 2>/dev/null)
+			sub(/^\[(synced|inside a synced folder|contains a synced folder)\] /, "")
+			n = length(ENVIRON["CS"]) + 1
+			if (substr($0, 1, n) == ENVIRON["CS"] "/" && index(substr($0, n + 1), "/")) print }' "$INSTALL_OUT" 2>/dev/null || true
 }
 # Each name part of those paths, as folder_parts reads them: "skip<TAB><name>" for one it does not register
-# (every drive's name, or coding-agent product words only), else "keep<TAB><name>" (B13 round 11 M3).
+# (every drive's name, or coding-agent product words only), else "keep<TAB><name>" (B13 round 11 M3). Printed
+# once, after the loop, so a write a SIGCHLD breaks is one write, never one a row (B13 round 45 C2877).
 listed_folder_names() {
-	local cs="$HOME/Library/CloudStorage" f rel part
+	local cs="$HOME/Library/CloudStorage" f rel part rows=""
 	while IFS= read -r f; do
 		rel="${f#"$cs"/*/}"
 		while [ -n "$rel" ]; do
 			part="${rel%%/*}"
 			[ "$part" = "$rel" ] && rel="" || rel="${rel#*/}"
 			if generic_folder "$part" || agent_words_name "$part"; then
-				printf 'skip\t%s\n' "$part"
+				rows+="skip"$'\t'"$part"$'\n'
 			else
-				printf 'keep\t%s\n' "$part"
+				rows+="keep"$'\t'"$part"$'\n'
 			fi
 		done
 	done < <(listed_folder_lines)
+	[ -z "$rows" ] || printf '%s' "$rows"
 }
 # The path = "..." values of sources.toml, one a line, each read as a TOML basic string in one pass from the left
 # (so an escaped backslash before a t stays a backslash and a t). add-source writes them with json.dumps, so a
@@ -3046,12 +3050,15 @@ config_path_values() {
 # tomllib reads is read (B13 round 44 ruling 171, C2698): the table header bare or quoted (["convert"],
 # ['convert']), the key bare or quoted, a dotted key at the top level (convert.pandoc_path, any part quoted), a
 # one-line inline table (convert = { pandoc_path = "..." }), and a multi-line """...""" (its escapes, a
-# line-ending backslash joining the next line) or '''...''', its newline right after the opening quotes
-# dropped as TOML drops it, read to its close, each inner newline a space. The value is as written (raw): the
-# caller trims it as Python's str.strip() does (py_strip) before reading it as a path.
+# line-ending backslash joining the next line, blanks after it too: B13 round 45 C2913) or '''...''', its newline
+# right after the opening quotes dropped as TOML drops it, read to its close, each inner newline a space; an
+# inline table's other values skipped whole, quotes and all (C2913). Given a third word, the value written escaped
+# instead (\\, \t, \n), which the pandoc caller alone decodes (B13 round 45 ruling 189, C2880 with C2914). The
+# value is as written (raw): the caller trims it as Python's str.strip() does (py_strip) before reading it as a
+# path.
 agentsync_dir_values() {
 	[ -f "$CONFIG" ] || return 0
-	T="${1:-agentsync}" K="${2:-state_dir|docs_repo|cache_dir|log_dir}" LC_ALL=C awk '
+	T="${1:-agentsync}" K="${2:-state_dir|docs_repo|cache_dir|log_dir}" E="${3:-}" LC_ALL=C awk '
 		function hex(h,    i, v) {
 			v = 0; h = tolower(h)
 			for (i = 1; i <= length(h); i++) v = v * 16 + index("0123456789abcdef", substr(h, i, 1)) - 1
@@ -3072,13 +3079,16 @@ agentsync_dir_values() {
 				if (substr(src, 1, length(cl)) == cl) { src = substr(src, length(cl) + 1); got = 1; return out }
 				c = substr(src, 1, 1); src = substr(src, 2)
 				if (c != "\\") { out = out c; continue }
-				if (src == "" && ml) { joining = 1; return out }
+				# a backslash with only blanks after it to the end of the line joins the next line too (C2913)
+				if (ml && src ~ /^[ \t]*$/) { src = ""; joining = 1; return out }
 				e = substr(src, 1, 1); src = substr(src, 2)
-				if (e ~ /^[tnrbf]$/) out = out " "
+				if (e == "t") out = out "\t"
+				else if (e == "n") out = out "\n"
+				else if (e ~ /^[rbf]$/) out = out " "
 				else if (e == "u" && match(src, "^[" x "][" x "][" x "][" x "]") ||
 					e == "U" && match(src, "^[" x "][" x "][" x "][" x "][" x "][" x "][" x "][" x "]")) {
 					c = hex(substr(src, 1, RLENGTH)); src = substr(src, RLENGTH + 1)
-					out = out (c == 9 || c == 10 || c == 13 ? " " : utf8(c))
+					out = out (c == 9 ? "\t" : c == 10 ? "\n" : c == 13 ? " " : utf8(c))
 				} else out = out e
 			}
 			return out
@@ -3121,15 +3131,25 @@ agentsync_dir_values() {
 			if (q == "\"") { src = substr(src, 2); v = basic("\"", 0); if (got) emit(key, v) }
 			else if (q == "\047") { src = substr(src, 2); v = literal("\047"); if (got) emit(key, v) }
 		}
-		function emit(key, v) {
-			gsub(/[\t\n]/, " ", v)
+		# a TAB or newline in the value a space (the pair format), or with E (the pandoc caller alone) the value
+		# escaped instead: \\ for a backslash, \t for a TAB and \n for a newline (B13 round 45 ruling 189, C2880
+		# with C2914)
+		function emit(key, v,    o, i, c) {
+			if (ENVIRON["E"] != "") {
+				o = ""
+				for (i = 1; i <= length(v); i++) {
+					c = substr(v, i, 1)
+					o = o (c == "\\" ? "\\\\" : c == "\t" ? "\\t" : c == "\n" ? "\\n" : c)
+				}
+				v = o
+			} else gsub(/[\t\n]/, " ", v)
 			if (v != "" && !(key in seen)) { seen[key] = 1; print key "\t" v }
 		}
 		BEGIN { nk = split(ENVIRON["K"], ks, "|"); for (i = 1; i <= nk; i++) want[ks[i]] = 1; root = 1 }
 		mlq != "" {
 			src = $0
 			if (mlv == "" && !started) { started = 1 } # the newline right after the opening quotes is dropped
-			else if (joining) { ws() } else mlv = mlv " "
+			else if (joining) { ws() } else mlv = mlv "\n"
 			if (joining) { sub(/^[ \t]*/, "", src); if (src == "") next }
 			joining = 0
 			v = (mlq == "\"\"\"") ? basic(mlq, 1) : literal(mlq)
@@ -3163,7 +3183,15 @@ agentsync_dir_values() {
 					src = substr(src, 2); ws()
 					if (np == 1 && (p in want) && (substr(src, 1, 1) == "\"" || substr(src, 1, 1) == "\047")) value(p)
 					else { depth = 0; while (src != "" && !(depth == 0 && (substr(src, 1, 1) == "," || substr(src, 1, 1) == "}"))) {
-						c = substr(src, 1, 1); if (c == "{" || c == "[") depth++; else if (c == "}" || c == "]") depth--; src = substr(src, 2) } }
+						c = substr(src, 1, 1)
+						# a quoted value is read whole, so a }, ] or , inside it ends nothing (C2913)
+						if (c == "\"" || c == "\047") {
+							q = substr(src, 1, 3)
+							if (q == "\"\"\"" || q == "\047\047\047") { src = substr(src, 4); if (c == "\"") basic(q, 0); else literal(q) }
+							else { src = substr(src, 2); if (c == "\"") basic("\"", 0); else literal("\047") }
+							continue
+						}
+						if (c == "{" || c == "[") depth++; else if (c == "}" || c == "]") depth--; src = substr(src, 2) } }
 					ws()
 					if (substr(src, 1, 1) != ",") break
 					src = substr(src, 2)
@@ -3748,6 +3776,19 @@ redaction_pairs() {
 	# ruling 157, C2432)
 	# (as written, and as pathlib reads it: a // or /./ in it is one /, which every printer writes)
 	while IFS=$'\t' read -r k v; do
+		# the reader wrote the value escaped (its third word): tv is the value as tomllib reads it, decoded once
+		# here (never printf %b), and v the copy whose TAB and newline are a space, as the pair format carries it
+		# and every plain and quoted spelling below is registered from (B13 round 45 ruling 189, C2880 with C2914)
+		tv="$(V="$v" LC_ALL=C awk 'BEGIN {
+			v = ENVIRON["V"]; o = ""
+			while ((i = index(v, "\\")) > 0) {
+				e = substr(v, i + 1, 1); o = o substr(v, 1, i - 1) (e == "t" ? "\t" : e == "n" ? "\n" : e); v = substr(v, i + 2)
+			}
+			printf "%s.", o v
+		}')"
+		tv="${tv%.}"
+		v="${tv//$'\t'/ }"
+		v="${v//$'\n'/ }"
 		# as written, for the echo pairs, its blanks off both ends (a multi-line value's closing newline is one, a
 		# pair ending in a blank ate the one after the path, and the agentsync report keeps a padded echo's lead);
 		# then as config._str strips it, then pathlib (C2698)
@@ -3772,6 +3813,21 @@ redaction_pairs() {
 			"$tilde/'${rw//$x/$sep}'"; do
 			add_pair "$w" "$cfg_cut" c
 		done
+		# the true value as debug_path writes it under each locale, a TAB or newline in it an escape of its $'..'
+		# (never a raw byte in a pair), as setup_report._dollar_q_forms registers it from the real path: a folder
+		# whose blanks mix a TAB and a space matched neither guess below (C2880 with C2914)
+		t="$(py_strip "$tv")"
+		t="$(path_norm "$t")"
+		case "$t" in \~) t="$HOME" ;; \~/*) t="$HOME/${t#\~/}" ;; esac
+		case "$t" in
+		"$HOME"/?*) t="${t#"$HOME"/}" ;;
+		*) if [ -n "$hp" ] && [ "$hp" != / ]; then case "$t" in "$hp"/?*) t="${t#"$hp"/}" ;; *) t="" ;; esac; else t=""; fi ;;
+		esac
+		if [ -n "$t" ] && [ "$t" != "$rw" ]; then
+			for w in "$(LC_ALL=C && debug_path "$HOME/$t")" "$(LC_ALL=en_US.UTF-8 && debug_path "$HOME/$t")"; do
+				add_pair "$w" "$cfg_cut" c
+			done
+		fi
 		# the reader made a TAB a space (the pair format), so a TAB at a blank, as doctor and debug_path write it
 		# ($'..\t..', escaped, never a raw TAB in a pair), is registered too; flag c matches a raw TAB at a blank
 		# (redact_stream's tsp) (B13 round 44 ruling 171, C2671)
@@ -3782,7 +3838,7 @@ redaction_pairs() {
 			done
 			;;
 		esac
-	done < <(agentsync_dir_values convert pandoc_path)
+	done < <(agentsync_dir_values convert pandoc_path esc)
 	for w in ${loose[@]+"${loose[@]}"}; do # only as the argument: a short relative name is also a common word
 		v="$(printf '%q' "$w")"
 		printf '%s\t%s\t\n' "--source-local $v" "--source-local <path>"
@@ -7146,6 +7202,73 @@ fallback_body() {
 	say ""
 }
 PRIVATE_ONLY="" # 1 once fallback_redaction says the shell report is for a private copy only
+# sources.toml (CONFIG, when it is there) as setup_report._unloaded_config reads it: "unparsed" when tomllib
+# raises TOMLDecodeError, UnicodeDecodeError or ValueError on its UTF-8 text, which makes the agentsync report
+# private only, "loaded" when it parses, "unread" for an OSError (public, as there). Read through an interpreter
+# this script resolves (the installed agentsync's, else a python3.11 or later uv already holds), under
+# with_timeout, the verdict a fixed word it prints and its stderr never read. Only where no interpreter answers
+# does the shape the awk readers need decide, never a blanket private only: "unparsed" for a `[` line that is not
+# a whole header of bare keys, a source table's id or path line those readers do not read as a basic string, or a
+# line outside every multi-line value that is no key, header or comment; else "loaded" (B13 round 45 ruling 188,
+# C2840 with C2915).
+config_toml_state() {
+	local py uv w
+	[ -f "$CONFIG" ] || return 0
+	for py in tool uv; do
+		case "$py" in
+		tool) py="$(tool_python)" ;;
+		uv)
+			uv="$(find_uv)"
+			[ -n "$uv" ] || continue
+			py="$(cd / && UV_PYTHON_DOWNLOADS=never with_timeout 10 "$uv" python find '>=3.11' 2>/dev/null)" || py=""
+			;;
+		esac
+		[ -n "$py" ] && [ -x "$py" ] || continue
+		w="$(with_timeout 10 "$py" -I -c 'import sys
+try:
+    import tomllib
+except ImportError:
+    sys.exit(0)
+try:
+    with open(sys.argv[1], encoding="utf-8") as f:
+        tomllib.loads(f.read())
+except (tomllib.TOMLDecodeError, UnicodeDecodeError, ValueError):
+    print("unparsed")
+except OSError:
+    print("unread")
+else:
+    print("loaded")' "$CONFIG" 2>/dev/null)" || w=""
+		case "$w" in unparsed | loaded | unread)
+			printf '%s' "$w"
+			return 0
+			;;
+		esac
+	done
+	LC_ALL=C awk '
+		function unq(s) { gsub(/"([^"\\]|\\.)*"|\047[^\047]*\047/, "\"\"", s); return s }
+		ml != "" { if (index($0, ml)) ml = ""; next }
+		depth > 0 { s = unq($0); sub(/#.*/, "", s); depth += gsub(/\[/, "[", s) - gsub(/\]/, "]", s); next }
+		{ s = $0; sub(/^[ \t]+/, "", s) }
+		s == "" || substr(s, 1, 1) == "#" { next }
+		substr(s, 1, 1) == "[" {
+			if (s !~ /^\[\[[ \t]*[A-Za-z0-9_.-]+[ \t]*\]\][ \t]*(#.*)?$/ && s !~ /^\[[ \t]*[A-Za-z0-9_.-]+[ \t]*\][ \t]*(#.*)?$/) bad = 1
+			src = (s ~ /^\[\[[ \t]*source[ \t]*\]\]/)
+			next
+		}
+		!index(s, "=") { bad = 1; next }
+		src && s ~ /^["\047]?(id|path)["\047]?[ \t]*=/ {
+			if (s ~ /^id[ \t]*=[ \t]*"[^"\\]*"[ \t]*(#.*)?$/ || s ~ /^path[ \t]*=[ \t]*"([^"\\]|\\.)*"[ \t]*$/) next
+			bad = 1; next
+		}
+		{
+			v = substr(s, index(s, "=") + 1); sub(/^[ \t]+/, "", v)
+			q = substr(v, 1, 3)
+			if ((q == "\"\"\"" || q == "\047\047\047") && !index(substr(v, 4), q)) { ml = q; next }
+			v = unq(v); sub(/#.*/, "", v)
+			depth = gsub(/\[/, "[", v) - gsub(/\]/, "]", v)
+		}
+		END { print (bad ? "unparsed" : "loaded") }' "$CONFIG" 2>/dev/null || true
+}
 # The shell report's Redaction section: fixed text, written after redact_stream (as the issue link is), so no
 # value can replace a word of it ("the login name" with a folder named "name").
 # The placeholder kinds the redacted body (file $1) shows, as the Python report's "Placeholders used:" line
@@ -7235,7 +7358,7 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 				fi
 				;;
 			esac
-		done < <(listed_folder_names)
+		done <<<"$(listed_folder_names 2>/dev/null)" # under $(), where bash 3.2 clears -e (C2877)
 		while IFS=$'\t' read -r v p fl; do
 			case "$p" in
 			"<folder-"*)
@@ -7463,6 +7586,12 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	elif [ -n "${HOLD_WORD_SHOWN:-}" ]; then
 		say "Private only: a hold's reason or owner is also a word this report prints, so where <value> stands in the"
 		say "report's own text it can be read back."
+		PRIVATE_ONLY=1
+	fi
+	# a sources.toml that does not parse, in setup_report.py's sentence word for word: the agentsync report's
+	# config_unparsed, so both reach one verdict (B13 round 45 ruling 188, C2840 with C2915)
+	if [ "$(config_toml_state)" = unparsed ]; then
+		say "Private only: sources.toml does not load and is not readable as TOML, so a source id or folder it names may show in clear."
 		PRIVATE_ONLY=1
 	fi
 	[ -z "$PRIVATE_ONLY" ] ||
@@ -13372,8 +13501,24 @@ else
 	step_end "done" 0 "exists$FOLDER_COUNTS"
 fi
 # Sources other than the inbox: init and add-source always add the inbox (KISS K05), so a config holding only
-# the inbox still has no folder to sync and gets "choose a folder to sync".
+# the inbox still has no folder to sync and gets "choose a folder to sync". Counted with tomllib through the
+# installed agentsync's interpreter (stdlib alone, so an older build answers too), as the report's
+# config.sources counts them: every spelling of the header and the kind key, paused and retired sources counted
+# (state-blind, as C2601 has it); the line reader only when that fails (B13 round 45 ruling 188, C2934).
 non_inbox_sources() { # $1: sources.toml; prints the number of [[source]] tables whose kind is not "inbox"
+	local n
+	if [ -x "$TOOL_PY" ]; then
+		n="$(with_timeout 10 "$TOOL_PY" -I -c 'import sys, tomllib
+with open(sys.argv[1], "rb") as f:
+    d = tomllib.load(f)
+s = d.get("source", [])
+print(sum(1 for t in s if isinstance(t, dict) and t.get("kind") != "inbox") if isinstance(s, list) else 0)' "$1" 2>/dev/null)" || n=""
+		case "$n" in '' | *[!0-9]*) ;; *)
+			printf '%s\n' "$n"
+			return 0
+			;;
+		esac
+	fi
 	awk '
 		/^[[:space:]]*\[/ { if (t && !ib) n++; t = ($0 ~ /^[[:space:]]*\[\[source\]\][[:space:]]*(#.*)?$/); ib = 0; next }
 		t && /^[[:space:]]*kind[[:space:]]*=[[:space:]]*("inbox"|\047inbox\047)[[:space:]]*(#.*)?$/ { ib = 1 }
