@@ -46058,6 +46058,13 @@ not answer within <N>s: ` head `_HELPER_LATE_RE` reads is unchanged. Test:
 `test_a_helper_that_did_not_answer_in_time_is_not_judged_c915` (the clause pinned, its fixture copying lane E's
 fallback).
 
+**C2808 has no report half to build** (C2808; measured). The agentsync report reads no step 2 `inbox:` line:
+its Configuration `- inbox:` line prints `config.inbox_state`'s answer, which lane B's C2936 gives a `not read
+(<strerror>)` form (§16.282), and no report reads install.log's `inbox=` field
+(`test_the_guides_install_log_row_names_inbox_not_added_and_no_report_reads_it_c2663` holds that). The new
+`inbox: not read: <typed folder>: Permission denied (...)` line reaches the report only in the install.out tail,
+where its folder is cut as any typed path is; install.sh's `inbox_not_added()` match is lane RB's.
+
 ### 16.281 Round 45: the installer: the shell halves of rulings 188 and 189, the person's none honored at every NEXT, an inbox-state read that did not finish said so, and C2060 waits on the operator (2026-11-23, wave B13 round 45 lane RB)
 
 Round 45's lane RB items (`docs/plans/bring-back-ocr.md`, "B13 round 45"; specs `round45/items/C<n>.md`, the
