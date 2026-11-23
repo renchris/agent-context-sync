@@ -56,7 +56,11 @@ runs `agentsync status` and a first sync, and ends with one `NEXT:` line: the lo
 or retired folder still counts as one), where status names the missing agentsync-docs skill: install.sh then ends,
 exit 0, on its own `no folder is synced yet: list them with install.sh --list-folders, ...` line in place of status's
 (B13 round 43 C2401; with the skill already current, status's own no-folder line is printed unchanged). It exits 2 when it created `sources.toml` and has no folder to sync (its
-`NEXT:` names `--list-folders`) and 1 on a `[FAIL]` line. It builds no launcher and installs no LaunchAgent. Every
+`NEXT:` names `--list-folders`) and 1 on a `[FAIL]` line. When the person chose no folder, `install.sh --no-folder` (it
+takes no `--source-local` and no `--confirm-install-agent`) exits 0 instead, and its `NEXT:`, on a new config and on a
+re-run over one with no live folder alike, reads `the person chose no folder, so this Mac syncs none of their folders:
+go on to the report; ...` in place of the `no folder ... yet` lines; a `--no-folder` run whose step or status failed
+ends exit 1 on that failure's own `NEXT:`, whose re-run keeps `--no-folder`. It builds no launcher and installs no LaunchAgent. Every
 work session then starts with `~/.local/bin/agentsync sync` and does what its `NEXT:` line says.
 
 On a Mac that is already set up nothing has to be chosen again. `--list-folders` starts with
@@ -134,7 +138,7 @@ names a host other than github.com, step 1 of the setup prompt lists where git m
   is set back to live. If a source of another kind is already on that folder, setup keeps no inbox there and says so
   (`inbox: <path> is source '<id>' (<kind>, <state>), not an inbox source`): the folder syncs as that source while it
   is live. If the folder cannot be made (a file already has the name, for example), `agentsync init` and
-  `agentsync add-source` print `inbox: not added: …` and still exit 0. When no live inbox source sits on that folder, `agentsync status` and step 2 print an `inbox state:` line after the `inbox:` line, saying what is there instead (`paused <folder>`, `retired <folder>` or `not added (<reason>)`). Drag in exports,
+  `agentsync add-source` print `inbox: not added: …` and still exit 0. When no live inbox source sits on that folder, `agentsync status` and step 2 print an `inbox state:` line after the `inbox:` line, saying what is there instead (`paused <folder>`, `retired <folder>` or `not added (<reason>)`). It reads `not added (<folder> is not a folder)` when a file, a link to a file or a dangling link has the inbox's name, whatever `sources.toml` lists, and `not read (<why>)` when agentsync cannot read what is on that name. Step 2 prints `inbox state: not checked (<why>)` instead when its own read of that state did not finish (the read raised, stopped at its 10-second limit or printed nothing), so it cannot say whether the inbox is live; `~/.local/bin/agentsync status` reads it again. Drag in exports,
   attachments, PDFs or emails (drag a message out of Outlook to save it as `.eml`; save a meeting transcript as
   `.docx` or `.vtt`), and they are converted once they stop changing (`quiescence_s`). Teams messages go in as
   `.teams.json` files in the `agentsync.teams-month/1` shape (`TEAMS_MONTH_SCHEMA` in `src/agentsync/model.py`),

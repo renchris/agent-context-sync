@@ -46704,6 +46704,19 @@ v42 with v41's block (9acf0c54b) as scenario C's first old copy. Tests:
 `test_no_line_of_the_prompt_block_is_a_lone_word_or_wider_than_the_block`,
 `test_the_prompt_text_changes_only_with_its_version`, `test_readme_prompt_compat_matches_the_installer`.
 
+**Both READMEs name the unread inbox forms, and the guide `--no-folder`'s exit** (C2869, C2865; ruling 194, 191;
+`README.md`, `docs/deploy/README.md`; a fix inside ruling 162's pinned list makes things worse). README's inbox
+paragraph said `not added (<folder> is not a folder)` appears when "a file or a link" has the inbox's name, but a link
+to a folder reads live; docs/deploy/README.md named neither unread form, and its exit-2 sentence was false for a
+`--no-folder` run. After the list the ruling-162 test pins word for word in both READMEs, each now says "a file, a link
+to a file or a dangling link", names `not read (<why>)` and step 2's `inbox state: not checked (<why>)` (lane RB's
+ruling 194 line: a state read that raised, hit its 10 s limit or printed nothing), and points at `agentsync status`;
+the deploy guide's exit-2 sentence adds that `install.sh --no-folder` exits 0 on its person's-choice NEXT on a new
+config and on a re-run over one with no live folder alike, and that a `--no-folder` run whose step or status failed
+ends exit 1 on that failure's own NEXT (lane RB's ruling 191). Test:
+`tests/test_deploy_pack.py::test_both_readmes_name_the_unread_inbox_forms_and_the_no_folder_exit_c2865_c2869` (held to
+install.sh's own words).
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units

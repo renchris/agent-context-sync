@@ -4740,6 +4740,37 @@ def test_both_readmes_name_the_inbox_state_line_ruling_162() -> None:
         assert sentence in _page(page), page
 
 
+def test_both_readmes_name_the_unread_inbox_forms_and_the_no_folder_exit_c2865_c2869() -> None:
+    """B13 round 45 C2869 and C2865 (ruling 194, makes worse True for editing ruling 162's pinned list): after
+    the pinned list both READMEs say a file, a link to a file or a dangling link reads `not added (<folder> is
+    not a folder)` (a link to a folder reads live), name `not read (<why>)` and step 2's own `inbox state: not
+    checked (<why>)` (lane RB's ruling 194 line); docs/deploy/README.md's exit-2 sentence names
+    `--no-folder`'s exit 0 and its person's-choice NEXT (ruling 191). Held to install.sh's own words."""
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    assert "inbox state: not checked (" in script and "it did not finish within 10 s" in script
+    chose = "the person chose no folder, so this Mac syncs none of their folders: go on to the report;"
+    assert chose in script
+    unread = (
+        "It reads `not added (<folder> is not a folder)` when a file, a link to a file or a dangling link has"
+        " the inbox's name, whatever `sources.toml` lists, and `not read (<why>)` when agentsync cannot read"
+        " what is on that name. Step 2 prints `inbox state: not checked (<why>)` instead when its own read of"
+        " that state did not finish (the read raised, stopped at its 10-second limit or printed nothing), so"
+        " it cannot say whether the inbox is live; `~/.local/bin/agentsync status` reads it again."
+    )
+    for page in ("README.md", "docs/deploy/README.md"):
+        text = _page(page)
+        assert unread in text and "when a file or a link has the inbox's name" not in text, page
+        assert text.index("or `not added (<reason>)`).") < text.index(unread), page
+    assert (
+        "and 1 on a `[FAIL]` line. When the person chose no folder, `install.sh --no-folder` (it takes no"
+        " `--source-local` and no `--confirm-install-agent`) exits 0 instead, and its `NEXT:`, on a new"
+        " config and on a re-run over one with no live folder alike, reads `the person chose no folder, so"
+        " this Mac syncs none of their folders: go on to the report; ...` in place of the `no folder ... yet`"
+        " lines; a `--no-folder` run whose step or status failed ends exit 1 on that failure's own `NEXT:`,"
+        " whose re-run keeps `--no-folder`."
+    ) in _page("docs/deploy/README.md")
+
+
 def test_the_guide_and_contracts_quote_the_reinstall_tickers_words_c2423() -> None:
     """B13 round 43 C2423 (lane RB's 88a60a073): the bare-lock reinstall ticker reads `reinstalling once the
     lock is free`, and the guide and two contracts quoted the old `reinstalling after the lock is free`; RB
