@@ -45299,6 +45299,12 @@ locales: an off-disk folder, `Copilot` alone and under one, `Documents/...`), th
 switched off, which cuts a temporary folder's path for another reason) and
 `test_an_unloaded_config_registers_its_ids_and_folders_c2609` (a retired source with and without its reason give the
 same placeholders; an unparseable file, private only).
+Amended 2026-11-23, §16.280 C2939, C2912: a logged bare word ends only at a space or tab (or a newline), as bash's
+`read -a` splits it, never at a Unicode space such as a UTF-8 run's raw NBSP, and the words are numbered in
+install.sh's order, the args lines sorted and the `$'..'` words after the bare ones.
+Amended 2026-11-23, §16.280 C2839, C2815: a config that does not load also reads its docs repo's remote and registers
+its pandoc cut from the raw value, and one that does not parse registers its `[[source]]` ids, line-scanned, while
+it stays private only.
 
 **The Loop line says install.sh's no-folder NEXT where install.sh does** (C2601 with C2638; ruling 179; amends §16.271
 C2401). On a config with no folder but the inbox, install.sh's closing NEXT replaces status's skill-missing one by
@@ -45871,7 +45877,33 @@ the banner, becomes drop line 1 when it is the banner, then line 2 when it is em
 
 ### 16.280 Round 45: the report: an unloaded or unusually spelled sources.toml cut to one verdict in both reports, a word ending where bash ends it, and a none read, scored and worded as install.sh made it (2026-11-23, wave B13 round 45 lane RA)
 
-Reserved for round 45 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 45").
+Round 45's lane RA items (`docs/plans/bring-back-ocr.md`, "B13 round 45"; specs `round45/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's rulings 188 to 197 settle it). Rulings 188 and 189's shell halves are
+lane RB's (§16.281), landed with these in one run. A dated line this round writes reads
+`Amended 2026-11-23, §16.280 C<n>`.
+
+**A sources.toml that does not load is cut as a loaded one** (C2839, C2815; ruling 188; privacy; amends §16.275
+C2609). `_build_redactor` read the docs repo's git remote and registered the pandoc cut only from a loaded config,
+so a top-level unknown key printed `[ok] convert.pandoc — ~/Tools/Zephyr Quarry/pandoc 3.1`, its `debug: pandoc`
+echo and a moved docs repo's remote in clear. The remote is read from `cfg.docs_repo` (the raw config when it does
+not load) and the pandoc cut is registered from `_raw_pandoc_path`'s value, stripped then expanded as config's
+`_str` and `expand` read it, when the config does not load (C2839): the same file with and without the unknown key
+prints those lines alike. A file that does not parse registered no id, so a listed folder word was cut inside one
+(`source.gamma-bridge-<folder-4>.listable`): its `[[source]]` tables' `id` lines, a basic or a literal string, are
+line-scanned (`_scanned_source_ids`), kept through `SOURCE_ID_RE`, `_GENERIC_IDS` and `report_words()` and
+registered as source values, so each is cut whole to `<source-N>`; the private-only line stays, as the scan is best
+effort and no path is read (C2815, makes worse True for the finder's "or none", which left the listing's folder word
+uncut inside an id and put `Meetings` in clear).
+
+**A logged word ends where bash ends it and is numbered in install.sh's order** (C2939 with C2912; ruling 189;
+privacy; amends §16.275 C2668). `_LOGGED_SOURCE_LOCAL_RE`'s bare word ended at `\s`, which matches the NBSP a UTF-8
+run's `printf %q` writes raw, so `Kestrel<NBSP>Quarry/Zephyr\ Plans` was cut to `Kestrel` and `Quarry` and `Zephyr
+Plans` printed in clear where the shell numbered them; it ends only at a space, tab or newline
+(`(?:\\.|[^ \t\n\\])+`), never at a Unicode space and never through shlex, which misreads a `$'..'` word.
+`_logged_cloud_folders` walked the runs in log order, where install.sh sorts the args lines (`LC_ALL=C sort -u`) and
+reads the `$'..'` words in a second loop, so two runs' folders took opposite numbers: it takes the start lines' args
+once each, sorted by code point, their bare words first, then the `$'..'` words once each, sorted by their sed form
+(`\'` read as `'`). Both reports print one line under C and en_US.UTF-8.
 
 ### 16.281 Round 45: the installer: the shell halves of rulings 188 and 189, the person's none honored at every NEXT, an inbox-state read that did not finish said so, and C2060 waits on the operator (2026-11-23, wave B13 round 45 lane RB)
 
