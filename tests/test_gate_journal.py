@@ -496,13 +496,16 @@ def test_the_ceiling_is_about_twice_the_slowest_part_and_each_record_keeps_its_d
     check the stall bound by. The ceiling is 10800 s, the comment names the measured part, both bounds'
     wording says only the ceiling stops a part that still writes, and each test record keeps its phase's
     duration, which no reader needs (a resume reads the same records). B13 round 43 C2483: round 42 lane RB's
-    first land ran its rest part 6,522.58 s, 1.66x under 10800, so the ceiling is 13200 s, about twice it."""
+    first land ran its rest part 6,522.58 s, 1.66x under 10800, so the ceiling is 13200 s, about twice it. B13
+    round 45 C2876: round 44 lane RA's land of 468d1c94 ran its rest part 11,608.96 s (8,930 tests collected,
+    a grant of 2), 1.14x under 13200, so the ceiling is 23400 s, about twice it."""
     script = (Path(__file__).parents[1] / "scripts" / "gate.sh").read_text(encoding="utf-8")
     defaults = set(re.findall(r"\$\{GATE_CEILING_S:-(\d+)\}", script))
-    assert defaults == {"13200"} and 13200 >= 2 * 6523, defaults
+    assert defaults == {"23400"} and 23400 >= 2 * 11609, defaults
     comment = " ".join(ln.lstrip("# ") for ln in script.splitlines() if ln.startswith("#"))
     measured = (
-        "about twice the slowest part measured, the rest part's 6,522 s in B13 round 42 lane RB's first land"
+        "about twice the slowest part measured, the rest part's 11,609 s in B13 round 44 lane RA's land of"
+        " 468d1c94"
     )
     assert measured in comment
     assert "Never a bound on a slow part that still writes" not in comment

@@ -44223,6 +44223,10 @@ Amended 2026-11-21, §16.274 C2483: round 42 lane RB's first land ran its rest p
 under 10800, so `GATE_CEILING_S` is 13200 s (3 h 40 min), about twice that part, rounded up, and gate.sh's comment
 names it; the C2273 rule and its test's name stand.
 
+Amended 2026-11-23, §16.284 C2876: round 44 lane RA's land of 468d1c94 ran its rest part 11,608.96 s (8,930 tests
+collected, a gate slot grant of 2), 1.14x under 13200, so `GATE_CEILING_S` is 23400 s (6 h 30 min), about twice that
+part, rounded up; the C2273 rule, the 1,500 s stall bound and the test's name stand.
+
 **The CI record carries round 41, and the head and the limit stay** (C2274; `CLAUDE.md`, `.github/workflows/ci.yml`; a
 fix that raises the head makes things worse). Round 41's ten ci attempts on main (4041089d to 74ceffac) took 63:35 to
 79:45, all past 60 and seven past 70; the slowest green was af21e633 at 78:44 (pytest's step 78:07 at 8793 tests), and
@@ -45062,6 +45066,9 @@ the comment names that part. A slow part holds the land lock longer only while i
 stopped by the 1,500 s stall bound. Test: `tests/test_gate_journal.py`
 `::test_the_ceiling_is_about_twice_the_slowest_part_and_each_record_keeps_its_duration_c2273` (its literal and
 assert moved).
+
+Amended 2026-11-23, §16.284 C2876: 13200 s held round 44's slowest rest part, 11,608.96 s in lane RA's land of
+468d1c94, only 1.14x; the ceiling is now 23400 s (2 x 11,608.96 = 23,218, rounded up), C2273's rule kept.
 
 **The CI record carries round 42, and the head and the limit stay** (C2478; `CLAUDE.md`, `.github/workflows/ci.yml`).
 Round 42's seven ci jobs on main (60835dd7 to 87ec6fee) took 59:30 to 78:52, all green on attempt 1, six past 60 and
@@ -46037,6 +46044,15 @@ leading blank lines, and the default registry's Markdown converter) and
 ### 16.284 Round 45: the prompt goes to v42 (a none, a config path and an unread inbox state as setup gives them), the gate's part ceiling and CI's limit, dated lines, and the guides (2026-11-23, wave B13 round 45 lane D)
 
 Reserved for round 45 lane D of B13.
+
+**The gate's ceiling stays about twice the slowest part** (C2876; `scripts/gate.sh`, `tests/test_gate_journal.py`;
+amends §16.269 C2273, §16.274 C2483). Round 44 lane RA's land of 468d1c94 ran its rest part 11,608.96 s (8,930 tests
+collected, a gate slot grant of 2) and lane RB's joint land 11,385.48 s, so 13200 s left a healthy part that still
+writes only 1.14x headroom before a stop with no verdict after holding the land lock 3 h 40 min. `GATE_CEILING_S` is
+23400 s (6 h 30 min, 2 x 11,608.96 = 23,218, rounded up), gate.sh's comment names that part, and the 1,500 s stall bound
+still stops a hang; the plan's 13,200 mention is the lead's. Test: `tests/test_gate_journal.py`
+`::test_the_ceiling_is_about_twice_the_slowest_part_and_each_record_keeps_its_duration_c2273` (its literal and assert
+moved, its name kept).
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

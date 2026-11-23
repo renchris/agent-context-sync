@@ -148,8 +148,9 @@ stop_group() {
 # held the land lock with nothing to stop it (round 40's joint land: 2 hours, then killed by hand, rc=143). The
 # journal grows by one write per test report, so a part whose journal has not grown for GATE_STALL_S seconds (1500,
 # 25 minutes: longer than the slowest single test under the load the machine runs at) has stopped making progress,
-# and GATE_CEILING_S (13200, 3 h 40 min: about twice the slowest part measured, the rest part's 6,522 s in B13 round
-# 42 lane RB's first land, rounded up; B13 round 42 C2273, round 43 C2483) bounds a part that keeps writing. Either one stops the group
+# and GATE_CEILING_S (23400, 6 h 30 min: about twice the slowest part measured, the rest part's 11,609 s in B13 round
+# 44 lane RA's land of 468d1c94, rounded up; B13 round 42 C2273, round 43 C2483, round 45 C2876) bounds a part that
+# keeps writing. Either one stops the group
 # (stop_group), prints `== <part> made no progress for N min; stopped (no verdict)` or `== <part> ran past its N min
 # ceiling; stopped (no verdict)` and returns GATE_STALLED_RC, so the gate exits not green and frees the land lock. The
 # stall bound never stops a slow part that still writes, since each report resets it; only the ceiling, counted from
@@ -176,8 +177,8 @@ watched() {
     [ "$now" = "$size" ] || { size=$now; last=$SECONDS; }
     if [ $((SECONDS - last)) -ge "${GATE_STALL_S:-1500}" ]; then
       why="made no progress for $(gate_span $((SECONDS - last)))"
-    elif [ $((SECONDS - start)) -ge "${GATE_CEILING_S:-13200}" ]; then
-      why="ran past its $(gate_span "${GATE_CEILING_S:-13200}") ceiling"
+    elif [ $((SECONDS - start)) -ge "${GATE_CEILING_S:-23400}" ]; then
+      why="ran past its $(gate_span "${GATE_CEILING_S:-23400}") ceiling"
     fi
     [ -z "$why" ] || break
     sleep "${GATE_POLL_S:-2}"
