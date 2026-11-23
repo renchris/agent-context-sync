@@ -245,6 +245,16 @@ def sniff_container(path: Path) -> ContainerKind:
     return ContainerKind.OTHER
 
 
+def zip_at_offset_0(path: Path) -> bool:
+    """Whether ``path``'s bytes start with a ZIP header: :func:`sniff_container`'s ``ZIP`` answer read from
+    the first bytes alone, with no scan, so it is cheap enough to ask before a cache read.  It is the
+    container verdict the Office screen keys on (:func:`screen_file`'s ``not-ooxml``), which H1 cannot see:
+    H1 reads a ZIP's members, and zipfile reads them behind a preamble (B13 round 45 C2924, ruling 196).
+    Raises OSError when the file cannot be read."""
+    with path.open("rb") as fh:
+        return fh.read(len(ZIP_MAGIC)) == ZIP_MAGIC
+
+
 # ---------------------------------------------------------------------------------------------------------
 # sensitivity labels
 # ---------------------------------------------------------------------------------------------------------

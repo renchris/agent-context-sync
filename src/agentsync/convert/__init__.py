@@ -13,7 +13,7 @@ from agentsync.convert.cache import ConverterCache, action_key
 from agentsync.convert.registry import Registry
 from agentsync.errors import NotConvertibleError, UnreadableSourceError
 from agentsync.model import ConversionResult, ConversionStatus, RenderedUnit
-from agentsync.policy import OOXML_SUFFIXES
+from agentsync.policy import OOXML_SUFFIXES, zip_at_offset_0
 
 log = logging.getLogger(__name__)
 
@@ -151,6 +151,8 @@ def convert_file(
     (``from_cache=True``). Converter raises UnreadableSourceError -> UNREADABLE; any other exception -> FAILED
     with the reason; OK results are stored write-once. Units never empty for OK. A staged file of zero bytes
     neither reads nor writes the cache (B13 round 38 C1466): it is converted every time, which costs nothing.
+    Nor does an Office name whose bytes are not a ZIP at offset 0 (``_container_screen``; B13 round 45 C2924):
+    the screen's answer is returned before the cache is read, and never stored.
 
     A recording that is not finished (``RecordingNotFinished``: its work allowance ran out, or a piece passed
     its deadline) is re-raised: it is never a FAILED or cached result, and the cycle lets it wait.
@@ -242,6 +244,13 @@ def convert_file(
     refusal = _label_refusal(registry, src, name)
     if refusal is not None:
         return make(ConversionStatus.REFUSED, reason=refusal)
+    # So is the Office container, after the labels (B13 round 45 C2924, ruling 196): H1 reads a ZIP's members
+    # and zipfile reads them behind a preamble, so a copy the screen calls not-ooxml shares the clean
+    # package's key. Served from the cache, it got the clean page; converted first, its rejection took the
+    # key and the clean package got the stub. It is answered here, as the guard answers it, and never cached.
+    container = _container_screen(conv, src, name)
+    if container is not None:
+        return make(ConversionStatus.UNREADABLE, reason=_reason(UnreadableSourceError(container), src, name))
     # Zero bytes skip the cache both ways: every zero-byte file of a suffix shares one key, and an older
     # build's cached answer for it must never be served (B13 round 38 C1466, ruling 132). Converting nothing
     # costs nothing; an unreadable size reads as not empty.
@@ -319,6 +328,24 @@ def convert_file(
     except Exception as exc:  # disk full, permissions: the result is still good for this cycle
         log.warning("converter cache write failed for %s: %s", key, _reason(exc))
     return result
+
+
+def _container_screen(conv: Converter, src: Path, name: str) -> str | None:
+    """The guard's own screen answer (``policy.screen_file``: empty-output, encrypted-office or not-ooxml) for
+    an Office name whose staged bytes are not a ZIP at offset 0, else None (B13 round 45 C2924, ruling 196).
+    Only the first bytes are read on the common path (``policy.zip_at_offset_0``); the full screen runs only
+    for bytes that are not a ZIP there.  None for a converter with no guard (no screen to mirror) and for
+    bytes that cannot be read, which the converter then reports as before."""
+    screen = getattr(conv, "screen", None)
+    if screen is None or not name.lower().endswith(OOXML_SUFFIXES):
+        return None
+    try:
+        if zip_at_offset_0(src):
+            return None
+        screening = screen(src, name=name)
+    except OSError:
+        return None
+    return None if screening is None else str(screening.reason)
 
 
 def _zero_bytes(src: Path) -> bool:

@@ -45875,6 +45875,29 @@ takes away (ruling 196). Tests:
 counts it once), `test_cycle.py::test_a_first_read_whose_publish_fails_counts_nothing_in_either_twin_c2923` and the
 C2703 shape test, which requires the pair's two lines.
 
+**An Office file's container is screened before the cache, and beside a touched file's labels** (C2924; ruling 196;
+`agentsync.convert`, `agentsync.policy`, `agentsync.cycle`). H1 reads a ZIP's members (`canonical.py`), and zipfile
+reads them behind a preamble, so a workbook with junk bytes in front has the clean package's H1, while the guard's
+screen (`policy.screen_file`) calls it `not-ooxml`. `convert_file` read the cache before the guard ran: with the
+clean copy converted first the preamble copy got the clean page from the cache, and with the preamble copy first
+its UNREADABLE rejection took the key and the clean workbook got the stub. `convert_file` now asks
+`_container_screen` after the label refusal and before `cache.get`: for an `OOXML_SUFFIXES` name behind a guard
+(`_GuardedConverter.screen`, the screen its `convert` runs first) whose first bytes are not a ZIP header
+(`policy.zip_at_offset_0`, a read of 4 bytes and no scan), it returns the guard's own answer (`empty-output`,
+`encrypted-office` or `not-ooxml`, as UNREADABLE) and never calls `cache.put`, so a raw-container rejection never
+takes the clean package's key. A converter with no guard and bytes that cannot be read are left to the converter
+as before. In the cycle, `same` beside `_relabelled` gains `_container_moved(row, fetched)`: true when an Office
+name's staged bytes are a ZIP at offset 0 and the row's reason is one the container alone gives
+(`_CONTAINER_REASONS`: `not-ooxml`, `empty-output (the file holds 0 bytes)`, `encrypted-office`), or the other way
+round, so a page row whose bytes gained a preamble and a `not-ooxml` stub whose bytes are a clean ZIP again are
+both converted, where `convert_file` decides them. H1 is unchanged (a purge keys on it, as `_relabelled` says). An
+UNREADABLE `not-ooxml` an older build cached under a clean package's key is not served after the upgrade either:
+C2925's `family_parse` moves every Office key. Tests:
+`test_convert_family.py::test_an_office_container_the_screen_rejects_never_shares_the_clean_packages_cache_c2924`
+(clean first and preamble first: the clean workbook is a page, the preamble copy `not-ooxml`, neither from the
+cache) and `test_convert_family.py::test_a_touched_office_file_whose_container_changes_is_converted_again_c2924`
+(clean, preamble, clean and the other way round through three syncs).
+
 ### 16.284 Round 45: the prompt goes to v42 (a none, a config path and an unread inbox state as setup gives them), the gate's part ceiling and CI's limit, dated lines, and the guides (2026-11-23, wave B13 round 45 lane D)
 
 Reserved for round 45 lane D of B13.

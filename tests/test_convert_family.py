@@ -458,6 +458,8 @@ def _older_zero_byte_answers(old: pytest.MonkeyPatch, *, older_key: bool = True)
     if older_key:
         old.setattr(convert_pkg, "_identity", older_identity)
     old.setattr(convert_pkg, "_zero_bytes", lambda src: False)  # nor did it skip the cache for zero bytes
+    # nor screen an Office container before the cache, so its answer was cached (B13 round 45 C2924)
+    old.setattr(convert_pkg, "_container_screen", lambda conv, src, name: None)
 
 
 def _options_hash(config, name: str) -> str | None:  # type: ignore[no-untyped-def]
@@ -2296,3 +2298,77 @@ def test_the_v2_fold_skips_only_a_stub_whose_re_read_is_still_to_come() -> None:
     assert not pending(**{**row, "state_reason": "conversion failed: not-ooxml"}), (
         "no path: nothing to wait for"
     )
+
+
+def _workbook(path: Path, *, preamble: bytes = b"") -> Path:
+    """A small real workbook; with ``preamble``, the same package behind those bytes, which zipfile still
+    reads, so H1 is the clean package's (B13 round 45 C2924)."""
+    from openpyxl import Workbook  # noqa: PLC0415
+
+    book = Workbook()
+    book.active.append(["Contoso", "plan"])
+    clean = path.with_name("clean-" + path.name)
+    book.save(clean)
+    path.write_bytes(preamble + clean.read_bytes())
+    clean.unlink()
+    return path
+
+
+@pytest.mark.parametrize("order", ["clean first", "preamble first"])
+def test_an_office_container_the_screen_rejects_never_shares_the_clean_packages_cache_c2924(
+    tmp_path: Path, order: str
+) -> None:
+    """B13 round 45 C2924 (ruling 196): H1 reads a ZIP's members, which zipfile finds behind a preamble, so a
+    workbook with junk bytes in front shared the clean package's action key, and ``convert_file`` read the
+    cache before the guard's container screen. Clean first, the preamble copy got the clean page from the
+    cache; preamble first, its not-ooxml rejection took the key and the clean workbook got the stub. The
+    container is screened after the labels and before ``cache.get`` now, and that answer is never stored: in
+    either order the clean workbook is a page and the preamble copy is not-ooxml, never from the cache."""
+    from agentsync.convert.canonical import canonical_hash  # noqa: PLC0415
+
+    clean = _workbook(tmp_path / "Contoso clean.xlsx")
+    pre = _workbook(tmp_path / "Contoso pre.xlsx", preamble=b"\x00Contoso junk" * 10)
+    h_clean, h_pre = (canonical_hash(p, suffix=".xlsx") for p in (clean, pre))
+    assert h_clean.sha256 == h_pre.sha256, "the shared key the fix guards"
+    registry, cache = Registry.default(CFG), ConverterCache(tmp_path / "cache")
+
+    def convert(path: Path):  # type: ignore[no-untyped-def]
+        return convert_file(
+            path,
+            name=path.name,
+            content_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+            canonical_sha256=h_clean.sha256,
+            registry=registry,
+            cache=cache,
+        )
+
+    seen = {}
+    for path in (clean, pre) if order == "clean first" else (pre, clean):
+        seen[path] = convert(path)
+    assert seen[clean].status is ConversionStatus.OK, seen[clean]
+    assert not seen[clean].from_cache, "the preamble copy stored nothing under the clean key"
+    assert (seen[pre].status, seen[pre].reason) == (ConversionStatus.UNREADABLE, NOT_OOXML_REASON), seen[pre]
+    assert not seen[pre].from_cache, "the clean page is never served to bytes the screen rejects"
+    again = convert(pre)
+    assert (again.status, again.from_cache) == (ConversionStatus.UNREADABLE, False), again
+
+
+@pytest.mark.parametrize("first", ["clean", "preamble"])
+def test_a_touched_office_file_whose_container_changes_is_converted_again_c2924(
+    tmp_path: Path, first: str
+) -> None:
+    """B13 round 45 C2924 (ruling 196): the cycle's touched-not-changed shortcut kept the page a row had when
+    a save added a preamble (H1 unchanged), and kept a not-ooxml stub when clean bytes with the same H1
+    came back. ``same`` beside ``_relabelled`` gains the container term (``_container_moved``), so in both
+    directions the bytes are converted, and the screen decides them."""
+    config, src = make_env(tmp_path)
+    junk = b"\x00Contoso junk" * 10
+    path = src / "Contoso book.xlsx"
+    states = []
+    for preamble in (b"", junk, b"") if first == "clean" else (junk, b"", junk):
+        _workbook(path, preamble=preamble)
+        assert run(config).exit_code == 0
+        row = _row(config, path.name)
+        states.append((row.state, row.state_reason))
+    page, stub = (RowState.LIVE, None), (RowState.QUARANTINED, NOT_OOXML_REASON)
+    assert states == ([page, stub, page] if first == "clean" else [stub, page, stub]), states

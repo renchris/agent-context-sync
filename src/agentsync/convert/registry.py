@@ -158,9 +158,15 @@ class _GuardedConverter:
             opts["label_policy"] = self._policy.fingerprint()
         return opts
 
+    def screen(self, src: Path, *, name: str) -> Screening | None:
+        """The pre-conversion screen this guard runs first in :meth:`convert` (``policy.screen_file``);
+        ``convert_file`` asks it before the cache for an Office name whose bytes are not a ZIP at offset 0
+        (B13 round 45 C2924, ruling 196)."""
+        return policy_mod.screen_file(src, name=name, policy=self._policy)
+
     def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]:
         """Screen, convert, check for empty output, add the banner."""
-        screening = policy_mod.screen_file(src, name=name, policy=self._policy)
+        screening = self.screen(src, name=name)
         if screening is not None:
             raise UnreadableSourceError(screening.reason)
         try:

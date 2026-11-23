@@ -670,7 +670,11 @@ def test_encrypted_office_is_an_unreadable_stub_without_running_a_converter(
     assert r1.reason == policy.ENCRYPTED_OFFICE_REASON and r1.reason.startswith("encrypted-office")
     assert calls == []  # the converter never saw the ciphertext
     r2 = run_convert(src, "Board Pack.docx", reg, tmp_path / "cache")
-    assert r2.from_cache and r2.status is ConversionStatus.UNREADABLE  # settled: no retry storm
+    # B13 round 45 C2924 (ruling 196): an Office name's container answer is decided before the cache and
+    # never stored, so the second call screens again (a scan, never the converter); the cycle settles the
+    # row by its UNREADABLE stub, not by the cache
+    assert (r2.status, r2.reason, r2.from_cache) == (ConversionStatus.UNREADABLE, r1.reason, False)
+    assert calls == []
 
 
 def test_encrypted_pdf_is_an_unreadable_stub(tmp_path: Path) -> None:

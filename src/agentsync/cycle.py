@@ -7045,7 +7045,12 @@ class _Cycle:
         # The stub of a page with no room for its sidecar is never the last word on the bytes: its cause is
         # the path, so every read plans the item again at the path it has now.
         intact = _pages_intact(self.repo, outs) and not _stubbed_for_path(fresh)
-        same = c2.verdict is Verdict.TOUCHED_NOT_CHANGED and intact and not self._relabelled(fresh, fetched)
+        same = (
+            c2.verdict is Verdict.TOUCHED_NOT_CHANGED
+            and intact
+            and not self._relabelled(fresh, fetched)
+            and not _container_moved(fresh, fetched)
+        )
         if same and not reread and not retry and not self._reads_anyway(fresh):
             retried = self._retries(src, fresh, h1.sha256, acc)
             if retried is None:  # its converter still cannot start: the error and its stub stay as they are
@@ -7990,6 +7995,35 @@ _DUPLICATE_OF = "duplicate-of "
 """How a duplicate's quarantine reason starts (``_duplicate_reason``): with :data:`_SIDECAR_PATH`, a stub the
 cycle makes itself after a conversion that worked, which the path re-read's note counts as held by this sync,
 never unreadable (B13 round 33 C754)."""
+
+
+_CONTAINER_REASONS = frozenset(
+    (
+        content_policy.NOT_OOXML_REASON,
+        content_policy.ZERO_BYTES_REASON,
+        content_policy.ENCRYPTED_OFFICE_REASON,
+    )
+)
+"""The stub reasons an Office name's container alone gives (``policy.screen_file``): bytes that are not a ZIP
+at offset 0.  Any other row of an Office name stands for bytes that are one (:func:`_container_moved`)."""
+
+
+def _container_moved(row: ItemRow, fetched: FetchResult) -> bool:
+    """True when the staged bytes of an Office name are a ZIP at offset 0 and ``row`` stands for bytes that
+    are not (its reason one of :data:`_CONTAINER_REASONS`), or the other way round (B13 round 45 C2924,
+    ruling 196).  H1 reads a ZIP's members, which zipfile finds behind a preamble, so such a save is
+    TOUCHED_NOT_CHANGED, which publishes nothing: a page stayed up for bytes the screen calls not-ooxml, and
+    a not-ooxml stub stayed for clean bytes with the same H1.  Such bytes are converted, where
+    ``convert_file`` screens the container first.  H1 stays as it is: a purge keys on it, as in
+    ``_Cycle._relabelled``.  Bytes that cannot be read move nothing (the conversion would fail the same
+    way)."""
+    if not row.name.lower().endswith(content_policy.OOXML_SUFFIXES):
+        return False
+    try:
+        zip0 = content_policy.zip_at_offset_0(fetched.path)
+    except OSError:
+        return False
+    return zip0 is (row.state_reason in _CONTAINER_REASONS)
 
 
 def _stubbed_for_path(row: ItemRow) -> bool:
