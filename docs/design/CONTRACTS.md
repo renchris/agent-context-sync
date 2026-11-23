@@ -45442,6 +45442,8 @@ equals the constant), `test_install_sh_and_the_cli_read_one_agentsync_config_c26
 `paths.default_config_path()` reads, or refuses it naming the absolute path the CLI would read). bash 3.2's `%q`
 under UTF-8 backslashes a continuation byte of U+0085 or U+3000, so that refusal's export word is shell-quoted
 bytes, not UTF-8 text; it is left as it is.
+Amended 2026-11-23, §16.281 C2944: no longer left: shown_arg writes its `$'..'` form again under LC_ALL=C, exported in
+a subshell, so the export word is ASCII, strict UTF-8 a copy keeps, and bash reads it back as the path.
 
 **A none is recorded by `--no-folder`** (C2658; ruling 178). `install.sh --no-folder` does a bare step 2's work,
 puts `--no-folder` in install.log's start-line `args=` (a word after `args=`, never in a `--source-local` re-run's
@@ -46040,6 +46042,17 @@ all 0 file(s) the mirror holds for it`, `listed every one of the 0 files the mir
 on `it`, on `them` over one checked folder, none, and the two later forms) and
 `test_a_stopped_copy_by_an_older_agentsync_words_every_count`, its `<folder-3>` row a real-shape line with a holds
 clause.
+
+**A shell word a person copies is one a copy keeps** (C2944; ruling 193; amends §16.276 C2699, dated line there).
+shown_arg kept `printf %q`'s `$'..'` form for a name holding a byte it cannot show, and bash 3.2's `%q` under UTF-8
+escapes one continuation byte of U+0085 or U+3000 and leaves the rest raw, so the AGENTSYNC_CONFIG refusal's export
+word and a NEXT's re-run were no UTF-8 text and a copy changed them. The `$'..'` form is written again under LC_ALL=C
+exported in a subshell (a locale prefix on the builtin does nothing in bash 3.2), every byte past ASCII an octal
+escape; the double-quote and `!` branches are kept, so a readable name such as Café keeps its form. Tests:
+`test_install_oneshot.py::test_install_sh_and_the_cli_read_one_agentsync_config_c2699_c2729` (both outputs decoded as
+strict UTF-8, the export word copied as UTF-8 text) and
+`test_cli.py::test_install_shs_shown_arg_writes_a_word_a_copy_keeps_under_utf8_c2944` (U+3000 and U+0085 under
+en_US.UTF-8).
 
 ### 16.282 Round 45: an inbox that is not a folder never named as kept, its state read by lstat and stat, a `~user` AGENTSYNC_CONFIG refused, and every waiting stub and tombstone rendered again under STUB_RENDER 8 (2026-11-23, wave B13 round 45 lane B)
 

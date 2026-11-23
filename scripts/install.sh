@@ -1700,12 +1700,21 @@ esac
 
 # A --source-local folder as a NEXT shows it: in double quotes, with \ " $ and ` escaped, as a person types a
 # spaced name (B13 round 16 T35). A name %q writes as $'..' (a byte it cannot show) or one with a "!", which
-# an interactive zsh expands inside double quotes, keeps the %q form. install.log's args= keeps %q.
+# an interactive zsh expands inside double quotes, keeps the %q form. install.log's args= keeps %q. The $'..' form
+# is written again under LC_ALL=C, exported in a subshell (a locale prefix on the builtin does nothing in bash
+# 3.2): under UTF-8, bash 3.2 escapes one continuation byte of U+0085 or U+3000 and leaves the rest raw, so the
+# word was no UTF-8 a copy keeps; in C every byte past ASCII is an octal escape (B13 round 45 ruling 193, C2944).
 shown_arg() {
 	local q v="$1"
 	q="$(printf '%q' "$1")"
 	case "$q$1" in
-	\$\'* | *!*) printf '%s' "$q" ;;
+	\$\'* | *!*)
+		case "$q" in \$\'*) q="$(
+			export LC_ALL=C
+			printf '%q' "$1"
+		)" ;; esac
+		printf '%s' "$q"
+		;;
 	*)
 		v="${v//\\/\\\\}" v="${v//\"/\\\"}" v="${v//\$/\\\$}" v="${v//\`/\\\`}"
 		printf '"%s"' "$v"

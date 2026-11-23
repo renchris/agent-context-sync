@@ -9977,8 +9977,9 @@ def test_install_sh_and_the_cli_read_one_agentsync_config_c2699_c2729(
     monkeypatch.chdir(cwd)
     want = paths.default_config_path()
     run = {**env, "AGENTSYNC_CONFIG": value, "LC_ALL": locale, "LANG": locale}
-    # bytes: bash 3.2's %q under UTF-8 backslashes a continuation byte of U+0085 or U+3000, so the refusal's
-    # export word is shell-quoted bytes, not UTF-8 text
+    # B13 round 45 ruling 193, C2944: strict UTF-8, as a copy keeps it. bash 3.2's %q under UTF-8 escaped one
+    # continuation byte of U+0085 or U+3000 and left the rest raw, so the export word was no UTF-8 text;
+    # shown_arg writes the $'..' form under C now, every byte past ASCII an octal escape
     cp = subprocess.run(
         [BASH32, str(INSTALL_SH), "--cwd", str(cwd), str(wheel)],
         capture_output=True,
@@ -9987,7 +9988,7 @@ def test_install_sh_and_the_cli_read_one_agentsync_config_c2699_c2729(
         timeout=_install_bound(120),
         check=False,
     )
-    out, err = (b.decode("utf-8", "surrogateescape") for b in (cp.stdout, cp.stderr))
+    out, err = (b.decode("utf-8") for b in (cp.stdout, cp.stderr))
     log = Path(env["STUB_LOG"])
     said = [ln for ln in log.read_bytes().decode("utf-8").split("\n") if ln] if log.exists() else []
     if value.strip(paths.CONFIG_BLANKS).startswith("/"):
@@ -9998,8 +9999,8 @@ def test_install_sh_and_the_cli_read_one_agentsync_config_c2699_c2729(
         assert cp.returncode == 2 and said == [], out + err
         m = re.search(r"export AGENTSYNC_CONFIG=(.+) and run the command again", err)
         assert m, err
-        shown = subprocess.run(
-            [BASH32, "-c", 'eval "set -- $1"; printf %s "$1"', "_", m.group(1)],
+        shown = subprocess.run(  # the word as a person copies it: its UTF-8 text
+            [BASH32, "-c", 'eval "set -- $1"; printf %s "$1"', "_", m.group(1).encode("utf-8")],
             capture_output=True,
             check=True,
         ).stdout.decode("utf-8", "surrogateescape")

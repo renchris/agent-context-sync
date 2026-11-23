@@ -10157,6 +10157,25 @@ def test_the_add_backs_folder_is_shown_as_install_shs_shown_arg_shows_it(folder:
         assert back == folder, form
 
 
+@pytest.mark.parametrize("folder", ["/Users/x/Kaigi\u3000Shiryo", "/Users/x/Nel\u0085x"])
+def test_install_shs_shown_arg_writes_a_word_a_copy_keeps_under_utf8_c2944(folder: str) -> None:
+    """B13 round 45 ruling 193, C2944: under en_US.UTF-8, bash 3.2's %q escaped one continuation byte of
+    U+3000 or U+0085 and left the rest raw, so shown_arg's word was no UTF-8 text and a copy changed it.
+    shown_arg writes its $'..' form under C: ASCII, strict UTF-8, read back by bash as the folder."""
+    text = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
+    m = re.search(r"^shown_arg\(\) \{\n.*?^\}\n", text, re.M | re.S)
+    assert m is not None
+    shown = subprocess.run(
+        ["/bin/bash", "-c", m.group(0) + 'shown_arg "$1"', "bash", folder],
+        capture_output=True,
+        check=True,
+        env={"PATH": "/usr/bin:/bin", "LC_ALL": "en_US.UTF-8", "LANG": "en_US.UTF-8"},
+    ).stdout.decode("utf-8")
+    assert shown.isascii() and shown.startswith("$'"), shown
+    back = subprocess.run(["/bin/bash", "-c", f"printf %s {shown}"], capture_output=True, check=True).stdout
+    assert back == folder.encode("utf-8"), shown
+
+
 def test_the_vanished_source_check_says_nothing_before_the_first_sync(
     initialised: Config, tmp_path: Path
 ) -> None:
