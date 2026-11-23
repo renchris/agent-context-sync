@@ -2372,3 +2372,61 @@ def test_a_touched_office_file_whose_container_changes_is_converted_again_c2924(
         states.append((row.state, row.state_reason))
     page, stub = (RowState.LIVE, None), (RowState.QUARANTINED, NOT_OOXML_REASON)
     assert states == ([page, stub, page] if first == "clean" else [stub, page, stub]), states
+
+
+def _without_types_namespace(path: Path) -> Path:
+    """``path``'s package with ``[Content_Types].xml``'s ``<Types>`` stripped of its ``xmlns``: Override and
+    Default in no namespace, which openpyxl still reads by local name (B13 round 45 C2854)."""
+    with zipfile.ZipFile(path) as zin:
+        parts = {i.filename: zin.read(i) for i in zin.infolist()}
+    types = re.sub(rb'<Types xmlns="[^"]*"', b"<Types", parts["[Content_Types].xml"], count=1)
+    assert types != parts["[Content_Types].xml"] and b"xmlns=" not in types.split(b">", 2)[1], types[:200]
+    parts["[Content_Types].xml"] = types
+    path.unlink()
+    return make_zip(path, parts)
+
+
+@pytest.mark.parametrize(
+    ("make", "name", "converter", "message"),
+    [
+        ("word", "Contoso doc.xlsx", XlsxConverter, "a Word document, not a workbook"),
+        ("deck", "Contoso doc.xlsx", XlsxConverter, "a PowerPoint deck, not a workbook"),
+        ("word", "Contoso doc.pptx", PptxConverter, "a Word document, not a deck"),
+    ],
+)
+def test_a_package_whose_content_types_have_no_namespace_is_still_not_the_type_its_name_says_c2854(
+    tmp_path: Path,
+    make: str,
+    name: str,
+    converter: type[PptxConverter] | type[XlsxConverter],
+    message: str,
+) -> None:
+    """B13 round 45 C2854: round 44's parse-first family check read Override and Default in the
+    content-types namespace only, so a package whose ``<Types>`` has no ``xmlns`` gave no family, and a Word
+    package or a deck named ``.xlsx`` (or a Word package named ``.pptx``) went on to openpyxl or python-pptx
+    as a failed conversion, tried twice more, where the byte read before it gave the cached ``not the type
+    its name says`` stub. They are read in any namespace or none now, as openpyxl reads them."""
+    made = tmp_path / ("made" + Path(name).suffix)
+    built = word_package(made) if make == "word" else build_pptx_rich(made)
+    src = _without_types_namespace(built.rename(tmp_path / name))
+    assert common_mod.content_types_tree(zipfile.ZipFile(src).read("[Content_Types].xml")) is not None
+    with pytest.raises(UnreadableSourceError) as caught:
+        converter(CFG).convert(src, name=name)
+    assert str(caught.value) == f"not-ooxml: {message} (not the type its name says)"
+
+
+def test_a_real_workbook_whose_content_types_have_no_namespace_still_converts_c2854(tmp_path: Path) -> None:
+    """B13 round 45 C2854's guard: a real workbook with no namespace on ``<Types>`` is its own family, and a
+    foreign-namespace decoy Override beside a deck's real one gives two families, so None: both convert or
+    reach their converter as before."""
+    src = _without_types_namespace(_workbook(tmp_path / "Contoso book.xlsx"))
+    assert common_mod._ooxml_family(src) == "spreadsheet"
+    units = XlsxConverter(CFG).convert(src, name=src.name)
+    assert any("Contoso" in unit.body for unit in units)
+    deck = build_pptx_rich(tmp_path / "Contoso deck.pptx")
+    with zipfile.ZipFile(deck) as zin:
+        parts = {i.filename: zin.read(i) for i in zin.infolist()}
+    decoy = f'<x:Override xmlns:x="urn:contoso" PartName="/w.xml" ContentType="{_WORD_MAIN}"/></Types>'
+    parts["[Content_Types].xml"] = parts["[Content_Types].xml"].replace(b"</Types>", decoy.encode())
+    deck.unlink()
+    assert common_mod._ooxml_family(make_zip(deck, parts)) is None

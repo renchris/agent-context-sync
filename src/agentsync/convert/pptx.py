@@ -421,11 +421,12 @@ def _deck_types(types: bytes) -> bytes | None:
     ruling 185): a part that parses with a template-typed content-types Override or Default has those, and
     only those, retyped, every comment, processing instruction and other element keeping its spelling; one
     that parses with none is None, and python-pptx's own error stands.  Only a part :func:`content_types_tree`
-    cannot read (over :data:`_CONTENT_TYPES_MAX`, a DTD, malformed) is retyped by today's literal replace, the
-    UTF-8 bytes as bytes and a UTF-16 part decoded and encoded again (C781): a parse-only rule sent those to
-    python-pptx unadapted as ``cannot read the deck`` stubs (makes worse True).  The byte pass once ran first
-    and its output was parsed, so a literal in a comment or a foreign element was retyped too (C2517's
-    decoy, then C2709)."""
+    cannot read (over :data:`_CONTENT_TYPES_MAX`, malformed, nested past libxml2's 256-level depth limit, or a
+    declared encoding lxml refuses; a DTD parses, since load_dtd=False only skips loading it; B13 round 45
+    C2856) is retyped by today's literal replace, the UTF-8 bytes as bytes and a UTF-16 part decoded and
+    encoded again (C781): a parse-only rule sent those to python-pptx unadapted as ``cannot read the deck``
+    stubs (makes worse True).  The byte pass once ran first and its output was parsed, so a literal in a
+    comment or a foreign element was retyped too (C2517's decoy, then C2709)."""
     parsed, retyped = _decoded_deck_types(types)
     if parsed:
         return retyped

@@ -45679,6 +45679,10 @@ a comment or another element has no family and passes, as python-pptx and openpy
 `.potx` and a `.pptx` with a Word literal, an `.xlsx` with a deck literal, a `.docx` through pandoc with a workbook
 literal, each real type escaped, in UTF-8 and both UTF-16 orders, each converting) and
 `test_convert_family.py::test_a_content_types_part_that_does_not_parse_is_read_by_its_bytes_c2708`.
+Amended 2026-11-23, §16.283 C2854: openpyxl reads Override and Default by local name (`Serialisable.from_tree`), so a
+part whose `<Types>` has no `xmlns` is read by it too; `_ooxml_family` reads them in any namespace or none
+(`tree.iter("{*}Override", "{*}Default")`), and only python-pptx reads the namespaced two alone. A decoy Override of
+another namespace beside the real one gives two families, so None, and the file converts.
 
 **The .potx retype reads the parse, a literal replace only for a part it cannot read** (C2722 with C2709, makes worse
 True for a parse-only rule; ruling 185; `agentsync.convert.pptx`; amends §16.221 C781 and §16.273 C2517).
@@ -45930,6 +45934,28 @@ dependencies) except lxml; their installed versions are in _Cycle._capabilities`
 dropped it and turned that test red). Test:
 `test_cycle.py::test_the_converter_libraries_docstring_names_lxml_as_left_out_c2655`, which now also refuses
 `except lxml, whose`.
+
+**The family check reads Override and Default in any namespace or none, and its comments say what parses**
+(C2854 with C2855 and C2856; `agentsync.convert._common`, `agentsync.convert.pptx`; amends §16.278 C2708). Round 44's
+parse-first `_ooxml_family` iterated only `{...content-types}Override` and `Default`, so a part that parses but whose
+`<Types>` has no `xmlns` gave no family: a Word package or a deck named `.xlsx`, or a Word package named `.pptx`,
+went on to openpyxl or python-pptx as a failed conversion tried twice more (`openpyxl cannot read the workbook:
+OSError: File contains no valid workbook part`) where the byte read before it gave the cached `not the type its
+name says` stub, while a real workbook with no namespace converts, since openpyxl reads those elements by local
+name. The loop is `tree.iter("{*}Override", "{*}Default")`: lxml's `{*}` matches any namespace or none and never a
+comment or processing instruction, so C2708's comment decoy still counts for nothing, and `len(families) == 1`
+stays, so a foreign decoy beside the real Override gives None. `_CONTENT_TYPES_NS` stays for pptx's retype. C2855:
+the docstring said a mark-less UTF-16 part or a UTF-32 one cannot be told; the parse reads the part's own bytes,
+so it tells a UTF-32 part and a mark-less UTF-16 part that opens with an XML declaration, and only a mark-less
+UTF-16 part with no declaration, which lxml does not parse, falls to the byte read and cannot be told. C2856: the
+fallback's comment says `unparseable (the cap returned None above)`, since an over-cap member is None before the
+parse, and `_deck_types` lists what `content_types_tree` cannot read as over the cap, malformed, nested past
+libxml2's 256-level depth limit or a declared encoding lxml refuses, a DTD parsing (load_dtd=False only skips
+loading it). Tests:
+`test_convert_family.py::test_a_package_whose_content_types_have_no_namespace_is_still_not_the_type_its_name_says_c2854`
+(a Word package and a deck named `.xlsx`, a Word package named `.pptx`, each with no `xmlns` on `<Types>`) and
+`test_convert_family.py::test_a_real_workbook_whose_content_types_have_no_namespace_still_converts_c2854` (the
+workbook converts, a foreign-namespace decoy gives no family).
 
 ### 16.284 Round 45: the prompt goes to v42 (a none, a config path and an unread inbox state as setup gives them), the gate's part ceiling and CI's limit, dated lines, and the guides (2026-11-23, wave B13 round 45 lane D)
 
