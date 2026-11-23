@@ -45348,6 +45348,8 @@ doctor-FAIL control, a failed-run control, a live-folder control and a paused fo
 `test_install_sh_prints_the_reports_no_folder_next_c2601`, and
 `test_report_redaction.py::test_the_loop_line_and_install_sh_say_one_no_folder_next_c2601` (the twins fed one real
 run: install.sh's NEXT and the report's Loop line).
+Amended 2026-11-23, §16.280 C2946, C2802, C2842: the Loop line says whichever NEXT install.sh printed, the person's
+none and the no-folder first run included, read from the latest install run, list runs skipped.
 
 **`_CWD_KEPT` is assigned once** (C2640 with C2702 and C2733). Round 43's quoted-head change left `_CWD_KEPT`
 assigned twice in a row, the first copy dead; the first line is deleted and the second kept, its docstring right
@@ -46023,6 +46025,27 @@ Tests: `test_issue_fields_match_the_form` (a stopped label is an option; the for
 `FORM_OUTCOME_OPTIONS` in order), the C2605 test (a stopped outcome's label),
 `test_an_attempt_that_only_stopped_for_the_folder_answer_is_stopped_not_failed` and test_deploy_pack.py's
 `test_setup_report_form_outcomes_match_the_readme_prompt`.
+
+**The Loop line says the NEXT install.sh printed** (C2946 with C2801, C2836 and C2932, C2802, C2842; ruling 192;
+amends §16.275 C2601). After the person's none the Loop line still said `no folder is synced yet: ... choose the
+folders to sync` where install.sh said the person chose none; after C2605's no-folder first run (exit 2) it kept
+status's skill-missing NEXT; and it read the latest logged run, so a later `--list-folders` run hid the install run
+or stood in for it. `_install_sh_said_no_folder` returns the words install.sh printed, or None, from the latest run
+`install_runs_only` gives, never with a doctor FAIL (install.sh's [FAIL] and status branches come first, ruling
+191): `NO_FOLDER_CHOSEN_NEXT` for a run that recorded the none and ended clean (`completed_none`), on the
+skill-missing NEXT of a config with no source but the inbox in any state, or on a NEXT opening `no folder is synced
+yet` or `no folder to sync yet` whatever the config counts, as ruling 191's install.sh swaps it (status's rule 2 on a
+paused- or retired-only config among them: ruling 192's "no non-inbox source in any state" is kept for the
+skill-missing route only, so the Loop line and install.sh's NEXT stay one, measured against lane RB's literals and
+order); `NO_FOLDER_FIRST_NEXT` for the no-folder first run on such a config, whatever status says, as install.sh's
+created-config branch comes before its loop NEXT; `NO_FOLDER_NEXT` for any other run that ended 0, on the
+skill-missing NEXT of such a config. `NO_FOLDER_CHOSEN_NEXT` and `NO_FOLDER_FIRST_NEXT` are new single copies,
+each held to install.sh's literal by content, whatever its variable is named. Tests:
+`test_the_loop_line_says_the_next_install_sh_printed_for_a_none_c2946` (each route, the two list-run controls, a
+failed none, a doctor FAIL, a folder and a usage error),
+`test_install_sh_prints_the_reports_none_and_first_run_nexts_by_content_c2946_c2802` and
+`test_report_redaction.py::test_one_real_no_folder_runs_next_is_the_loop_lines_c2946` (one real `install.sh
+--no-folder` run's NEXT and its report's Loop line).
 
 ### 16.281 Round 45: the installer: the shell halves of rulings 188 and 189, the person's none honored at every NEXT, an inbox-state read that did not finish said so, and C2060 waits on the operator (2026-11-23, wave B13 round 45 lane RB)
 

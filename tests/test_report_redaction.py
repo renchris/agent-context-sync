@@ -3904,6 +3904,33 @@ def test_the_loop_line_and_install_sh_say_one_no_folder_next_c2601(
     )
 
 
+def test_one_real_no_folder_runs_next_is_the_loop_lines_c2946(
+    real_env: dict[str, str],  # noqa: F811
+    wheel: Path,  # noqa: F811
+) -> None:
+    """B13 round 45 C2946 with C2801, C2836 and C2932 (ruling 192), the twins fed one run: a real
+    `install.sh --no-folder` on a fresh home ends 0 on the person's-choice NEXT, and the setup report it
+    writes at that exit said `no folder is synced yet: ... choose the folders to sync` on its Loop line. Both
+    now say NO_FOLDER_CHOSEN_NEXT's words, the Loop line with install.sh's path kept whole."""
+    done = install_sh(real_env, str(wheel), "--no-folder", timeout=300)
+    assert done.returncode == 0, done.stdout + done.stderr
+    said = [ln for ln in done.stdout.splitlines() if ln.startswith("NEXT: ")][-1]
+    assert said.startswith(f"NEXT: {setup_report.NO_FOLDER_CHOSEN}, so this Mac syncs none"), said
+    [loop] = [
+        ln
+        for ln in report_path(real_env).read_text(encoding="utf-8").splitlines()
+        if ln.startswith("- Loop: ")
+    ]
+    kept = setup_report.INSTALL_SH
+    want = setup_report.NO_FOLDER_CHOSEN_NEXT.format(rerun=kept)
+    assert f"NEXT: {want}" in loop, loop
+    assert "no folder is synced yet" not in loop and "choose the folders" not in loop, loop
+    assert (
+        said.replace(str(INSTALL_SH), kept).split(" the run is: ", 1)[0]
+        == f"NEXT: {want}".split(" the run is: ")[0]
+    )
+
+
 _PROJECTS_OUTSIDE = "~/Projects/Zephyr Quarry"
 """A private folder outside ~/Library/CloudStorage/ that no config names (B13 round 41 ruling 142)."""
 

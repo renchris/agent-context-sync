@@ -12674,6 +12674,116 @@ def test_the_loop_line_says_install_shs_no_folder_next_on_an_inbox_only_config_c
         )
 
 
+def test_the_loop_line_says_the_next_install_sh_printed_for_a_none_c2946(fake_mac: dict[str, Path]) -> None:
+    """B13 round 45 C2946 with C2801, C2836 and C2932, C2802 and C2842 (ruling 192): after the person's none
+    the Loop line still said `no folder is synced yet: ... choose the folders to sync`, after a no-folder
+    first run it said the skill-missing NEXT, and a later `--list-folders` run decided whether it swapped at
+    all. From the latest install run (list runs skipped), with no doctor FAIL, it says the words install.sh
+    printed: NO_FOLDER_CHOSEN_NEXT for a none that ended clean, on the skill-missing NEXT of an inbox-only
+    config or on either no-folder NEXT whatever the config counts; NO_FOLDER_FIRST_NEXT for the first run;
+    NO_FOLDER_NEXT otherwise. A failed none, a doctor FAIL and a folder keep status's NEXT."""
+    skill = (
+        "NEXT: the agentsync-docs skill is missing or out of date: run `~/.local/bin/agentsync sync` (it "
+        "writes the skill; if this line is still here after that sync, the skills folder cannot be written: "
+        "tell the operator)"
+    )
+    rule2 = "NEXT: no folder is synced yet: ask the operator which folders to sync"
+    cfg = fake_mac["config"]
+    home = Path.home()
+    inbox_only = default_config_text() + inbox_source_table("inbox", home / "agent-context" / "inbox")
+    folder = local_source_table("wombat", home / "Wombat")
+    paused = folder.replace('kind = "local"', 'kind = "local"\nstate = "paused"')
+    log = fake_mac["setup"] / "install.log"
+    t0, t1 = "2026-11-23T10:00:00Z", "2026-11-23T10:05:00Z"
+    lrun = f"{t1} run=20261123T100500Z-5"
+
+    def listed(rc: int) -> str:
+        steps = f"{lrun} step=list-folders seconds=1 rc={rc} result={'done' if rc == 0 else 'failed'}\n"
+        return f"{lrun} start install.sh compat=41 source=- args=--list-folders\n{steps}{lrun} end rc={rc}\n"
+
+    def said(words: str) -> str:
+        return "NEXT: " + words.format(install_sh=setup_report.INSTALL_SH, rerun=setup_report.INSTALL_SH)
+
+    chosen, first, bare = (
+        said(setup_report.NO_FOLDER_CHOSEN_NEXT),
+        said(setup_report.NO_FOLDER_FIRST_NEXT),
+        said(setup_report.NO_FOLDER_NEXT),
+    )
+
+    def loop(body: str, logged: str, found: str = skill, fail: bool = False) -> str:
+        cfg.write_text(body, encoding="utf-8")
+        log.write_text(logged, encoding="utf-8")
+        r = setup_report._Run(cfg, setup_report.ReportHooks(loop_next=lambda _config: [found]), 60.0)
+        if fail:
+            r.facts.doctor_problems.append(("FAIL", "state_dir.files", "x"))
+        return setup_report._loop_line(r)
+
+    none_ok = _no_folder_run(t0, "--no-folder", 0)
+    for body, logged, found, want in (
+        (inbox_only, none_ok, skill, chosen),
+        (inbox_only, _no_folder_run(t0, "/w.whl --no-folder", 0), skill, chosen),
+        (inbox_only + paused, none_ok, rule2, chosen),  # rule 2 on a paused-only config (ruling 191)
+        (
+            inbox_only,
+            none_ok + listed(0),
+            skill,
+            chosen,
+        ),
+        (inbox_only, _no_folder_run(t0, "", 2), skill, first),  # the no-folder first run (C2802)
+        (inbox_only, _no_folder_run(t0, "", 2), rule2, first),
+        (inbox_only, _no_folder_run(t0, "", 0, first=False), skill, bare),
+        # C2842: a --list-folders run after an install run neither hides it nor stands in for it
+        (
+            inbox_only,
+            _no_folder_run(t0, "", 0, first=False) + listed(3),
+            skill,
+            bare,
+        ),
+    ):
+        line = loop(body, logged, found)
+        assert want in line, (logged, line)
+        if want == chosen:
+            assert "skill is missing" not in line and "choose the folders" not in line, line
+    for body, logged, found, fail in (
+        (
+            inbox_only,
+            _no_folder_run(t0, "--no-folder", 1, steps=("agentsync seconds=4 rc=1 result=failed",)),
+            skill,
+            False,
+        ),
+        (inbox_only, none_ok, skill, True),  # a doctor FAIL: install.sh's [FAIL] branch comes first
+        (inbox_only + folder, none_ok, skill, False),  # a folder: status's skill-missing NEXT stands
+        (inbox_only + folder, _no_folder_run(t0, "", 2), skill, False),
+        (inbox_only, _no_folder_run(t0, "--bogus", 2, first=False), skill, False),  # a usage error's 2
+        (
+            inbox_only,
+            _no_folder_run(t0, "", 1, first=False) + listed(0),
+            skill,
+            False,
+        ),
+    ):
+        line = loop(body, logged, found, fail)
+        assert "skill is missing" in line and setup_report.NO_FOLDER_CHOSEN not in line, (logged, fail, line)
+
+
+@pytest.mark.parametrize(
+    ("name", "kwargs"),
+    [
+        ("NO_FOLDER_CHOSEN_NEXT", {"rerun": "$SELF$BASE_ARGS"}),
+        ("NO_FOLDER_FIRST_NEXT", {"install_sh": "$SELF", "rerun": "$SELF$BASE_ARGS"}),
+    ],
+)
+def test_install_sh_prints_the_reports_none_and_first_run_nexts_by_content_c2946_c2802(
+    name: str, kwargs: dict[str, str]
+) -> None:
+    """B13 round 45 C2946 with C2801, C2836 and C2932, and C2802 (ruling 192): the report's Loop line words
+    for a none and for the no-folder first run are each one constant that install.sh's literal is held to by
+    content, whatever its variable is named (ruling 191 renames the none's NO_FOLDER_CHOSEN_NEXT)."""
+    want = getattr(setup_report, name).format(**kwargs).replace('"', '\\"')
+    script = (Path(__file__).resolve().parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
+    assert f'="{want}"' in script, want
+
+
 @pytest.mark.parametrize("docs", [None, "Wombat Ledger/kb docs"])
 def test_the_loop_line_names_rule_4s_inbox_whole_or_in_words_c2631(
     fake_mac: dict[str, Path], docs: str | None

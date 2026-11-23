@@ -17483,24 +17483,59 @@ round 43 ruling 163, C2401), ``{install_sh}`` its own path and ``{rerun}`` that 
 arguments: the one copy of its words, which a test holds install.sh's literal to (B13 round 44 ruling 179,
 C2601 with C2638)."""
 _SKILL_MISSING_NEXT = "NEXT: the agentsync-docs skill is missing or out of date"
+NO_FOLDER_CHOSEN_NEXT = (
+    NO_FOLDER_CHOSEN
+    + ", so this Mac syncs none of their folders: go on to the report; if they choose one later, "
+    'the run is: {rerun} --source-local "<folder>" (one --source-local per folder)'
+)
+"""install.sh's NEXT for a run that recorded the person's none (``--no-folder``, B13 round 44 ruling 178), in
+place of status's skill-missing NEXT or a no-folder NEXT (ruling 191), ``{rerun}`` its path with the run's
+other arguments: the one copy of its words, which a test holds install.sh's ``NO_FOLDER_CHOSEN_NEXT`` literal
+to by content (B13 round 45 C2946 with C2801, C2836 and C2932; ruling 192)."""
+NO_FOLDER_FIRST_NEXT = (
+    "no folder to sync yet: list them with {install_sh} --list-folders, choose the folders to sync, "
+    'then run: {rerun} --source-local "<folder>" (one --source-local per folder)'
+)
+"""install.sh's NEXT for a bare run that created the config and found no folder (C2605's no-folder first run,
+exit 2), held to install.sh's ``next=`` literal by content (B13 round 45 C2802, ruling 192)."""
+_NO_FOLDER_OPENERS = ("NEXT: no folder is synced yet", "NEXT: no folder to sync yet")
+"""The two NEXT openers install.sh turns into :data:`NO_FOLDER_CHOSEN_NEXT` on a run that recorded the
+person's none, whatever the config counts (status's rule 2 among them; ruling 191)."""
 
 
-def _install_sh_said_no_folder(r: _Run, config: Config, found: str) -> bool:
-    """Whether install.sh's closing NEXT replaced status's ``found`` by :data:`NO_FOLDER_NEXT` (B13 round 44
-    ruling 179, C2601 with C2638): ``found`` opens with the skill-missing words, the config holds no source
-    whose kind is not inbox in any state (install.sh's HAVE_SOURCES count, paused and retired ones included,
-    never ``live_sources()``), and the latest install run ended 0 with no doctor FAIL, as install.sh replaces
-    it only at ``EXIT_RC`` 0 after its [FAIL] and doctor checks (a sign-in needs a Graph source, which is not
-    inbox). The Loop line kept the skill-missing NEXT install.sh had replaced, so it told the agent to sync
-    while the Installer section's quoted NEXT asked for a folder."""
-    if not found.startswith(_SKILL_MISSING_NEXT):
-        return False
-    if any(s.kind is not SourceKind.INBOX for s in config.sources):
-        return False
-    latest = r.install_runs[-1] if r.install_runs else None
-    if latest is None or latest.rc != 0:
-        return False
-    return not any(tag == "FAIL" for tag, _name, _detail in r.facts.doctor_problems)
+def _install_sh_said_no_folder(r: _Run, config: Config, found: str) -> str | None:
+    """The words install.sh's closing NEXT put in place of status's ``found``, or None when it kept it (B13
+    round 44 ruling 179, C2601 with C2638): the Loop line kept the NEXT install.sh had replaced. Read from the
+    latest install run (:func:`install_runs_only`: a later ``--list-folders`` run neither hides it nor stands
+    in for it, B13 round 45 C2842), never with a doctor FAIL, as install.sh's [FAIL] and status branches come
+    first (ruling 191):
+
+    - :data:`NO_FOLDER_CHOSEN_NEXT` for a run that recorded the person's none and ended clean
+      (:attr:`InstallRun.completed_none`), on the skill-missing NEXT of a config with no source but the inbox
+      in any state, or on either no-folder NEXT whatever the config counts (B13 round 45 C2946 with C2801,
+      C2836 and C2932, ruling 192): the Loop line asked for folders the person had declined;
+    - :data:`NO_FOLDER_FIRST_NEXT` for C2605's no-folder first run (exit 2) on such a config, whatever status
+      says, as install.sh's created-config branch comes before its loop NEXT (C2802);
+    - :data:`NO_FOLDER_NEXT` for any other run that ended 0, on the skill-missing NEXT of such a config.
+
+    The config's sources are counted in every state (install.sh's HAVE_SOURCES, paused and retired ones
+    included, never ``live_sources()``)."""
+    if any(tag == "FAIL" for tag, _name, _detail in r.facts.doctor_problems):
+        return None
+    installs = install_runs_only(r.install_runs)
+    latest = installs[-1] if installs else None
+    if latest is None:
+        return None
+    inbox_only = not any(s.kind is not SourceKind.INBOX for s in config.sources)
+    missing = found.startswith(_SKILL_MISSING_NEXT)
+    if latest.chose_no_folder:
+        chosen = latest.completed_none and ((inbox_only and missing) or found.startswith(_NO_FOLDER_OPENERS))
+        return NO_FOLDER_CHOSEN_NEXT if chosen else None
+    if not inbox_only:
+        return None
+    if latest.no_folder_first_run:
+        return NO_FOLDER_FIRST_NEXT
+    return NO_FOLDER_NEXT if latest.rc == 0 and missing else None
 
 
 def _loop_line(r: _Run) -> str:
@@ -17568,8 +17603,9 @@ def _loop_line(r: _Run) -> str:
         r.facts.loop_unread_why = said
         return f"- Loop: {stage}; NEXT: not read ({said}){damaged}"
     found = next((ln for ln in lines if ln.startswith("NEXT: ")), None)
-    if found is not None and _install_sh_said_no_folder(r, config, found):
-        found = "NEXT: " + NO_FOLDER_NEXT.format(install_sh=INSTALL_SH, rerun=INSTALL_SH)
+    said_instead = _install_sh_said_no_folder(r, config, found) if found is not None else None
+    if said_instead is not None:
+        found = "NEXT: " + said_instead.format(install_sh=INSTALL_SH, rerun=INSTALL_SH)
     text = (
         loop_next_text(_fail_step_in_doctor(r, found))
         if found
