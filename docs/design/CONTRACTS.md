@@ -46089,6 +46089,14 @@ error; a step 3 error before a step 2 error that has its end line; both reports 
 `test_the_shell_report_computes_no_other_outcome` and
 `test_a_step_3_sync_stop_with_no_end_line_is_bounded_by_the_attempts_last_write` that now compute.
 
+**Review fixes** (C2915, C2824). The structural check read a quoted or dotted header and a CRLF file as unparsed, so a
+well-formed config lost its link where no interpreter answers: a header of bare, basic or literal key parts, dotted,
+is whole, a line's CR is dropped, and an id under a quoted `[[ "source" ]]` header, which the id reader skips, still
+reads as unread (`test_the_structural_check_reads_a_whole_header_in_any_spelling_c2915`). `failed_step_label` gave a
+step 0 the form's step 4 where `Outcome.form_label` clamps it to 1
+(`test_the_shell_link_fills_the_outcome_option_the_report_gives_every_step_c2824`). The Prompt: read of a friction
+log that is not there is skipped; no run showed its error, so no test pins it.
+
 C2889 stays unbuilt (ruling 190): decision c0777e12a523 (C2060's port of round 41's refused install.sh edit) was
 still open at this lane's start and before its last land, so the shell half of
 `test_report_redaction.py`'s ruling-142 test keeps its strict xfail (lane RA's C2873 split it, the agentsync report

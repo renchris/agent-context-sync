@@ -27789,3 +27789,47 @@ def test_both_reports_compute_a_failed_step_with_no_install_run_c2824(
     assert f"failed at step {step}" in pyline and f"no install run; step {step} logged an error" in pyline, (
         pyline
     )
+
+
+@pytest.mark.parametrize(
+    ("body", "want"),
+    [
+        ('[[source]]\nid = "plans"\nkind = "local"\npath = "~/Contoso Plans"\n', "loaded"),
+        ('[[source]]\r\nid = "plans"\r\npath = "~/Contoso Plans"\r\n\r\n[convert]\r\n', "loaded"),
+        ('["convert"]\npandoc_path = "/opt/x/pandoc"\n[ \'agentsync\' . "x" ]\nk = 1\n', "loaded"),
+        ('[[ "source" ]]\nid = "plans"\npath = "~/Contoso Plans"\n', "unparsed"),
+        ('[[source]\nid = "plans"\npath = "~/Contoso Plans"\n', "unparsed"),
+        ("[[source]]\nid = 'plans'\npath = \"~/Contoso Plans\"\n", "unparsed"),
+        ('[[source]]\nid = "plans"\npath = "~/Contoso Plans\n', "unparsed"),
+        ('[[source]]\nid = "plans"\nnot a key\n', "unparsed"),
+    ],
+)
+def test_the_structural_check_reads_a_whole_header_in_any_spelling_c2915(
+    tmp_path: Path, body: str, want: str
+) -> None:
+    """B13 round 45 ruling 188, C2915 (review): where no interpreter has tomllib, config_toml_state's
+    structural check decides, never a blanket private only: a quoted or dotted header and CRLF line ends are
+    whole TOML and read as loaded; a half-closed header, a garbage line, an id or path the awk readers do not
+    read as a basic string, and an id under a quoted `[[ "source" ]]` header (which the id reader skips) read
+    as unparsed."""
+    config = tmp_path / "sources.toml"
+    config.write_bytes(body.encode("utf-8"))
+    harness = "\n".join(
+        [
+            "tool_python() { :; }; find_uv() { :; }",
+            _shell_function("config_toml_state"),
+            'CONFIG="$1"; config_toml_state',
+        ]
+    )
+    cp = _bash_run([BASH32, "-c", harness, "x", str(config)], capture_output=True, text=True)
+    assert (cp.returncode, cp.stdout.strip(), cp.stderr) == (0, want, ""), cp
+
+
+def test_the_shell_link_fills_the_outcome_option_the_report_gives_every_step_c2824() -> None:
+    """B13 round 45 ruling 193, C2824 (review): failed_step_label gives setup_report.Outcome.form_label's
+    option for every step a friction line can name, a step 0 the form's step 1 and one past 4 its step 4."""
+    harness = "\n".join(
+        [_shell_function("failed_step_label"), 'for n in 0 1 2 3 4 5; do failed_step_label "$n"; echo; done']
+    )
+    cp = _bash_run([BASH32, "-c", harness], capture_output=True, text=True)
+    assert cp.stdout.splitlines() == [setup_report.Outcome("failed", n, (), 41).form_label for n in range(6)]

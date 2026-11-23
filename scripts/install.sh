@@ -6548,7 +6548,7 @@ OUTCOME_LINE_HEAD="- outcome: failed at step 1 (computed: no install run; step 1
 outcome_head() { printf '%s' "- outcome: failed at step $1 (computed: no install run; step $1 logged an error) · prompt: v"; } # STEP
 failed_step_label() { # STEP
 	case "$1" in
-	1) printf 'Failed at step 1 (preflight)' ;;
+	0 | 1) printf 'Failed at step 1 (preflight)' ;; # a step below 1 is the form's 1, as form_label clamps it
 	2) printf 'Failed at step 2 (install and start)' ;;
 	3) printf 'Failed at step 3 (sync loop and report)' ;;
 	*) printf 'Failed at step 4 (finish)' ;;
@@ -6626,7 +6626,8 @@ fallback_outcome_line() {
 	# headers; the refusal of a relative AGENTSYNC_CONFIG still writes nothing (B13 round 45 ruling 193, C2824)
 	if [ -z "$stated" ] && attempt_ran_no_install; then
 		es="$(friction_error_step)"
-		said="$(friction_latest_said <"$(friction_file)" 2>/dev/null || true)"
+		said=""
+		[ ! -f "$(friction_file)" ] || said="$(friction_latest_said <"$(friction_file)" 2>/dev/null || true)"
 		n="$(prompt_number "${said%%$'\t'*}")"
 		case "$n" in '' | *[!0-9]*) es="" ;; *) [ "$n" -ge 7 ] || es="" ;; esac
 	fi
@@ -7323,14 +7324,18 @@ else:
 		function unq(s) { gsub(/"([^"\\]|\\.)*"|\047[^\047]*\047/, "\"\"", s); return s }
 		ml != "" { if (index($0, ml)) ml = ""; next }
 		depth > 0 { s = unq($0); sub(/#.*/, "", s); depth += gsub(/\[/, "[", s) - gsub(/\]/, "]", s); next }
-		{ s = $0; sub(/^[ \t]+/, "", s) }
+		{ sub(/\r$/, ""); s = $0; sub(/^[ \t]+/, "", s) }
 		s == "" || substr(s, 1, 1) == "#" { next }
 		substr(s, 1, 1) == "[" {
-			if (s !~ /^\[\[[ \t]*[A-Za-z0-9_.-]+[ \t]*\]\][ \t]*(#.*)?$/ && s !~ /^\[[ \t]*[A-Za-z0-9_.-]+[ \t]*\][ \t]*(#.*)?$/) bad = 1
+			k = "([A-Za-z0-9_-]+|\"[^\"]*\"|\047[^\047]*\047)" # a bare, basic or literal key part
+			k = "[ \t]*" k "([ \t]*[.][ \t]*" k ")*[ \t]*"
+			if (s !~ ("^\\[\\[" k "\\]\\][ \t]*(#.*)?$") && s !~ ("^\\[" k "\\][ \t]*(#.*)?$")) bad = 1
 			src = (s ~ /^\[\[[ \t]*source[ \t]*\]\]/)
+			qsrc = (s ~ /^\[\[[ \t]*("source"|\047source\047)[ \t]*\]\]/) # the id reader reads none there
 			next
 		}
 		!index(s, "=") { bad = 1; next }
+		qsrc && s ~ /^["\047]?id["\047]?[ \t]*=/ { bad = 1; next }
 		src && s ~ /^["\047]?(id|path)["\047]?[ \t]*=/ {
 			if (s ~ /^id[ \t]*=[ \t]*"[^"\\]*"[ \t]*(#.*)?$/ || s ~ /^path[ \t]*=[ \t]*"([^"\\]|\\.)*"[ \t]*$/) next
 			bad = 1; next
