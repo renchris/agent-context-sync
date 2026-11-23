@@ -43969,6 +43969,11 @@ sidecar, the skip for bytes that already start with the banner gone. A reader dr
 line 2 when it is empty; that gives back every sidecar written from now on byte for byte, a source opening with the
 banner or an empty line included, and an older sidecar written under the skip keeps its source's line 2. A sidecar
 written under the skip is rewritten when its source next changes: `BANNER_VERSION` does not move.
+Amended 2026-11-23, §16.284 C2858, C2926, C2941: an older sidecar written under the skip (any build before
+5f14ff2cc; its source opened with the banner, so the guard added nothing) reads back without its source's banner line,
+and without its line 2 as well when that line is empty: the words above hold only for a line 2 that is not. Such a
+sidecar of the banner, an empty line and its text has the bytes the new guard writes for that text alone, so no reader
+can tell the two apart; it reads back exactly once its source next changes and it is written again.
 Amended 2026-11-22, §16.278 C2711 (with C2694): each delimited field escapes its own delimiter. A comment's author
 escapes `)` as `\)`, a chart title and a pivot name are quoted with each `"` escaped as `\"`, and a pivot's location
 is the record's last field, after ` at `: `<ref> (<author>): <text>`, `chart <n>: <kind> "<title>" at <anchor>`,
@@ -46582,6 +46587,20 @@ C571's margin, ci.yml's note and CLAUDE.md add the bracket, the wait and the bas
 and the W70 paragraph name 105. Older sentences keep the 100 they measured against. Tests:
 `tests/test_deploy_pack.py::test_claude_md_gives_cis_time_and_its_limit` and
 `::test_the_recording_tests_limit_names_cis_own_limit`.
+
+**A sidecar written under the old skip loses its banner line, and an empty line 2** (C2858, C2926, C2941, one defect;
+`docs/design/CONTRACTS.md`, `tests/test_convert_page_cap.py`; ruling 186). C2723's dated line in §16.268 said an older
+sidecar written under the skip keeps its source's line 2. Before 5f14ff2cc the guard stored a text sidecar whose bytes
+already began with the banner as they were, and the reader rule drops line 1 when it is the banner, then line 2 when it
+is empty: such a sidecar reads back without its source's banner line, and without its line 2 too when that line is
+empty, the likely case, since a source opening with the banner is mostly a copied page written `banner, empty line,
+...`. Its bytes are then the new guard's for the text alone, so no reader can tell them apart. Ruling 186 keeps C2723's
+words: a dated line right under it says so, and that a legacy sidecar reads back exactly once its source next changes.
+No cache identity moves (C2270: a `BANNER_VERSION` or `SIDECAR_DIGEST_VERSION` bump re-reads no page), and no format
+marker is added for a narrow case that heals itself. Test: `tests/test_convert_page_cap.py`
+`::test_a_legacy_sidecar_written_under_the_skip_reads_back_without_its_banner_line_c2858` (both legacy shapes read
+back, the empty-line-2 one byte for byte the new guard's sidecar of its text, and the dated line's words); the line is
+pinned in `tests/test_deploy_pack.py`'s `_ROUND_45_D_PARAGRAPH_AMENDS`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

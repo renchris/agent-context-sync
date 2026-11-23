@@ -8598,6 +8598,16 @@ _ROUND_45_RB_PARAGRAPH_AMENDS = (
 """Round 45 lane RB's dated line no claim of §16.281 holds alone: C2841's at §16.116's plural paragraph (the
 older-render rewrite gives every older zero walk C2632's words)."""
 
+_ROUND_45_D_PARAGRAPH_AMENDS = (
+    (
+        "16.268",
+        "§16.278 C2723 (with C2712): the guard writes the banner line and an empty line on every text",
+        "§16.284 C2858, C2926, C2941",
+    ),
+)
+"""Round 45 lane D's dated lines no claim of §16.284 holds alone: C2858's (with C2926 and C2941) under C2723's
+line in §16.268's comment-sidecar paragraph (a legacy sidecar loses its banner line, and an empty line 2)."""
+
 _ROUND_42_E_PARAGRAPH_AMENDS = (
     ("16.42", "`subprocess` reports a child a signal stopped as the negative signal", "§16.268 C2252"),
     ("15", "max_page_bytes: int = 1_000_000 # hard cap before a unit is split", "§16.268 C2220, C2306"),
@@ -8859,6 +8869,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_43_B_PARAGRAPH_AMENDS,
         *_ROUND_44_B_PARAGRAPH_AMENDS,
         *_ROUND_44_RB_PARAGRAPH_AMENDS,
+        *_ROUND_45_D_PARAGRAPH_AMENDS,
         *_ROUND_45_B_PARAGRAPH_AMENDS,
         *_ROUND_45_RB_PARAGRAPH_AMENDS,
     )

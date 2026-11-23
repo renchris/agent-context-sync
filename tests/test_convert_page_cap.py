@@ -193,6 +193,44 @@ def test_every_text_sidecar_opens_with_the_banner_and_reads_back_exactly_c2723(r
         assert _read_text_sidecar(data) == raw, name
 
 
+@pytest.mark.parametrize(
+    ("raw", "back"),
+    [
+        (f"{policy.UNTRUSTED_BANNER}\n\nContoso body\n".encode(), b"Contoso body\n"),
+        (f"{policy.UNTRUSTED_BANNER}\nContoso line two\n".encode(), b"Contoso line two\n"),
+    ],
+    ids=["banner-then-empty", "banner-then-content"],
+)
+def test_a_legacy_sidecar_written_under_the_skip_reads_back_without_its_banner_line_c2858(
+    raw: bytes, back: bytes
+) -> None:
+    """B13 round 45 C2858 with C2926 and C2941: before 5f14ff2cc the guard stored a text sidecar whose bytes
+    began with the banner as they were (``and not raw.startswith(banner)``). The reader rule drops line 1 when
+    it is the banner, then line 2 when it is empty, so such a sidecar reads back without its source's banner
+    line, and without its line 2 as well when that line is empty, where C2723's line said it keeps line 2. A
+    legacy sidecar of ``banner, empty line, text`` is byte for byte the new guard's sidecar of ``text``, so no
+    reader can tell them apart; the dated line under C2723 says so, and no cache identity moves (C2270)."""
+    banner = policy.UNTRUSTED_BANNER.encode("utf-8")
+    legacy = raw  # the skip: bytes already opening with the banner were stored unchanged
+    assert legacy.startswith(banner + b"\n")
+    assert _read_text_sidecar(legacy) == back
+    assert _read_text_sidecar(legacy) != raw
+    unit = make_unit(
+        unit_id="whole", kind=UnitKind.WHOLE, index=0, of=1, name="", file_stem="", title="t",
+        summary="s", body="Contoso", sidecars=(("full-text.txt", back),),
+    )  # fmt: skip
+    [(_, fresh)] = _with_sidecar_digests(_bannered(unit)).sidecars
+    assert (fresh == legacy) is legacy.startswith(banner + b"\n\n")
+    contracts = " ".join(
+        (Path(__file__).parents[1] / "docs" / "design" / "CONTRACTS.md").read_text(encoding="utf-8").split()
+    )
+    assert (
+        "Amended 2026-11-23, §16.284 C2858, C2926, C2941: an older sidecar written under the skip (any build"
+        " before 5f14ff2cc; its source opened with the banner, so the guard added nothing) reads back without"
+        " its source's banner line, and without its line 2 as well when that line is empty"
+    ) in contracts
+
+
 def test_a_capped_markdown_source_opening_with_the_banner_reads_back_exactly_c2723(tmp_path: Path) -> None:
     """B13 round 44 C2723 with C2712: a capped markdown source whose line 1 is the banner and line 2 a heading
     rides whole in full-text.txt; its sidecar's line 2 is the guard's empty line and the reader rule gives
