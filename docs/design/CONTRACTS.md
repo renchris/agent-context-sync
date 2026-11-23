@@ -39110,6 +39110,11 @@ Amended 2026-11-10, §16.243 C1227: under install.sh with developer tools the fi
 without --report-only, since a --report-only run builds nothing; a plain run keeps the folders already synced, and
 it builds the <helper> again; if this line comes back from a run when this Mac is idle, the helper is slow or hung:
 report it`, naming the plain run once; the `agentsync status` and no-developer-tools forms are as above.
+Amended 2026-11-23, §16.283 C2817: a plain install.sh run compiles a helper only when its `--version` fails or runs
+out of the same 5 s again (`ocr._build`), so a slow helper that answers on the re-run is not built again; the
+fallback reads `run <install.sh> again without --report-only, which checks the <helper> again and builds it again if
+it still does not answer`, and the install.sh form `..., and it checks the <helper> again and builds it again if it
+still does not answer; if this line comes back ...`.
 
 **A zero-byte or wrong-type file says so, once** (C930 and C927, makes worse True each; `agentsync.policy`,
 `agentsync.convert`; dated lines at §16.28 and §16.42). A zero-byte `.potx`, `.vsdx`, `.docx`, `.xlsx` or `.msg`
@@ -40662,6 +40667,9 @@ the rebuild. The `agentsync status` form and the no-developer-tools form are unc
 keys on the detail's head, which is unchanged. Test:
 `test_ops_doctor.py::test_a_helper_whose_version_did_not_answer_in_time_is_a_warn_that_says_so_c915` (now also under
 install.sh: install.sh named once, `builds the <helper> again` once, no `_STILL_NO_ANSWER`).
+Amended 2026-11-23, §16.283 C2817: the one plain run is worded `..., and it checks the <helper> again and builds it
+again if it still does not answer`, since it builds only a helper whose `--version` fails or runs out of time again;
+the test counts `builds it again if it still does not answer` once.
 
 **An empty transcript is `empty` after an older build's cached answer too** (C1304; `agentsync.convert.vtt`; amends
 §16.233 C930 and §16.238 C1050). C1050 made a zero-byte `.vtt` raise `empty-output` where it had raised `not a
@@ -45897,6 +45905,21 @@ C2925's `family_parse` moves every Office key. Tests:
 (clean first and preamble first: the clean workbook is a page, the preamble copy `not-ooxml`, neither from the
 cache) and `test_convert_family.py::test_a_touched_office_file_whose_container_changes_is_converted_again_c2924`
 (clean, preamble, clean and the other way round through three syncs).
+
+**A helper's time-out fix builds it again only if it still does not answer** (C2817; `agentsync.ops.doctor`; amends
+§16.233 C915 and §16.243 C1227). Every helper's build goes through `ocr._build`, which runs `open_` (a `--version`
+call with the same 5 s `_VERSION_TIMEOUT_S` doctor's probe uses) and compiles only when it raises, so a plain
+install.sh run leaves a slow helper that answers on the re-run as it is; doctor's two forms promised that run
+builds it again. `_probe_timed_out`'s fallback now reads `run <install.sh> again without --report-only, which
+checks the <helper> again and builds it again if it still does not answer`, and its install.sh form `<the plain
+run, as AGAIN_UNDER_INSTALL_SH words it>, and it checks the <helper> again and builds it again if it still does not
+answer; if this line comes back from a run when this Mac is idle, the helper is slow or hung: report it`. The
+verifier's install.sh form put `which` right after `a plain run keeps the folders already synced`, where it reads
+as the folders', so the line keeps its `and it`. The detail's `--version did not answer within <N>s: ` head, which
+the report's `_HELPER_LATE_RE` and install.sh key on, is unchanged; the report's own words in `_helper_late_head`
+and its pin are lane RA's, sent these words first. Test:
+`test_ops_doctor.py::test_a_helper_whose_version_did_not_answer_in_time_is_a_warn_that_says_so_c915` (both forms,
+three helpers, with and without developer tools).
 
 ### 16.284 Round 45: the prompt goes to v42 (a none, a config path and an unread inbox state as setup gives them), the gate's part ceiling and CI's limit, dated lines, and the guides (2026-11-23, wave B13 round 45 lane D)
 

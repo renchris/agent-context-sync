@@ -4566,7 +4566,9 @@ def test_a_helper_whose_version_did_not_answer_in_time_is_a_warn_that_says_so_c9
     never a FAIL), its fix the run again, then install.sh, which builds the helper again, or with no
     developer tools their install. Convert's words stay: probe still says ``failed``. B13 round 37 C1227:
     under install.sh the run again is already its plain run, which builds the helper again, so the fix
-    names that run once, then says to report a line that comes back on an idle Mac."""
+    names that run once, then says to report a line that comes back on an idle Mac. B13 round 45 C2817: a
+    plain run builds the helper only when its ``--version`` fails or runs out of time again (``ocr._build``),
+    so both forms say it checks the helper again and builds it again if it still does not answer."""
     if under == "install.sh":
         monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")
     else:
@@ -4594,7 +4596,10 @@ def test_a_helper_whose_version_did_not_answer_in_time_is_a_warn_that_says_so_c9
         f"the {kind.name} --version did not answer within 1s: the check ran out of time, so it could not say "
         "whether anything is wrong"
     )
-    rebuild = f"run {INSTALL_SH} again without --report-only, which builds the {kind.name} again"
+    rebuild = (
+        f"run {INSTALL_SH} again without --report-only, which checks the {kind.name} again and builds it "
+        "again if it still does not answer"
+    )
     fallback = f"xcode-select --install, then run {INSTALL_SH} again" if missing else rebuild
     if under == "status":
         assert r.fix == f"run {BIN} status again as it is; if this line comes back: {fallback}"
@@ -4602,10 +4607,12 @@ def test_a_helper_whose_version_did_not_answer_in_time_is_a_warn_that_says_so_c9
         assert r.fix == f"{doctor.AGAIN_UNDER_INSTALL_SH}; if this line comes back: {fallback}"
     else:
         assert r.fix == (
-            f"{doctor.AGAIN_UNDER_INSTALL_SH}, and it builds the {kind.name} again; if this line comes back "
-            "from a run when this Mac is idle, the helper is slow or hung: report it"
+            f"{doctor.AGAIN_UNDER_INSTALL_SH}, and it checks the {kind.name} again and builds it again if it "
+            "still does not answer; if this line comes back from a run when this Mac is idle, the helper is "
+            "slow or hung: report it"
         )
-        assert r.fix.count(INSTALL_SH) == 1 and r.fix.count(f"builds the {kind.name} again") == 1
+        assert r.fix.count(INSTALL_SH) == 1
+        assert r.fix.count("builds it again if it still does not answer") == 1
         assert "--report-only run builds nothing" in r.fix and "write the report" not in r.fix
         assert doctor._STILL_NO_ANSWER not in r.fix, "a helper that may only be slow"
     assert "not working" not in r.detail and "failed" not in r.detail
