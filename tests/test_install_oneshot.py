@@ -1757,13 +1757,23 @@ def test_no_folder_is_refused_beside_a_folder_c2658(
     env: dict[str, str], folder: Path, wheel: Path, other: str
 ) -> None:
     """B13 round 44 ruling 178, C2658: --no-folder beside a folder, background sync or the folder list
-    contradicts it, and is a usage error before anything is written."""
+    contradicts it, and is a usage error before anything is written. B13 round 45 ruling 191, C2844: each row
+    pinned to its exact refusal, so an install.sh with no --no-folder at all (an `unknown option` usage error)
+    fails it; the --list-folders row is the folder list's generic guard (it takes no other option), not a
+    refusal of --no-folder's own."""
     args = [other, str(folder)] if other == "--source-local" else [other]
     if other != "--list-folders":
         args = [str(wheel), *args]
+    want = {
+        "--source-local": "usage error: --no-folder goes with no --source-local: the person chose no folder",
+        "--confirm-install-agent": (
+            "usage error: --no-folder goes with no --confirm-install-agent: background sync needs a folder"
+        ),
+        "--list-folders": "usage error: --list-folders takes no other option or SOURCE",
+    }[other]
     cp = install_sh(env, *args, "--no-folder")
-    assert cp.returncode == 2 and "usage error: " in cp.stderr, cp.stdout + cp.stderr
-    assert "--no-folder" in cp.stderr or "takes no other option" in cp.stderr, cp.stderr
+    assert cp.returncode == 2 and want in cp.stderr, cp.stdout + cp.stderr
+    assert "unknown option" not in cp.stderr, cp.stderr
     assert calls(env) == [] and not (Path(env["HOME"]) / "agent-context" / "sources.toml").exists()
 
 
@@ -27391,3 +27401,156 @@ def test_install_sh_counts_sources_as_the_report_reads_them_c2934(
     assert cp.stdout == f"{want}\n", cp.stdout
     report = any(s.kind is not SourceKind.INBOX for s in load_config(config).sources)
     assert (int(cp.stdout) > 0) == report == bool(want)
+
+
+# ---- B13 round 45 ruling 191: the person's none honored at every NEXT, never over a failed step -----------
+
+
+def _chosen_next(env: dict[str, str], wheel: Path) -> str:
+    """install.sh's NO_FOLDER_CHOSEN_NEXT as a --no-folder run over ``wheel`` ends on it."""
+    return (
+        "NEXT: the person chose no folder, so this Mac syncs none of their folders: go on to the report; if "
+        f'they choose one later, the run is: {INSTALL_SH} {wheel} --source-local "<folder>" (one '
+        f"--source-local per folder) [setup report: {report_path(env)}]"
+    )
+
+
+def _rule_2_next(env: dict[str, str]) -> str:
+    """status's rule-2 NEXT (loop.py): no live folder, whatever the config holds paused or retired."""
+    return (
+        "NEXT: no folder is synced yet: ask the operator which folders to sync "
+        f"(`{INSTALL_SH} --list-folders` lists them), then run "
+        f'`{env["HOME"]}/.local/bin/agentsync add-source "<folder>"` for each, '
+        "then `~/.local/bin/agentsync sync`"
+    )
+
+
+@pytest.mark.parametrize("rc", ["0", "2"])
+@pytest.mark.parametrize("words", ["rule 2", "first run"])
+def test_no_folder_turns_status_no_folder_next_into_the_persons_choice_c2910(
+    env: dict[str, str], wheel: Path, rc: str, words: str
+) -> None:
+    """B13 round 45 ruling 191, C2910 with C2945, C2931, C2838 and C2860 (turn): install.sh swapped in the
+    person's none only for status's skill-missing NEXT, so a --no-folder re-run over the inbox-only config
+    whose skill was current ended on status's rule 2, `no folder is synced yet: ask the operator which folders
+    to sync`, and the prompt asked for folders again. Keyed on --no-folder alone, a NEXT opening `no folder is
+    synced yet` or `no folder to sync yet` turns the person's choice, exit 0, at either status exit; a bare
+    re-run keeps status's rule-2 NEXT (C2316)."""
+    assert install_sh(env, str(wheel), "--no-folder").returncode == 0
+    said = _rule_2_next(env) if words == "rule 2" else "NEXT: no folder to sync yet: list them (stub)"
+    stub = {**env, "STUB_STATUS_OUT": said, "STUB_STATUS_RC": rc}
+    again = install_sh(stub, str(wheel), "--no-folder")
+    assert again.returncode == 0, again.stdout + again.stderr
+    assert last_line(again) == _chosen_next(env, wheel) and one_next(again), again.stdout
+    out = (again.stdout + again.stderr).splitlines()
+    assert [ln for ln in out if any(w in ln for w in NONE_CHOSEN_NOT)] == [], out
+    if words == "rule 2":
+        bare = install_sh(stub, str(wheel))
+        assert bare.returncode == 0, bare.stdout + bare.stderr
+        assert last_line(bare).startswith("NEXT: no folder is synced yet: ask the operator"), last_line(bare)
+
+
+def test_no_folder_after_a_sync_ends_on_the_persons_choice_c2910(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 45 ruling 191, C2910 (turn), with the real agentsync: --no-folder, then `agentsync sync`,
+    which writes the skill, then --no-folder again: status's NEXT is now its rule 2, and the re-run ended on
+    it. It ends exit 0 on the person's choice, with none of the no-folder words."""
+    env = real_env
+    first = install_sh(env, str(wheel), "--no-folder", timeout=300)
+    assert first.returncode == 0, first.stdout + first.stderr
+    sync = subprocess.run(
+        [str(Path(env["HOME"]) / ".local" / "bin" / "agentsync"), "sync"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+        timeout=_install_bound(300),
+    )
+    assert sync.returncode == 0, sync.stdout + sync.stderr
+    again = install_sh(env, str(wheel), "--no-folder", timeout=300)
+    assert again.returncode == 0, again.stdout + again.stderr
+    assert last_line(again) == _chosen_next(env, wheel) and one_next(again), again.stdout
+    out = (again.stdout + again.stderr).splitlines()
+    assert [ln for ln in out if any(w in ln for w in NONE_CHOSEN_NOT)] == [], out
+
+
+def _paused_and_retired(env: dict[str, str], wheel: Path) -> None:
+    """A config holding the inbox, one paused and one retired local source, the skill removed (C2700's)."""
+    home = Path(env["HOME"])
+    cs = _cloud(env) / "OneDrive-Contoso"
+    paused, retired = cs / "Kestrel Plans", cs / "Wombat Notes"
+    for d in (paused, retired):
+        d.mkdir(parents=True)
+        (d / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(
+        env, str(wheel), "--source-local", str(paused), "--source-local", str(retired), timeout=300
+    )
+    assert first.returncode == 0, first.stdout + first.stderr
+    cfg = home / "agent-context" / "sources.toml"
+    tables = cfg.read_text(encoding="utf-8").split("[[source]]")
+    for i, t in enumerate(tables):
+        if str(paused) in t:
+            tables[i] = t.replace('kind = "local"\n', 'kind = "local"\nstate = "paused"\n', 1)
+        elif str(retired) in t:
+            tables[i] = t.replace(
+                'kind = "local"\n',
+                'kind = "local"\nstate = "retired"\nretired_reason = "made-up reason"\n',
+                1,
+            )
+    cfg.write_text("[[source]]".join(tables), encoding="utf-8")
+    assert cfg.read_text(encoding="utf-8").count("state = ") == 2, cfg.read_text(encoding="utf-8")
+    for skill in [p for p in home.rglob("SKILL.md") if p.parent.name == "agentsync-docs"]:
+        skill.unlink()
+
+
+def test_no_folder_over_paused_and_retired_folders_ends_on_the_persons_choice_c2945(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 45 ruling 191, C2945 with C2838 and C2860 (turn), with the real agentsync: over a config
+    whose only folders are paused or retired, HAVE_SOURCES counts them (C2700), so the skill-missing swap
+    never ran and a --no-folder re-run ended on status's rule 2. It ends exit 0 on the person's choice."""
+    env = real_env
+    _paused_and_retired(env, wheel)
+    again = install_sh(env, str(wheel), "--no-folder", timeout=300)
+    assert again.returncode == 0, again.stdout + again.stderr
+    assert last_line(again) == _chosen_next(env, wheel) and one_next(again), again.stdout
+    out = (again.stdout + again.stderr).splitlines()
+    assert [ln for ln in out if any(w in ln for w in NONE_CHOSEN_NOT)] == [], out
+
+
+@pytest.mark.parametrize("case", ["config refused", "status FAIL", "status timeout"])
+def test_no_folder_over_a_failed_step_or_status_exits_1_on_its_own_next_c2909(
+    env: dict[str, str], wheel: Path, case: str
+) -> None:
+    """B13 round 45 ruling 191, C2909: the --no-folder branch over a created config ran before the status
+    checks, so a status that timed out or printed a [FAIL] ended exit 0 on the person's choice. Each failure
+    now ends exit 1 on its own NEXT, whose re-run keeps --no-folder, and never on the person's choice."""
+    stub = {
+        "config refused": {"STUB_INIT_RC": "78"},
+        "status FAIL": {
+            "STUB_DOCTOR_RC": "1",
+            "STUB_DOCTOR_OUT": "[FAIL] sources.alpha — a stub failure (fix: run the stub again)",
+        },
+        "status timeout": {"STUB_DOCTOR_SLEEP": "4", "__AGENTSYNC_STATUS_LIMIT": "1"},
+    }[case]
+    cp = install_sh({**env, **stub}, str(wheel), "--no-folder")
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    end = last_line(cp)
+    assert "the person chose no folder" not in end and one_next(cp), end
+    if case != "config refused":
+        assert f"re-run: {INSTALL_SH} {wheel} --no-folder" in end, end
+    if case == "status timeout":
+        assert end.startswith("NEXT: agentsync status did not finish within 1s"), end
+
+
+def test_install_sh_names_the_persons_choice_as_the_reports_constant_c2849() -> None:
+    """B13 round 45 ruling 191, C2849: install.sh's NO_FOLDER_NEXT was the person's-choice sentence while
+    the report's setup_report.NO_FOLDER_NEXT is the bare run's `no folder is synced yet` one, so one name
+    meant two sentences. The shell variable is NO_FOLDER_CHOSEN_NEXT, the report's name for the person's
+    choice, and no shell line names NO_FOLDER_NEXT."""
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    [words] = re.findall(r'(?m)^NO_FOLDER_CHOSEN_NEXT="(the person chose no folder, [^"]*)', text)
+    assert words.startswith("the person chose no folder, so this Mac syncs none of their folders: "), words
+    assert not re.search(r"(?m)^\s*NO_FOLDER_NEXT=|\$\{?NO_FOLDER_NEXT\b", text)
+    assert len(re.findall(r'next="\$NO_FOLDER_CHOSEN_NEXT"', text)) == 3

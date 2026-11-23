@@ -123,8 +123,9 @@
 #   --no-folder             the person answered the folder question with none: step 2's work with no folder (the
 #                           config, the inbox and the status), logged as args=--no-folder on install.log's start
 #                           line, exit 0, and a NEXT that names their choice and never says "no folder is synced
-#                           yet" or "no folder to sync yet"; a usage error beside --source-local or
-#                           --confirm-install-agent (B13 round 44 ruling 178, C2658)
+#                           yet" or "no folder to sync yet"; a failed step or status still ends on its own NEXT,
+#                           exit 1; a usage error beside --source-local or --confirm-install-agent (B13 round 44
+#                           ruling 178, C2658; round 45 ruling 191, C2909)
 #   --non-interactive       accepted and ignored: the installer never asks a question
 #   --source-local=FOLDER, --launcher=PATH, --timeout=DURATION, --cwd=DIR
 #                           the same options; a folder named like an option needs this form or ./ before its name
@@ -416,7 +417,8 @@
 # too (its "no folder is synced yet" step; where that status names the missing agentsync-docs skill first,
 # which no sync without a folder writes, the NEXT is "no folder is synced yet:" with the --source-local re-run,
 # exit 0 kept: B13 round 43 ruling 163, C2401; after --no-folder the NEXT is the person's choice instead,
-# B13 round 44 C2658). Nothing
+# B13 round 44 C2658, on status's own "no folder is synced yet" too, whatever folders the config holds paused or
+# retired, never over a failed step or status: B13 round 45 ruling 191, C2910, C2909). Nothing
 # else it prints is an instruction: agentsync is always called by its full path (~/.local/bin/agentsync), so
 # nothing needs adding to PATH or to a shell profile; uv's "not on your PATH ... update-shell" hint is
 # filtered out of its output; every other agentsync call is told to print no "next:" hints of its own (the
@@ -14314,17 +14316,16 @@ loop_next() { # sets next, and EXIT_RC to 1 when that status found something tha
 EXIT_RC=0
 # --no-folder's NEXT: the person's choice, said as theirs, with the run that adds a folder if they choose one later
 # (B13 round 44 ruling 178, C2658); never "no folder is synced yet" or "no folder to sync yet", so the setup
-# prompt's folder rule never fires on it
-NO_FOLDER_NEXT="the person chose no folder, so this Mac syncs none of their folders: go on to the report; if they choose one later, the run is: $SELF$BASE_ARGS --source-local \"<folder>\" (one --source-local per folder)"
+# prompt's folder rule never fires on it. Named as the report's setup_report.NO_FOLDER_CHOSEN_NEXT; the report's
+# NO_FOLDER_NEXT is the bare run's "no folder is synced yet" literal below (B13 round 45 ruling 191, C2849)
+NO_FOLDER_CHOSEN_NEXT="the person chose no folder, so this Mac syncs none of their folders: go on to the report; if they choose one later, the run is: $SELF$BASE_ARGS --source-local \"<folder>\" (one --source-local per folder)"
 LOOP_STOPPED="" # the closing status's rc when a signal stopped it: install.log's report line says so (P14)
 TCC_CLICK="turn on agentsync-launcher in System Settings > Privacy & Security > Files and Folders" # a click, not a command
+# A status that timed out or blocks ends the run on its own NEXT (exit 1) before the two first-run branches
+# below, so neither the person's none nor the bare first run's exit 2 hides a failed status, and the re-run that
+# NEXT names keeps --no-folder (RERUN_ARGS) (B13 round 45 ruling 191, C2909)
 if [ "$DRY_RUN" -eq 1 ]; then
 	next="re-run without AGENTSYNC_INSTALL_DRY_RUN=1 to apply the steps above"
-elif [ "$NO_FOLDER" -eq 1 ] && [ "$CONFIG_STATE" = "created" ] && [ "$HAVE_SOURCES" -eq 0 ]; then
-	next="$NO_FOLDER_NEXT" # the person's none, exit 0: never the no-folder words the prompt's folder rule reads
-elif [ "$CONFIG_STATE" = "created" ] && [ "$HAVE_SOURCES" -eq 0 ]; then
-	EXIT_RC=2 # a first run with no folder: an existing config (inbox-only too) ends on status's NEXT below
-	next="no folder to sync yet: list them with $SELF --list-folders, choose the folders to sync, then run: $SELF$BASE_ARGS --source-local \"<folder>\" (one --source-local per folder)"
 elif [ "$DOCTOR_TIMEOUT" -eq 1 ]; then
 	EXIT_RC=1
 	next="agentsync status did not finish within ${STATUS_LIMIT}s (the line above); it is safe to re-run: $SELF$RERUN_ARGS"
@@ -14348,6 +14349,11 @@ elif [ "$DOCTOR_BLOCKS" -eq 1 ] && ! grep -q '^\[FAIL' "$DOCTOR_LOG" 2>/dev/null
 elif [ "$DOCTOR_BLOCKS" -eq 1 ]; then
 	EXIT_RC=1
 	next="fix the [FAIL] lines above (each names its fix), then re-run: $SELF$RERUN_ARGS"
+elif [ "$NO_FOLDER" -eq 1 ] && [ "$CONFIG_STATE" = "created" ] && [ "$HAVE_SOURCES" -eq 0 ]; then
+	next="$NO_FOLDER_CHOSEN_NEXT" # the person's none, exit 0: never the no-folder words the prompt's folder rule reads
+elif [ "$CONFIG_STATE" = "created" ] && [ "$HAVE_SOURCES" -eq 0 ]; then
+	EXIT_RC=2 # a first run with no folder: an existing config (inbox-only too) ends on status's NEXT below
+	next="no folder to sync yet: list them with $SELF --list-folders, choose the folders to sync, then run: $SELF$BASE_ARGS --source-local \"<folder>\" (one --source-local per folder)"
 elif [ "$INSTALL_AGENT" -eq 1 ] && [ "$WAIT_RESULT" != "ok" ] && [ "$WAIT_RESULT" != "running" ]; then
 	EXIT_RC=1 # --confirm-install-agent asked for background sync: anything short of it is a failure
 	if [ "$HAVE_SOURCES" -eq 0 ]; then
@@ -14377,8 +14383,18 @@ else # the loop's NEXT, after the background-sync result when it was asked for
 		case "$next" in
 		"the agentsync-docs skill is missing or out of date"*)
 			next="no folder is synced yet: list them with $SELF --list-folders, choose the folders to sync, then run: $SELF$BASE_ARGS --source-local \"<folder>\" (one --source-local per folder)"
-			[ "$NO_FOLDER" -eq 0 ] || next="$NO_FOLDER_NEXT" # the person chose none (B13 round 44 C2658)
+			[ "$NO_FOLDER" -eq 0 ] || next="$NO_FOLDER_CHOSEN_NEXT" # the person chose none (B13 round 44 C2658)
 			;;
+		esac
+	fi
+	# --no-folder honored at every NEXT that would ask for folders again, whatever HAVE_SOURCES counts: status's
+	# rule 2 over an inbox-only config whose skill is current, or one whose folders are all paused or retired, and
+	# the first-run words, each turn the person's choice; a bare run keeps status's rule-2 NEXT (C2316, C2700),
+	# and a [FAIL], held-listing, chmod, sign-in or any other NEXT passes through (B13 round 45 ruling 191, C2910
+	# with C2945, C2931, C2838 and C2860)
+	if [ "$NO_FOLDER" -eq 1 ] && [ "$EXIT_RC" -eq 0 ]; then
+		case "$next" in
+		"no folder is synced yet"* | "no folder to sync yet"*) next="$NO_FOLDER_CHOSEN_NEXT" ;;
 		esac
 	fi
 	if [ "$INSTALL_AGENT" -eq 1 ] && [ "$SIMULATE" -eq 1 ]; then

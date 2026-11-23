@@ -45440,6 +45440,10 @@ folder is synced yet` or `no folder to sync yet`. It is a usage error beside `--
 `--confirm-install-agent` or `--list-folders`; the help, the header and `test_contracts.INSTALL_OPTIONS` name it.
 The report's scoring is lane RA's (§16.275). Tests: `test_no_folder_records_the_persons_none_and_exits_0_c2658`,
 `test_no_folder_is_refused_beside_a_folder_c2658`.
+Amended 2026-11-23, §16.281 C2910, C2945, C2838, C2860, C2909: the same NEXT ends a `--no-folder` run over any config
+whose status says `no folder is synced yet` (inbox-only with a current skill, or every folder paused or retired) or
+whose words say `no folder to sync yet`, whatever HAVE_SOURCES counts, and never a run whose step or status failed,
+which ends exit 1 on its own NEXT; the shell variable is `NO_FOLDER_CHOSEN_NEXT`.
 
 **A refused config step keeps the inbox it could not add** (C2701; ruling 179). The added-then-refused closes end
 with ` inbox=not-added` after their counts, and a failed or refused init or add-source that saw the warning closes
@@ -45972,6 +45976,28 @@ spelling; its seven other callers are unchanged (C2880 with C2914). Tests:
 `test_the_toml_reader_escapes_its_value_for_the_pandoc_caller_alone_c2880_c2914`, and the four mixed-blank leaves and
 the joined multi-line spelling of
 `test_report_redaction.py::test_both_reports_cut_a_configured_pandoc_path_in_every_spelling_c2432`.
+
+**The person's none is honored at every NEXT that would ask for folders again, never over a failed step** (C2910
+with C2945, C2931, C2838 and C2860, C2909, C2849, C2844; ruling 191; turns; amends §16.276 C2658, dated line there).
+install.sh swapped in the person's none only for status's skill-missing NEXT under HAVE_SOURCES=0, so a
+`--no-folder` re-run over an inbox-only config whose skill was current, or one whose folders were all paused or
+retired, ended on status's rule 2, `no folder is synced yet: ask the operator which folders to sync`, and the
+prompt asked again. After `loop_next`, with EXIT_RC 0, C2401's swap stays under HAVE_SOURCES=0, then, keyed on
+NO_FOLDER=1 alone, a NEXT opening `no folder is synced yet` or `no folder to sync yet` turns the person's choice; a
+bare run keeps status's rule-2 NEXT (C2316, C2700), and every [FAIL], held-listing, chmod and sign-in NEXT passes
+through. The `--no-folder` created-config branch and the bare fresh one move behind the DOCTOR_TIMEOUT and
+DOCTOR_BLOCKS branches, so a status timeout or [FAIL] ends exit 1 on its own NEXT, whose re-run keeps `--no-folder`
+(C2909). The shell variable is NO_FOLDER_CHOSEN_NEXT, the report's name for the person's choice, where
+`setup_report.NO_FOLDER_NEXT` is the bare run's (C2849). Tests:
+`test_install_oneshot.py::test_no_folder_turns_status_no_folder_next_into_the_persons_choice_c2910` (rule 2 and the
+first-run words, status
+exit 0 and 2, a bare re-run kept), `test_no_folder_after_a_sync_ends_on_the_persons_choice_c2910` and
+`test_no_folder_over_paused_and_retired_folders_ends_on_the_persons_choice_c2945` (the real agentsync),
+`test_no_folder_over_a_failed_step_or_status_exits_1_on_its_own_next_c2909` (a refused config step, a [FAIL], a
+status timeout), `test_install_sh_names_the_persons_choice_as_the_reports_constant_c2849`, and each refusal row of
+`test_no_folder_is_refused_beside_a_folder_c2658` pinned to its exact usage error, the `--list-folders` row the
+folder list's generic guard (C2844). The fresh bare run still exits 2 on `no folder to sync yet`
+(`test_a_bare_rerun_over_an_inbox_only_config_says_no_folder_is_synced_yet_c2401`).
 
 ### 16.282 Round 45: an inbox that is not a folder never named as kept, its state read by lstat and stat, a `~user` AGENTSYNC_CONFIG refused, and every waiting stub and tombstone rendered again under STUB_RENDER 8 (2026-11-23, wave B13 round 45 lane B)
 
