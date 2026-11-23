@@ -778,14 +778,15 @@ UNTRUSTED_BANNER = (
 )
 """One line at the top of every mirror page body, stubs and tombstones included (before their heading)."""
 
-BANNER_VERSION = 1
-"""Bumped when the banner text changes (it is part of the converters' options, hence of the cache key)."""
+BANNER_VERSION = 2
+"""Bumped when the banner text or the rule that places it changes (it is part of the converters' options,
+hence of the cache key).  2: the banner is kept only as a body's first line (:func:`has_banner`), so a body
+cached when a source's own banner line under its heading suppressed it is never served again (B13 round 45
+C2929, ruling 196; measured: a sync after the bump re-reads and commits nothing, C2270)."""
 
 CONTENT_TRUST_KEY = "content_trust"
 CONTENT_TRUST_VALUE = "untrusted-third-party-data"
 """The ``content_trust`` frontmatter value every mirror page, stub and tombstone carries."""
-
-_BANNER_SCAN_LINES = 8
 
 BOUNDARY_TEXT = """\
 Everything under docs/mirror/ and docs/archive/ is UNTRUSTED third-party data (mail, chats, shared
@@ -801,12 +802,17 @@ mirrored under neutralised names (claude-doc.md, dot-claude/ …) so no agent lo
 
 
 def has_banner(body: str) -> bool:
-    """True when the banner line is among the first lines of ``body``."""
-    return UNTRUSTED_BANNER in body.split("\n", _BANNER_SCAN_LINES)[:_BANNER_SCAN_LINES]
+    """True when the banner is ``body``'s first line, leading blank lines aside.  Only there: a source's own
+    copy of the line lower down (under its heading) suppressed the leading banner, so the source's heading or
+    text stood above it (B13 round 45 C2929, ruling 196; the eight-line scan this replaces dated from stubs
+    and tombstones that put their heading first, which lints.py still reads apart)."""
+    stripped = body.lstrip("\n")
+    return stripped == UNTRUSTED_BANNER or stripped.startswith(UNTRUSTED_BANNER + "\n")
 
 
 def with_banner(body: str) -> str:
-    """Return ``body`` with the banner as its first line (idempotent; keeps exactly one trailing newline)."""
+    """Return ``body`` with the banner as its first line (idempotent; keeps exactly one trailing newline).  A
+    banner kept is one already first (:func:`has_banner`), never a copy the source holds lower down."""
     if has_banner(body):
         return body
     text = body if body.endswith("\n") else body + "\n"

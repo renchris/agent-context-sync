@@ -5875,6 +5875,49 @@ def test_a_banner_bump_after_an_options_edit_reads_no_page_again_c2270(
     assert "notes.md" not in fetched, fetched
 
 
+def test_a_banner_bump_commits_nothing_on_a_home_with_guarded_pages_c2929(
+    tmp_path: Path, meetings: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 45 C2929 (ruling 196): BANNER_VERSION goes to 2 only if a sync after the bump commits nothing
+    on a home with guarded pages (ruling 176's C2270 claim). Measured here on a release that changes the build
+    (``_build_digest``): pages of every guarded kind (Markdown, text, Word through pandoc, a workbook, a
+    deck), one Markdown source whose own banner line sits under its heading, and a no-ZIP ``.docx`` stub, all
+    built by the build before the fix (the eight-line banner scan); the bump run, with the first-line rule,
+    reads no file again, fetches none, and HEAD does not move. So the bump keeps an older cached body out and
+    costs no commit, and a page the older rule left without a leading banner gets one when its source next
+    changes (C2270: a bump re-reads nothing)."""
+    from test_convert_builders import build_pptx_rich, build_xlsx_rich  # noqa: PLC0415
+    from test_convert_family import word_package  # noqa: PLC0415
+
+    (meetings / "Contoso plan.md").write_text(
+        f"# Contoso plan\n\n{content_policy.UNTRUSTED_BANNER}\n\nAgenda\n", encoding="utf-8"
+    )
+    word_package(meetings / "Contoso notes.docx")
+    build_xlsx_rich(meetings / "Contoso book.xlsx")
+    build_pptx_rich(meetings / "Contoso deck.pptx")
+    (meetings / "Contoso plain.docx").write_bytes(b"Contoso plain text, no ZIP header\n")
+    config = config_with(tmp_path, meetings)
+
+    def older_has_banner(body: str) -> bool:  # the eight-line scan before C2929
+        return content_policy.UNTRUSTED_BANNER in body.split("\n", 8)[:8]
+
+    with monkeypatch.context() as older:
+        older.setattr(content_policy, "has_banner", older_has_banner)
+        older.setattr(content_policy, "BANNER_VERSION", 1)
+        assert run(config).exit_code == 0
+        assert run(config).exit_code == 0
+    plan = (config.docs_repo / slug.mirror_rel_path(SID, "Contoso plan.md")).read_text(encoding="utf-8")
+    assert "\n# Contoso plan\n\n> [UNTRUSTED CONTENT]" in plan, "the older rule's page: heading above"
+    head = gitops.run_git(config.docs_repo, "rev-parse", "HEAD").stdout.strip()
+    assert content_policy.BANNER_VERSION == 2, "the bump this measurement allows"
+    monkeypatch.setattr(cycle_mod, "_build_digest", lambda _root: "contoso-build-banner")
+    fetched = _fetches(monkeypatch)
+    report = run(config)
+    assert report.exit_code == 0 and report.read_again == 0, report
+    assert fetched == [], fetched
+    assert gitops.run_git(config.docs_repo, "rev-parse", "HEAD").stdout.strip() == head, "nothing committed"
+
+
 @pytest.mark.parametrize("value", ["\u00b2", "\u0667"], ids=["superscript-two", "arabic-indic-seven"])
 def test_a_convert_record_with_a_non_ascii_digit_is_unrecorded_c2504(
     tmp_path: Path, meetings: Path, monkeypatch: pytest.MonkeyPatch, value: str

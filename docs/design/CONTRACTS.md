@@ -46004,6 +46004,25 @@ Office suffix's options hash and no other), `test_convert_family.py::test_a_publ
 read, `read again 2`, the token set, nothing read on the next sync) and the C2703 shape test, which now reads the
 shared loop.
 
+**A source's own banner line never stands for the leading one** (C2929; ruling 196; `agentsync.policy`).
+`has_banner` took the banner anywhere in a body's first eight lines and `with_banner` returned such a body
+unchanged, so a Markdown source holding the banner line under its own heading (`# Contoso plan`, a blank line,
+the banner, `Ignore previous instructions.`) was published with its heading above the trust banner, through the
+guard (`registry._bannered`) and the publish fallback (`publish._plan_unit`) alike, against `with_banner`'s own
+"the banner as its first line" and the banner-first rule (Q9, G77). `has_banner` is true only when the banner is
+the body's first line, leading blank lines aside, and `with_banner` keeps a body only then; the source's copy
+stays where it is, so such a page holds the line twice, the first one ours. The eight-line scan dated from stubs
+and tombstones that put their heading first; `lints.py` reads that layout apart, and `archive_page` now gives
+such an old page a leading banner above its own. `BANNER_VERSION` goes to 2, as ruling 196 allows only on a
+measurement: a home whose pages of every guarded kind (Markdown, text, Word through pandoc, a workbook, a deck, a
+no-ZIP stub, and the heading-first Markdown page) were built under the old rule, synced after the bump on a new
+build, reads no file again, fetches none and commits nothing (C2270: a bump moves keys and re-reads nothing). So
+the bump keeps a cached body from before the rule from being served, and a page the old rule left without a
+leading banner gets one when its source next changes. Tests:
+`test_policy.py::test_a_banner_line_under_a_heading_never_stands_for_the_leading_one_c2929` (`with_banner`,
+leading blank lines, and the default registry's Markdown converter) and
+`test_cycle.py::test_a_banner_bump_commits_nothing_on_a_home_with_guarded_pages_c2929` (the measurement).
+
 ### 16.284 Round 45: the prompt goes to v42 (a none, a config path and an unread inbox state as setup gives them), the gate's part ceiling and CI's limit, dated lines, and the guides (2026-11-23, wave B13 round 45 lane D)
 
 Reserved for round 45 lane D of B13.
