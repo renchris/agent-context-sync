@@ -2136,6 +2136,8 @@ repo`, never `(inbox)` and never a non-default path uncut (C2631, lane RA). Lane
 the agent shows it, chooses no folder, moves or makes no file, runs no add-source, asks whether to add a folder from
 step 1's list and runs step 2 again with one --source-local per folder named, or on none or no way to ask logs nothing
 and goes on to the report syncs (C2659).
+(2026-11-23) Step 3's question whether to add a folder stands after step 1's exceptions' none, since `nothing to draft
+yet` is a fact that question lacked, and v42 asks it once a session (round 45 C2831, ruling 197).
 (182) A tombstone's successor, unit-removed flag and title follow what they derive from, completing ruling 164 (lane B;
 C2646 with C2706, C2704 with C2648, C2613, C2672). Publisher.tombstone adds `self._successors_again(rows)` to its
 changes after its loop and before the `if changes:` guard, so a kept unit-removed whole tombstone whose item is deleted
@@ -2213,6 +2215,11 @@ in --log-start, SETUP_PROMPT_COMPAT, setup_report.PROMPT_VERSION, its docstring 
 mentions, the issue form, setup-feedback.md's version lines and the old-copy refusal list (v40 joins), a K65 row, every
 pin and §16.279's dated line; CUT_OFF_TOLD stays. Round 45 rehearses v41 with v40's block (5cf1b5407) as scenario C's
 first old copy.
+(2026-11-23) Ruling 197 amends this one: v42's Finish gives none for a config marked (exists) with loads: yes only
+when that file, read as above, holds no kind = "local" source that is neither paused nor retired, as after --no-folder,
+never because a path could not be opened or a report path held `<path>`, and its AGENTSYNC_CONFIG rule reads a bare `~`
+as the home and a `~name` value under the report's folder, as install.sh's case arms do (round 45 C2938, C2950, C2859,
+C2804, C2821, C2871, C2949).
 
 ROUND 45 RULINGS (lead; every lane builds to them; the prompt goes to v42 in lane D's one commit, ruling 197):
 (188) Both reports reach one verdict on a sources.toml that does not load or is spelled unusually, and cut every value

@@ -1767,7 +1767,7 @@ INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 INSTALL_NO_FOLDER = f"{INSTALL_SH} --no-folder"
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (41, "4acfeab27b8e574e718572413f5e729b1c8c7da43f448314061785cfc1940896")
+PROMPT = (42, "df377a1b490739c2b1f7234312f53d0858059acf4bf78770f69489807c0f33a5")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -3763,9 +3763,10 @@ def test_readme_step3_runs_the_loop_then_the_report() -> None:
         # the default; never a path the report cuts
         'the folders this Mac syncs, as full paths: the kind = "local" sources in the config, the file step'
         " 2's config: line named if step 2 printed one, else the value printenv printed just before the"
-        " report command, resolved as --report-only resolves it (its blanks trimmed, a leading ~/ as my home,"
-        " and a value that starts with neither / nor ~ taken under the folder the report command ran"
-        " in), else"
+        " report command, resolved as --report-only resolves it (its blanks trimmed: space, tab, newline, CR,"
+        " VT and FF; an empty value as ~/agent-context/sources.toml; a value that is exactly ~ or starts with"
+        " ~/ under my home; any other value that does not start with /, one starting ~name included, under"
+        " the folder the report command ran in), else"
         " ~/agent-context/sources.toml (never open a path the report shows with <path> in it: the report cuts"
         " such a path, and its config: line only points at the file), that are not paused or retired, read"
         " after step 2 or, if setup stopped before step 2, as they"
@@ -3774,8 +3775,8 @@ def test_readme_step3_runs_the_loop_then_the_report() -> None:
         " this session added: those"
         ' for which a run of step 2 this session printed an "added source" line; or, if'
         ' the report\'s config: line marks that config (missing), or it has no such kind = "local" source,'
-        ' "none: this Mac syncs no folder" (if setup stopped before step 2, say at which step; a config: line'
-        " marked (exists) whose loads: line says yes never gives none);"
+        ' "none: this Mac syncs no folder" '
+        f"{FINISH_NONE_GUARD}"
         f" {UNCHECKED_CONFIG}; {UNLOADED_CONFIG} {UNKNOWN_FIRST}{REFUSED_CONFIG}"
         ' the last NEXT: line printed before the report, or "none" (also "none: waiting for your folder'
         ' answer" while you wait for my folder answer in step 1: there, the NEXT: line that leaves the'
@@ -3920,9 +3921,9 @@ def test_readme_report_step_after_any_failure() -> None:
     # B13 round 6 G25: "always" was followed at once by three cases with no report.
     assert (
         "Then the report, even after a failure (except in the four cases below), and just before it, in the"
-        " same folder, when step 2 printed no config: line this session, `printenv AGENTSYNC_CONFIG` (it"
-        " prints nothing when that is not set; the Finish reads it); this is the last command you run:"
-        in " ".join(text.split())
+        " same folder, when step 2 printed no config: line this session, `printenv AGENTSYNC_CONFIG` (when"
+        " that is not set it prints nothing and exits 1: that is no failure, so log nothing; the Finish reads"
+        " it); this is the last command you run:" in " ".join(text.split())
     )
     assert "Then the report, always" not in text
     # B13 round 2 R31: five places say "go to step 3's report", and step 3 used "the report" for its last
@@ -4165,15 +4166,17 @@ state:`` line's no-source words."""
 
 
 INBOX_NOT_A_FOLDER = (
-    'If it reads "inbox state: not added (<folder> is not a folder)" (a file or a link has the folder\'s '
-    "name), tell me my inbox could not be added, whatever source that config lists on that folder, and "
+    'If it reads "inbox state: not added (<folder> is not a folder)" (a file, a link to a file or a dangling'
+    " link has the folder's name), tell me my inbox could not be added, whatever source that config lists on"
+    " that folder, and "
     'show me that line and step 2\'s "inbox: not added:" line; moving that file or link aside is mine, '
     "not yours; say nothing of dropping files there."
 )
 """Step 2's v41 words for a file or a link on the inbox's name (B13 round 44 ruling 180, C2718 with C2731 and
 C2657):
 ``inbox_state`` says ``not added (<folder> is not a folder)`` whatever sources.toml lists, and lane B's C2611
-prints ``inbox: not added: <typed> is not a folder; move it aside and run step 2 again``."""
+prints ``inbox: not added: <typed> is not a folder; move it aside and run step 2 again``. v42 (B13 round 45
+C2869, ruling 194): "a file, a link to a file or a dangling link", since a link to a folder reads live."""
 
 INBOX_NOT_READ = (
     'If it reads "inbox state: not read (<why>)", tell me agentsync could not read what is on my inbox '
@@ -4193,10 +4196,29 @@ word): after every non-live case, not the other-kind case alone."""
 
 STEP2_NO_NEXT = (
     "If it printed no NEXT: line either (a usage error it found before reading the rest of its options), "
-    "log it as a step 2 error, show me its usage error line and do not do what that line says (an export "
-    "it names is mine), then go to step 3's report."
+    "log it as a step 2 error, show me its usage error line and do not do what that line says, then go to "
+    "step 3's report."
 )
-"""Step 2's v41 words for a run that printed no NEXT: line (B13 round 44 C2606)."""
+"""Step 2's v41 words for a run that printed no NEXT: line (B13 round 44 C2606). v42 (B13 round 45 C2870)
+drops " (an export it names is mine)", which named nothing the prompt reads."""
+
+INBOX_NOT_CHECKED = (
+    'If it reads "inbox state: not checked (<why>)", tell me agentsync did not tell whether my inbox is live,'
+    " show me that line, and say that ~/.local/bin/agentsync status tells it; say nothing of dropping files"
+    " there."
+)
+"""Step 2's v42 words for lane RB's ``inbox state: not checked (<why>)`` (B13 round 45 ruling 194, C2868 with
+C2935): a state read that raised, hit its 10 s limit or printed nothing. It comes after the no-drop-folder
+sentence, so an unread state is never told as no drop folder."""
+
+STEP3_ASK_ONCE = (
+    "ask me, once this session, whether to add a folder from step 1's list (my none to step 1's exceptions'"
+    " question does not answer it), and if I name folders, run step 2 again with one --source-local per"
+    " folder I name, then this loop again; if I say none, or you cannot ask me, or you already asked it this"
+    " session, log nothing and go on to the report syncs below."
+)
+"""Step 3's v42 question on a ``nothing to draft yet`` NEXT (B13 round 45 C2831, ruling 197): once a session,
+and it stands after step 1's exceptions' none; an already-answered guard makes things worse."""
 
 
 def test_step2_tells_of_the_inbox_only_when_its_source_is_live_c2092(
@@ -4307,8 +4329,9 @@ def test_the_v41_prompt_reads_what_setup_prints_c2727_c2718_c2608_c2604_c2659() 
     assert "the config the report's Configuration section names on its config: line" not in flat_block
     assert (
         "Then the report, even after a failure (except in the four cases below), and just before it, in the"
-        " same folder, when step 2 printed no config: line this session, `printenv AGENTSYNC_CONFIG` (it"
-        " prints nothing when that is not set; the Finish reads it); this is the last command you run:"
+        " same folder, when step 2 printed no config: line this session, `printenv AGENTSYNC_CONFIG` (when"
+        " that is not set it prints nothing and exits 1: that is no failure, so log nothing; the Finish reads"
+        " it); this is the last command you run:"
     ) in " ".join(step3.split())
     assert step3.index("`printenv AGENTSYNC_CONFIG`") < step3.index(
         "`~/src/agent-context-sync/scripts/install.sh --report-only`"
@@ -4317,7 +4340,8 @@ def test_the_v41_prompt_reads_what_setup_prints_c2727_c2718_c2608_c2604_c2659() 
         'if the report\'s config: line marks that config (missing), or it has no such kind = "local" source,'
         ' "none: this Mac syncs no folder"'
     ) in finish
-    assert "a config: line marked (exists) whose loads: line says yes never gives none" in finish
+    # v42 (B13 round 45 ruling 197): the guard is scoped, never dropped (FINISH_NONE_GUARD)
+    assert FINISH_NONE_GUARD in " ".join(finish.split())
     assert finish.index('"loads: not checked"') > finish.index(
         "(missing)"
     )  # the unknown cases still come first:
@@ -4355,10 +4379,8 @@ def test_the_v41_prompt_reads_what_setup_prints_c2727_c2718_c2608_c2604_c2659() 
     sentence = (
         'If a sync of this step prints a NEXT: line starting "nothing to draft yet" whose move it'
         " says is mine,"
-        " show it to me; choose no folder, move or make no file and run no add-source yourself: ask me "
-        "whether to add a folder from step 1's list, and if I name folders, run step 2 again with one "
-        "--source-local per folder I name, then this loop again; if I say none, or you cannot ask me, log "
-        "nothing and go on to the report syncs below."
+        " show it to me; choose no folder, move or make no file and run no add-source yourself: "
+        f"{STEP3_ASK_ONCE}"
     )
     assert sentence in step3 and step3.index(sentence) < step3.index(
         "Run `~/.local/bin/agentsync sync` and do"
@@ -4398,7 +4420,129 @@ def test_the_finish_reads_a_custom_config_the_report_cuts_c2727_c2656_c2717(
     assert str(folder) in real.read_text(encoding="utf-8")
     finish = _prompt_steps()[3].rsplit("Finish with:", 1)[1]
     assert "else the value printenv printed just before the report command" in finish
-    assert "its blanks trimmed, a leading ~/ as my home" in " ".join(finish.split())
+    assert "a value that is exactly ~ or starts with ~/ under my home" in " ".join(finish.split())
+
+
+def _live_local_folders(config: Path) -> list[str]:
+    """The folders the Finish lists from ``config``, read as the Finish says: its kind = "local" sources that
+    are neither paused nor retired (never a kind = "inbox" one)."""
+    import tomllib  # noqa: PLC0415
+
+    data = tomllib.loads(config.read_text(encoding="utf-8"))
+    return [
+        str(s["path"])
+        for s in data.get("source", [])
+        if s.get("kind") == "local" and s.get("state", "live") not in ("paused", "retired")
+    ]
+
+
+FINISH_NONE_GUARD = (
+    "(if setup stopped before step 2, say at which step; a config: line marked (exists) whose loads: line"
+    " says"
+    ' yes gives none only when that file, read as above, has no kind = "local" source that is neither paused'
+    " nor retired, as after --no-folder, never because a path could not be opened or a report path held"
+    ' <path>: then say "unknown: <that config\'s path> could not be read");'
+)
+"""v42's Finish (B13 round 45 ruling 197; C2938 with C2950, C2859 and C2804, makes worse True for dropping the
+guard): v41 said a config marked (exists) with loads: yes never gives none, while the sentence before it gave
+none for a config with no such kind = "local" source, which is what ``install.sh --no-folder`` leaves. The
+guard stays, scoped: none comes only from reading that file and finding no live local source, never from a
+path the agent could not open or a report path the report cut (round 44's C2727 false none)."""
+
+
+@pytest.mark.parametrize("shape", ["no-folder", "paused-only", "retired-only"])
+def test_the_v42_finish_gives_none_for_a_config_with_no_live_local_source_c2938(
+    shape: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 45 C2938 with C2950, C2859 and C2804 (ruling 197): ``install.sh --no-folder`` runs
+    ``agentsync init`` with no folder, so the report's Configuration says the config exists and loads, and
+    the file holds only the inbox source; a config whose every kind = "local" source is paused or retired
+    reads the same. v41's guard ("never gives none") contradicted the none the sentence before it gave; v42
+    gives none only from reading that file. A config with a live local source still lists it."""
+    from agentsync import cli, paths, setup_report  # noqa: PLC0415
+
+    home = Path.home()
+    config = home / "agent-context" / "sources.toml"
+    assert cli.main(["init", "--config", str(config)]) == 0
+    folder = home / "Projects" / "Contoso Plans"
+    if shape != "no-folder":
+        folder.mkdir(parents=True)
+        assert cli.main(["add-source", str(folder), "--config", str(config)]) == 0
+        assert _live_local_folders(config) == [str(folder)]
+        text = config.read_text(encoding="utf-8")
+        state = shape.removesuffix("-only")
+        state += '"\nretired_reason = "Contoso moved off it' if state == "retired" else ""
+        config.write_text(
+            text.replace(f'path = "{folder}"', f'path = "{folder}"\nstate = "{state}"'), "utf-8"
+        )
+    monkeypatch.setenv("AGENTSYNC_CONFIG", str(config))
+    report, _red = setup_report.build_report(paths.default_config_path(), hooks=setup_report.ReportHooks())
+    [line] = [ln for ln in report.splitlines() if ln.startswith("- config: ")]
+    assert "(exists)" in line and "- loads: yes" in report.splitlines(), report
+    assert _live_local_folders(config) == []
+    finish = " ".join(_prompt_steps()[3].rsplit("Finish with:", 1)[1].split())
+    assert FINISH_NONE_GUARD in finish
+    assert "a config: line marked (exists) whose loads: line says yes never gives none" not in finish
+    assert finish.index(UNKNOWN_FIRST) > finish.index(FINISH_NONE_GUARD)
+
+
+def test_the_v42_prompt_reads_a_config_path_and_an_unread_inbox_state_as_setup_gives_them_c2821_c2868(
+    tmp_path: Path,
+) -> None:
+    """B13 round 45 ruling 197. C2821 with C2871 and C2949: v41's rule said "a leading ~/" and "neither / nor
+    ~", leaving out a bare ``~`` and a ``~name`` value, and its printenv step did not say an unset value exits
+    1; the sentence is held to install.sh's blank trim, default and case arms one for one, and a ``~name``
+    value is read under the folder the report command ran in, as install.sh --report-only reads it. C2868:
+    lane RB's ``inbox state: not checked (<why>)`` (ruling 194) has words of its own, after the
+    no-drop-folder sentence. C2869, C2870, C2831: the parenthetical, the no-NEXT branch and step 3's
+    question."""
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    steps = _prompt_steps()
+    step2, step3 = " ".join(steps[2].split()), " ".join(steps[3].split())
+    finish = step3.rsplit("Finish with:", 1)[1]
+    assert "CONFIG_BLANKS=$' \\t\\n\\r\\v\\f'\n" in script
+    assert '[ -n "$CONFIG" ] || CONFIG="$HOME/agent-context/sources.toml"\n' in script
+    arms = script.split('case "$CONFIG" in\n', 1)[1].split("esac", 1)[0]
+    assert (
+        arms == '\\~) CONFIG="$HOME" ;;\n\\~/*)\n\tCONFIG="${CONFIG#"~/"}"\n'
+        '\tCONFIG="$HOME${CONFIG:+/$CONFIG}"\n\t;;\n'
+    )
+    for words in (
+        "its blanks trimmed: space, tab, newline, CR, VT and FF;",
+        "an empty value as ~/agent-context/sources.toml;",
+        "a value that is exactly ~ or starts with ~/ under my home;",
+        "any other value that does not start with /, one starting ~name included, under the folder the report"
+        " command ran in",
+        "`printenv AGENTSYNC_CONFIG` (when that is not set it prints nothing and exits 1: that is no failure,"
+        " so"
+        " log nothing;",
+    ):
+        assert words in step3, words
+    assert "a leading ~/ as my home" not in finish and "neither / nor ~" not in finish
+    home, run = tmp_path / "home", tmp_path / "run"
+    home.mkdir()
+    run.mkdir()
+    env = tmp_home_env(home) | {"PATH": "/usr/bin:/bin", "AGENTSYNC_CONFIG": "~contoso/sources.toml"}
+    for there, mark in ((False, "(missing)"), (True, "(exists)")):
+        if there:
+            (run / "~contoso").mkdir()
+            (run / "~contoso" / "sources.toml").write_text("[docs]\n", encoding="utf-8")
+        cp = subprocess.run(
+            ["bash", str(SCRIPTS[0]), "--report-only"], cwd=run, env=env, capture_output=True, text=True,
+            check=False, timeout=300,
+        )  # fmt: skip
+        assert cp.returncode == 0, cp.stdout + cp.stderr
+        report = (home / "agent-context" / "setup-report.md").read_text(encoding="utf-8")
+        [line] = [ln for ln in report.splitlines() if ln.startswith("- config: ")]
+        assert line.endswith(mark), (there, line)
+    # C2868 (ruling 194): install.sh's own line, told after the no-drop-folder sentence
+    assert "inbox state: not checked (" in script
+    assert INBOX_NOT_CHECKED in step2
+    assert step2.index("if none is, tell me I have no drop folder.") < step2.index(INBOX_NOT_CHECKED)
+    # C2869, C2870, C2831
+    assert INBOX_NOT_A_FOLDER in step2 and "(a file or a link has the folder's name)" not in step2
+    assert STEP2_NO_NEXT in step2 and "(an export it names is mine)" not in step2
+    assert STEP3_ASK_ONCE in step3
 
 
 def test_the_v40_prompt_reads_only_lines_setup_prints_in_every_branch_c2406_c2408_c2419_c2523() -> None:

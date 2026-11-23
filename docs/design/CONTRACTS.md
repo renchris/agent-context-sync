@@ -14539,6 +14539,11 @@ else AGENTSYNC_CONFIG as `printenv` read it just before the report, resolved as 
 `~/agent-context/sources.toml`, never a path the report shows holding `<path>` (the report's `config:` line cuts any
 config but the default); exists, unknown and none come from that line's `(exists)` or `(missing)` mark and the
 `loads:` line, and `(exists)` with `loads: yes` never gives none.
+Amended 2026-11-23, §16.284 C2938, C2950, C2859, C2804: since v42 `(exists)` with `loads: yes` gives none only when
+that file, read as above, holds no kind = "local" source that is neither paused nor retired, as after `--no-folder`,
+never because a path could not be opened or a report path held `<path>` (then "unknown: <path> could not be read");
+the resolution reads a bare `~` as the home and any other value not starting with `/`, a `~name` one included, under
+the folder the report ran in, as install.sh's case arms do (C2821, C2871, C2949).
 
 **Step 1's exception** (R41): "say in your final message that I gave no answer, so no folder was added" (§16.29's
 block carries a dated line).
@@ -45920,6 +45925,12 @@ scenario C's first old copy. Tests:
 `test_the_finish_reads_a_custom_config_the_report_cuts_c2727_c2656_c2717`,
 `test_no_line_of_the_prompt_block_is_a_lone_word_or_wider_than_the_block`,
 `test_the_prompt_text_changes_only_with_its_version`, `test_readme_prompt_compat_matches_the_installer`.
+Amended 2026-11-23, §16.284 C2938, C2950, C2859, C2804: since v42 `(exists)` with `loads: yes` gives none only from
+reading that file and finding no kind = "local" source that is neither paused nor retired, never from a path that
+could not be opened or a report path holding `<path>`; a bare `~` resolves to the home and a `~name` value under the
+folder (C2821, C2871, C2949); the not-a-folder parenthetical reads "a file, a link to a file or a dangling link"
+(C2869); the no-NEXT branch drops "its export the person's" (C2870); step 3 asks its folder question once a
+session, and it stands after step 1's exceptions' none (C2831).
 Amended 2026-11-23, §16.280 C2947, C2933: the last install run is scored as the person's none only when it holds
 --no-folder as a shell word of args= and ended rc 0 with no failed step; a failed, killed or unended one is scored as
 that failure.
@@ -46656,6 +46667,42 @@ notes-check.sh, which checks only fixed lines, passed them. The rule now asks fo
 `Twins named (<rule>):`, the form RA's and E's notes used), listing each changed function or phrase with its twin and
 the test that feeds both, or `Twins named: none, <reason>`; notes-check.sh's check is the lead's. Test:
 `tests/test_deploy_pack.py::test_the_twins_rule_names_a_line_a_script_can_check_c2887`.
+
+**Setup prompt v42: a none, a config path and an unread inbox state as setup gives them** (C2938, C2950, C2859,
+C2804, C2821, C2871, C2949, C2868, C2935, C2869, C2870, C2831; rulings 191, 194, 197; amends §16.49 R11, §16.279
+C2727). v41's Finish gave none for a config with no live kind = "local" source, then said a config marked `(exists)`
+with `loads: yes` never gives none, which is what `install.sh --no-folder` leaves (`agentsync init` with no folder:
+the inbox source alone), so the person's own none read as a contradiction (C2938, C2950, C2859, C2804). Dropping the
+guard makes things worse (round 44's C2727 false none on a path the report cut), so it is scoped: none comes only from
+reading the file named above, as above, and finding no kind = "local" source that is neither paused nor retired;
+a path that could not be opened or read, or a report path holding `<path>`, gives "unknown: <path> could not be
+read", and `loads: not checked` and `loads: no:` still come first. The AGENTSYNC_CONFIG rule said "a leading ~/"
+and "neither / nor ~", leaving out a bare `~` and a `~name` value (C2821, C2871, C2949; "/ or ~/" alone makes
+things worse, sending a bare `~` under the folder against install.sh's case arm): it now reads as install.sh's
+case arms, the six blanks trimmed, empty as `~/agent-context/sources.toml`, exactly `~` or `~/...` under the home,
+any other value not starting with `/`, a `~name` one included, under the folder the report command ran in; the
+printenv step says it prints nothing and exits 1 when unset, no failure and nothing logged, the command unchanged
+so C2862's exact allow rule holds. Step 2 tells lane RB's `inbox state: not checked (<why>)` (ruling 194: a state
+read that raised, hit its 10 s limit or printed nothing) as agentsync not telling whether the inbox is live, shows
+the line, points at `agentsync status`, says nothing of dropping files, and sits after the no-drop-folder
+sentence, so an unread state is never told as no drop folder (C2868, with C2935's absent line now meaning only a
+live state read). Its not-a-folder parenthetical reads "a file, a link to a file or a dangling link", since a
+link to a folder reads live (C2869); its no-NEXT branch drops " (an export it names is mine)", which named nothing
+the prompt reads (C2870). Step 3 asks whether to add a folder once a session, and the question stands after step
+1's exceptions' none, since `nothing to draft yet` is a fact that question lacked (C2831; an already-answered
+guard makes things worse, binding a none step 1 says does not count and suppressing ruling 181's question).
+Lane RB's person's-choice NEXT on every clean `--no-folder` route (ruling 191) needs no new words: v41 already goes
+to the report on a NEXT that says the person chose no folder. No step moves, so v42 is read with v7's layout.
+Version 42 everywhere the bump list names it (the block and its digest in `PROMPT`, `prompt v42` in step 1's
+`--log-start`, `SETUP_PROMPT_COMPAT`, `setup_report.PROMPT_VERSION`, its docstring's list and its v41 mentions,
+the form's placeholder, the version pins, setup-feedback.md's version lines and its old-copy list, which v41 joins,
+and a K66 row); `CUT_OFF_TOLD` names no version and is unchanged. §16.49's finish and §16.279's v41 paragraph take
+dated lines, and `docs/lanes/COMMON.md` takes one beside ruling 181 and one beside ruling 187. Round 46 rehearses
+v42 with v41's block (9acf0c54b) as scenario C's first old copy. Tests:
+`test_the_v42_finish_gives_none_for_a_config_with_no_live_local_source_c2938`,
+`test_the_v42_prompt_reads_a_config_path_and_an_unread_inbox_state_as_setup_gives_them_c2821_c2868`,
+`test_no_line_of_the_prompt_block_is_a_lone_word_or_wider_than_the_block`,
+`test_the_prompt_text_changes_only_with_its_version`, `test_readme_prompt_compat_matches_the_installer`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
