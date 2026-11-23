@@ -11107,7 +11107,7 @@ list_folders() {
 	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks marks synced="" unlisted="" unread="" kept="" built
 	local TWIN_DEADLINE="" # list_twins' bound, set to deadline's only once a provider was denied or asked (C1464)
 	local line missing=0 gone=0 gonepaths="" others=0 other="" libs=0 libpaths="" apps="" tokens="" tok="" stuck=0 more=""
-	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vreal="" vplain="" vtail="" vlog="" cerr="" ctail="" clog="" stail="" crole="" clink="" cunread="" lwhat="" lfix="" lfact="" lown="" chbmode="" cshort="" cmis="" cmisread="" sfix="" cside="" codd="" fnoun="" stopsat="" chold="" ccut="" rcut="" rrc=0 rt0=0""
+	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vreal="" vplain="" vtail="" vlog="" cerr="" ctail="" clog="" stail="" crole="" clink="" cunread="" lwhat="" lfix="" lfact="" lown="" chbmode="" cshort="" cmis="" cmisread="" sfix="" cside="" codd="" fnoun="" stopsat="" chold="" ccut="" rcut="" rrc=0 rt0=0"" rtail="" cfg_abs=""
 	step_start list-folders
 	tmp="$(tmp_make -d)"
 	: >"$tmp/list0"
@@ -11601,6 +11601,18 @@ list_folders() {
 		case "$unread" in *" marks=timeout") kept="$kept; or re-run $SELF --list-folders to mark them" ;; esac
 		;;
 	esac
+	# AGENTSYNC_CONFIG still not absolute after the ~ expansion: step 2 refuses it at once (config_env_next), so
+	# every NEXT below says so in C2728's words, the path as shown_arg shows it (B13 round 45 ruling 193, C2816)
+	rtail=""
+	case "$CONFIG_GIVEN" in
+	/*) ;;
+	\~*) rtail="; step 2 stops at once on AGENTSYNC_CONFIG in the environment this agent was started from, which names another account's home: setting it to an absolute path, or unsetting it, where the person starts their shell, is the person's to do before step 2" ;;
+	*)
+		cfg_abs="$CONFIG_GIVEN"
+		while [ "${cfg_abs#./}" != "$cfg_abs" ]; do cfg_abs="${cfg_abs#./}"; done
+		rtail="; step 2 stops at once on AGENTSYNC_CONFIG in the environment this agent was started from, which is a relative path: setting it to $(shown_arg "$PWD/$cfg_abs"), or unsetting it, where the person starts their shell, is the person's to do before step 2"
+		;;
+	esac
 	rc=0
 	if [ -n "$denied" ]; then
 		rc=4
@@ -11632,7 +11644,7 @@ list_folders() {
 			NEXT_MSG="this Mac already syncs $sn, and a re-run keeps $them: run $SELF, with one --source-local \"<folder>\" for each unmarked folder to add from the list above"
 			# none is needed, unless a source still mirrored has no block (T6, T30) or step 2 will stop on the
 			# config (U12)
-			[ -n "$vtail$ctail" ] || NEXT_MSG="$NEXT_MSG (none is needed)"
+			[ -n "$vtail$ctail$rtail" ] || NEXT_MSG="$NEXT_MSG (none is needed)"
 		fi
 		# A folder gone while its app is signed in: no sign-in (a re-run of this list would stop the same way),
 		# and step 2 still runs, so its doctor names the folder and its fix and the report is written. The clause
@@ -11683,6 +11695,7 @@ list_folders() {
 		NEXT_MSG="choose the folders to sync from the list above (project folders rather than a whole library), then run: $SELF --source-local \"<folder>\" (one --source-local per folder)$vtail$ctail$kept"
 		step_end "done" 0 "listed-$total${synced:+ synced=$synced}$unread$vlog$clog"
 	fi
+	NEXT_MSG="$NEXT_MSG$rtail" # every branch: step 2 refuses the setting whatever the list found (C2816)
 	# the folders past the cap, on the NEXT line, never a line of their own (the list's line count holds)
 	if [ "$rc" -eq 0 ] && [ "$total" -gt "$max" ]; then
 		line="$((total - max)) folders past the first $max are"
@@ -11991,6 +12004,7 @@ trap 'on_signal 129' HUP
 trap 'on_signal 130' INT
 trap 'on_signal 143' TERM
 start_capture # a copy of this run's output in install.out (not in a dry run or for --report-only)
+CONFIG_GIVEN="$CONFIG" # as given, after the ~ expansion: --list-folders names step 2's stop on it (C2816)
 case "$CONFIG" in
 /*) ;;
 *) CONFIG="$PWD/$CONFIG" ;;

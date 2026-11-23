@@ -46061,6 +46061,19 @@ config line, as the agentsync report orders them. Test:
 `test_install_oneshot.py::test_both_reports_say_their_private_only_lines_in_one_order_c2850` (each read from its own
 code).
 
+**Step 1 says step 2 stops on a config path that is not absolute** (C2816; ruling 193). --list-folders reads a
+relative AGENTSYNC_CONFIG under the folder it runs in, found the synced folders and said `a re-run keeps them ...
+(none is needed)`, while step 2 refuses that value at once (C2728). The value as given, after the `~` expansion
+(`CONFIG_GIVEN`), decides one tail every NEXT branch of the list ends with, in C2728's words: `; step 2 stops at once
+on AGENTSYNC_CONFIG in the environment this agent was started from, which is a relative path: setting it to
+<shown_arg of the absolute path>, or unsetting it, where the person starts their shell, is the person's to do before
+step 2` (for a `~user` value, `which names another account's home: setting it to an absolute path`), and `(none is
+needed)` is dropped beside it. --report-only keeps reading such a value under the folder it runs in, so the report is
+still written. Tests: `test_install_oneshot.py::test_step_1_says_step_2_stops_on_a_config_path_that_is_not_absolute_c2816`
+(`./cfg/sources.toml`, `cfg/sources.toml`, `~contoso/sources.toml`) and
+`test_the_report_still_runs_over_a_config_path_step_2_refuses_c2816` (`~contoso/sources.toml` marked (missing), a bare
+`~` read as the home).
+
 ### 16.282 Round 45: an inbox that is not a folder never named as kept, its state read by lstat and stat, a `~user` AGENTSYNC_CONFIG refused, and every waiting stub and tombstone rendered again under STUB_RENDER 8 (2026-11-23, wave B13 round 45 lane B)
 
 Round 45's lane B items (`docs/plans/bring-back-ocr.md`, "B13 round 45"; specs `round45/items/C<n>.md`, the

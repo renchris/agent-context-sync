@@ -27651,3 +27651,62 @@ def test_both_reports_say_their_private_only_lines_in_one_order_c2850() -> None:
         at = {k: text.find(v) for k, v in keys.items()}
         assert all(i >= 0 for i in at.values()), at
         assert sorted(at, key=at.__getitem__) == ["word", "hold", "listing", "config"], at
+
+
+# ---- B13 round 45 ruling 193: a non-absolute AGENTSYNC_CONFIG, read and shown as step 2 reads it -----------
+
+_STEP_2_STOPS = (
+    "; step 2 stops at once on AGENTSYNC_CONFIG in the environment this agent was started from, which "
+)
+_PERSONS_SETTING = (
+    ", or unsetting it, where the person starts their shell, is the person's to do before step 2"
+)
+
+
+@pytest.mark.parametrize("value", ["./cfg/sources.toml", "cfg/sources.toml", "~contoso/sources.toml"])
+def test_step_1_says_step_2_stops_on_a_config_path_that_is_not_absolute_c2816(
+    env: dict[str, str], value: str
+) -> None:
+    """B13 round 45 ruling 193, C2816: --list-folders reads a relative AGENTSYNC_CONFIG under the folder it
+    runs in, found the synced folders and said `a re-run keeps them ... (none is needed)`, while step 2
+    refuses that value at once (C2728). Every NEXT of the list now ends with the step-2 stop in C2728's words,
+    the absolute path as shown_arg shows it (or `an absolute path` for a `~user` value), and drops `(none is
+    needed)`."""
+    cwd = Path(env["HOME"]) / "Projects" / "Contoso"
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects"
+    folder.mkdir(parents=True)
+    (cwd / "cfg").mkdir(parents=True)
+    (cwd / "cfg" / "sources.toml").write_text(
+        default_config_text() + local_source_table("plans", folder), encoding="utf-8"
+    )
+    _tool_python(env)
+    # run from that folder (--list-folders takes no --cwd)
+    into = ("/bin/sh", "-c", 'cd "$0" && exec "$@"', str(cwd))
+    cp = install_sh({**env, "AGENTSYNC_CONFIG": value}, "--list-folders", wrap=into)
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    end = last_line(cp)
+    if value.startswith("~"):
+        tail = (
+            f"{_STEP_2_STOPS}names another account's home: setting it to an absolute path{_PERSONS_SETTING}"
+        )
+        assert end.startswith("NEXT: choose the folders to sync from the list above"), end
+    else:
+        tail = f'{_STEP_2_STOPS}is a relative path: setting it to "{cwd}/cfg/sources.toml"{_PERSONS_SETTING}'
+        assert end.startswith("NEXT: this Mac already syncs 1 folder, and a re-run keeps it: "), end
+    assert end.endswith(tail) and "(none is needed)" not in end, end
+    assert one_next(cp), cp.stdout
+
+
+@pytest.mark.parametrize("value", ["~contoso/sources.toml", "~"])
+def test_the_report_still_runs_over_a_config_path_step_2_refuses_c2816(
+    env: dict[str, str], value: str
+) -> None:
+    """B13 round 45 ruling 193, C2816: --report-only keeps reading a value step 2 refuses, so the report is
+    still written: a `~user` value under the folder it runs in, where nothing is, marked (missing), and a bare
+    `~` read as the home, which is no file."""
+    into = ("/bin/sh", "-c", 'cd "$0" && exec "$@"', env["HOME"])  # the folder it runs in: the home
+    cp = install_sh({**env, "AGENTSYNC_CONFIG": value}, "--report-only", wrap=into)
+    assert cp.returncode == 0 and "shell fallback" in cp.stdout, cp.stdout + cp.stderr
+    section = report_path(env).read_text().split("\n## Configuration\n\n", 1)[1].split("\n\n", 1)[0]
+    shown = "~/<path>" if value != "~" else "~"  # a config path but the default is cut (C2238)
+    assert section.splitlines()[0] == f"- config: {shown} (missing)", section
