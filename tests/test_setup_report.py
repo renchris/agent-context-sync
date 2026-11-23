@@ -29337,6 +29337,56 @@ def test_an_unloaded_config_registers_its_ids_and_folders_c2609(tmp_path: Path, 
     assert "Private only: sources.toml does not load and is not readable as TOML" in text, text
 
 
+def test_an_unparsed_config_cuts_its_source_ids_whole_c2815(tmp_path: Path) -> None:
+    """B13 round 45 C2815 (ruling 188; makes worse True for cutting none): a sources.toml that does not parse
+    registered no id, so the listed CloudStorage folder `Meetings` was cut inside one and printed
+    `source.gamma-bridge-<folder-N>.listable`. Its [[source]] id lines, basic and literal, are line-scanned
+    and each cut whole to `<source-N>`; an id under another table is not read, the folder word stays cut and
+    the private-only line stays."""
+    home = Path.home()
+    (home / "Library" / "CloudStorage" / "OneDrive-Fabrikam" / "Meetings").mkdir(parents=True)
+    bridge = home / "Development" / "project-gamma" / "bridge"
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text(
+        default_config_text()
+        + '\n[[source]]\nid = "gamma-bridge-meetings"  # the meetings\nkind = "local"\n'
+        + f'path = "{bridge}/meetings"\n'
+        + "\n[[ source ]]\nid = 'gamma-bridge-mail'\nkind = \"local\"\n"
+        + '\n[[ "source" ]]\nid = "gamma-alder"\n'
+        + "\n[['source']]\nid = 'gamma-birch'\n"
+        + '\n[convert]\nid = "wombat-meetings"\n'
+        + "id = = \n",
+        encoding="utf-8",
+    )
+    setup = home / "agent-context" / "setup"
+    setup.mkdir(parents=True, exist_ok=True)
+    (setup / "install.out").write_text(
+        f"[warn] source.gamma-bridge-meetings.listable — {bridge}/meetings is empty\n"
+        "[warn] source.gamma-bridge-mail.listable — ~/Development/project-gamma/bridge/mail\n",
+        encoding="utf-8",
+    )
+    (setup / "install.log").write_text(
+        f"2026-11-23T10:00:00Z run=20261123T100000Z-1 start install.sh compat=41 source={home}/src args=\n"
+        "2026-11-23T10:00:09Z run=20261123T100000Z-1 end rc=0\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "r.md"
+    assert cli.main(["setup-report", "--out", str(out)]) == 0
+    text = out.read_text(encoding="utf-8")
+    assert "Private only: sources.toml does not load and is not readable as TOML" in text, text
+    tail = [ln for ln in section(text, "Installer").splitlines() if "listable" in ln]
+    assert len(tail) == 2, tail
+    assert all(re.search(r"source\.<source-\d+>\.listable", ln) for ln in tail), tail
+    assert not re.search("(?i)gamma-bridge|<folder-\\d+>-|-<folder-|meetings", "\n".join(tail)), tail
+    assert setup_report._scanned_source_ids(cfg.read_text(encoding="utf-8")) == [
+        "gamma-bridge-meetings",
+        "gamma-bridge-mail",
+        "gamma-alder",
+        "gamma-birch",
+    ]
+
+
 def test_an_unloaded_config_cuts_its_pandoc_path_and_moved_docs_remote_c2839(tmp_path: Path) -> None:
     """B13 round 45 C2839 (ruling 188; privacy): only a loaded config registered the pandoc cut and read the
     moved docs repo's git remote, so with a top-level unknown key the Installer section printed

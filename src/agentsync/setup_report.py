@@ -5885,14 +5885,31 @@ def _unloaded_config(r: _Run, red: Redactor) -> _RawConfig | None:
     case reads one. A file that does not parse (or decode) registers nothing and sets
     :attr:`Redactor.config_unparsed`, which makes the report private only; a missing or unreadable one is
     None. The manifest's and the purge queue's ids no source names are not read for it: they need a loaded
-    config."""
+    config.
+
+    B13 round 45 C2815 (ruling 188; makes worse True for cutting none): a file that does not parse registered
+    no id, so a listed folder word was cut inside one (``source.gamma-bridge-<folder-4>.listable``). Its
+    ``[[source]]`` tables' ``id`` lines are line-scanned (:func:`_scanned_source_ids`), kept through the same
+    three filters and registered as source values, so each is cut whole to ``<source-N>``; the private-only
+    line stays, as the scan is best effort and no path is read."""
     if r.config is not None or r.config_missing:
         return None
     try:
         data = tomllib.loads(expand(r.config_path).read_text(encoding="utf-8"))
     except (tomllib.TOMLDecodeError, UnicodeDecodeError, ValueError):
         red.config_unparsed = True
-        return None
+        try:
+            scanned = _scanned_source_ids(expand(r.config_path).read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            return None
+        return _RawConfig(
+            tuple(_RawSource(sid, None, None) for sid in scanned),
+            default_docs_repo(),
+            default_state_dir(),
+            default_cache_dir(),
+            default_log_dir(),
+            _RawGraph(""),
+        )
     except OSError:
         return None
 
@@ -5935,6 +5952,40 @@ def _unloaded_config(r: _Run, red: Redactor) -> _RawConfig | None:
         folder(top.get("log_dir"), default_log_dir()),
         _RawGraph(tenant.strip() if isinstance(tenant, str) else ""),
     )
+
+
+_SOURCE_HEADER_LINE_RE = re.compile(
+    r"""^[ \t]*\[\[[ \t]*(?:source|"source"|'source')[ \t]*\]\][ \t]*(?:#.*)?$"""
+)
+_TABLE_HEADER_LINE_RE = re.compile(r"^[ \t]*\[")
+_SOURCE_ID_LINE_RE = re.compile(r"""^[ \t]*id[ \t]*=[ \t]*(?:"([^"\\\n]*)"|'([^'\n]*)')[ \t]*(?:#.*)?$""")
+
+
+def _scanned_source_ids(text: str) -> list[str]:
+    """The ``id`` values a sources.toml that does not parse writes as one basic or literal string under a
+    ``[[source]]`` header (its key bare or quoted, as TOML reads ``[[ "source" ]]``), line by line (B13
+    round 45 C2815, ruling 188), each kept only as :func:`_unloaded_config` keeps a parsed id: a source id
+    (:data:`SOURCE_ID_RE`), none of :data:`_GENERIC_IDS` and none of the report's own words. An unclosed
+    string matches nothing."""
+    out: list[str] = []
+    in_source = False
+    for line in text.split("\n"):
+        if _SOURCE_HEADER_LINE_RE.match(line):
+            in_source = True
+            continue
+        if _TABLE_HEADER_LINE_RE.match(line):
+            in_source = False
+            continue
+        m = _SOURCE_ID_LINE_RE.match(line) if in_source else None
+        sid = (m.group(1) if m.group(1) is not None else m.group(2)) if m is not None else None
+        if (
+            sid is not None
+            and SOURCE_ID_RE.match(sid) is not None
+            and sid not in _GENERIC_IDS
+            and sid.lower() not in report_words()
+        ):
+            out.append(sid)
+    return list(dict.fromkeys(out))
 
 
 _LOGGED_SOURCE_LOCAL_RE = re.compile(r"(?:^|[ \t])--source-local[ \t]+(\$'(?:[^'\\]|\\.)*'|(?:\\.|[^\s\\])+)")
