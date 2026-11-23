@@ -45822,6 +45822,15 @@ scenario C's first old copy. Tests:
 `test_no_line_of_the_prompt_block_is_a_lone_word_or_wider_than_the_block`,
 `test_the_prompt_text_changes_only_with_its_version`, `test_readme_prompt_compat_matches_the_installer`.
 
+**Where round 44's other lanes moved round 43 lane D's §16.274** (docs). Two round 44 lanes changed a rule §16.274
+states, each with a dated line in its own commit, so §16.274 keeps round 43's words and is read with those two lines.
+Lane B's C2720 line, under §16.274's C2461 paragraph (1b7805870, `fix(loop): a re-read's converter waits have a note
+of their own`): a run left with only converter waits gets a note of its own, never `sync again:`. Lane E's C2723
+line, under §16.268's C2301 paragraph right after the C2415 line §16.274 wrote there (5f14ff2cc, `fix(convert): every
+text sidecar opens with the banner and an empty line`): C2415's reader rule, drop two lines and only when line 1 is
+the banner, becomes drop line 1 when it is the banner, then line 2 when it is empty. Lanes RA and RB, landed through
+31e2a0173, added no line inside §16.274 and none that amends a rule it states.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units
