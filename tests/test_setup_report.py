@@ -8992,10 +8992,14 @@ def test_a_step_3_stop_takes_doctors_kind_only_when_open_in_the_latest_attempt(
 
 def test_a_run_with_no_end_line_and_a_closing_status_keeps_its_state_last_c764(
     fake_mac: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """B13 round 33 C764, C771's F1 (ruling 85): the no-end-line form read `has no end line (<state>)
     (<steps>)`, two brackets in a row. It has the step bracket, then the closing clause if any, then the
-    state, whose causes stay last, so none reads as a fourth cause."""
+    state, whose causes stay last, so none reads as a fourth cause. B13 round 45: the run's pid 4243 is
+    pinned gone, as its siblings pin it; CI run 45428749600 found that pid alive on its runner and read the
+    third state."""
+    monkeypatch.setattr(setup_report, "_pid_alive", lambda pid: False)  # pid 4243 may exist
     _append_killed_run(fake_mac)
     with (fake_mac["setup"] / "install.log").open("a", encoding="utf-8") as fh:
         fh.write(
@@ -9007,10 +9011,8 @@ def test_a_run_with_no_end_line_and_a_closing_status_keeps_its_state_last_c764(
     clause = "), its closing status stopped by SIGKILL (signal 9), "
     assert "has no end line (uv 0s" in line and clause in line, line
     state = line.split(clause, 1)[1]
-    assert state in (
-        "interrupted, or still running",
-        "its process is gone: killed, the Mac restarted, or its end line could not be written",
-    ), line
+    gone = "its process is gone: killed, the Mac restarted, or its end line could not be written"
+    assert state == gone, line
     assert ") (" not in line, line
 
 
