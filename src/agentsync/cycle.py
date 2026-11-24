@@ -2084,21 +2084,6 @@ def _cycle_registry(
     return Registry.default(config.convert, policy=policy, ocr=engine, **extra)
 
 
-_ROW_ACC_COUNTS = (
-    "converted",
-    "unreadable",
-    "conversion_failed",
-    "refused",
-    "withheld_read",
-    "label_unreadable",
-    "converter_waiting",
-    "credential_stubbed",
-)
-"""The :class:`_SourceAcc` counts one row's conversion moves (``_Cycle._after_fetch``, ``_count_credential``):
-what ``_Cycle._row_books`` keeps before a row's savepoint and ``_restore_row_books`` puts back when it rolls
-back (B13 round 45 C2923, ruling 196).  Never ``alarms``: an alarm raised during the read is a fact about the
-run."""
-
 _ROW_TALLY_KEYS = (
     "converted",
     "converted_failed",
@@ -2111,16 +2096,16 @@ _ROW_TALLY_KEYS = (
     "rescreened_reader",
 )
 """``_Cycle._tally``'s conversion keys one row's conversion moves, kept and put back with
-:data:`_ROW_ACC_COUNTS`.  Never the OCR tallies (``ocr_*``): a helper failure or an OCR outage seen during the
-read is a fact about the run, and putting the whole Counter back would hide it (C2923)."""
+:meth:`_SourceAcc.row_counts`.  Never the OCR tallies (``ocr_*``): a helper failure or an OCR outage seen
+during the read is a fact about the run, and putting the whole Counter back would hide it (C2923)."""
 
 
 @dataclass(frozen=True, slots=True)
 class _RowBooks:
     """What one row's conversion moves in the cycle's own books that a manifest savepoint cannot roll back
     (``_Cycle._row_books``; B13 round 45 C2923, ruling 196): ``read again``'s first-read and kept counters,
-    the source's :data:`_ROW_ACC_COUNTS`, the run tally's :data:`_ROW_TALLY_KEYS`, and whether the row was in
-    ``_converted_ok``, ``_waiting_ids`` and ``_credential_counted``."""
+    the source's :meth:`_SourceAcc.row_counts`, the run tally's :data:`_ROW_TALLY_KEYS`, and whether the row
+    was in ``_converted_ok``, ``_waiting_ids`` and ``_credential_counted``."""
 
     reread: tuple[int, int]
     acc: tuple[int, ...]
@@ -2165,6 +2150,36 @@ class _SourceAcc:
     # stable id -> the verdict it is counted under now: phase 1's, then each later settle's (B13 round 12 N50)
     counted_as: dict[str, Verdict] = field(default_factory=dict)
     created: set[str] = field(default_factory=set)  # the stable ids phase 1 counted as CREATED (N39)
+
+    def row_counts(self) -> tuple[int, ...]:
+        """The counts one row's conversion moves (``_Cycle._after_fetch``, ``_count_credential``): what
+        ``_Cycle._row_books`` keeps before a row's savepoint and ``_restore_row_books`` puts back, through
+        :meth:`set_row_counts`, when it rolls back (B13 round 45 C2923, ruling 196).  Never ``alarms``: an
+        alarm raised during the read is a fact about the run.  Attributes, never their names as strings: the
+        setup report's hold-word scan reads every literal under src (C502)."""
+        return (
+            self.converted,
+            self.unreadable,
+            self.conversion_failed,
+            self.refused,
+            self.withheld_read,
+            self.label_unreadable,
+            self.converter_waiting,
+            self.credential_stubbed,
+        )
+
+    def set_row_counts(self, counts: tuple[int, ...]) -> None:
+        """Put back what :meth:`row_counts` returned, in its order."""
+        (
+            self.converted,
+            self.unreadable,
+            self.conversion_failed,
+            self.refused,
+            self.withheld_read,
+            self.label_unreadable,
+            self.converter_waiting,
+            self.credential_stubbed,
+        ) = counts
 
     def settle(self, stable_id: str, verdict: Verdict) -> None:
         """Count a file under its final verdict, once: each settle moves the file's count from the verdict it
@@ -5899,7 +5914,7 @@ class _Cycle:
         key = (row.source_id, row.stable_id)
         return _RowBooks(
             reread=(self._reread_first, self._reread_kept),
-            acc=tuple(getattr(acc, name) for name in _ROW_ACC_COUNTS),
+            acc=acc.row_counts(),
             tally=tuple(self._tally[name] for name in _ROW_TALLY_KEYS),
             member=tuple(key in members for members in self._row_sets()),
         )
@@ -5908,8 +5923,7 @@ class _Cycle:
         """Put back what :meth:`_row_books` kept, after ``row``'s savepoint rolled back: the counters as they
         were, and ``row`` out of each set it was not in.  ``acc.alarms`` and the OCR tallies stay."""
         self._reread_first, self._reread_kept = books.reread
-        for name, value in zip(_ROW_ACC_COUNTS, books.acc, strict=True):
-            setattr(acc, name, value)
+        acc.set_row_counts(books.acc)
         for name, value in zip(_ROW_TALLY_KEYS, books.tally, strict=True):
             if value:
                 self._tally[name] = value

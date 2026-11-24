@@ -45877,7 +45877,7 @@ adds the row to `acc.converted`, `_reread_first` and the source's per-result cou
 the row's savepoint rolled back and `_put_back` restored its page and books, but none of those counts: the verifier's
 sync said `converted 1`, `read first 1` above `read again 0`, and stored `{'converted': 1, 'converted_unreadable':
 1, 'reread_first': 1}` for a row still `not-ooxml`. Before each row's savepoint `_reread_zero_byte_stubs` now also
-keeps `_row_books(row, acc)`: `_reread_first` and `_reread_kept`, the `_SourceAcc` counts in `_ROW_ACC_COUNTS`
+keeps `_row_books(row, acc)`: `_reread_first` and `_reread_kept`, the `_SourceAcc` counts `row_counts()` returns
 (converted, unreadable, conversion_failed, refused, withheld_read, label_unreadable, converter_waiting,
 credential_stubbed), the run tally's `_ROW_TALLY_KEYS` (converted, converted_failed, converted_unreadable,
 converted_seen, converted_again, converter_waiting and the three rescreened keys), and whether the row was in
