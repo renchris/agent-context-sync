@@ -46016,6 +46016,13 @@ rewriting it in between decided rc 2 from another snapshot. `curate._depends_hea
 and checks the buffer already read; `_depends_usable` (for `apply_stale_banners`, which reads only the path) reads
 through it. Test: `test_the_refresh_queue_reads_its_header_from_the_rows_snapshot_c2942`.
 
+**The recording replan puts back a rolled-back row's counts, as the zero-byte pass does** (ruling 196's twin). Lane
+E's twin test (`test_a_first_read_whose_publish_fails_counts_nothing_in_either_twin_c2923`) fed both passes a
+publish that raises and measured the recording replan keeping `converted 1`, `unreadable 1` and the run tally's
+`converted_unreadable 1` for a row its savepoint rolled back, a book the zero-byte pass restores.
+`_replan_recording_stubs` takes `_row_books` before the savepoint and `_restore_row_books` after `_put_back` in its
+except branch, and the test's strict xfail on the replan arm is gone.
+
 ### 16.283 Round 45: the converters: a failed zero-byte re-read's books put back, an Office file's container and family parse in its answer and key, and a source's own banner line (2026-11-23, wave B13 round 45 lane E)
 
 Each item is built as its verifier corrected it, as the lead's rulings 188 to 197 settle it. A dated line this

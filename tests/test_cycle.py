@@ -8297,13 +8297,7 @@ def _counts_json(config: Config) -> dict[str, int]:
     "twin",
     [
         "zero-byte pass",
-        pytest.param(
-            "recording replan",
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="B13 round 45 ruling 196: lane B adopts _row_books in _replan_recording_stubs",
-            ),
-        ),
+        "recording replan",
     ],
 )
 def test_a_first_read_whose_publish_fails_counts_nothing_in_either_twin_c2923(
@@ -8315,7 +8309,8 @@ def test_a_first_read_whose_publish_fails_counts_nothing_in_either_twin_c2923(
     that raises, is fed to both: the zero-byte pass puts the counts back (``_row_books`` and
     ``_restore_row_books``), so the run says nothing was converted. The recording replan, measured here at
     round 45, kept them (``converted 1`` for a row that rolled back); ruling 196 gives lane B that adoption,
-    and its commit takes the xfail away."""
+    and its commit takes the xfail away. Amended 2026-11-23 (B13 round 45 lane B): the replan takes the pair,
+    and both twins count nothing."""
     config = config_with(tmp_path, meetings)
     monkeypatch.setattr(loop_mod.launchd, "agents_installed", lambda _c: False)
     if twin == "zero-byte pass":

@@ -5646,6 +5646,7 @@ class _Cycle:
                         acc.counted_as.get(row.stable_id),
                         len(self._recording_queue.get(src.id, [])),
                     )
+                    counted = self._row_books(row, acc)  # the zero-byte pass's twin (B13 round 45 ruling 196)
                     try:
                         with self.manifest.savepoint():
                             if not self._empty_recording(src, arm, row, acc):
@@ -5654,10 +5655,14 @@ class _Cycle:
                         # the rows before it commit; this row's own writes roll back, so no row is left with
                         # its content set and no page (a plain catch committed that half, B13 round 42 C2249),
                         # and its pages and books go back with them, so the row's page_sha256 matches its
-                        # file and the commit names no page the row no longer has (C2508 with C2443)
+                        # file and the commit names no page the row no longer has (C2508 with C2443); so do
+                        # the counts its first read moved before its publish raised, as in the zero-byte pass
+                        # (B13 round 45 C2923, ruling 196: the twin test measured converted 1 for a row that
+                        # rolled back)
                         self._put_back(
                             src, row.stable_id, acc, files=files, books=books, changes=self.changes[mark:]
                         )
+                        self._restore_row_books(row, acc, counted)
                         del self.changes[mark:]
                         failure = exc
                         break
