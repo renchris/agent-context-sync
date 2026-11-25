@@ -30,9 +30,13 @@ from agentsync import arm_local, cli, governance, loop, materialise, publish, se
 from agentsync import cycle as cycle_module
 from agentsync.arm_local import exclude_globs
 from agentsync.config import (
+    INBOX_ENTRY_FOLDER,
+    INBOX_ENTRY_NOT_A_FOLDER,
+    INBOX_ENTRY_UNREAD,
     Config,
     canonical_source_root,
     ensure_inbox,
+    inbox_entry,
     inbox_source_table,
     inbox_state,
     kept_inbox_not_a_folder,
@@ -57,6 +61,7 @@ from agentsync.ops import doctor
 from agentsync.ops.doctor import CheckResult, Severity
 from agentsync.paths import expand
 from test_cli import _assert_fix_parses
+from test_config import _bounded
 
 BIN = "~/.local/bin/agentsync"
 
@@ -2927,6 +2932,14 @@ def test_an_inbox_that_is_not_a_folder_is_a_note_naming_it_as_typed_c2814(tmp_pa
     assert not any("a later sync lists" in n for n in step.notes), step.notes
     assert not any("contoso-missing" in w or "contoso-note" in w for w in (*step.waits, *step.notes)), step
     assert (step.rule, step.waits) == (before.rule, before.waits), (step, before)
+    # B13 round 47 C3212 (ruling 210): a folder back at that name before the next sync (here a link to one)
+    # gives no inbox note, never the "a later sync lists" note, and the waits stay
+    kept.unlink()
+    kept.symlink_to(tmp_path / "inbox-moved")
+    step = loop.next_step(load_config(config.config_path))
+    assert not any(n.startswith("the inbox (") for n in step.notes), step.notes
+    assert not any("a later sync lists" in n for n in step.notes), step.notes
+    assert (step.rule, step.waits) == (before.rule, before.waits), (step, before)
 
 
 def test_another_inbox_that_is_not_a_folder_gets_its_own_remedy_never_step_2_c3044(tmp_path: Path) -> None:
@@ -2959,6 +2972,119 @@ def test_another_inbox_that_is_not_a_folder_gets_its_own_remedy_never_step_2_c30
     assert note in step.notes, step.notes
     assert not any("step 2" in n for n in step.notes if n.startswith("the inbox (zz-drop)")), step.notes
     assert (step.rule, step.waits) == (before.rule, before.waits), (step, before)
+    drop.unlink()
+    drop.mkdir()  # a folder put back before the next sync: no note, no missing-root wait (C3212)
+    step = loop.next_step(config)
+    assert not any(n.startswith("the inbox (zz-drop)") for n in step.notes), step.notes
+    assert not any("a later sync lists" in n for n in step.notes), step.notes
+    assert (step.rule, step.waits) == (before.rule, before.waits), (step, before)
+
+
+# what config.inbox_entry reads for each kind of entry at the kept inbox's name (round 47 entry-kind rule)
+_ENTRY_KINDS = {
+    "folder": INBOX_ENTRY_FOLDER,
+    "file": INBOX_ENTRY_NOT_A_FOLDER,
+    "link-to-folder": INBOX_ENTRY_FOLDER,
+    "link-to-file": INBOX_ENTRY_NOT_A_FOLDER,
+    "dangling-link": INBOX_ENTRY_NOT_A_FOLDER,
+    "self-link": INBOX_ENTRY_NOT_A_FOLDER,
+    "two-link-loop": INBOX_ENTRY_NOT_A_FOLDER,
+    "link-through-a-file": INBOX_ENTRY_NOT_A_FOLDER,
+    "fifo": INBOX_ENTRY_NOT_A_FOLDER,
+    "unsearchable-folder": INBOX_ENTRY_FOLDER,
+    "link-into-an-unsearchable-folder": INBOX_ENTRY_UNREAD,
+}
+
+
+def _put_entry(kept: Path, entry: str) -> list[Path]:
+    """Put ``entry`` at ``kept``'s name; returns the folders made mode 0, for the caller to restore."""
+    near = kept.parent
+    locked: list[Path] = []
+    if entry == "folder":
+        kept.mkdir()
+    elif entry == "file":
+        kept.write_text("contoso note\n", encoding="utf-8")
+    elif entry == "link-to-folder":
+        (near / "contoso-drop").mkdir()
+        kept.symlink_to(near / "contoso-drop")
+    elif entry in ("link-to-file", "link-through-a-file"):
+        (near / "contoso-note.txt").write_text("x\n", encoding="utf-8")
+        kept.symlink_to(near / "contoso-note.txt" / ("sub" if entry == "link-through-a-file" else ""))
+    elif entry == "dangling-link":
+        kept.symlink_to(near / "contoso-missing")
+    elif entry == "self-link":
+        kept.symlink_to("inbox")
+    elif entry == "two-link-loop":
+        (near / "contoso-loop").symlink_to(kept)
+        kept.symlink_to(near / "contoso-loop")
+    elif entry == "fifo":
+        os.mkfifo(kept)
+    elif entry == "unsearchable-folder":
+        kept.mkdir()
+        locked.append(kept)
+    else:
+        (near / "contoso-locked" / "sub").mkdir(parents=True)
+        kept.symlink_to(near / "contoso-locked" / "sub")
+        locked.append(near / "contoso-locked")
+    for folder in locked:
+        folder.chmod(0)
+    return locked
+
+
+@pytest.mark.parametrize("entry", sorted(_ENTRY_KINDS))
+def test_every_reader_decides_the_kept_inbox_by_one_check_and_rechecks_a_stored_finding_c3260_c3212(
+    tmp_path: Path, entry: str
+) -> None:
+    """B13 round 47 C3260 with C3212 (ruling 210): doctor, the cycle's alarm and loop's missing-root arm each
+    had their own copy of "the kept inbox is not a folder", and loop's note trusted the last walk's finding,
+    so a folder put back read as a file to move aside until the next sync. config.kept_inbox_not_a_folder is
+    the one test (doctor's copy is gone), and a stored not-a-folder finding is checked against the entry as it
+    is now: over every kind of entry each reader returns, raises nothing, and names it as the others do."""
+    root = tmp_path / "Contoso Gamma"
+    (root / "Gamma Empty").mkdir(parents=True)
+    config = _synced(tmp_path, root)
+    config, box = ensure_inbox(config.config_path)
+    assert box is not None and run_cycle(config, mode=None).exit_code == 0
+    before = loop.next_step(config)
+    kept = config.docs_repo.parent / "inbox"
+    kept.rename(tmp_path / "inbox-moved")  # moved aside, never removed
+    kept.write_text("contoso note\n", encoding="utf-8")
+    assert run_cycle(load_config(config.config_path), mode=None).exit_code == 0  # stores the finding
+    kept.unlink()
+    locked = _put_entry(kept, entry)
+    try:
+        if locked and os.access(locked[0], os.X_OK):
+            pytest.skip("this account searches a mode-0 folder")
+        with _bounded(30):
+            config = load_config(config.config_path)
+            on = config.source(box.id)
+            kind = inbox_entry(kept)
+            want = _ENTRY_KINDS[entry]
+            assert kind.startswith(want) if want == INBOX_ENTRY_UNREAD else kind == want, kind
+            not_a_folder = kind == INBOX_ENTRY_NOT_A_FOLDER
+            assert kept_inbox_not_a_folder(config, on) == (kept if not_a_folder else None), entry
+            words = inbox_state(config)[1]
+            assert (words == f"not added ({kept} is not a folder)") is not_a_folder, words
+            assert words.startswith("not read (") is (want == INBOX_ENTRY_UNREAD), words
+            assert not hasattr(doctor, "_kept_inbox_not_a_folder")  # the one test, never a copy
+            rows = doctor._check_local_source(config, on, Path(sys.executable))
+            listable = next(r for r in rows if r.name.endswith(".listable"))
+            if not_a_folder:
+                assert listable.detail == f"{doctor.list_spelling(kept)} is not a folder", listable.detail
+            step = loop.next_step(config)
+        noted = [n for n in step.notes if n.startswith(f"the inbox ({box.id}) is not a folder: ")]
+        # the stored finding stays until a folder is at that name again; an entry this account cannot read
+        # cannot refute it (C3212's verifier)
+        assert bool(noted) is (kind != INBOX_ENTRY_FOLDER), step.notes
+        assert all(loop._shown(kept) in n for n in noted), noted
+        assert not any("a later sync lists" in n for n in step.notes), step.notes
+        shown = [*step.waits, *step.notes, *(r.detail + (r.fix or "") for r in rows if not_a_folder)]
+        for text in shown:  # the folder as typed, never a link's target (a link to a folder reads live)
+            assert "contoso-" not in text, text
+        assert (step.rule, step.waits) == (before.rule, before.waits), (step, before)
+    finally:
+        for folder in locked:
+            folder.chmod(0o700)
 
 
 @pytest.mark.parametrize("entry", ["file", "dangling-link", "link-to-file", "self-link"])

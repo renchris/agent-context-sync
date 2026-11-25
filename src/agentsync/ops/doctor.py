@@ -37,7 +37,13 @@ from urllib.parse import quote
 from agentsync import arm_local, gitops, lints, materialise
 from agentsync.arm_local import LISTING_TIMEOUT_S as _ARM_LISTING_TIMEOUT_S
 from agentsync.arm_local import CallTimedOutError, call_with_timeout, cloud_provider_root
-from agentsync.config import RETIRE_ADVICE, Config, SourceConfig, canonical_source_root, inbox_state
+from agentsync.config import (
+    RETIRE_ADVICE,
+    Config,
+    SourceConfig,
+    canonical_source_root,
+    kept_inbox_not_a_folder,
+)
 from agentsync.convert import media, ocr, speech
 from agentsync.cycle import (
     VANISHED_FIX,
@@ -3054,22 +3060,6 @@ def inbox_not_a_folder_fix(folder: Path) -> str:
     )
 
 
-def _kept_inbox_not_a_folder(config: Config, src: SourceConfig) -> Path | None:
-    """The kept inbox folder as typed when ``src`` is the source on it and inbox_state reads ``not added
-    (<folder> is not a folder)``, else None (C2809). The source is matched by its stored path, compared as a
-    plain path with canonical_source_root of that folder: both follow the link alike, and same_folder cannot
-    match a missing target."""
-    if src.kind is not SourceKind.INBOX or src.path is None:
-        return None
-    try:
-        folder, words = inbox_state(config)
-        if words != f"not added ({folder} is not a folder)":
-            return None
-        return folder if expand(src.path) == canonical_source_root(folder) else None
-    except OSError:
-        return None
-
-
 def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[CheckResult]:
     """One local/inbox source: listable, sentinel present, volume UUID readable."""
     base = f"source.{src.id}"
@@ -3082,7 +3072,7 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
     shown = list_spelling(root)  # every detail's spelling of the root, never raw (B13 round 38 C1414)
     # the source on the kept inbox while a file or a link that is not a folder has its name: shown as typed,
     # never the link's target, with the person's one fix on the listable and volume rows (C2809)
-    typed_inbox = _kept_inbox_not_a_folder(config, src)
+    typed_inbox = kept_inbox_not_a_folder(config, src)  # the one test (B13 round 47 C3260, ruling 210)
     if typed_inbox is not None:
         shown = list_spelling(typed_inbox)
 
@@ -3187,9 +3177,9 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
             out.append(_bad(f"{base}.listable", f"{shown}: permission denied", fix=fix))
     except OSError as exc:
         if typed_inbox is not None:
-            # keyed on inbox_state's answer, never on ELOOP alone: a looping link at the kept inbox is not a
-            # folder, as status and step 2 say, while a loop under any other source keeps the generic row
-            # (B13 round 46 C3094, ruling 204); the volume row below says the same, with no probe
+            # keyed on config.kept_inbox_not_a_folder's answer, never on ELOOP alone: a looping link at the
+            # kept inbox is not a folder, as status and step 2 say, while a loop under any other source keeps
+            # the generic row (B13 round 46 C3094, ruling 204); the volume row below says the same, no probe
             looped = True
             out.append(
                 _bad(f"{base}.listable", f"{shown} is not a folder", fix=inbox_not_a_folder_fix(typed_inbox))

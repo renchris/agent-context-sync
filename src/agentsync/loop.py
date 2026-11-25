@@ -65,13 +65,14 @@ from agentsync.arm_local import (
     split_empty,
 )
 from agentsync.config import (
-    INBOX_ENTRY_NOT_A_FOLDER,
+    INBOX_ENTRY_FOLDER,
     INBOX_LIVE,
     Config,
     SourceConfig,
     canonical_source_root,
     inbox_entry,
     inbox_state,
+    kept_inbox_not_a_folder,
     live_inbox,
 )
 from agentsync.convert import NO_CONVERTER_PREFIX
@@ -954,28 +955,47 @@ def _unlisted_kinds(manifest: Manifest, src: SourceConfig, names: Sequence[str])
     return frozenset(str(stored[n]) for n in names)
 
 
-def _inbox_root_not_a_folder(config: Config, manifest: Manifest, src: SourceConfig) -> tuple[str, bool]:
-    """The inbox source's path as a person typed it when its last walk found its root not a folder, else ""
-    (B13 round 45 C2814), and whether it is the source on the kept inbox: the walk stored ``UNKNOWN_NOTDIR``
+# _inbox_root_not_a_folder's answer when the last walk found the root not a folder and a folder is at that
+# name now: no inbox note, and never the "a later sync lists" note or a missing-root wait (B13 round 47 C3212)
+_INBOX_FOLDER_AGAIN = ("", False)
+
+
+def _inbox_root_not_a_folder(
+    config: Config, manifest: Manifest, src: SourceConfig
+) -> tuple[str, bool] | None:
+    """The inbox source's path as a person typed it when its last walk found its root not a folder (B13 round
+    45 C2814), and whether it is the source on the kept inbox, else None: the walk stored ``UNKNOWN_NOTDIR``
     for "." (a file, a link at the root), or, for the source on the kept inbox, the walk found the link's
-    target missing while the kept entry is a link or file that is not a folder (:func:`config.inbox_entry`),
-    since the stored path is the link's target. The kept inbox is shown by its typed name, never the target.
-    Only the kept inbox's note gives step 2's remedy, which recreates that folder alone; any other inbox
-    source's note says to put a folder back or fix its path (B13 round 46 C3044, ruling 204)."""
+    target missing while :func:`config.kept_inbox_not_a_folder` reads the kept entry as not a folder, since
+    the stored path is the link's target (B13 round 47 C3260, ruling 210: the one test, which doctor and the
+    cycle's alarm read too). The kept inbox is shown by its typed name, never the target. Only the kept
+    inbox's note gives step 2's remedy, which recreates that folder alone; any other inbox source's note says
+    to put a folder back or fix its path (B13 round 46 C3044, ruling 204).
+
+    A stored finding is checked against the entry as it is now (:func:`config.inbox_entry`, the kept inbox's
+    typed name, or for ``UNKNOWN_NOTDIR`` the other source's path): a folder there again is
+    :data:`_INBOX_FOLDER_AGAIN`, no note and no missing-root wait, since the next sync lists it, while a file,
+    a link that does not lead to a folder, an entry this account cannot read and an absent one keep the note
+    (B13 round 47 C3212, ruling 210). The plain path match stays for the not-a-folder arm: the kept check
+    would read a folder put back as no finding at all."""
     if not manifest.get_meta(_ROOT_UNLISTED_META + src.id) or src.path is None:
-        return "", False
+        return None
     kinds = _unlisted_kinds(manifest, src, ["."])
     typed = expand(config.docs_repo).parent / "inbox"
     try:
         kept = expand(src.path) == canonical_source_root(typed)
-        if kinds == frozenset({UNKNOWN_MISSING}) and not (
-            kept and inbox_entry(typed) == INBOX_ENTRY_NOT_A_FOLDER
-        ):
-            return "", False
+        if kinds == frozenset({UNKNOWN_MISSING}):
+            if kept and inbox_entry(typed) == INBOX_ENTRY_FOLDER:
+                return _INBOX_FOLDER_AGAIN
+            if kept_inbox_not_a_folder(config, src) is None:
+                return None
+        elif kinds == frozenset({UNKNOWN_NOTDIR}):
+            if inbox_entry(typed if kept else expand(src.path)) == INBOX_ENTRY_FOLDER:
+                return _INBOX_FOLDER_AGAIN
+        else:
+            return None
     except OSError:
-        return "", False
-    if kinds not in (frozenset({UNKNOWN_NOTDIR}), frozenset({UNKNOWN_MISSING})):
-        return "", False
+        return None
     return (_shown(typed), True) if kept else (_display_path(src.path), False)
 
 
@@ -1448,13 +1468,15 @@ def next_step(
                                 inbox_partial.append(src.id)
                         elif (
                             src.kind is SourceKind.INBOX
-                            and (not_folder := _inbox_root_not_a_folder(config, manifest, src))[0]
+                            and (not_folder := _inbox_root_not_a_folder(config, manifest, src)) is not None
                         ):
                             # a file or a link at the inbox's name: a note naming it as typed, with step 2's
                             # remedy for the kept inbox (any other's: put a folder back or fix its path),
                             # never a wait (it gates no baseline question) and never "a later sync lists"
-                            # (B13 round 45 C2814; round 46 C3044)
-                            inbox_not_a_folder[src.id] = not_folder
+                            # (B13 round 45 C2814; round 46 C3044); a folder back at that name since that
+                            # walk: no note at all (B13 round 47 C3212)
+                            if not_folder != _INBOX_FOLDER_AGAIN:
+                                inbox_not_a_folder[src.id] = not_folder
                         elif manifest.get_meta(_ROOT_UNLISTED_META + src.id) and _unlisted_kinds(
                             manifest, src, ["."]
                         ) == frozenset({UNKNOWN_MISSING}):

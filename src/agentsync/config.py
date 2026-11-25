@@ -894,10 +894,13 @@ def inbox_entry(folder: Path) -> str:
 def kept_inbox_not_a_folder(config: Config, src: SourceConfig) -> Path | None:
     """The kept inbox folder as typed (``inbox`` beside the docs repo, never resolved) when ``src`` is the
     inbox-kind source on it and :func:`inbox_entry` reads that entry as not a folder (a file, a link to one, a
-    dangling or looping link), else None: ``loop._inbox_root_not_a_folder``'s test, which the cycle reads
-    before a walk so the walk's alarm names the folder as typed, never the link's target (B13 round 46 C3007,
-    ruling 204). The source is matched by its stored path, compared with canonical_source_root of that folder;
-    a local source at that path keeps its own root words, as doctor and the loop give it."""
+    dangling or looping link), else None: the one test of that state (B13 round 47 C3260, ruling 210), which
+    the cycle reads before a walk so the walk's alarm names the folder as typed, never the link's target (B13
+    round 46 C3007, ruling 204), doctor reads for the listable and volume rows, and loop's missing-root arm
+    reads (``loop._inbox_root_not_a_folder``; its not-a-folder arm checks the live entry alone, since a
+    folder put back is no finding here). The source is matched by its stored path, compared with
+    canonical_source_root of that folder; a local source at that path keeps its own root words, as doctor and
+    the loop give it."""
     if src.kind is not SourceKind.INBOX or src.path is None:  # a local source keeps its own root words
         return None
     typed = expand(config.docs_repo).parent / "inbox"

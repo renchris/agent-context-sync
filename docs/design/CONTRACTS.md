@@ -46467,6 +46467,9 @@ nothing is deleted; inbox state says what to do)`, never the link's target.
 Amended 2026-11-24, §16.287 C3044: step 2's remedy is for the source on the kept inbox only; any other inbox source's
 note ends `keeping a copy, move it aside and put a folder back at that name, or fix path in [[source]] id = "<id>" in
 <config>; it does not block the next step`.
+Amended 2026-11-25, §16.292 C3260, C3212: the kept entry is read by `config.kept_inbox_not_a_folder`, and a stored
+finding is checked against the entry as it is now: a folder back at that name before the next sync gives no note and
+no missing-root wait.
 
 **Every home renders its stubs and tombstones again once, and the marker waits for every page** (C2851 with C2917,
 C2918; ruling 195, amending ruling 183). `publish.STUB_RENDER` is 8: a home that ran 7 before C2647's loop stored meta
@@ -47237,6 +47240,9 @@ a link to a file or a dangling link (walk skipped; nothing is deleted; inbox sta
 `root_missing` and `root_notdir` set as before, so the stored kind and the C2814 note are unchanged; every other
 source keeps its text. Test: `test_the_walks_alarm_names_the_kept_inbox_as_typed_never_a_links_target_c3007` (a file,
 a dangling link, a link to a file and a self-link: the alarm, the warning and STATE.md name no target).
+Amended 2026-11-25, §16.292 C3260, C3212: `config.kept_inbox_not_a_folder` is the one test, which doctor's rows and
+loop's missing-root arm call too (doctor's own copy is gone); loop's not-a-folder arm keeps its path match and checks
+the entry as it is now, so a folder back at that name gives no note.
 
 **Another inbox source that is not a folder gets its own remedy, never step 2's** (C3044; ruling 204; amends §16.282
 C2814). C2814's note told every inbox source whose root is not a folder to `run step 2 again`, which recreates only
@@ -47915,6 +47921,22 @@ RA's and RB's halves, by name. Tests: `test_every_config_reader_returns_on_every
 by seven kinds of entry, each under a timeout),
 `test_read_config_bytes_follows_a_link_and_refuses_a_fifo_by_its_descriptor_c3307` and
 `test_status_and_add_source_over_a_fifo_config_exit_78_and_never_hang_c3307`.
+
+**The kept inbox's state is decided by one check, and a stored finding is checked against the entry** (C3260 with
+C3212; ruling 210; amends §16.287 C3007 and §16.282 C2814). Doctor (`_kept_inbox_not_a_folder`, keyed on
+inbox_state's words), the cycle's alarm (`config.kept_inbox_not_a_folder`) and loop's missing-root arm (an inline
+`inbox_entry` compare) each held a copy of "the source on the kept inbox, whose entry is not a folder"; doctor's copy
+is deleted and doctor and that arm call `config.kept_inbox_not_a_folder`. `loop._inbox_root_not_a_folder` decided
+from the last walk's stored kind alone, so a folder put back before the next sync still read `is not a folder ... move
+it aside`. It now returns None (no finding), the note's `(path, on_kept)`, or `_INBOX_FOLDER_AGAIN` when the entry
+is a folder again: for a stored `UNKNOWN_NOTDIR`, `inbox_entry` of the kept inbox's typed name (the plain path match
+decides which) or of the other source's path; for a stored `UNKNOWN_MISSING`, of the kept inbox's typed name.
+`next_step` adds no note for that answer and never the `a later sync lists` note or a missing-root wait; a file, a link
+that does not lead to a folder, an entry this account cannot read and an absent one keep the note. Tests:
+`test_every_reader_decides_the_kept_inbox_by_one_check_and_rechecks_a_stored_finding_c3260_c3212` (eleven kinds of
+entry under a timeout: a folder, a file, links to a folder and to a file, a dangling link, a self-link, a two-link
+loop, a link through a file, a FIFO, a folder this account cannot search and a link into one), and the C2814 and
+C3044 tests' folder-put-back cases.
 
 ### 16.293 Round 47: the converters: ruling 202's Office twins closed (UTF-32 text, a no-namespace `<Types>`, the container answers before the cache, xlsx's emitter 1.0.7) and one noun per family (2026-11-25, wave B13 round 47 lane E)
 
