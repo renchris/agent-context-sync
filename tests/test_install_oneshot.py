@@ -15550,11 +15550,19 @@ def test_step_2_gives_the_persons_next_over_a_lock_heartbeat_or_governance_file_
     assert "fix the error above" not in last_line(cp), last_line(cp)
     kind = "a fifo" if case.endswith("-fifo") else "a folder"
     report = (Path(env["HOME"]) / "agent-context" / "setup-report.md").read_text(encoding="utf-8")
+    # B13 round 46 C3064: a str message, which pytest prints whole (a list is cut at 240 characters): the
+    # report's written-by line, its outcome line and install.sh's `agentsync setup-report failed (...)` line,
+    # so a red run says which report was written and why
+    why = "\n".join(
+        ln
+        for ln in report.splitlines() + cp.stderr.splitlines()
+        if "written by:" in ln or "outcome" in ln or "setup-report failed" in ln
+    )
     assert (  # P110: the outcome names the stop and whose fix it is; P126: in the Doctor bucket's words
         "- **outcome: failed at step 2** (computed: install.sh exited 1 at its config step on "
         f"{setup_report._MISPLACED_ROLES[MISPLACED_CHECKS[role]]}, "
         f"which is {kind}, not a file: the person's to fix)"
-    ) in report, [ln for ln in report.splitlines() if "outcome" in ln]
+    ) in report, why
     # round 28 ruling 22 (I57): one run names the file one way, the NEXT as the report's outcome
     said = last_line(cp).removeprefix("NEXT: ").split(f" {MISPLACED_IS[token]}", 1)[0]
     outcome = re.search(r"at its config step on (.+?), which is ", report)
