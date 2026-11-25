@@ -41,6 +41,7 @@ from agentsync.config import (
     inbox_source_table,
     inbox_state,
     kept_inbox_not_a_folder,
+    live_inbox,
     load_config,
     local_source_table,
     set_source_exclude,
@@ -3394,6 +3395,50 @@ def test_a_second_inbox_that_is_not_a_folder_reads_not_a_folder_with_its_own_rem
             assert volume.ok and volume.detail.startswith("volume UUID "), volume
     for text in texts:
         assert "is not a directory" not in text or "zz" not in text, text
+
+
+@pytest.mark.parametrize("entry", sorted(_ENTRY_KINDS))
+def test_a_kept_inbox_linked_to_a_real_folder_is_shown_by_its_typed_path_c3217(
+    tmp_path: Path, entry: str
+) -> None:
+    """B13 round 47 C3217 (ruling 210): with the kept inbox a link to a real folder, inbox_state said
+    ``live ~/agent-context/inbox`` while doctor's listable row and AGENTS.md named the link's target (the
+    stored, canonical path). Over every kind of entry each reader returns and raises nothing; a folder or a
+    link to one is named as typed by doctor's row, live_inbox and the root guide, every check keeping the
+    resolved root."""
+    root = tmp_path / "Contoso Gamma"
+    (root / "Gamma Empty").mkdir(parents=True)
+    config = _synced(tmp_path, root)
+    config, box = ensure_inbox(config.config_path)
+    assert box is not None and run_cycle(config, mode=None).exit_code == 0
+    kept = config.docs_repo.parent / "inbox"
+    kept.rename(tmp_path / "inbox-moved")  # moved aside, never removed
+    locked = _put_entry(kept, entry)
+    try:
+        if locked and os.access(locked[0], os.X_OK):
+            pytest.skip("this account searches a mode-0 folder")
+        with _bounded(60):
+            config = load_config(config.config_path)
+            on = config.source(box.id)
+            rows = doctor._check_local_source(config, on, Path(sys.executable))
+            live = live_inbox(config)
+            words = inbox_state(config)[1]
+            assert run_cycle(config, mode=None).exit_code == 0
+        guide = (config.docs_repo / "AGENTS.md").read_text(encoding="utf-8")
+    finally:
+        for folder in locked:
+            folder.chmod(0o700)
+    listable = next(r for r in rows if r.name == f"source.{box.id}.listable")
+    if _ENTRY_KINDS[entry] == INBOX_ENTRY_FOLDER:
+        assert words == f"live {kept}", words
+        assert listable.detail.startswith(doctor.list_spelling(kept)), listable.detail
+        assert live == kept, live
+        assert f"`{publish._display_path(kept)}`" in guide, guide
+    else:
+        assert live != kept, live
+    if _ENTRY_KINDS[entry] != INBOX_ENTRY_UNREAD:  # the person's grant names the real folder (C3113)
+        for text in (listable.detail, guide, str(live)):
+            assert "contoso-" not in text, text
 
 
 def test_an_empty_draft_over_an_empty_mirror_is_rule_4_beside_topic_pages_c2707(tmp_path: Path) -> None:

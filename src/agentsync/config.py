@@ -994,8 +994,9 @@ def inbox_state(config: Config) -> tuple[Path, str]:
 def live_inbox(config: Config) -> Path | list[tuple[Path, str]] | None:
     """The live inbox the guides name, decided once for :meth:`publish.Publisher.root_guide` and loop's
     ``nothing to draft yet`` step (B13 round 44 C2602 with C2649 and C2719, ruling 181): the folder
-    :func:`ensure_inbox` keeps (in its stored form, :func:`canonical_source_root`) when a live inbox source
-    sits on it, matched by identity (:func:`paths.same_folder`: its id and spelling may differ), else the only
+    :func:`ensure_inbox` keeps, as typed (matched in its stored form, :func:`canonical_source_root`), when a
+    live inbox source sits on it, matched by identity (:func:`paths.same_folder`: its id and spelling may
+    differ), else the only
     live inbox source's path, else every live inbox source as ``(path, id)`` sorted by id, since no one of
     them is the inbox, else None.
 
@@ -1003,9 +1004,11 @@ def live_inbox(config: Config) -> Path | list[tuple[Path, str]] | None:
     not lead to a folder) or cannot be read, every candidate same_folder with it is dropped from both
     branches, since its stored path was canonicalized into that file or that link's target, so neither guide
     names what inbox_state calls ``not added (<folder> is not a folder)``; a link to a real folder is still
-    the kept folder (B13 round 45 C2807 with C2937, ruling 194). That read is bounded by the listings' time
-    limit, since a link's target may sit where a privacy prompt holds a stat: past it the entry counts as one
-    it cannot read, so the guide names no kept inbox rather than holding the sync (B13 round 47 C3311)."""
+    the kept folder (B13 round 45 C2807 with C2937, ruling 194), returned as typed, as inbox_state names it,
+    never the link's target (round 47 C3217; every caller only shows it). That read is bounded by the
+    listings' time limit, since a link's target may sit where a privacy prompt holds a stat: past it the
+    entry counts as one it cannot read, so the guide names no kept inbox rather than holding the sync (B13
+    round 47 C3311)."""
     # arm_local imports this module, so the bound is imported here; its limit is read at call time
     from agentsync import arm_local  # noqa: PLC0415 - arm_local imports config: a module-level import cycles
 
@@ -1028,7 +1031,7 @@ def live_inbox(config: Config) -> Path | list[tuple[Path, str]] | None:
     if entry not in (INBOX_ENTRY_ABSENT, INBOX_ENTRY_FOLDER):
         inboxes = [(path, sid) for path, sid in inboxes if not same_folder(path, kept)]
     elif any(same_folder(path, kept) for path, _ in inboxes):
-        return kept
+        return folder  # as typed, as inbox_state names it, never a link's target (B13 round 47 C3217)
     if len(inboxes) == 1:
         return inboxes[0][0]
     return inboxes or None

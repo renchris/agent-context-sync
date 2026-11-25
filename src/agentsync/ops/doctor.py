@@ -38,10 +38,12 @@ from agentsync import arm_local, gitops, lints, materialise
 from agentsync.arm_local import LISTING_TIMEOUT_S as _ARM_LISTING_TIMEOUT_S
 from agentsync.arm_local import CallTimedOutError, call_with_timeout, cloud_provider_root
 from agentsync.config import (
+    INBOX_ENTRY_FOLDER,
     RETIRE_ADVICE,
     Config,
     SourceConfig,
     canonical_source_root,
+    kept_inbox_entry,
     kept_inbox_not_a_folder,
 )
 from agentsync.convert import media, ocr, speech
@@ -3087,6 +3089,10 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
     typed_inbox = kept_inbox_not_a_folder(config, src)  # the one test (B13 round 47 C3260, ruling 210)
     if typed_inbox is not None:
         shown = list_spelling(typed_inbox)
+    elif (on_kept := kept_inbox_entry(config, src)) is not None and on_kept[1] == INBOX_ENTRY_FOLDER:
+        # a link to a real folder there: shown as typed too, display only; the listing, the hint and every
+        # fix keep the resolved root, the folder a grant or chmod reaches (B13 round 47 C3217)
+        shown = list_spelling(on_kept[0])
 
     # only once the listing has answered: the fix reads the provider folder, which a hidden Allow prompt
     # holds too (B13 round 13 O47: read first, it held status past the listing's bound); once, for the

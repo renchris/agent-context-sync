@@ -46424,6 +46424,8 @@ live inbox elsewhere is named instead, and a link to a real folder is still the 
 `test_root_guide_never_names_a_kept_inbox_that_is_not_a_folder_c2807`,
 `test_nothing_to_draft_never_names_a_kept_inbox_that_is_not_a_folder_c2937`,
 `test_inbox_state_says_not_read_when_the_inbox_parent_cannot_be_searched_c2936`.
+Amended 2026-11-25, §16.292 C3217: for a link to a real folder `live_inbox` returns the kept folder as typed, never
+the link's target, so AGENTS.md, CLAUDE.md and rule 4 name `~/agent-context/inbox` as inbox_state does.
 
 **An inbox this account cannot read gets the person's fix, and says not read** (C2808; ruling 194). Doctor's
 `source.<id>.listable` [FAIL] on EACCES used `chmod u+rx <root>`, which a folder above refuses when the inbox is a
@@ -48038,6 +48040,15 @@ opening), never `inbox_not_a_folder_fix` or step 2 (makes worse True for those).
 sits on a volume), and a local source keeps `is not a directory`. Test:
 `test_a_second_inbox_that_is_not_a_folder_reads_not_a_folder_with_its_own_remedy_c3215` (eleven kinds of entry, under
 a timeout).
+**A kept inbox linked to a real folder is shown by its typed path** (C3217; ruling 210; amends §16.282 C2807). The
+source on the kept inbox stores canonical_source_root's answer, the link's target, so with a link to a real folder
+there inbox_state said `live <home>/agent-context/inbox` while doctor's listable row, AGENTS.md and CLAUDE.md named the
+target. Doctor's `shown` is now the folder as typed when `config.kept_inbox_entry` reads that entry as a folder
+(display only: `kept_inbox_not_a_folder` stays the one state test), and the listing, `cloud`, the inbox hint and every
+fix keep the resolved root, the folder a grant or a chmod reaches (an unread link keeps naming its target, C3113).
+`config.live_inbox` returns the typed folder on its kept branch, still matched by same_folder; its two callers only
+show it. Tests: `test_a_kept_inbox_linked_to_a_real_folder_is_shown_by_its_typed_path_c3217` (eleven kinds of entry,
+under a timeout) and the C2807 test's link-to-folder rows, which now name the typed path.
 
 ### 16.293 Round 47: the converters: ruling 202's Office twins closed (UTF-32 text, a no-namespace `<Types>`, the container answers before the cache, xlsx's emitter 1.0.7) and one noun per family (2026-11-25, wave B13 round 47 lane E)
 

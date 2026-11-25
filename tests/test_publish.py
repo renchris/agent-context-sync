@@ -2151,8 +2151,9 @@ def test_root_guide_never_names_a_kept_inbox_that_is_not_a_folder_c2807(
     text = Publisher(config, env.manifest, clock=lambda: NOW).root_guide()
     if entry == "link-to-folder":
         assert state == f"live {raw}", state
-        assert f"into `{publish._display_path(kept)}`; the next" in text, text
-        assert "Contoso Drop" not in text
+        # named as typed, as inbox_state names it, never the link's target (B13 round 47 C3217)
+        assert f"into `{publish._display_path(raw)}`; the next" in text, text
+        assert "Contoso Drop" not in text and "contoso-box" not in text
         return
     assert state == f"not added ({raw} is not a folder)", state
     for word in ("agent-context/inbox", "contoso-missing", "contoso-note.txt", "(inbox)"):
