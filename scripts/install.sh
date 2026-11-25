@@ -3519,8 +3519,8 @@ redaction_pairs() {
 	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x links walked lk
 	local cfg_cut tilde port k ph b auth sep tail rw keys key m sp top raw folder_keys=$'\n' FUZZY lib_n=0
 	local tables=0 ids=" " hp beside own_state own_docs own_cache own_logs fl fuzzy_keys=$'\n' folded_vals=$'\n'
-	local cts remote_docs eff_docs inbox_at=0 sv ref_docs="" ref_state="" ref_cache="" ref_logs="" head rest bx cand gb
-	local -a known=() logged_late=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=() listed=() rooted=() placed=() cfgpaths=()
+	local cts remote_docs eff_docs inbox_at=0 sv ref_docs="" ref_state="" ref_cache="" ref_logs="" head rest bx cand gb pre
+	local -a known=() logged_late=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=() listed=() rooted=() placed=() cfgpaths=() parents=()
 	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
 	# (written with printf %q, which read without -r undoes; a $'..' form is unquoted by the loop after it).
 	# LC_ALL=C: under a UTF-8 locale BSD sed stops at the first byte that is not UTF-8 and every later line is
@@ -4411,6 +4411,15 @@ redaction_pairs() {
 		while [ "${rest#/}" != "$rest" ]; do rest="${rest#/}"; done
 		while [ "${rest%/}" != "$rest" ]; do rest="${rest%/}"; done
 		add_pair "$v" "~<user>${rest:+/<path>}" c
+		# and each parent folder of it under the head, longest first, as _register_refused cuts them: the head and
+		# the parts before each `/`, empty parts dropped, so a quoted parent never reads `~<user> Quarry` (B13
+		# round 47 ruling 207, C3285); also for a head holding a blank, since each opens with `/`
+		pre="" x="$rest" parents=()
+		while [ "${x#*/}" != "$x" ]; do
+			[ -z "${x%%/*}" ] || { pre="${pre:+$pre/}${x%%/*}" && parents=("$pre" ${parents[@]+"${parents[@]}"}); }
+			x="${x#*/}"
+		done
+		for x in ${parents[@]+"${parents[@]}"}; do add_pair "$head/$x" "~<user>/<path>" c; done
 		# a head holding a blank names no account: cut only inside the whole value, never alone (lane RA's review)
 		# (C3304: a blank as Python's isspace names it, under any locale)
 		# C3247: a head of any length, anchored on its ~ (add_forms, no 3-character floor), and the name alone
