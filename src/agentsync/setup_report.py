@@ -155,7 +155,6 @@ from agentsync.config import (
     SOURCE_ID_RE,
     Config,
     ConvertConfig,
-    SourceConfig,
     inbox_state,
     load_config,
     toml_string,
@@ -6457,7 +6456,7 @@ def _build_redactor(r: _Run) -> Redactor:
         own = {beside / "inbox"}
         # B13 round 46 C3055 (ruling 199; privacy; makes worse True for registering every source's resolved
         # path): the kept inbox's resolved target is agentsync's own only inside ~/agent-context (or where a
-        # linked home resolves it); a target outside it, typed or the inbox source's stored path, is
+        # linked home resolves it); a target outside it is
         # registered through _own_folder_values after the own folders (below), never as a project, so the
         # bare `inbox` of a link to ~/Documents/inbox is never registered, and a link into
         # ~/Locked Contoso/inner is cut where doctor's FAIL names it
@@ -6465,12 +6464,8 @@ def _build_redactor(r: _Run) -> Redactor:
         # is the person's own folder, never agentsync's (the guard on own |= beside below)
         generic = beside.name.casefold() in _GENERIC_HOME_DIRS or beside in (home, home.resolve())
         insides = set() if generic else {beside, beside.resolve()}
+        # the kept inbox only: an inbox-kind source elsewhere is the person's project folder (B13 round 19 W6)
         candidates = [(beside / "inbox").resolve()]
-        candidates += [
-            expand(src.path)
-            for src in cfg.sources
-            if isinstance(src, SourceConfig) and src.kind is SourceKind.INBOX and src.path is not None
-        ]
         for kept in candidates:
             if _cloud_parts(kept) is not None:  # registered by its parts, as a cloud source or listed folder
                 continue

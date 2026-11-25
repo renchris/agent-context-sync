@@ -46898,7 +46898,8 @@ with its id, so `~/Development/KestrelAlder/notes` printed in clear under every 
 `[[source]]` table's id with its path (a dated line under §16.280 C2815's paragraph). The kept inbox's resolved target
 was agentsync's own wherever it lay, so doctor's FAIL on a link into `~/Locked Contoso/inner` printed it in a public
 report: the target is own only inside `~/agent-context` (never beside a docs repo in a container such as
-`~/Documents` or at the home); one outside it, typed or the inbox source's stored path, is registered through
+`~/Documents` or at the home); one outside it, where `~/agent-context/inbox` resolves (an inbox-kind source
+elsewhere stays a project, B13 round 19 W6), is registered through
 `_own_folder_values` after the own folders and the C2430 block (a target under CloudStorage left to its parts), in `_build_redactor` and for
 `_unconfigured_roots`, never as a project (C3055, makes worse True for registering every source's resolved path
 through `_project_values`, which registered the bare `inbox` of a link to `~/Documents/inbox`, made the report
