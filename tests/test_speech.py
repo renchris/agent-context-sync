@@ -976,13 +976,38 @@ def test_the_seeds_docstrings_say_a_shell_ca_for_curl_stays_over_gits_c2930(
     ``_curl_env`` passes the shell's CURL_CA_BUNDLE, SSL_CERT_FILE and SSL_CERT_DIR to curl alone (Xcode's git
     ignores them) and makes git's bundle CURL_CA_BUNDLE only when the shell names neither. Each says the
     exception now, beside the behavior it describes: with GIT_SSL_CAINFO and a curl bundle of the shell's,
-    curl trusts the shell's."""
-    for name in ("GIT_SSL_CAINFO", "CURL_CA_BUNDLE", "SSL_CERT_FILE", "SSL_CERT_DIR"):
+    curl trusts the shell's.
+
+    B13 round 46 C3049 with C3100 and C3109 (one defect): the summaries listed SSL_CERT_DIR among the CAs curl
+    keeps over git's, but beside the shell's own CURL_CA_BUNDLE its SSL_CERT_DIR is one its curl does not
+    read, and the CA folder git trusts replaces it. The pinned phrases stay and each summary names that
+    exception; the behavior runs as three cases, the second with no GIT_SSL_CAINFO, so the git-config branch
+    is the one read (the first case masked it)."""
+    names = ("GIT_SSL_CAINFO", "GIT_SSL_CAPATH", "CURL_CA_BUNDLE", "SSL_CERT_FILE", "SSL_CERT_DIR")
+    for name in names:
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("GIT_SSL_CAINFO", "/Users/contoso/inspect.pem")
-    monkeypatch.setenv("CURL_CA_BUNDLE", "/etc/ssl/cert.pem")
-    for config in ({}, {"http.sslcainfo": "/Users/contoso/inspect.pem"}):
-        assert speech._curl_env(config)["CURL_CA_BUNDLE"] == "/etc/ssl/cert.pem", config
+    with monkeypatch.context() as env:  # (i) git's bundle in the environment, the shell's own curl bundle
+        env.setenv("GIT_SSL_CAINFO", "/Users/contoso/inspect.pem")
+        env.setenv("CURL_CA_BUNDLE", "/etc/ssl/cert.pem")
+        assert speech._curl_env({})["CURL_CA_BUNDLE"] == "/etc/ssl/cert.pem"
+    with monkeypatch.context() as env:  # (ii) git's bundle in its config alone
+        env.setenv("CURL_CA_BUNDLE", "/etc/ssl/cert.pem")
+        config = {"http.sslcainfo": "/Users/contoso/inspect.pem"}
+        assert speech._curl_env(config)["CURL_CA_BUNDLE"] == "/etc/ssl/cert.pem"
+    for git_dir in ("env", "config"):  # (iii) the shell's bundle and folder, and a CA folder git trusts
+        with monkeypatch.context() as env:
+            env.setenv("CURL_CA_BUNDLE", "/Users/contoso/shell.pem")
+            env.setenv("SSL_CERT_DIR", "/Users/contoso/shelldir")
+            if git_dir == "env":
+                env.setenv("GIT_SSL_CAPATH", "/Users/contoso/gitdir")
+            got = speech._curl_env({} if git_dir == "env" else {"http.sslcapath": "/Users/contoso/gitdir"})
+            assert got["SSL_CERT_FILE"] == "/Users/contoso/shell.pem", git_dir
+            assert got["SSL_CERT_DIR"] == "/Users/contoso/gitdir", git_dir
+            assert "CURL_CA_BUNDLE" not in got, git_dir
+    with monkeypatch.context() as env:  # no curl bundle of the shell's: its folder is one curl reads, kept
+        env.setenv("SSL_CERT_DIR", "/Users/contoso/shelldir")
+        env.setenv("GIT_SSL_CAPATH", "/Users/contoso/gitdir")
+        assert speech._curl_env({})["SSL_CERT_DIR"] == "/Users/contoso/shelldir"
     docs = {
         "_curl_env": speech._curl_env.__doc__ or "",
         "_seed": speech._seed.__doc__ or "",
@@ -993,6 +1018,17 @@ def test_the_seeds_docstrings_say_a_shell_ca_for_curl_stays_over_gits_c2930(
         assert "trusts and routes as" not in flat, where
         assert "routes as" in flat and "except where the shell sets a CA for curl itself" in flat, where
         assert "which curl keeps over git's" in flat, where
+        # B13 round 46 C3049 with C3100 and C3109: the exception, in every summary
+        assert (
+            "beside the shell's own CURL_CA_BUNDLE the shell's SSL_CERT_DIR, which its curl does not read,"
+            " gives way to the CA folder git trusts"
+        ) in flat, where
+        if where != "_seed":
+            assert (
+                "(CURL_CA_BUNDLE or SSL_CERT_FILE, or an SSL_CERT_DIR with no CURL_CA_BUNDLE of its own)"
+                in flat
+            )
+            assert "SSL_CERT_FILE or SSL_CERT_DIR)" not in flat, where
 
 
 def test_the_seeds_curl_is_the_systems_c2715() -> None:

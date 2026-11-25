@@ -15161,6 +15161,10 @@ output split on NUL bytes and decoded with surrogateescape, no value stripped an
 Amended 2026-11-23, §16.283 C2930: the heading's "trusts and routes as git does" holds with the exception the
 paragraph states: a CA the shell sets for curl itself (`CURL_CA_BUNDLE`, `SSL_CERT_FILE` or `SSL_CERT_DIR`) is
 curl's and stays over git's; speech.py's three summaries now say so.
+Amended 2026-11-24, §16.288 C3109, C3049: a CA the shell sets for curl itself and that its curl reads
+(`CURL_CA_BUNDLE`, `SSL_CERT_FILE`, or an `SSL_CERT_DIR` with no `CURL_CA_BUNDLE` of its own) is curl's and stays
+over git's; beside the shell's own `CURL_CA_BUNDLE` its `SSL_CERT_DIR` is dead, and a CA folder from git replaces it
+(the 2026-11-04 C962 line above), as speech.py's three summaries now say.
 
 **The person's SwiftPM mirrors and registries reach the build (Q53; amends §16.48 R90).** `--config-path`
 replaces SwiftPM's shared configuration folder outright (Swift 6.2.4: a mirror resolved under its own
@@ -46546,6 +46550,9 @@ CA for curl itself, which curl keeps over git's; the `.curlrc` point (C2715) sta
 §16.54's heading, which `test_deploy_pack.py` pins, keeps its words, with a dated line. Test:
 `test_speech.py::test_the_seeds_docstrings_say_a_shell_ca_for_curl_stays_over_gits_c2930` (the behavior under
 both git configs, and the three summaries).
+Amended 2026-11-24, §16.288 C3109, C3049: the shell's CA stays over git's only where its curl reads it: beside the
+shell's own `CURL_CA_BUNDLE` the shell's `SSL_CERT_DIR` gives way to the CA folder git trusts (C962), and each of
+the three summaries says so; the test runs git's bundle from the environment and from its config as separate cases.
 
 **The family rule moves the Office key, and each family-mismatch stub is read once** (C2925; ruling 196;
 `agentsync.convert`, `agentsync.convert._common`, `agentsync.cycle`; amends §16.278 C2708). Round 44's C2708
@@ -46884,6 +46891,21 @@ family-mismatch stub among them, are cached. `_check_ooxml_family`'s "cached, ne
 are false. Dated lines at §7's cache sentence, §15's `ConverterCache.put` and §16.3's encrypted-files sentence, each
 pinned in `test_deploy_pack.py`. Test:
 `test_convert_family.py::test_the_docs_say_an_office_container_rejection_is_never_cached_c3048_c3101`.
+
+**The seed's CA summaries name the folder git's replaces** (C3049 with C3100 and C3109, one defect; ruling 202;
+`agentsync.convert.speech`; amends §16.54 Q52 and §16.283 C2930). C2930's summaries listed `SSL_CERT_DIR` among the
+CAs the shell sets for curl that curl keeps over git's, and its dated line at §16.54 said the same, but `_curl_env`
+gives the shell's `SSL_CERT_DIR` way to the CA folder git trusts when the shell also sets its own `CURL_CA_BUNDLE`
+(curl then reads no `SSL_CERT_DIR`; C962). `_curl_env`'s and `_CURL_FLAGS`' summaries keep the pinned "except where
+the shell sets a CA for curl itself" and "which curl keeps over git's", name the variables as "one its curl reads
+(CURL_CA_BUNDLE or SSL_CERT_FILE, or an SSL_CERT_DIR with no CURL_CA_BUNDLE of its own)", and add "beside the
+shell's own CURL_CA_BUNDLE the shell's SSL_CERT_DIR, which its curl does not read, gives way to the CA folder git
+trusts"; `_seed`'s, which lists no variables, adds that clause in its pointer to `_curl_env`. The code is unchanged.
+The C2930 test ran git's config bundle only beside `GIT_SSL_CAINFO`, which masked the config branch; it runs three
+cases now: git's bundle in the environment, git's bundle in its config alone, and the shell's bundle and folder
+beside a folder git trusts (from the environment and from the config: `SSL_CERT_FILE` the shell's bundle,
+`SSL_CERT_DIR` git's folder, no `CURL_CA_BUNDLE`), and a shell folder with no curl bundle of its own kept. Test:
+`test_speech.py::test_the_seeds_docstrings_say_a_shell_ca_for_curl_stays_over_gits_c2930`.
 
 ### 16.289 Round 46: the prompt goes to v43 (a none, an unread inbox and a step 2 or step 3 error told from how the run ended), CI's head and limit, the gate's ceiling comment, dated lines, and the guides (2026-11-24, wave B13 round 46 lane D)
 

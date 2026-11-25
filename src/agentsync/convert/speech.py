@@ -574,10 +574,12 @@ def _git_config(git: str, *, cwd: Path, deadline: float) -> dict[str, str]:
 
 def _curl_env(git_config: Mapping[str, str]) -> dict[str, str]:
     """:func:`_build_env` plus the shell's :data:`_CURL_CA_VARS`, for :func:`_seed`'s curl, which routes as
-    step 1's git does and trusts what git trusts, except where the shell sets a CA for curl itself
-    (CURL_CA_BUNDLE, SSL_CERT_FILE or SSL_CERT_DIR), which curl keeps over git's (B13 round 45 C2930), from
-    the environment and from git's config files (``git_config``, from :func:`_git_config`), with git's
-    precedence:
+    step 1's git does and trusts what git trusts, except where the shell sets a CA for curl itself, one its
+    curl reads (CURL_CA_BUNDLE or SSL_CERT_FILE, or an SSL_CERT_DIR with no CURL_CA_BUNDLE of its own), which
+    curl keeps over git's; beside the shell's own CURL_CA_BUNDLE the shell's SSL_CERT_DIR, which its curl does
+    not read, gives way to the CA folder git trusts (the second bullet; B13 round 45 C2930, round 46 C3049
+    with C3100 and C3109), from the environment and from git's config files (``git_config``, from
+    :func:`_git_config`), with git's precedence:
 
     * The bundle git trusts (GIT_SSL_CAINFO, else http.sslCAInfo; curl reads neither) becomes CURL_CA_BUNDLE,
       unless the shell names a bundle of curl's own (measured with /usr/bin/curl 8.7.1: CURL_CA_BUNDLE at an
@@ -666,9 +668,11 @@ _CURL_FLAGS = (
 1 KB/s ends the fetch rather than the build's twenty minutes.  ``--disable`` comes first, right after
 :data:`_CURL`, where curl reads it: the person's ``.curlrc`` (an ``insecure`` or a ``noproxy``) is never
 read, so only the flags and the environment the seed builds apply: it routes as git does and trusts what
-git trusts, except where the shell sets a CA for curl itself (CURL_CA_BUNDLE, SSL_CERT_FILE or
-SSL_CERT_DIR), which curl keeps over git's (:func:`_curl_env`; B13 round 45 C2930), and git's libcurl reads
-no ``.curlrc`` either (B13 round 44 C2715)."""
+git trusts, except where the shell sets a CA for curl itself, one its curl reads (CURL_CA_BUNDLE or
+SSL_CERT_FILE, or an SSL_CERT_DIR with no CURL_CA_BUNDLE of its own), which curl keeps over git's; beside the
+shell's own CURL_CA_BUNDLE the shell's SSL_CERT_DIR, which its curl does not read, gives way to the CA folder
+git trusts (:func:`_curl_env`; B13 round 45 C2930, round 46 C3049 with C3100 and C3109), and git's libcurl
+reads no ``.curlrc`` either (B13 round 44 C2715)."""
 _PROXIES = ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy")
 """The variables that route an https url through a proxy, for curl and git alike: both ignore HTTP_PROXY for
 an https url (measured with /usr/bin/curl 8.7.1: HTTP_PROXY at a closed port still fetched directly), and
@@ -712,7 +716,9 @@ def _seed(artifacts: Path, *, git: str, swift: str, cwd: Path, deadline: float) 
     """Behind a proxy set in the environment or in git's config (``git``, the build's), put FluidAudio's
     binary artifact where SwiftPM looks before it downloads (it then prints "Fetched ... from cache"): curl,
     which routes as git does and trusts what git trusts, except where the shell sets a CA for curl itself,
-    which curl keeps over git's (:func:`_curl_env`; B13 round 45 C2930), fetches :data:`NEMO_URL` to a
+    which curl keeps over git's (but beside the shell's own CURL_CA_BUNDLE the shell's SSL_CERT_DIR, which its
+    curl does not read, gives way to the CA folder git trusts: :func:`_curl_env`; B13 round 45 C2930, round 46
+    C3049 with C3100 and C3109), fetches :data:`NEMO_URL` to a
     temporary file, and only a file whose SHA-256 is :data:`NEMO_SHA256` is renamed into
     place.  Any failure removes the temporary file and leaves SwiftPM to download it as before; SwiftPM checks
     the checksum again either way.  A run stopped mid-fetch by SIGTERM or SIGKILL never reaches the
