@@ -3512,7 +3512,7 @@ redaction_pairs() {
 	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x links walked lk
 	local cfg_cut tilde port k ph b auth sep tail rw keys key m sp top raw folder_keys=$'\n' FUZZY lib_n=0
 	local tables=0 ids=" " hp beside own_state own_docs own_cache own_logs fl fuzzy_keys=$'\n' folded_vals=$'\n'
-	local cts remote_docs sv ref_docs="" ref_state="" ref_cache="" ref_logs="" head rest bx cand gb
+	local cts remote_docs eff_docs inbox_at=0 sv ref_docs="" ref_state="" ref_cache="" ref_logs="" head rest bx cand gb
 	local -a known=() logged_late=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=() listed=() rooted=() placed=() cfgpaths=()
 	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
 	# (written with printf %q, which read without -r undoes; a $'..' form is unquoted by the loop after it).
@@ -4131,11 +4131,15 @@ redaction_pairs() {
 	# in place of the default and never beside it, so a leftover ~/agent-context/docs of another host moves no
 	# number (B13 round 46 ruling 199, C3054); the default where the agentsync report reads it, for a config that
 	# does not parse (_RawConfig) or a value naming another account's home (ruling 198)
-	remote_docs="${own_docs:-$HOME/agent-context/docs}"
-	[ "${cts%%$'\n'*}" != unparsed ] || remote_docs="$HOME/agent-context/docs"
+	# one docs value for every docs-derived read (B13 round 47 ruling 206, C3324): the configured one, or the
+	# default for a file that does not parse, as setup_report reads it; the remotes, the folder beside it and the
+	# C2430 block below each read it, and the own_docs registrations keep the configured value
+	eff_docs="$own_docs"
+	[ "${cts%%$'\n'*}" != unparsed ] || eff_docs=""
+	remote_docs="${eff_docs:-$HOME/agent-context/docs}"
 	case "$remote_docs" in \~) remote_docs="$HOME" ;; \~/*) remote_docs="$HOME/${remote_docs#\~/}" ;; \~*) remote_docs="$HOME/agent-context/docs" ;; esac
 	remote_docs="${remote_docs%/}"
-	beside="${own_docs:-$HOME/agent-context/docs}"
+	beside="${eff_docs:-$HOME/agent-context/docs}"
 	case "$beside" in \~) beside="$HOME" ;; \~/*) beside="$HOME/${beside#\~/}" ;; esac
 	beside="${beside%/}"
 	beside="${beside%/*}"
@@ -4210,17 +4214,26 @@ redaction_pairs() {
 		if [ "$gb" -eq 0 ]; then
 			case "$cand" in "$beside" | "$beside"/* | "${bx:-$beside}" | "${bx:-$beside}"/*) continue ;; esac
 		fi
+		# never the home, its physical path or a generic container (~/Documents, ~/Desktop): every configured
+		# folder there is the person's project, registered as if no inbox linked there (B13 round 47 ruling 206,
+		# C3242), as setup_report skips such a kept target
+		[ "$cand" != "$HOME" ] && [ "$cand" != "$hp" ] || continue
+		! generic_home_dir "$(recase lower "${cand##*/}")" || continue
 		for x in ${inbox_targets[@]+"${inbox_targets[@]}"}; do [ "$x" != "$cand" ] || continue 2; done
 		inbox_targets+=("$cand")
 	done < <(resolved "$beside/inbox")
-	under_inbox_target() { # PATH: 0 when it lies under one of inbox_targets, as written (~ expanded) or resolved
+	under_inbox_target() { # PATH: 0 when it lies under one of inbox_targets, as written (~ expanded) or resolved;
+		# inbox_at then 1 when it is the inbox itself: a target, or beside/inbox as written (B13 round 47 C3242)
 		local p="$1" r t
+		inbox_at=0
 		case "$p" in \~) p="$HOME" ;; \~/*) p="$HOME/${p#\~/}" ;; esac
+		while [ "${p%/}" != "$p" ] && [ "$p" != / ]; do p="${p%/}"; done
+		[ "$p" != "$beside/inbox" ] || inbox_at=1
 		[ "${#inbox_targets[@]}" -gt 0 ] || return 1
 		r="$(resolved "$p")"
 		for t in "${inbox_targets[@]}"; do
-			case "$p" in "$t" | "$t"/*) return 0 ;; esac
-			case "$r" in "$t" | "$t"/*) return 0 ;; esac
+			case "$p" in "$t") inbox_at=1 && return 0 ;; "$t"/*) return 0 ;; esac
+			case "$r" in "$t") inbox_at=1 && return 0 ;; "$t"/*) return 0 ;; esac
 		done
 		return 1
 	}
@@ -4275,21 +4288,8 @@ redaction_pairs() {
 			return 0
 		done
 	}
-	if [ -f "$CONFIG" ]; then
-		while IFS= read -r line; do
-			case "$line" in "$cs"/* | \~/Library/CloudStorage/* | "$hp/Library/CloudStorage/"* | \~[!/]*) continue ;; esac
-			under_inbox_target "$line" && continue # registered below, after the own folders (C3055)
-			project_values "$line"
-			placed+=("$line")
-		done < <(config_path_values)
-	fi
-	# agentsync's own folders where sources.toml moves them, as setup_report._own_folder_values registers them
-	# (B13 round 22 Z21, Z28; round 23 A41: Doctor's chmod fix named a moved state folder in clear here): after
-	# the source folders, so theirs keep their numbers, in the Python report's order (state, docs, cache, log),
-	# each a whole-word literal in any case (folder_value), never through project_values, which would register
-	# agent-context or Application Support alone. Nothing at its default (as given, or as pwd -P gives either);
-	# below the home folder, the path from its first part that names something, and that part alone, after the
-	# leading generic_home_dir, dot, own-container and own-word parts; anywhere else, the whole path.
+	# own_folder_values and its word test, defined before the configured-sources loop calls it for a folder below a
+	# kept inbox target (B13 round 47 C3242); the own folders themselves are registered after that loop, below
 	own_word_folder() { # NAME: made only of this report's words, product words, digits and words under 3 letters
 		local w low
 		local -a ws=()
@@ -4342,24 +4342,54 @@ redaction_pairs() {
 			esac
 		done
 	}
-	[ -z "$own_state" ] || own_folder_values "$own_state" "$HOME/Library/Application Support/agentsync"
-	[ -z "$own_docs" ] || own_folder_values "$own_docs" "$HOME/agent-context/docs"
-	[ -z "$own_cache" ] || own_folder_values "$own_cache" "$HOME/Library/Caches/agentsync"
-	[ -z "$own_logs" ] || own_folder_values "$own_logs" "$HOME/Library/Logs/agentsync"
+	if [ -f "$CONFIG" ]; then
+		while IFS= read -r line; do
+			case "$line" in "$cs"/* | \~/Library/CloudStorage/* | "$hp/Library/CloudStorage/"* | \~[!/]*) continue ;; esac
+			# the inbox itself is registered below, after the own folders (C3055); a configured folder strictly
+			# below a kept target is the person's own, registered here through own_folder_values, whose filter
+			# keeps a bare `inbox` uncut (B13 round 47 ruling 206, C3242; never tested against the inbox
+			# source's resolved path, which would drop the locked row's target)
+			if under_inbox_target "$line"; then
+				[ "$inbox_at" -eq 1 ] || own_folder_values "$line" /
+				continue
+			fi
+			project_values "$line"
+			placed+=("$line")
+		done < <(config_path_values)
+	fi
+	# agentsync's own folders where sources.toml moves them, as setup_report._own_folder_values registers them
+	# (B13 round 22 Z21, Z28; round 23 A41: Doctor's chmod fix named a moved state folder in clear here): after
+	# the source folders, so theirs keep their numbers, in the Python report's order (state, docs, cache, log),
+	# each a whole-word literal in any case (folder_value), never through project_values, which would register
+	# agent-context or Application Support alone. Nothing at its default (as given, or as pwd -P gives either);
+	# below the home folder, the path from its first part that names something, and that part alone, after the
+	# leading generic_home_dir, dot, own-container and own-word parts; anywhere else, the whole path.
+	own_dirs_values() { # the four, in that order
+		[ -z "$own_state" ] || own_folder_values "$own_state" "$HOME/Library/Application Support/agentsync"
+		[ -z "$own_docs" ] || own_folder_values "$own_docs" "$HOME/agent-context/docs"
+		[ -z "$own_cache" ] || own_folder_values "$own_cache" "$HOME/Library/Caches/agentsync"
+		[ -z "$own_logs" ] || own_folder_values "$own_logs" "$HOME/Library/Logs/agentsync"
+	}
+	# for a file that does not parse the agentsync report reads every folder at its default, so the four line-scan
+	# values are registered after the kept inbox's targets, the cuts kept and the targets' numbers its own (B13
+	# round 47 ruling 206, C3324)
+	[ "${cts%%$'\n'*}" = unparsed ] || own_dirs_values
 	# With a docs repo outside the home, the inbox setup keeps beside it, whole, after the four, so theirs keep
 	# their numbers: status and the Configuration print it, the docs path's own cut one line above no use. Never at
 	# its default, never under a / parent (/inbox would cut ~/agent-context/inbox), never the parent itself (/tmp
 	# would cut every temporary path); inside the home the parent's own part is registered already, as
 	# setup_report._build_redactor registers it (B13 round 43 ruling 157, C2430). Whenever the typed parent lies
 	# outside the home, wherever it resolves: a link from outside the home into it named the inbox outside in
-	# clear (B13 round 44 ruling 172, C2637)
-	if [ -n "$own_docs" ] && [ -n "$beside" ]; then
+	# clear (B13 round 44 ruling 172, C2637); skipped for a file that does not parse, whose default parent the
+	# agentsync report reads (eff_docs, B13 round 47 C3324)
+	if [ -n "$eff_docs" ] && [ -n "$beside" ]; then
 		h="${hp:-$HOME}"
 		case "$beside" in "$HOME" | "$HOME"/* | "$h" | "$h"/*) ;; *) own_folder_values "$beside/inbox" "$HOME/agent-context/inbox" ;; esac
 	fi
 	# then the kept inbox's targets read above, through own_folder_values' filter, so a container, an own word or
 	# `inbox` is never cut alone (B13 round 46 ruling 199, C3055)
 	for x in ${inbox_targets[@]+"${inbox_targets[@]}"}; do own_folder_values "$x" /; done
+	[ "${cts%%$'\n'*}" != unparsed ] || own_dirs_values
 	# Each config value paths.expand refuses (a ~name head: another account's home), stripped as written, in
 	# setup_report._register_refused's order: the [[source]] paths, then (where the file parses) docs_repo,
 	# state_dir, cache_dir and log_dir, then [convert] pandoc_path. Each cut whole to ~<user>/<path> (or ~<user>),
@@ -4476,7 +4506,13 @@ redaction_pairs() {
 		\~/Library/CloudStorage/*) folder_parts "" "$cs/${v#\~/Library/CloudStorage/}" ;;
 		"$cs"/* | "$hp/Library/CloudStorage/"*) folder_parts "" "$cs/${v#*/Library/CloudStorage/}" ;;
 		?*)
-			project_values "$v"
+			# as the configured loop: the inbox itself skipped, a folder strictly below a kept inbox target
+			# registered through own_folder_values (B13 round 47 ruling 206, C3242)
+			if under_inbox_target "$v"; then
+				[ "$inbox_at" -eq 1 ] || own_folder_values "$v" /
+			else
+				project_values "$v"
+			fi
 			placed+=("$v")
 			;;
 		esac

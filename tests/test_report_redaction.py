@@ -5053,6 +5053,56 @@ def test_the_shell_report_cuts_a_looped_inbox_links_target_c3245(
         assert printed == said, printed
 
 
+_C3242_ROWS = ["desktop", "home", "hub"]
+
+
+def _inbox_over_projects(home: Path, row: str) -> tuple[str, list[str]]:
+    """C3242's ``row`` under ``home``: ~/agent-context/inbox a link to ~/Desktop, to the home or to the
+    non-container ~/Kestrel Hub, with a local source `Kestrel Plans` inside that target. sources.toml's text
+    and the friction lines naming the source."""
+    ac = home / "agent-context"
+    ac.mkdir(exist_ok=True)
+    target = {"desktop": home / "Desktop", "home": home, "hub": home / "Kestrel Hub"}[row]
+    plans = target / "Kestrel Plans"
+    plans.mkdir(parents=True)
+    (ac / "inbox").symlink_to(target)
+    body = _INBOX_LINK_BODY + local_source_table("kestrel-plans", plans)
+    # below a kept target the folder is cut as an own folder is, its path from the first part that names
+    # something and that part alone, so the leaf alone is said only where it is that path
+    said = [f"I picked {plans}"] + ([] if row == "hub" else ["the sync of Kestrel Plans went on"])
+    return body, said
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize("row", _C3242_ROWS)
+def test_the_shell_report_cuts_a_project_under_the_inbox_links_target_c3242(
+    env: dict[str, str],  # noqa: F811
+    row: str,
+    locale: str,
+) -> None:
+    """B13 round 47 C3242 (ruling 206; privacy), the shell half alone: an inbox linked to ~/Desktop or to the
+    home is no inbox target, so `Kestrel Plans` configured there is cut as any project and the report stays
+    public; one linked to ~/Kestrel Hub keeps its target, and the project below it is registered through the
+    own-folder filter, never skipped."""
+    home = Path(env["HOME"])
+    body, said = _inbox_over_projects(home, row)
+    config = home / "agent-context" / "sources.toml"
+    config.write_text(body, encoding="utf-8")
+    rows = "".join(
+        f"2026-10-10T00:00:{n:02d}Z | step 1 | deviation | {ln} | -\n" for n, ln in enumerate(said)
+    )
+    friction_path(env).parent.mkdir(parents=True, exist_ok=True)
+    friction_path(env).write_text(f"Attempt: 2026-10-10T00:00:00Z\nPrompt: v15\n{rows}", encoding="utf-8")
+    cp = install_sh(
+        {**env, "AGENTSYNC_CONFIG": str(config), "LC_ALL": locale, "LANG": locale}, "--report-only"
+    )
+    assert cp.returncode == 0 and "shell fallback" in cp.stdout, cp.stdout + cp.stderr
+    text = report_path(env).read_text(encoding="utf-8")
+    leaks = [ln for ln in text.splitlines() if "Kestrel" in ln or "Plans" in ln]
+    assert not leaks, leaks
+    assert "Private only:" not in text, text
+
+
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
 def test_both_reports_read_the_folder_after_a_launcher_named_like_the_flag_c3104(
     env: dict[str, str],  # noqa: F811
