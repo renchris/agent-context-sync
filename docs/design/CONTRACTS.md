@@ -48032,7 +48032,8 @@ the inbox as typed, the error as `strerror`, the command built from `AGENTSYNC_B
 read (...)` and doctor's listable row and its fix); a local source keeps `source root unreadable`. Tests:
 `test_the_walk_names_every_kept_inbox_entry_as_typed_c3312_c3211` (eleven kinds of entry, under a timeout) and
 `test_the_kept_inbox_probe_is_bounded_and_run_only_by_a_failed_root_read_c3311` (`sync` and `sync --dry-run` held,
-live_inbox bounded, a root that reads runs no probe).
+live_inbox bounded, a root that reads runs no probe), and the C3007 test's link-through-a-file, two-link-loop and fifo
+rows (the full alarm and the kept inbox's full note, never `was not fully listed`).
 
 **A second inbox source that is not a folder reads `not a folder`, with its own remedy** (C3215; ruling 210; amends
 §16.287 C3044). Any inbox source other than the one on the kept inbox whose root is a file, a link to one, a FIFO or a

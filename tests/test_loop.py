@@ -3170,7 +3170,10 @@ def test_every_reader_decides_the_kept_inbox_by_one_check_and_rechecks_a_stored_
             folder.chmod(0o700)
 
 
-@pytest.mark.parametrize("entry", ["file", "dangling-link", "link-to-file", "self-link"])
+@pytest.mark.parametrize(
+    "entry",
+    ["file", "dangling-link", "link-to-file", "self-link", "link-through-a-file", "two-link-loop", "fifo"],
+)
 def test_the_walks_alarm_names_the_kept_inbox_as_typed_never_a_links_target_c3007(
     tmp_path: Path, entry: str, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -3186,17 +3189,9 @@ def test_the_walks_alarm_names_the_kept_inbox_as_typed_never_a_links_target_c300
     assert box is not None and run_cycle(config, mode=None).exit_code == 0
     kept = config.docs_repo.parent / "inbox"
     kept.rename(tmp_path / "inbox-moved")  # moved aside, never removed
-    if entry == "file":
-        kept.write_text("contoso note\n", encoding="utf-8")
-    elif entry == "dangling-link":
-        kept.symlink_to(kept.parent / "contoso-missing")
-    elif entry == "link-to-file":
-        (kept.parent / "contoso-note.txt").write_text("x\n", encoding="utf-8")
-        kept.symlink_to(kept.parent / "contoso-note.txt")
-    else:
-        kept.symlink_to("inbox")
-    config = load_config(config.config_path)
-    with caplog.at_level(logging.WARNING, logger="agentsync"):
+    _put_entry(kept, entry)
+    with _bounded(60), caplog.at_level(logging.WARNING, logger="agentsync"):
+        config = load_config(config.config_path)
         report = run_cycle(config, mode=None)
     assert report.exit_code == 0
     alarm = (  # one phrase, a self-link included, and a pointer to the line with the remedy (C3213, C3258)
@@ -3209,10 +3204,16 @@ def test_the_walks_alarm_names_the_kept_inbox_as_typed_never_a_links_target_c300
     state = (config.docs_repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
     assert alarm in state and f"{box.id}: {alarm}" in caplog.text, caplog.text
     for text in (state, caplog.text, *src.alarms):
-        assert "contoso-missing" not in text and "contoso-note" not in text, text
+        assert "contoso-" not in text, text
     assert not any("source root missing" in a or "not a directory" in a for a in src.alarms)
     step = loop.next_step(config)
-    assert any(n.startswith(f"the inbox ({box.id}) is not a folder: ") for n in step.notes), step.notes
+    note = (  # the kept inbox's own note in full, never the not-fully-listed one (B13 round 47 C3312)
+        f"the inbox ({box.id}) is not a folder: {loop._shown(kept)} is a file or a link that does not lead "
+        "to a folder, and no later sync lists it until it is moved aside: keeping a copy, move it aside, "
+        "then run step 2 again; it does not block the next step"
+    )
+    assert note in step.notes, step.notes
+    assert not any(n.startswith(f"the inbox ({box.id}) was not fully listed") for n in step.notes), step.notes
     others = [r for r in report.sources if r.source_id != box.id]
     assert others and all(not r.alarms for r in others), others
     if (
