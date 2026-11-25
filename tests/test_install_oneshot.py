@@ -24509,6 +24509,8 @@ SHELL_HELPER_FNS = re.compile(
     r"|config_toml_state|config_source_records)\(\) \{\n.*?^\}$|"
     # B13 round 47 ruling 207 (C3304): the blank set py_strip and py_has_space share
     + r"^PY_SPACE_ERE=\$'[^\n]*'$|"
+    # B13 round 47 C3305: the awk function py_strip runs
+    + r"^PY_STRIP_AWK='.*?^'$|"
     # B13 round 44: the [convert]/[agentsync] values' strip (C2698) and the CloudStorage listing (C2669); B13
     # round 46 ruling 199 (C3034 with C3083): the source table the id registry reads
     + r"^CLOUD_ORDER_AWK='.*?'$|"
@@ -27649,37 +27651,60 @@ def test_the_folder_list_reader_keeps_every_row_under_a_sigchld_with_errexit_liv
     assert cp.stdout.splitlines() == rows, (len(cp.stdout.splitlines()), cp.stdout[-200:])
 
 
+def _source_reader() -> str:
+    """install.sh's line reader of sources.toml, which non_inbox_sources and held_sources_clause share, as the
+    script has it: PY_SPACE_ERE, py_strip, py_has_space, PY_STRIP_AWK, SOURCE_HEADER_ERE and SOURCE_TABLES_AWK
+    (B13 round 47 C3305 with C3323 and C3249; the one blank set of ruling 207's C3304)."""
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    found = re.search(r"(?ms)^PY_SPACE_ERE=.*?^SOURCE_TABLES_AWK=.*?^'$", text)
+    assert found is not None
+    return found.group(0)
+
+
+@pytest.mark.parametrize("eol", ["\n", "\r\n"], ids=["lf", "crlf"])
+@pytest.mark.parametrize("tool_py", ["tomllib", "none"])
 @pytest.mark.parametrize(
     ("header", "kind", "want"),
     [
         ('[[ "source" ]]', 'kind = "local"', 1),
         ("[['source']]", 'kind = "local"', 1),
         ("[[ source ]]", "kind = 'local'", 1),
+        ("[[ 'source' ]]", 'kind = "local"', 1),
         ("[['source']]", '"kind" = "inbox"', 0),
         ("[[source]]", "'kind' = 'inbox'", 0),
         ("[[source]]", 'kind = "local"', 1),
         ("[[source]]", 'kind = " inbox "', 0),
+        ("[[source]]", '"kind" = " inbox "', 0),
         ("[[source]]", "kind = '\tinbox '", 0),
         ("[[source]]", 'kind = "inbox\\n"', 0),
+        ("[[source]]", 'kind = "\u0085inbox\u0085"', 0),
+        ("[[ source ]]", 'kind = "\u3000inbox"', 0),
+        ("[[source]]  # a comment", "kind = 'inbox'", 0),
+        # [[source.x]] is a sub-table of the source above it, never a table of its own
+        ("[[source]]", 'kind = "inbox"\n[[source.x]]\nkind = "local"', 0),
     ],
 )
 def test_install_sh_counts_sources_as_the_report_reads_them_c2934(
-    tmp_path: Path, header: str, kind: str, want: int
+    tmp_path: Path, header: str, kind: str, want: int, tool_py: str, eol: str
 ) -> None:
     """B13 round 45 ruling 188, C2934: non_inbox_sources counted `[[source]]` headers and `kind = "inbox"`
     lines by a line pattern, so a valid `[[ "source" ]]` or `[['source']]` table counted 0 (HAVE_SOURCES=0
     and the no-folder NEXT over a configured folder) and a quoted `"kind" = "inbox"` counted 1, where the
     report's twin (_install_sh_said_no_folder) reads config.sources from tomllib. It counts with the installed
-    interpreter's tomllib now, state-blind, and both twins agree."""
+    interpreter's tomllib now, state-blind, and both twins agree. B13 round 47 C3305 with C3323 and C3249: the
+    line reader, with no interpreter, read a bare `[[source]]` and a bare kind alone and trimmed ASCII blanks
+    alone, so it counted 0 for `[[ "source" ]]` and 1 for `"kind" = " inbox "` or a kind padded with U+0085;
+    it reads every spelling of header and key and trims as str.strip trims, and a CRLF file the same."""
+    if tool_py == "none" and "\\" in kind:
+        pytest.skip("the line reader reads no TOML escape: only tomllib resolves one")
     folder = tmp_path / "Folder"
     folder.mkdir()
     config = tmp_path / "sources.toml"
-    config.write_text(
-        f'{header}\nid = "contoso-plans"\n{kind}\npath = {json.dumps(str(folder))}\nstate = "paused"\n',
-        encoding="utf-8",
-    )
+    body = f'{header}\nid = "contoso-plans"\npath = {json.dumps(str(folder))}\nstate = "paused"\n{kind}\n'
+    config.write_bytes(body.replace("\n", eol).encode("utf-8"))
     harness = "\n".join(
         [
+            _source_reader(),
             _shell_function("watchdog"),
             _shell_function("with_timeout"),
             _shell_function("non_inbox_sources"),
@@ -27690,12 +27715,54 @@ def test_install_sh_counts_sources_as_the_report_reads_them_c2934(
         [BASH32, "-c", harness, "x", str(config)],
         capture_output=True,
         text=True,
-        env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "TOOL_PY": sys.executable},
+        env={
+            "PATH": "/usr/bin:/bin",
+            "HOME": str(tmp_path),
+            "TOOL_PY": sys.executable if tool_py == "tomllib" else "",
+            "LC_ALL": "en_US.UTF-8",
+        },
     )
-    assert cp.returncode == 0, cp.stderr
+    assert (cp.returncode, cp.stderr) == (0, ""), cp
     assert cp.stdout == f"{want}\n", cp.stdout
-    report = any(s.kind is not SourceKind.INBOX for s in load_config(config).sources)
-    assert (int(cp.stdout) > 0) == report == bool(want)
+    if "[[source.x]]" in kind:  # the loader refuses a sub-table; tomllib reads one [[source]] table
+        assert [t["kind"] for t in tomllib.loads(body)["source"]] == ["inbox"]
+        return
+    assert sum(s.kind is not SourceKind.INBOX for s in load_config(config).sources) == want
+
+
+@pytest.mark.parametrize(
+    ("header", "kind", "exclude", "eol"),
+    [
+        ("[[source]]", 'kind = "local"', "exclude", "\n"),
+        ("[[ source ]]", '"kind" = " local "', "'exclude'", "\n"),
+        ('[[ "source" ]]', "'kind' = '\u0085local'", '"exclude"', "\n"),
+        ("[['source']]", '"kind" = "local"', "exclude", "\r\n"),
+    ],
+)
+def test_the_shell_report_counts_every_header_spelling_with_no_interpreter_c3249(
+    env: dict[str, str], header: str, kind: str, exclude: str, eol: str
+) -> None:
+    """B13 round 47 C3249: the shell report's `[[source]] table headers` count and source_excludes_line read
+    a bare `[[source]]` alone, so `[[ "source" ]]`, `[['source']]` and `[[ source ]]` counted 0 and `none`.
+    They read SOURCE_HEADER_ERE, the line readers' header, and source_excludes_line reads the kind and
+    exclude keys bare or quoted, the kind trimmed as config._str trims it and a CR stripped; a
+    `[[source.x]]` sub-table is no header of its own. With no agentsync installed, so no interpreter."""
+    config = Path(env["HOME"]) / "agent-context" / "sources.toml"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    body = (
+        f'{header}\nid = "contoso-plans"\n{kind}\npath = "/x"\n'
+        f'{exclude} = ["~$*", "/Empty Subfolder/", "*.bak"]\n[[source.x]]\nid = "z"\n'
+    )
+    config.write_bytes(body.replace("\n", eol).encode("utf-8"))
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0 and "shell fallback" in cp.stdout, cp.stdout + cp.stderr
+    section = report_path(env).read_text(encoding="utf-8").split("\n## Configuration\n\n", 1)[1]
+    lines = section.split("\n\n", 1)[0].splitlines()
+    assert lines[3:] == [
+        "- [[source]] table headers (not parsed): 1",
+        "- source excludes beyond agentsync's own: (source 1) 2 (1 folder glob) (globs not shown; an "
+        "excluded folder is not mirrored if it later gains files)",
+    ], lines
 
 
 # ---- B13 round 45 ruling 191: the person's none honored at every NEXT, never over a failed step -----------
@@ -28438,7 +28505,7 @@ def test_the_line_reader_strips_the_kind_as_config_str_does_c3087_c3105(tmp_path
     quotes, and both readers agree with load_config."""
     config = tmp_path / "sources.toml"
     config.write_text(f'[[source]]\nid = "contoso-inbox"\n{kind}\npath = "~/x"\n', encoding="utf-8")
-    harness = "\n".join([_shell_function("non_inbox_sources"), 'non_inbox_sources "$1"'])
+    harness = "\n".join([_source_reader(), _shell_function("non_inbox_sources"), 'non_inbox_sources "$1"'])
     cp = _bash_run(
         [BASH32, "-c", harness, "x", str(config)],
         capture_output=True,
@@ -28615,6 +28682,7 @@ def _held_clause(config: Path, home: Path, tool_py: str) -> subprocess.Completed
     harness = "\n".join(
         [
             f"LIST_ESC_AWK={shlex.quote(awk)}",
+            _source_reader(),
             _shell_function("watchdog"),
             _shell_function("with_timeout"),
             _shell_function("held_sources_clause"),
@@ -28651,6 +28719,41 @@ def test_both_held_folder_readers_read_as_the_loader_does_c3003(tmp_path: Path, 
         f"{home}/Wombat Notes: setting a folder to live is the person's own edit of sources.toml, never "
         "the agent's"
     )
+
+
+_C3305_TABLES = (
+    '\n[[ "source" ]]\nid = "kestrel-plans"\n"kind" = "local"\npath = "~/Kestrel Plans"\n'
+    "'state' = '\u0085paused\u0085'\n"
+    "\n[[ source ]]\n'id' = \"\u3000wombat-notes\"\nkind = 'local'\n\"path\" = '~/Wombat Notes'\n"
+    'state = "retired"\nretired_reason = "made-up"\n'
+    '\n[[\'source\']]\nid = "quokka-drop"\n"kind" = " inbox "\npath = "~/Quokka Drop"\n'
+    'state = "paused"\n'
+    '\n[[source]]\nid = "juniper-drop"\nkind = "\u0085inbox"\npath = "~/Juniper Drop"\nstate = "paused"\n'
+)
+
+
+@pytest.mark.parametrize("eol", ["\n", "\r\n"], ids=["lf", "crlf"])
+@pytest.mark.parametrize("tool_py", ["tomllib", "none"])
+def test_both_held_folder_readers_read_every_spelling_as_the_loader_does_c3305(
+    tmp_path: Path, tool_py: str, eol: str
+) -> None:
+    """B13 round 47 C3305 with C3323: held_sources_clause's line reader read the header without its end
+    anchor and trimmed ASCII blanks alone, apart from non_inbox_sources' reader; both read through one awk
+    now. Quoted and spaced headers, quoted keys, an id or state padded with U+3000 or U+0085, an inbox
+    padded so, and a CRLF file: both readers name the folders load_config holds paused or retired, written
+    out here."""
+    config = tmp_path / "sources.toml"
+    config.write_bytes((default_config_text() + _C3305_TABLES).replace("\n", eol).encode("utf-8"))
+    home = Path.home()  # the loader expands ~ against it: the shell gets the same HOME
+    cp = _held_clause(config, home, sys.executable if tool_py == "tomllib" else "")
+    assert (cp.returncode, cp.stderr) == (0, ""), cp
+    held = [
+        f"{s.id} ({s.state.value}) at {s.path}"
+        for s in load_config(config).sources
+        if s.kind is not SourceKind.INBOX and s.state.value in ("paused", "retired")
+    ]
+    assert ", ".join(held) == _c3003_held(home)
+    assert cp.stdout == f"; not live: {_c3003_held(home)}{_HELD_TAIL}", cp.stdout
 
 
 def test_the_report_names_each_held_folder_as_install_sh_does_c3332() -> None:

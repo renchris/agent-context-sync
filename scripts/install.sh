@@ -3280,6 +3280,45 @@ py_strip() {
 py_has_space() {
 	V="$1" W="$PY_SPACE_ERE" LC_ALL=C awk 'BEGIN { exit !match(ENVIRON["V"], ENVIRON["W"]) }'
 }
+# PY_STRIP_AWK is the awk function py_strip(v) the line readers of sources.toml (SOURCE_TABLES_AWK,
+# source_excludes_line) trim with, over the one PY_SPACE_ERE set each caller passes through ENVIRON, so every reader
+# trims one set (B13 round 47 C3305 with C3323)
+PY_STRIP_AWK='function py_strip(v,    w) {
+	w = ENVIRON["PY_SPACE_ERE"]
+	if (w == "") return v
+	while (match(v, "^" w)) v = substr(v, RLENGTH + 1)
+	while (match(v, w "$")) v = substr(v, 1, RSTART - 1)
+	return v
+}
+'
+# A [[source]] table header in every spelling tomllib reads as one, bare, spaced, double- or single-quoted,
+# anchored at its end so [[source.x]] and [[sourcex]] are no header of one (an ERE: grep needs -E). The line
+# readers of sources.toml all read it (B13 round 47 C3249).
+SOURCE_HEADER_ERE='^[[:space:]]*\[\[[[:space:]]*(source|"source"|'"'"'source'"'"')[[:space:]]*\]\][[:space:]]*(#.*)?$'
+# The line reader of sources.toml's [[source]] tables, for when the installed interpreter cannot read it with
+# tomllib: run under LC_ALL=C, a trailing CR stripped, each table's kind, id, state and path keys read bare,
+# double- or single-quoted, each value the text inside its quotes trimmed as config._str trims it (py_strip; a
+# TOML escape stays unread, so a "\tinbox" only tomllib resolves). At each table's end it calls the caller's
+# src_table(kind, id, state, path); non_inbox_sources and held_sources_clause read through it alone, so the two
+# cannot read a table apart (B13 round 47 C3305 with C3323 and C3249).
+# shellcheck disable=SC2016 # an awk program: awk reads its $ fields
+SOURCE_TABLES_AWK="$PY_STRIP_AWK"'function src_v(s) {
+	sub(/^[^=]*=[[:space:]]*["\047]/, "", s)
+	sub(/["\047][[:space:]]*(#.*)?$/, "", s)
+	return py_strip(s)
+}
+function src_end() {
+	if (src_t) src_table(src_kind, src_id, src_state, src_path)
+	src_t = 0; src_kind = ""; src_id = ""; src_state = ""; src_path = ""
+}
+{ sub(/\r$/, "") }
+/^[[:space:]]*\[/ { src_end(); src_t = ($0 ~ /'"$SOURCE_HEADER_ERE"'/); next }
+src_t && /^[[:space:]]*(kind|"kind"|\047kind\047)[[:space:]]*=[[:space:]]*["\047]/ { src_kind = src_v($0) }
+src_t && /^[[:space:]]*(id|"id"|\047id\047)[[:space:]]*=[[:space:]]*["\047]/ { src_id = src_v($0) }
+src_t && /^[[:space:]]*(state|"state"|\047state\047)[[:space:]]*=[[:space:]]*["\047]/ { src_state = src_v($0) }
+src_t && /^[[:space:]]*(path|"path"|\047path\047)[[:space:]]*=[[:space:]]*["\047]/ { src_path = src_v($0) }
+END { src_end() }
+'
 # Each legal or records hold's reason and owner as agentsync reads them, as setup_report._hold_values gives them
 # (B13 round 24 B51, the shell twin of round 23 A8): [governance] hold_reason and hold_owner of the config, in
 # any of TOML's four string forms (a multi-line """...""" or \'\'\'...\'\'\' keeps its inner newlines, which
@@ -7508,7 +7547,8 @@ fallback_body() {
 		# guess from the disk, which called a link into a folder this account cannot search not a folder (B13
 		# round 45 ruling 194, C2810)
 		say "- inbox: not checked ($why)"
-		say "- [[source]] table headers (not parsed): $(grep -c '^[[:space:]]*\[\[source\]\]' "$CONFIG" 2>/dev/null || true)"
+		# every spelling of the header the line readers read (SOURCE_HEADER_ERE, B13 round 47 C3249)
+		say "- [[source]] table headers (not parsed): $(LC_ALL=C grep -c -E "$SOURCE_HEADER_ERE" "$CONFIG" 2>/dev/null || true)"
 		say "$(source_excludes_line "$CONFIG")"
 	elif [ -e "$CONFIG" ]; then
 		# something there that is not a file (a folder, a fifo): setup_report's mark, `(exists)`, as its stat
@@ -8472,8 +8512,11 @@ embed() { # FILE INFO: the file inside its fence, the fence's info string INFO
 }
 # setup_report._excludes_line for the shell report (B13 round 5 F40): each local or inbox [[source]]'s exclude
 # entries beyond SHIPPED_EXCLUDES, counted, with the source by its place in sources.toml. Never a glob's text.
+# The header and the kind and exclude keys in every spelling the other line readers read, bare or quoted, a
+# trailing CR stripped and the kind trimmed as config._str trims it (B13 round 47 C3249).
 source_excludes_line() { # CONFIG
-	SHIPPED="$SHIPPED_EXCLUDES" LC_ALL=C awk 'BEGIN { shipped = ENVIRON["SHIPPED"] } # not -v, which reads the \r of Icon\r as a CR
+	SHIPPED="$SHIPPED_EXCLUDES" PY_SPACE_ERE="$PY_SPACE_ERE" LC_ALL=C awk "$PY_STRIP_AWK"'BEGIN { shipped = ENVIRON["SHIPPED"] } # not -v, which reads the \r of Icon\r as a CR
+		{ sub(/\r$/, "") }
 
 		function flush() {
 			if (!open) return
@@ -8492,10 +8535,10 @@ source_excludes_line() { # CONFIG
 			}
 		}
 		function closes(text) { gsub(/"([^"\\]|\\.)*"|\047[^\047]*\047/, "", text); return text ~ /\]/ } # outside quotes
-		/^[[:space:]]*\[\[source\]\]/ { flush(); open = 1; n++; kind = "local"; extra = 0; folders = 0; inlist = 0; next }
+		$0 ~ /'"$SOURCE_HEADER_ERE"'/ { flush(); open = 1; n++; kind = "local"; extra = 0; folders = 0; inlist = 0; next }
 		/^[[:space:]]*\[/ { flush(); inlist = 0; next }
-		open && /^[[:space:]]*kind[[:space:]]*=/ { kind = $0; sub(/^[^=]*=[[:space:]]*["\047]?/, "", kind); sub(/["\047].*$/, "", kind) }
-		open && /^[[:space:]]*exclude[[:space:]]*=/ { line = $0; sub(/^[^=]*=/, "", line); take(line); inlist = !closes(line); next }
+		open && /^[[:space:]]*(kind|"kind"|\047kind\047)[[:space:]]*=/ { kind = $0; sub(/^[^=]*=[[:space:]]*["\047]?/, "", kind); sub(/["\047].*$/, "", kind); kind = py_strip(kind) }
+		open && /^[[:space:]]*(exclude|"exclude"|\047exclude\047)[[:space:]]*=/ { line = $0; sub(/^[^=]*=/, "", line); take(line); inlist = !closes(line); next }
 		open && inlist { take($0); if (closes($0)) inlist = 0 }
 		END {
 			flush()
@@ -14168,8 +14211,9 @@ fi
 # config.sources counts them: every spelling of the header and the kind key, paused and retired sources counted
 # (state-blind, as C2601 has it); the line reader only when that fails (B13 round 45 ruling 188, C2934). The
 # kind stripped as config._str strips it before SourceKind reads it, so `kind = " inbox "` is the inbox in both
-# readers (B13 round 46 ruling 199, C3087 with C3105): str.strip itself in the interpreter; blanks inside the
-# quotes in the line reader, which reads no TOML escape (a "\tinbox" only tomllib resolves).
+# readers (B13 round 46 ruling 199, C3087 with C3105): str.strip itself in the interpreter; py_strip in the line
+# reader, SOURCE_TABLES_AWK, which held_sources_clause reads through too and which reads every spelling of the
+# header and of the kind key tomllib reads (B13 round 47 C3305 with C3323 and C3249).
 non_inbox_sources() { # $1: sources.toml; prints the number of [[source]] tables whose kind is not "inbox"
 	local n
 	if [ -x "$TOOL_PY" ]; then
@@ -14184,10 +14228,9 @@ print(sum(1 for t in s if isinstance(t, dict) and not (isinstance(t.get("kind"),
 			;;
 		esac
 	fi
-	awk '
-		/^[[:space:]]*\[/ { if (t && !ib) n++; t = ($0 ~ /^[[:space:]]*\[\[source\]\][[:space:]]*(#.*)?$/); ib = 0; next }
-		t && /^[[:space:]]*kind[[:space:]]*=[[:space:]]*("[[:space:]]*inbox[[:space:]]*"|\047[[:space:]]*inbox[[:space:]]*\047)[[:space:]]*(#.*)?$/ { ib = 1 }
-		END { if (t && !ib) n++; print n + 0 }
+	PY_SPACE_ERE="$PY_SPACE_ERE" LC_ALL=C awk "$SOURCE_TABLES_AWK"'
+		function src_table(kind, id, state, path) { if (kind != "inbox") n++ }
+		END { print n + 0 }
 	' "$1" 2>/dev/null || echo 0
 }
 # The sources other than the inbox whose state is paused or retired, as "; not live: <id> (<state>) at <path>, ...:
@@ -14231,8 +14274,7 @@ sys.stdout.buffer.write("\n".join(o).encode("utf-8", "surrogateescape"))' "$1" 2
 		l="-"
 	fi
 	if [ "$l" = "-" ]; then
-		l="$(HOME="$HOME" LC_ALL=C awk '
-			function v(s) { sub(/^[^=]*=[[:space:]]*["\047][[:space:]]*/, "", s); sub(/[[:space:]]*["\047][[:space:]]*(#.*)?$/, "", s); return s }
+		l="$(HOME="$HOME" PY_SPACE_ERE="$PY_SPACE_ERE" LC_ALL=C awk "$SOURCE_TABLES_AWK"'
 			function home(s) {
 				if (s == "~") return ENVIRON["HOME"]
 				if (substr(s, 1, 2) == "~/") s = ENVIRON["HOME"] substr(s, 2)
@@ -14240,19 +14282,11 @@ sys.stdout.buffer.write("\n".join(o).encode("utf-8", "surrogateescape"))' "$1" 2
 				while (length(s) > 1 && substr(s, length(s)) == "/") s = substr(s, 1, length(s) - 1)
 				return s
 			}
-			function flush() {
-				if (t && !ib && id != "" && (st == "paused" || st == "retired"))
-					o = o (o == "" ? "" : "\n") id " (" st ")" ((lc && pa != "") ? "\037" home(pa) : "")
-				id = ""; st = ""; pa = ""; ib = 0; lc = 0
+			function src_table(kind, id, state, path) {
+				if (kind != "inbox" && id != "" && (state == "paused" || state == "retired"))
+					o = o (o == "" ? "" : "\n") id " (" state ")" ((kind == "local" && path != "") ? "\037" home(path) : "")
 			}
-			{ sub(/\r$/, "") }
-			/^[[:space:]]*\[/ { flush(); t = ($0 ~ /^[[:space:]]*\[\[[[:space:]]*(source|"source"|\047source\047)[[:space:]]*\]\]/); next }
-			t && /^[[:space:]]*["\047]?kind["\047]?[[:space:]]*=[[:space:]]*["\047][[:space:]]*inbox[[:space:]]*["\047]/ { ib = 1 }
-			t && /^[[:space:]]*["\047]?kind["\047]?[[:space:]]*=[[:space:]]*["\047][[:space:]]*local[[:space:]]*["\047]/ { lc = 1 }
-			t && /^[[:space:]]*["\047]?id["\047]?[[:space:]]*=[[:space:]]*["\047]/ { id = v($0) }
-			t && /^[[:space:]]*["\047]?state["\047]?[[:space:]]*=[[:space:]]*["\047]/ { st = v($0) }
-			t && /^[[:space:]]*["\047]?path["\047]?[[:space:]]*=[[:space:]]*["\047]/ { pa = v($0) }
-			END { flush(); printf "%s", o }' "$1" 2>/dev/null)" || l=""
+			END { printf "%s", o }' "$1" 2>/dev/null)" || l=""
 	fi
 	[ -n "$l" ] || return 0
 	# the items joined, each path escaped as list_plain escapes it (LIST_ESC_AWK, no mark)
