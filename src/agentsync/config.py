@@ -809,6 +809,27 @@ def inbox_entry(folder: Path) -> str:
     return INBOX_ENTRY_FOLDER if stat.S_ISDIR(target.st_mode) else INBOX_ENTRY_NOT_A_FOLDER
 
 
+def kept_inbox_not_a_folder(config: Config, src: SourceConfig) -> Path | None:
+    """The kept inbox folder as typed (``inbox`` beside the docs repo, never resolved) when ``src`` is the
+    inbox-kind source on it and :func:`inbox_entry` reads that entry as not a folder (a file, a link to one, a
+    dangling or looping link), else None: ``loop._inbox_root_not_a_folder``'s test, which the cycle reads
+    before a walk so the walk's alarm names the folder as typed, never the link's target (B13 round 46 C3007,
+    ruling 204). The source is matched by its stored path, compared with canonical_source_root of that folder;
+    a local source at that path keeps its own root words, as doctor and the loop give it."""
+    if src.kind is not SourceKind.INBOX or src.path is None:  # a local source keeps its own root words
+        return None
+    typed = expand(config.docs_repo).parent / "inbox"
+    try:
+        if (
+            expand(src.path) == canonical_source_root(typed)
+            and inbox_entry(typed) == INBOX_ENTRY_NOT_A_FOLDER
+        ):
+            return typed
+    except OSError:
+        return None
+    return None
+
+
 # status's line after ``inbox:``, printed only when no live inbox source sits there
 INBOX_STATE_LINE = "inbox state: "
 INBOX_LIVE = "live "  # inbox_state's words for a live inbox source on the kept folder: ``live <folder>``

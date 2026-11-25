@@ -35,6 +35,7 @@ from agentsync.config import (
     ensure_inbox,
     inbox_source_table,
     inbox_state,
+    kept_inbox_not_a_folder,
     load_config,
     local_source_table,
     set_source_exclude,
@@ -2782,6 +2783,58 @@ def test_an_inbox_that_is_not_a_folder_is_a_note_naming_it_as_typed_c2814(tmp_pa
     assert not any("a later sync lists" in n for n in step.notes), step.notes
     assert not any("contoso-missing" in w or "contoso-note" in w for w in (*step.waits, *step.notes)), step
     assert (step.rule, step.waits) == (before.rule, before.waits), (step, before)
+
+
+@pytest.mark.parametrize("entry", ["file", "dangling-link", "link-to-file", "self-link"])
+def test_the_walks_alarm_names_the_kept_inbox_as_typed_never_a_links_target_c3007(
+    tmp_path: Path, entry: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """B13 round 46 C3007 (ruling 204): the source on the kept inbox stores the link's target as its path, so
+    the walk's alarm, its echoed warning and STATE.md read ``source root missing: <target>`` (a dangling link)
+    or ``source root is not a directory: <target>``, naming a target every other reader hides. The cycle reads
+    loop's test (config.kept_inbox_not_a_folder) and the alarm names the folder as typed, keeping the walk's
+    safety words; the C2814 note stays."""
+    root = tmp_path / "Contoso Gamma"
+    (root / "Gamma Empty").mkdir(parents=True)
+    config = _synced(tmp_path, root)
+    config, box = ensure_inbox(config.config_path)
+    assert box is not None and run_cycle(config, mode=None).exit_code == 0
+    kept = config.docs_repo.parent / "inbox"
+    kept.rename(tmp_path / "inbox-moved")  # moved aside, never removed
+    if entry == "file":
+        kept.write_text("contoso note\n", encoding="utf-8")
+    elif entry == "dangling-link":
+        kept.symlink_to(kept.parent / "contoso-missing")
+    elif entry == "link-to-file":
+        (kept.parent / "contoso-note.txt").write_text("x\n", encoding="utf-8")
+        kept.symlink_to(kept.parent / "contoso-note.txt")
+    else:
+        kept.symlink_to("inbox")
+    config = load_config(config.config_path)
+    with caplog.at_level(logging.WARNING, logger="agentsync"):
+        report = run_cycle(config, mode=None)
+    assert report.exit_code == 0
+    alarm = (
+        f"source root is not a folder: {publish._display_path(kept)} is a file, a link to a file or a "
+        "dangling link (walk skipped; nothing is deleted; inbox state says what to do)"
+    )
+    [src] = [r for r in report.sources if r.source_id == box.id]
+    assert src.alarms == (alarm,), src.alarms
+    state = (config.docs_repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
+    assert alarm in state and f"{box.id}: {alarm}" in caplog.text, caplog.text
+    for text in (state, caplog.text, *src.alarms):
+        assert "contoso-missing" not in text and "contoso-note" not in text, text
+    assert not any("source root missing" in a or "not a directory" in a for a in src.alarms)
+    step = loop.next_step(config)
+    assert any(n.startswith(f"the inbox ({box.id}) is not a folder: ") for n in step.notes), step.notes
+    others = [r for r in report.sources if r.source_id != box.id]
+    assert others and all(not r.alarms for r in others), others
+    if (
+        entry == "dangling-link"
+    ):  # a local source at the link's target keeps its own words (the review's find)
+        on = config.source(box.id)
+        assert kept_inbox_not_a_folder(config, on) == kept
+        assert kept_inbox_not_a_folder(config, dataclasses.replace(on, kind=SourceKind.LOCAL)) is None
 
 
 def test_an_empty_draft_over_an_empty_mirror_is_rule_4_beside_topic_pages_c2707(tmp_path: Path) -> None:

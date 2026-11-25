@@ -1259,6 +1259,10 @@ class LocalArm:
         self.last_stats: WalkStats | None = None  # stats of the most recent scan (for STATE.md / reports)
         self.root_missing = False  # the most recent scan found no root (ENOENT), before or during the walk
         self.root_notdir = False  # ... found a root that is not a folder (a file or a link; C2814)
+        # the kept inbox as typed (``~/agent-context/inbox``), set by the cycle before a scan when this source
+        # sits on it and its entry is not a folder: the root branches' alarm names it, never the link's
+        # target, as every other reader does (B13 round 46 C3007, ruling 204)
+        self.shown_root: str | None = None
         # stable_id -> stored H0 of this source (``Manifest.observation_index``), set by the cycle before a
         # scan: files whose lstat tuple still matches skip the per-file getattrlist (see ``walk``).
         self.known_h0: Mapping[str, _KnownStat] | None = None
@@ -1275,6 +1279,15 @@ class LocalArm:
         if self._volume is None:
             self._volume = volume_uuid(self.root)
         return self._volume
+
+    def _not_a_folder_alarm(self) -> str:
+        """The root branches' alarm for the source on the kept inbox whose entry is not a folder
+        (:attr:`shown_root`): the folder as typed, inbox_state's kinds, and the walk's safety words (B13
+        round 46 C3007, ruling 204)."""
+        return (
+            f"source root is not a folder: {self.shown_root} is a file, a link to a file or a dangling link "
+            "(walk skipped; nothing is deleted; inbox state says what to do)"
+        )
 
     def _incomplete(self, alarm: str) -> ScanResult:
         log.warning("%s: %s", self.source_id, alarm, extra={ECHOED_ALARM: True})
@@ -1461,14 +1474,22 @@ class LocalArm:
             return self._held(f"reading the root did not return within {self.listing_timeout_s:.0f}s")
         except FileNotFoundError:
             self.root_missing = True
+            if self.shown_root is not None:
+                return self._incomplete(self._not_a_folder_alarm())
             return self._incomplete(f"source root missing: {self.root} (walk skipped; nothing is deleted)")
         except OSError as exc:
+            if self.shown_root is not None:
+                return self._incomplete(self._not_a_folder_alarm())
             return self._incomplete(f"source root unreadable: {self.root}: {exc.strerror}")
         if stat.S_ISLNK(root_st.st_mode):
             self.root_notdir = True
+            if self.shown_root is not None:
+                return self._incomplete(self._not_a_folder_alarm())
             return self._incomplete(f"source root is a symlink: {self.root}; configure the canonical path")
         if not stat.S_ISDIR(root_st.st_mode):
             self.root_notdir = True
+            if self.shown_root is not None:
+                return self._incomplete(self._not_a_folder_alarm())
             return self._incomplete(f"source root is not a directory: {self.root}")
         if not isinstance(volume, str):
             return self._incomplete(f"volume UUID unavailable for {self.root}: {volume}")

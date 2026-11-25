@@ -79,6 +79,7 @@ from agentsync.config import (
     SourceConfig,
     canonical_source_root,
     derive_source_id,
+    kept_inbox_not_a_folder,
 )
 from agentsync.convert import (
     CONVERSION_FAILED,
@@ -189,6 +190,7 @@ from agentsync.publish import (
     PlannedPage,
     Publisher,
     SourceStatus,
+    _display_path,
     _withheld_on_page,
     archive_path,
     notice_gone_why,
@@ -4644,6 +4646,10 @@ class _Cycle:
         else:
             if isinstance(arm, LocalArm):
                 arm.known_h0 = index
+                # the source on the kept inbox whose entry is not a folder: the walk's alarm names the folder
+                # as typed, never the link's target (B13 round 46 C3007, ruling 204)
+                typed = kept_inbox_not_a_folder(self.config, src)
+                arm.shown_root = _display_path(typed) if typed is not None else None
             try:
                 scan = arm.scan(current, full=full)
             finally:

@@ -46339,6 +46339,9 @@ place of `was not fully listed: a later sync lists a file that was still being w
 missing-root wait. It stays a note, never a wait: it gates no baseline question, and a wait would block the NEXT on
 the person's file. A local source's root of that kind keeps its wait and its listable check. Test:
 `test_an_inbox_that_is_not_a_folder_is_a_note_naming_it_as_typed_c2814`.
+Amended 2026-11-24, §16.287 C3007: the walk's alarm, its echoed warning and STATE.md name that source's folder as
+typed too, `source root is not a folder: <folder> is a file, a link to a file or a dangling link (walk skipped;
+nothing is deleted; inbox state says what to do)`, never the link's target.
 
 **Every home renders its stubs and tombstones again once, and the marker waits for every page** (C2851 with C2917,
 C2918; ruling 195, amending ruling 183). `publish.STUB_RENDER` is 8: a home that ran 7 before C2647's loop stored meta
@@ -46864,6 +46867,18 @@ says what to do`, no fix; an EACCES under a listable root (a nested sentinel in 
 permission denied` with `_parent_fix(<sentinel>)`, the person's, naming the subfolder. Tests: the C2809 test's
 `self-link` and `two-link-loop` rows and its volume asserts,
 `test_the_sentinel_row_splits_a_refusal_as_the_listable_row_does_c3043`, `test_source_posix_permission_denied`.
+
+**A sync's alarm names the kept inbox as typed, never a link's target** (C3007; ruling 204; amends §16.282 C2814). The
+source on the kept inbox stores canonical_source_root's answer, the link's target, so with a link at the inbox's name
+the walk's alarm, its echoed warning and STATE.md (which keep the full path, ruling 103) read `source root missing:
+<target>` or `source root is not a directory: <target>`, while status, doctor and the C2814 note name the folder as
+typed. The cycle reads `config.kept_inbox_not_a_folder` (loop's own test: the source's stored path is
+canonical_source_root of the kept folder, and `inbox_entry` reads that entry as not a folder) before the walk and
+sets `LocalArm.shown_root`; `_walk_scan`'s root branches then return `source root is not a folder: <folder> is a file,
+a link to a file or a dangling link (walk skipped; nothing is deleted; inbox state says what to do)`, with
+`root_missing` and `root_notdir` set as before, so the stored kind and the C2814 note are unchanged; every other
+source keeps its text. Test: `test_the_walks_alarm_names_the_kept_inbox_as_typed_never_a_links_target_c3007` (a file,
+a dangling link, a link to a file and a self-link: the alarm, the warning and STATE.md name no target).
 
 ### 16.288 Round 46: the converters: a kept Office answer read again only from the bytes and the fetch that were read, the container answers and the family parse corrected, and speech's CA words (2026-11-24, wave B13 round 46 lane E)
 
