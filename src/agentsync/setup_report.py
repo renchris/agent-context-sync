@@ -7874,6 +7874,9 @@ _FIRST_SYNC_NOTE_WORDS = {
     "waited-for-the-lock": "waited for another sync to end",
     "waited-for-an-unrecorded-holder": "waited for the sync lock to be free",  # B13 round 42 C2222
     "lock-busy": "lock busy: another sync held the lock past the wait",
+    # B13 round 46 C3024: the lock's holder recorded nothing, so install.sh cannot say it was a sync; the old
+    # note stays, so an older install.log still reads
+    "lock-busy-unrecorded-holder": "lock busy: the sync lock was still held past the wait",
     "no-sources": "no folder to sync in sources.toml",
     "status-failed": "agentsync status reported a failure, so no sync ran",
     "tcc-denied": "this terminal app may not read the folders",

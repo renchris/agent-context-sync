@@ -46929,6 +46929,12 @@ with a DEL, `Wombat\177Quokka` with a DEL and `Q3\101\tPlans`. Tests: `tests/tes
 (`test_a_plain_row_keeps_its_literal_name_beside_an_escaped_row_spelled_alike_c3082`,
 `test_an_escaped_name_is_read_every_way_it_allows_within_the_cap_c3114_c3036`).
 
+**A first sync skipped under a holder that recorded nothing is no other sync** (C3024, the report's key; install.sh's
+note is lane RB's, §16.286). `_FIRST_SYNC_NOTE_WORDS` maps install.sh's new `lock-busy-unrecorded-holder` to `lock
+busy: the sync lock was still held past the wait`, and keeps `lock-busy` (`another sync held the lock past the
+wait`), so an older install.log still reads. Test: the row added to
+`test_the_first_sync_steps_note_is_in_words_in_the_table_and_the_summary`.
+
 ### 16.286 Round 46: the installer: the shell halves of rulings 198 and 199, every word it writes valid UTF-8 that reads back as its path, an older build's inbox read, and C2060 waits on the operator (2026-11-24, wave B13 round 46 lane RB)
 
 Reserved for round 46 lane RB of B13.

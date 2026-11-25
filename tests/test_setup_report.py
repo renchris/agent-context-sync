@@ -28043,6 +28043,13 @@ def test_the_helpers_steps_note_is_in_words_in_the_installer_table() -> None:
         ),
         ("waited-for-an-unrecorded-holder", "0", "done", "waited for the sync lock to be free"),
         ("lock-busy", "75", "skipped", "lock busy: another sync held the lock past the wait"),
+        # B13 round 46 C3024: a holder that recorded nothing is never called another sync
+        (
+            "lock-busy-unrecorded-holder",
+            "75",
+            "skipped",
+            "lock busy: the sync lock was still held past the wait",
+        ),
         ("no-sources", "0", "skipped", "no folder to sync in sources.toml"),
         ("status-failed", "0", "skipped", "agentsync status reported a failure, so no sync ran"),
         ("tcc-denied", "80", "failed", "this terminal app may not read the folders"),
