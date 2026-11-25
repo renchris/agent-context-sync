@@ -46731,6 +46731,8 @@ is, and holds the token unset until a pass reads it.
 Amended 2026-11-25, §16.293 C3230: the expected side takes its family's own noun now, so this stub reads `not-ooxml:
 a Word document, not a PowerPoint deck (not the type its name says)`; one cached under the older words keeps them
 until it is read again, and `FAMILY_MISMATCH_RE` matches both.
+Amended 2026-11-25, §16.293 C3231: a row the walk queued this pass (a file touched or readable again) is not read by
+this pass; it waits one sync, the token unset until it is read, as `_reread_family_stubs` says.
 
 **A source's own banner line never stands for the leading one** (C2929; ruling 196; `agentsync.policy`).
 `has_banner` took the banner anywhere in a body's first eight lines and `with_banner` returned such a body
@@ -47667,6 +47669,17 @@ says it reads the git-config branch (the rest of `test_speech.py` still caught t
 two cases now asserts git's bundle in `CURL_CA_BUNDLE` with no shell bundle set, and only then sets the shell's and
 asserts it wins: both mutants fail it. No source changes. Test:
 `test_speech.py::test_the_seeds_docstrings_say_a_shell_ca_for_curl_stays_over_gits_c2930`.
+
+**The family re-read's one-sync wait for a row the walk queued is documented** (C3231; ruling 215; `agentsync.cycle`;
+amends §16.283 C2925; docs only). `_reread_family_stubs` skips every row in the walk's queue (`skip = queued |
+withheld`, the queue taken before it runs), and a row touched with its H1 unchanged settles there as touched, not
+changed, keeping its older-key stub, so an older-rule stub whose file was touched, or became readable again, before
+the first upgraded sync is read one sync later; the token stays unset until then, so nothing is lost. The docstring
+said only "not in the queue"; it names the wait now. The code stays: a family pass that read queued rows would also
+read rows the queue deferred (the byte budget, the file cap, a failed fetch) outside the queue's H1 path, which no
+one measured. Test: `test_convert_family.py::test_a_family_stub_the_walk_queued_waits_one_sync_for_its_reread_c3231`
+(an older-rule stub touched before the upgraded sync: no read, the token unset; the next sync reads it, a page, the
+token set; the docstring's words).
 
 ### 16.294 Round 47: the prompt goes to v44 (a run read to its exit, an error keyed on its exit code, a paused or retired folder never offered again), CI's head and limit, dated lines, and the guides (2026-11-25, wave B13 round 47 lane D)
 

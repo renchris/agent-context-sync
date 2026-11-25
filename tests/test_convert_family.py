@@ -7,6 +7,7 @@ import dataclasses
 import hashlib
 import inspect
 import json
+import os
 import re
 import xml.etree.ElementTree as ET
 import zipfile
@@ -3016,6 +3017,37 @@ def test_a_family_reread_whose_fetch_fails_leaves_the_row_unmarked_and_the_token
     tries.clear()
     assert run(config).exit_code == 0
     assert tries == [], "the token holds: no family re-read again"
+
+
+def test_a_family_stub_the_walk_queued_waits_one_sync_for_its_reread_c3231(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 47 C3231 (ruling 215): the family pass skips every row the walk queued this pass, so an
+    older-rule stub whose file was touched (or became readable again) before the first upgraded sync is
+    settled by the work queue as touched, not changed, and read by the family pass only on the next sync. The
+    wait is by design and documented in ``_reread_family_stubs``: the token stays unset until the row is
+    read, so nothing is lost, and the read comes one sync later."""
+    config, src = make_env(tmp_path)
+    with monkeypatch.context() as old:
+        _older_family_rule(old)
+        path = _decoy_potx(src / "Contoso template.potx")
+        assert run(config).exit_code == 0
+    assert _row(config, path.name).state_reason == _DECK_STUB
+    then = path.stat().st_mtime - 1000
+    os.utime(path, (then, then))
+    tries = _tries(monkeypatch)
+    assert run(config).exit_code == 0
+    assert tries == [] and _row(config, path.name).state_reason == _DECK_STUB, "the queued row waits"
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(cycle_mod._FAMILY_PARSE_META + "src") is None, "the token waits for the row"
+    assert run(config).exit_code == 0
+    assert tries == [path.name], tries
+    assert _row(config, path.name).state is RowState.LIVE
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(cycle_mod._FAMILY_PARSE_META + "src") == "done"
+    doc = " ".join((cycle_mod._Cycle._reread_family_stubs.__doc__ or "").split())
+    assert "(a row the walk queued this pass, such as a file touched or readable again, waits for" in doc
+    assert "the token stays unset until it is read: one sync later, never lost, B13 round 47 C3231)" in doc
 
 
 def test_a_touched_office_stub_the_container_did_not_give_is_no_container_move_c2924(

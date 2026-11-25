@@ -5977,8 +5977,10 @@ class _Cycle:
         again: the Office converters' ``outdated`` rules read no stub by its reason.  The read goes through
         the new key (``convert.effective_options_hash``'s ``family_parse``), so the older answer is not
         served from the cache and a new page is stored.  Modeled on :meth:`_reread_zero_byte_stubs`: only a
-        row listed this pass, not dataless, in scope, not in the queue and not withheld as settling is
-        read, from this Mac and never downloaded (a fetch with a budget of no bytes; a dataless row holds the
+        row listed this pass, not dataless, in scope, not in the queue (a row the walk queued this pass,
+        such as a file touched or readable again, waits for the next cycle, and the token stays unset until
+        it is read: one sync later, never lost, B13 round 47 C3231) and not withheld as settling is read,
+        from this Mac and never downloaded (a fetch with a budget of no bytes; a dataless row holds the
         token unset until it is read), as a re-read (a conversion that gives the stub it has moves
         only its key), with each row read marked whatever the answer; a row whose converter cannot run, or
         whose fetch fails, is left unmarked for a cycle that reads it (B13 round 46 C3107 with C3097, ruling
