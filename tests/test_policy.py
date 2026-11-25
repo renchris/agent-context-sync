@@ -838,6 +838,20 @@ def test_with_banner_is_idempotent() -> None:
     assert "\n" not in policy.UNTRUSTED_BANNER  # one line
 
 
+def test_the_banner_constants_docstring_names_the_two_older_page_kinds_c3322() -> None:
+    """B13 round 47 C3322 (ruling 215): ``UNTRUSTED_BANNER``'s docstring put the banner at the top of every
+    mirror page body, but a stub or tombstone written before the banner came first opens with its heading, and
+    a Markdown page published under the old eight-line rule keeps its source heading above the banner until
+    its source changes (C2929). It says "this build writes" and names both older kinds, as the guide does."""
+    import inspect  # noqa: PLC0415
+
+    source = inspect.getsource(policy)
+    doc = " ".join(source.split("\nUNTRUSTED_BANNER = (", 1)[1].split('"""', 2)[1].split())
+    assert doc.startswith("One line at the top of every mirror page body this build writes, stubs and")
+    assert "a stub or tombstone written before the banner came first opens with its heading" in doc
+    assert "keeps that heading above the banner until the source next changes (CONTRACTS §16.283" in doc
+
+
 def test_a_banner_line_under_a_heading_never_stands_for_the_leading_one_c2929(tmp_path: Path) -> None:
     """B13 round 45 C2929 (ruling 196): ``has_banner`` took the banner anywhere in the first eight lines, so a
     Markdown source holding the line under its own heading kept its heading as the page's first line, above

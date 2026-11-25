@@ -46752,6 +46752,8 @@ leading banner gets one when its source next changes. Tests:
 `test_policy.py::test_a_banner_line_under_a_heading_never_stands_for_the_leading_one_c2929` (`with_banner`,
 leading blank lines, and the default registry's Markdown converter) and
 `test_cycle.py::test_a_banner_bump_commits_nothing_on_a_home_with_guarded_pages_c2929` (the measurement).
+Amended 2026-11-25, §16.293 C3322: `UNTRUSTED_BANNER`'s docstring says the banner tops every page body this build
+writes and names the two older kinds that differ until rewritten, a heading-first stub or tombstone and such a page.
 
 ### 16.284 Round 45: the prompt goes to v42 (a none, a config path and an unread inbox state as setup gives them), the gate's part ceiling and CI's limit, dated lines, and the guides (2026-11-23, wave B13 round 45 lane D)
 
@@ -47680,6 +47682,16 @@ read rows the queue deferred (the byte budget, the file cap, a failed fetch) out
 one measured. Test: `test_convert_family.py::test_a_family_stub_the_walk_queued_waits_one_sync_for_its_reread_c3231`
 (an older-rule stub touched before the upgraded sync: no read, the token unset; the next sync reads it, a page, the
 token set; the docstring's words).
+
+**The banner constant's docstring names the two older page kinds** (C3322; ruling 215; `agentsync.policy`; amends
+§16.283 C2929; docs only). `UNTRUSTED_BANNER`'s docstring said the line is "at the top of every mirror page body,
+stubs and tombstones included (before their heading)", but a stub or tombstone written before the banner came first
+opens with its heading (lints.py still accepts it, and `has_banner`'s docstring names it), and a Markdown page
+published under the old eight-line rule keeps its source heading above the banner until its source changes (C2929's
+note). It now says "every mirror page body this build writes" and names both kinds, as the guide's Untrusted-content
+boundary section already did (C3108); the module docstring's "every mirror page body carries" stays, since it is
+true, and no ordinary older page is said to lack the banner. Test:
+`test_policy.py::test_the_banner_constants_docstring_names_the_two_older_page_kinds_c3322`.
 
 ### 16.294 Round 47: the prompt goes to v44 (a run read to its exit, an error keyed on its exit code, a paused or retired folder never offered again), CI's head and limit, dated lines, and the guides (2026-11-25, wave B13 round 47 lane D)
 
