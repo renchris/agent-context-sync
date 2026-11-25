@@ -46651,6 +46651,8 @@ own family (not None) and a `.vsdx` with one converts; only `<Types>`' direct ch
 none when it has none, are read. A hand-built package's stub cached under the older rule stays until its bytes change.
 Amended 2026-11-24, §16.288 C3098: the parse runs before any decode, so a UTF-32 part is told even when it holds a
 character a UTF-16 decode refuses; only a part that does not parse is decoded, UTF-32 marks before UTF-16's.
+Amended 2026-11-25, §16.293 C3266: the decode of a part that does not parse tells no UTF-32 mark of its own any
+more; that early return changed no UTF-32 answer, and a UTF-16 part opening U+0000 is read as its twins are.
 
 **The seed's summaries say a CA the shell sets for curl stays curl's** (C2930; `agentsync.convert.speech`; amends
 §16.54 Q52). `_CURL_FLAGS`', `_seed`'s and `_curl_env`'s one-line summaries said the seed's curl "trusts and
@@ -47308,6 +47310,8 @@ fallback, a UTF-32 mark (which the byte read cannot read) None before the UTF-16
 not decode None as before. Test: `test_convert_family.py::test_a_utf32_content_types_part_is_parsed_before_any_decode_c3098`
 (UTF-32LE and UTF-32BE parts with a U+1D800 comment, each a Word document, not a deck; a UTF-16 part with a lone
 surrogate that does not parse still None).
+Amended 2026-11-25, §16.293 C3266: the early return for a UTF-32 mark is gone, since it changed no UTF-32 answer;
+the parse-first move is the fix, and a UTF-32 part that does not parse is still None.
 
 **An Office name's container rejection is given before the cache and never stored, said where the cache is**
 (C3048 with C3101, one defect; ruling 202; `agentsync.convert.registry`, `agentsync.convert._common`,
@@ -47503,6 +47507,18 @@ version or option moves (`decode` stays `bom,utf-8,cp1252,latin-1`); the text co
 past U+FFFF, through `convert_file` too; a truncated, a surrogate and an out-of-range body; a NUL inside; UTF-16 and an
 unmarked UTF-32 file as before) and
 `test_convert_family.py::test_a_utf16_part_opening_u0000_still_takes_emls_lenient_fallback_c3268`.
+
+**The family check's fallback drops C3098's UTF-32 return, which changed no UTF-32 answer** (C3266; ruling 215;
+`agentsync.convert._common`; amends §16.283 C2854 and §16.288 C3098). C3098 moved the parse before the decode, which
+is its fix, and added an early None for a part that does not parse and opens with a UTF-32 mark. That return changed
+no UTF-32 answer: the UTF-16 decode of a UTF-32LE mark leaves a unit no higher than U+0010 after every character, and
+UTF-32BE has no UTF-16 mark, so the byte regex, whose every character is at least 0x2E, never matched one. It only
+turned a UTF-16LE part whose first character is U+0000 (`FF FE 00 00`) from a Word document into None, so a `.potx`
+of that shape lost its `not the type its name says` stub to python-pptx's failed conversion. The return and
+`import codecs`, its one use, are gone; the docstring says why a UTF-32 part that does not parse is still None. No
+`family_parse` moves: the changed answer was a failed conversion, never cached. Test:
+`test_convert_family.py::test_a_content_types_part_that_does_not_parse_gives_utf32_no_family_with_no_early_return_c3266`
+(UTF-32LE and BE parts that do not parse are None; the UTF-16 part opening U+0000 is `word`).
 
 ### 16.294 Round 47: the prompt goes to v44 (a run read to its exit, an error keyed on its exit code, a paused or retired folder never offered again), CI's head and limit, dated lines, and the guides (2026-11-25, wave B13 round 47 lane D)
 

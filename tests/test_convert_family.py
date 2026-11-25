@@ -2567,6 +2567,30 @@ def test_a_utf32_content_types_part_is_parsed_before_any_decode_c3098(tmp_path: 
     assert common_mod._ooxml_family(make_zip(src, parts)) is None
 
 
+def test_a_content_types_part_that_does_not_parse_gives_utf32_no_family_with_no_early_return_c3266(
+    tmp_path: Path,
+) -> None:
+    """B13 round 47 C3266 (ruling 215): C3098's early return for a UTF-32 mark on a part that does not parse
+    changed no UTF-32 answer (the UTF-16 decode of a UTF-32LE mark leaves a unit no higher than U+0010 after
+    every character, and UTF-32BE has no UTF-16 mark, so the byte regex never matched), and only turned a
+    UTF-16LE part opening U+0000 (``FF FE 00 00``) from a Word document into None, a ``.potx`` of that shape
+    a failed conversion rather than the stub. The return is gone: UTF-32 parts that do not parse are still
+    None, and that UTF-16 part is a Word document again, as every other UTF-16 part that does not parse."""
+    src = word_package(tmp_path / "Contoso notes.potx")
+    with zipfile.ZipFile(src) as zin:
+        parts = {i.filename: zin.read(i) for i in zin.infolist()}
+    text = parts["[Content_Types].xml"].decode("utf-8")
+    for codec, mark in _UTF32_MARKS.items():
+        parts["[Content_Types].xml"] = mark + (text + "<").encode(codec)
+        src.unlink()
+        assert common_mod._ooxml_family(make_zip(src, parts)) is None, codec
+    parts["[Content_Types].xml"] = b"\xff\xfe" + ("\x00" + text).encode("utf-16-le")
+    assert parts["[Content_Types].xml"].startswith(_UTF32_MARKS["utf-32-le"])
+    src.unlink()
+    assert common_mod._ooxml_family(make_zip(src, parts)) == "word"
+    assert "import codecs" not in Path(common_mod.__file__).read_text(encoding="utf-8")
+
+
 _UTF32_MARKS = {"utf-32-le": b"\xff\xfe\x00\x00", "utf-32-be": b"\x00\x00\xfe\xff"}
 
 

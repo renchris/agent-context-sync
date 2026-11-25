@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import codecs
 import csv
 import io
 import mmap
@@ -139,11 +138,13 @@ def _ooxml_family(src: Path) -> str | None:
     CJK one (B13 round 35 C964).  The parse reads the part's own bytes first, before any decode, so it
     tells a UTF-32 part and a mark-less UTF-16 part that opens with an XML declaration; only the byte
     fallback cannot read either, so a mark-less UTF-16 part with no declaration, which lxml does not parse,
-    cannot be told (B13 round 45 C2855).  Only a part that does not parse is decoded, for the fallback, its
-    UTF-32 marks told before UTF-16's (``FF FE 00 00`` opens with UTF-16LE's mark): a UTF-32 one is None, as
-    the byte read cannot read it, and so is a UTF-16 one that does not decode (B13 round 46 C3098: the
-    decode ran first, so a UTF-32LE part holding a character past U+FFFF failed it and was None, though it
-    parsed).
+    cannot be told (B13 round 45 C2855).  Only a part that does not parse is decoded, for the fallback, and
+    a UTF-16 one that does not decode is None (B13 round 46 C3098: the decode ran first, so a UTF-32LE part
+    holding a character past U+FFFF failed it and was None, though it parsed).  A UTF-32 part that does not
+    parse is None, because the UTF-16 decode of a UTF-32LE mark leaves a unit no higher than U+0010 after
+    every character, and UTF-32BE has no UTF-16 mark, so the byte regex never matches (B13 round 47 C3266:
+    an early UTF-32 return here changed no UTF-32 answer; it only turned a crafted UTF-16 part opening U+0000
+    from a family stub into a failed conversion).
 
     The parse decides: the families are read from the decoded ContentType of each Override and Default
     element (:func:`content_types_tree`) that is a direct child of ``<Types>`` in ``<Types>``' own namespace,
@@ -167,8 +168,6 @@ def _ooxml_family(src: Path) -> str | None:
         return None
     tree = content_types_tree(raw)  # its own bytes, which its declaration names, before any decode (C3098)
     if tree is None:  # unparseable (the cap returned None above): the byte read stands
-        if raw.startswith((codecs.BOM_UTF32_LE, codecs.BOM_UTF32_BE)):  # before UTF-16's, a prefix of one
-            return None  # the byte fallback cannot read UTF-32 (B13 round 46 C3098)
         if raw.startswith(_UTF16_BOMS):
             try:
                 types = raw.decode("utf-16").encode("utf-8")
