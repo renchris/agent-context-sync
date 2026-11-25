@@ -27,6 +27,7 @@ from test_install_oneshot import (  # noqa: F401  (fixture)
     INSTALL_SH,
     _cloud,
     _fuzzy_report,
+    _install_bytes,
     _renderer_home,
     _shell_cut_stdout,
     _stub_id,
@@ -4334,3 +4335,42 @@ def test_both_reports_read_the_folder_after_a_launcher_named_like_the_flag_c3104
     shell, python, shell_private, python_private = _both_reports(env, ["Project Alpha"], said, locale)
     assert re.fullmatch(r"picked the <folder-\d+> folder", python[0]), python
     assert shell == python and shell_private == python_private, (shell, python)
+
+
+# ---- B13 round 46 lane RB: ruling 199's shell halves -------------------------------------------------------
+
+
+def _git_remote(repo: Path, url: str) -> None:
+    """A checkout at ``repo`` whose .git/config names ``url`` as origin."""
+    (repo / ".git").mkdir(parents=True)
+    (repo / ".git" / "config").write_text(f'[remote "origin"]\n\turl = {url}\n', encoding="utf-8")
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize("unknown_key", [False, True])
+def test_both_reports_read_the_configured_docs_repos_remote_c3054(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+    unknown_key: bool,
+) -> None:
+    """B13 round 46 ruling 199, C3054 (privacy): the shell read only ~/agent-context/docs's git remotes, so a
+    docs repo moved by `docs_repo` printed its remote's host and team path in clear in a public shell report
+    while the agentsync report cut them. The shell reads the configured docs repo in place of the default,
+    never beside it: a leftover ~/agent-context/docs naming another host moves no number, and both reports
+    print one line, a loaded config and one with an unknown key (read raw) alike."""
+    home = Path(env["HOME"])
+    _git_remote(home / "Work" / "kb" / "docs", "https://git.wombatcorp.example/kestrel-team/kb.git")
+    _git_remote(home / "agent-context" / "docs", "https://git.quokka-labs.example/zephyr/kb.git")
+    config = home / "agent-context" / "sources.toml"
+    extra = "bogus = 1\n" if unknown_key else ""
+    body = f'{extra}[agentsync]\ndocs_repo = "~/Work/kb/docs"\n' + default_config_text()
+    texts: list[str] = []
+    said = ["fatal: unable to access 'https://git.wombatcorp.example/kestrel-team/kb.git/': 403"]
+    shell, python, sp, pp = _both_reports(
+        env, [], said, locale, config=config, config_body=body, texts_out=texts
+    )
+    for text in texts:
+        leaks = [ln for ln in text.splitlines() if re.search(r"(?i)wombat|kestrel", ln)]
+        assert not leaks, leaks
+    assert python == ["fatal: unable to access 'https://<proxy-1>/<proxy-2>/': 403"], python
+    assert (shell, sp) == (python, pp), (shell, python, sp, pp)

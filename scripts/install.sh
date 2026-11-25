@@ -639,13 +639,13 @@ git_rewrite_pairs() {
 # hand-set origin, and step 1 tells the agent to log it. Only a URL with "://" (not file://) or git's
 # [user@]host:path form, a host with a dot and none of PUBLIC_HOSTS or GitHub's: a local remote ("../x", a bare
 # word, an absolute path) is no host, and "<proxy-N>" in place of ".." or "agent-context-sync" broke paths.
-git_remote_entries() { # host TAB url, one a line; git_remote_hosts and git_remote_urls read them
+git_remote_entries() { # [DOCS]: host TAB url, one a line; git_remote_hosts and git_remote_urls read them
 	local g
-	# the docs repo's own config last, as setup_report reads it, so no number moves (B13 round 17 U93); the
-	# shell reads only its default place, since it never loads the config
+	# the docs repo's own config last, as setup_report reads it, so no number moves (B13 round 17 U93): DOCS,
+	# the configured docs repo redaction_pairs reads, in place of the default (B13 round 46 ruling 199, C3054)
 	{
 		git_config_files
-		checkout_git_configs "$HOME/agent-context/docs"
+		checkout_git_configs "${1:-$HOME/agent-context/docs}"
 	} | while IFS= read -r g; do
 		[ ! -f "$g" ] || PUBLIC="$PUBLIC_HOSTS" LC_ALL=C awk '
 			function entry(line,    u, h, c, l) { # a url key of a remote section
@@ -685,7 +685,7 @@ git_remote_entries() { # host TAB url, one a line; git_remote_hosts and git_remo
 git_remote_hosts() { git_remote_entries | LC_ALL=C cut -f 1; }
 # The first URL of each host, as setup_report._git_remotes gives it: the redaction pairs take it as a rewrite
 # base, so a path with a company word in it is a <proxy-N> too (B13 round 17 U15).
-git_remote_urls() { git_remote_entries | LC_ALL=C cut -f 2-; }
+git_remote_urls() { git_remote_entries "$@" | LC_ALL=C cut -f 2-; }
 # The repository config files git reads for checkout DIR, one a line, as setup_report._checkout_git_configs
 # reads them: <common dir>/config and <git dir>/config.worktree, where .git is the git dir or a file naming it
 # ("gitdir: <path>", a linked worktree's or a submodule's; relative to DIR) and the git dir's commondir file
@@ -3038,8 +3038,17 @@ config_path_values() {
 			if (c < 65536) return sprintf("%c%c%c", 224 + int(c / 4096), 128 + int(c / 64) % 64, 128 + c % 64)
 			return sprintf("%c%c%c%c", 240 + int(c / 262144), 128 + int(c / 4096) % 64, 128 + int(c / 64) % 64, 128 + c % 64)
 		}
-		/^[[:space:]]*path[[:space:]]*=[[:space:]]*".*"[[:space:]]*$/ {
-			v = $0; sub(/^[^"]*"/, "", v); sub(/"[[:space:]]*$/, "", v)
+		# a literal one raw, as tomllib reads it: no escape, its TAB a space as above (B13 round 46 ruling 199, C3056)
+		/^[[:space:]]*(path|"path"|\047path\047)[[:space:]]*=[[:space:]]*\047[^\047]*\047[[:space:]]*(#.*)?$/ {
+			v = $0; sub(/^[^=]*=[[:space:]]*\047/, "", v); sub(/\047.*$/, "", v); gsub(/\t/, " ", v)
+			print v
+			next
+		}
+		# a basic one to its closing quote, a comment after it as tomllib allows (C3056), else to the last quote
+		/^[[:space:]]*(path|"path"|\047path\047)[[:space:]]*=[[:space:]]*(".*"[[:space:]]*|"([^"\\]|\\.)*"[[:space:]]*#.*)$/ {
+			v = $0; sub(/^[^=]*=[[:space:]]*/, "", v)
+			if (match(v, /^"([^"\\]|\\.)*"[[:space:]]*(#.*)?$/)) { match(v, /^"([^"\\]|\\.)*"/); v = substr(v, 2, RLENGTH - 2) }
+			else { sub(/^"/, "", v); sub(/"[[:space:]]*$/, "", v) }
 			out = ""
 			while ((i = index(v, "\\")) > 0) {
 				out = out substr(v, 1, i - 1); e = substr(v, i + 1, 1); v = substr(v, i + 2)
@@ -3160,6 +3169,10 @@ agentsync_dir_values() {
 			if (v != "" && !(key in seen)) { seen[key] = 1; print key "\t" v }
 		}
 		BEGIN { nk = split(ENVIRON["K"], ks, "|"); for (i = 1; i <= nk; i++) want[ks[i]] = 1; root = 1 }
+		# a record-ending CR comes from a CRLF file, whose line ends tomllib reads as newlines: stripped before
+		# either rule below reads $0, so a line-ending backslash still joins and no CR is read as text (B13 round
+		# 46 ruling 199, C3085); tomllib refuses a bare CR anywhere else, and an escaped \r is two characters
+		{ sub(/\r$/, "") }
 		mlq != "" {
 			src = $0
 			if (mlv == "" && !started) { started = 1 } # the newline right after the opening quotes is dropped
@@ -3475,6 +3488,7 @@ redaction_pairs() {
 	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x links walked lk
 	local cfg_cut tilde port k ph b auth sep tail rw keys key m sp top raw folder_keys=$'\n' FUZZY lib_n=0
 	local tables=0 ids=" " hp beside own_state own_docs own_cache own_logs fl fuzzy_keys=$'\n' folded_vals=$'\n'
+	local cts remote_docs sv ref_docs="" ref_state="" ref_cache="" ref_logs="" head rest bx cand gb
 	local -a known=() logged_late=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=() listed=() rooted=() placed=() cfgpaths=()
 	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
 	# (written with printf %q, which read without -r undoes; a $'..' form is unquoted by the loop after it).
@@ -3503,6 +3517,9 @@ redaction_pairs() {
 	}
 	if [ -f "$CONFIG" ]; then
 		while IFS= read -r line; do
+			# a path naming another account's home is no folder of this Mac: setup_report reads it as None and
+			# cuts it with the refused values (B13 round 46 ruling 198)
+			case "$line" in \~[!/]*) continue ;; esac
 			known+=("$line") cfgpaths+=("$line")
 		done < <(config_path_values)
 	fi
@@ -4073,9 +4090,27 @@ redaction_pairs() {
 	own_state="" own_docs="" own_cache="" own_logs=""
 	# each as pathlib reads it (path_norm), as doctor and status print it and the Python report registers it
 	while IFS=$'\t' read -r k v; do
-		v="$(path_norm "$(py_strip "$v")")" # as config._str strips it, then pathlib (C2698)
+		sv="$(py_strip "$v")"
+		v="$(path_norm "$sv")" # as config._str strips it, then pathlib (C2698)
+		# a value naming another account's home (~name) paths.expand refuses: its default stands in, as
+		# setup_report._unloaded_config's folder() gives it, and the value is cut below (B13 round 46 ruling 198)
+		case "$sv" in \~[!/]*)
+			case "$k" in state_dir) ref_state="$sv" ;; docs_repo) ref_docs="$sv" ;; cache_dir) ref_cache="$sv" ;; log_dir) ref_logs="$sv" ;; esac
+			continue
+			;;
+		esac
 		case "$k" in state_dir) own_state="$v" ;; docs_repo) own_docs="$v" ;; cache_dir) own_cache="$v" ;; log_dir) own_logs="$v" ;; esac
 	done < <(agentsync_dir_values)
+	# sources.toml's state with its source table, read once: the id registry and the docs repo below read it
+	cts="$(config_toml_state sources)"
+	# the docs repo whose git remotes the report reads, as setup_report reads cfg.docs_repo: the configured one,
+	# in place of the default and never beside it, so a leftover ~/agent-context/docs of another host moves no
+	# number (B13 round 46 ruling 199, C3054); the default where the agentsync report reads it, for a config that
+	# does not parse (_RawConfig) or a value naming another account's home (ruling 198)
+	remote_docs="${own_docs:-$HOME/agent-context/docs}"
+	[ "${cts%%$'\n'*}" != unparsed ] || remote_docs="$HOME/agent-context/docs"
+	case "$remote_docs" in \~) remote_docs="$HOME" ;; \~/*) remote_docs="$HOME/${remote_docs#\~/}" ;; \~*) remote_docs="$HOME/agent-context/docs" ;; esac
+	remote_docs="${remote_docs%/}"
 	beside="${own_docs:-$HOME/agent-context/docs}"
 	case "$beside" in \~) beside="$HOME" ;; \~/*) beside="$HOME/${beside#\~/}" ;; esac
 	beside="${beside%/}"
@@ -4085,6 +4120,51 @@ redaction_pairs() {
 		[ "$beside" != "$HOME" ] && [ "$beside" != "$hp" ] || return 1
 		generic_home_dir "$(recase lower "${beside##*/}")" && return 1
 		case "$1" in "$beside" | "$beside/"*) return 0 ;; esac
+		return 1
+	}
+	resolved() { # PATH: as pathlib's resolve() reads it, not strict: pwd -P where it can be entered, a link read
+		# with readlink where its target cannot be searched, else the path under its resolved parent
+		local r
+		r="$(cd "$1" 2>/dev/null && pwd -P || true)"
+		if [ -z "$r" ] && [ -L "$1" ]; then
+			r="$(readlink "$1" 2>/dev/null || true)"
+			case "$r" in /* | "") ;; *) r="${1%/*}/$r" ;; esac
+		fi
+		if [ -z "$r" ]; then
+			r="$(cd "${1%/*}" 2>/dev/null && pwd -P || true)"
+			r="${r:+$r/${1##*/}}"
+		fi
+		printf '%s\n' "${r:-$1}"
+	}
+	# The kept inbox's targets that are not agentsync's own, as setup_report._build_redactor reads them (B13 round
+	# 46 ruling 199, C3055 with lane RA's review rows): ~/agent-context/inbox resolved, the kept inbox only (an
+	# inbox source elsewhere stays a project); inside the folder beside the docs repo it is agentsync's own, unless
+	# that folder is a generic container or the home, where the person's own folders live; one under CloudStorage is
+	# left to its cloud parts. A configured folder under one is no project (the loop below), and each is
+	# registered through own_folder_values after the own folders and the inbox block (makes worse True for
+	# registering every source's resolved path, which cut the bare `inbox` of a link to ~/Documents/inbox).
+	local -a inbox_targets=()
+	gb=0
+	{ generic_home_dir "$(recase lower "${beside##*/}")" || [ "$beside" = "$HOME" ] || [ "$beside" = "$hp" ]; } && gb=1
+	bx="$(cd "$beside" 2>/dev/null && pwd -P || true)"
+	while IFS= read -r cand; do
+		[ -n "$cand" ] || continue
+		case "$cand" in "$cs" | "$cs"/* | "$hp/Library/CloudStorage" | "$hp/Library/CloudStorage/"*) continue ;; esac
+		if [ "$gb" -eq 0 ]; then
+			case "$cand" in "$beside" | "$beside"/* | "${bx:-$beside}" | "${bx:-$beside}"/*) continue ;; esac
+		fi
+		for x in ${inbox_targets[@]+"${inbox_targets[@]}"}; do [ "$x" != "$cand" ] || continue 2; done
+		inbox_targets+=("$cand")
+	done < <(resolved "$beside/inbox")
+	under_inbox_target() { # PATH: 0 when it lies under one of inbox_targets, as written (~ expanded) or resolved
+		local p="$1" r t
+		case "$p" in \~) p="$HOME" ;; \~/*) p="$HOME/${p#\~/}" ;; esac
+		[ "${#inbox_targets[@]}" -gt 0 ] || return 1
+		r="$(resolved "$p")"
+		for t in "${inbox_targets[@]}"; do
+			case "$p" in "$t" | "$t"/*) return 0 ;; esac
+			case "$r" in "$t" | "$t"/*) return 0 ;; esac
+		done
 		return 1
 	}
 	folder_value() { # VALUE [fuzzy]: its <folder-N>, the placeholder another spelling has (folder_keys), in any case
@@ -4140,7 +4220,8 @@ redaction_pairs() {
 	}
 	if [ -f "$CONFIG" ]; then
 		while IFS= read -r line; do
-			case "$line" in "$cs"/* | \~/Library/CloudStorage/* | "$hp/Library/CloudStorage/"*) continue ;; esac
+			case "$line" in "$cs"/* | \~/Library/CloudStorage/* | "$hp/Library/CloudStorage/"* | \~[!/]*) continue ;; esac
+			under_inbox_target "$line" && continue # registered below, after the own folders (C3055)
 			project_values "$line"
 			placed+=("$line")
 		done < <(config_path_values)
@@ -4219,6 +4300,37 @@ redaction_pairs() {
 		h="${hp:-$HOME}"
 		case "$beside" in "$HOME" | "$HOME"/* | "$h" | "$h"/*) ;; *) own_folder_values "$beside/inbox" "$HOME/agent-context/inbox" ;; esac
 	fi
+	# then the kept inbox's targets read above, through own_folder_values' filter, so a container, an own word or
+	# `inbox` is never cut alone (B13 round 46 ruling 199, C3055)
+	for x in ${inbox_targets[@]+"${inbox_targets[@]}"}; do own_folder_values "$x" /; done
+	# Each config value paths.expand refuses (a ~name head: another account's home), stripped as written, in
+	# setup_report._register_refused's order: the [[source]] paths, then (where the file parses) docs_repo,
+	# state_dir, cache_dir and log_dir, then [convert] pandoc_path. Each cut whole to ~<user>/<path> (or ~<user>),
+	# its head to ~<user>, both to their path token's end (flag c, as add_cut), the name after ~ a <user> unless
+	# it is a report word, and the folder parts after the head through own_folder_values, so a container or an
+	# own word alone is never registered and the report stays public (B13 round 46 ruling 198, C3099 with C3033,
+	# C3037 and C3110). After the inbox above and before the source ids, as there.
+	while IFS= read -r v; do
+		case "$v" in \~[!/]*) ;; *) continue ;; esac
+		head="${v%%/*}" rest=""
+		[ "$head" = "$v" ] || rest="${v#*/}"
+		while [ "${rest#/}" != "$rest" ]; do rest="${rest#/}"; done
+		while [ "${rest%/}" != "$rest" ]; do rest="${rest%/}"; done
+		add_pair "$v" "~<user>${rest:+/<path>}" c
+		# a head holding a blank names no account: cut only inside the whole value, never alone (lane RA's review)
+		case "${head#\~}" in *[[:space:]]*) ;; *)
+			add_pair "$head" "~<user>" c
+			report_word "$(recase lower "${head#\~}")" || add_pair "${head#\~}" "<user>" w
+			;;
+		esac
+		# under Library/CloudStorage/<entry>, the folders after the entry: CloudStorage itself is no folder
+		case "$rest" in Library/CloudStorage/*/*) x="${rest#Library/CloudStorage/}" && rest="${x#*/}" ;; Library/CloudStorage/*) rest="" ;; esac
+		[ -z "$rest" ] || own_folder_values "$HOME/$rest" /
+	done < <(
+		while IFS=$'\t' read -r i v f; do py_strip "$f" && echo; done < <(config_source_records "$cts")
+		[ "${cts%%$'\n'*}" = unparsed ] || printf '%s\n' "$ref_docs" "$ref_state" "$ref_cache" "$ref_logs"
+		while IFS=$'\t' read -r k v; do py_strip "$v" && echo; done < <(agentsync_dir_values convert pandoc_path)
+	)
 	# Every configured source id, as <source-N> numbered in config order among the ids that take a number of their
 	# own (B13 round 5 F6; round 41 C2071; round 42 C2238): an id is its
 	# folder's name in slug form ("project-beta---general"), and the empty-folder wait an agent quotes names it.
@@ -4273,17 +4385,7 @@ redaction_pairs() {
 			# numbers them: one that shares its folder's <folder-N> takes none (C2071)
 			[ -n "$ph" ] || { tables=$((tables + 1)) && ph="<source-$tables>"; }
 			id_pairs "$v" "$ph" "$k"
-		done < <(LC_ALL=C awk '
-			function flush() { if (inside && id != "") print n "\t" id "\t" path; id = ""; path = "" }
-			/^[[:space:]]*\[/ {
-				flush()
-				inside = ($0 ~ /^[[:space:]]*\[\[[[:space:]]*source[[:space:]]*\]\]/)
-				if (inside) n++
-				next
-			}
-			inside && /^[[:space:]]*id[[:space:]]*=[[:space:]]*"/ { v = $0; sub(/^[^"]*"/, "", v); sub(/".*$/, "", v); id = v; next }
-			inside && /^[[:space:]]*path[[:space:]]*=[[:space:]]*"/ { v = $0; sub(/^[^"]*"/, "", v); sub(/"[^"]*$/, "", v); path = v; next }
-			END { flush() }' "$CONFIG" 2>/dev/null)
+		done < <(config_source_records "$cts")
 	fi
 	# A source still mirrored whose [[source]] block is gone is in no table above, yet doctor's
 	# config.vanished_sources [FAIL] and the sync's refusal quote its id ("source 'x' (3 files) is mirrored but
@@ -4663,7 +4765,7 @@ redaction_pairs() {
 			# the hosts of the git remotes, after them, as the Python report registers them, so no number moves
 			# (B13 round 16 T88; no apostrophe in a comment here: bash 3.2 reads one as a quote inside this block),
 			# each URL as a rewrite base, so a company word in its path is redacted too (B13 round 17 U15)
-			git_remote_urls | LC_ALL=C sed 's/^/rw=/'
+			git_remote_urls "$remote_docs" | LC_ALL=C sed 's/^/rw=/'
 			# every other system proxy host (a flag of 0, or below the top level) and PAC URL (a per-interface one,
 			# by host and by value): redacted still, numbered last
 			printf '%s\n' "$sp" | LC_ALL=C sed -n -e 's/^[[:space:]]*HTTPS\{0,1\}Proxy : //p' \
@@ -7285,9 +7387,17 @@ PRIVATE_ONLY="" # 1 once fallback_redaction says the shell report is for a priva
 # this script resolves (the installed agentsync's, else a python3.11 or later uv already holds), under
 # with_timeout, the verdict a fixed word it prints and its stderr never read. Only where no interpreter answers
 # does the shape the awk readers need decide, never a blanket private only: "unparsed" for a `[` line that is not
-# a whole header of bare keys, a source table's id or path line those readers do not read as a basic string, or a
-# line outside every multi-line value that is no key, header or comment; else "loaded" (B13 round 45 ruling 188,
-# C2840 with C2915).
+# a whole header of bare keys, a source table's id or path line those readers do not read as a basic or literal
+# string, or a
+# line outside every multi-line value that is no key, header or comment, or a multi-line string or array still
+# open at end of file (B13 round 46 ruling 199, C3084); else "loaded" (B13 round 45 ruling 188, C2840 with
+# C2915). Given "sources", an interpreter that answers loaded also prints a line "sources", then each [[source]]
+# table tomllib reads as "n TAB id TAB path" (n its place among the tables, in config order), a string id only,
+# a path that is no string printed empty, a record holding a TAB or LF dropped, written as UTF-8 whatever the
+# locale: config_source_records reads it (B13 round 46 ruling 199, C3034 with C3083). The structural check
+# accepts exactly the spellings that reader's awk reads with no interpreter: a bare, "source" or 'source'
+# header, a bare or quoted id or path key, a basic or literal id or path, and no source key at the top level,
+# as an inline array of tables is (C3034, C3056).
 config_toml_state() {
 	local py uv w
 	[ -f "$CONFIG" ] || return 0
@@ -7308,14 +7418,24 @@ except ImportError:
     sys.exit(0)
 try:
     with open(sys.argv[1], encoding="utf-8") as f:
-        tomllib.loads(f.read())
+            d = tomllib.loads(f.read())
 except (tomllib.TOMLDecodeError, UnicodeDecodeError, ValueError):
     print("unparsed")
 except OSError:
     print("unread")
 else:
-    print("loaded")' "$CONFIG" 2>/dev/null)" || w=""
-		case "$w" in unparsed | loaded | unread)
+    o = "loaded\n"
+    if sys.argv[2:] == ["sources"]:
+        o += "sources\n"
+        s = d.get("source")
+        for n, t in enumerate(s if isinstance(s, list) else [], 1):
+            i = t.get("id") if isinstance(t, dict) else None
+            p = t.get("path") if isinstance(t, dict) else None
+            p = p if isinstance(p, str) else ""
+            if isinstance(i, str) and i and not any(c in i + p for c in "\t\n"):
+                o += str(n) + "\t" + i + "\t" + p + "\n"
+    sys.stdout.buffer.write(o.encode("utf-8", "surrogateescape"))' "$CONFIG" ${1:+"$1"} 2>/dev/null)" || w=""
+		case "${w%%$'\n'*}" in unparsed | loaded | unread)
 			printf '%s' "$w"
 			return 0
 			;;
@@ -7331,14 +7451,15 @@ else:
 			k = "([A-Za-z0-9_-]+|\"[^\"]*\"|\047[^\047]*\047)" # a bare, basic or literal key part
 			k = "[ \t]*" k "([ \t]*[.][ \t]*" k ")*[ \t]*"
 			if (s !~ ("^\\[\\[" k "\\]\\][ \t]*(#.*)?$") && s !~ ("^\\[" k "\\][ \t]*(#.*)?$")) bad = 1
-			src = (s ~ /^\[\[[ \t]*source[ \t]*\]\]/)
-			qsrc = (s ~ /^\[\[[ \t]*("source"|\047source\047)[ \t]*\]\]/) # the id reader reads none there
+			src = (s ~ /^\[\[[ \t]*(source|"source"|\047source\047)[ \t]*\]\]/)
+			hdr = 1
 			next
 		}
 		!index(s, "=") { bad = 1; next }
-		qsrc && s ~ /^["\047]?id["\047]?[ \t]*=/ { bad = 1; next }
+		!hdr && s ~ /^(source|"source"|\047source\047)[ \t]*[.=]/ { bad = 1; next } # sources the id reader never reads
 		src && s ~ /^["\047]?(id|path)["\047]?[ \t]*=/ {
-			if (s ~ /^id[ \t]*=[ \t]*"[^"\\]*"[ \t]*(#.*)?$/ || s ~ /^path[ \t]*=[ \t]*"([^"\\]|\\.)*"[ \t]*$/) next
+			if (s ~ /^(id|"id"|\047id\047)[ \t]*=[ \t]*("[^"\\]*"|\047[^\047]*\047)[ \t]*(#.*)?$/) next
+			if (s ~ /^(path|"path"|\047path\047)[ \t]*=[ \t]*("([^"\\]|\\.)*"|\047[^\047]*\047)[ \t]*(#.*)?$/) next
 			bad = 1; next
 		}
 		{
@@ -7348,7 +7469,44 @@ else:
 			v = unq(v); sub(/#.*/, "", v)
 			depth = gsub(/\[/, "[", v) - gsub(/\]/, "]", v)
 		}
-		END { print (bad ? "unparsed" : "loaded") }' "$CONFIG" 2>/dev/null || true
+		END { print ((bad || ml != "" || depth > 0) ? "unparsed" : "loaded") }' "$CONFIG" 2>/dev/null || true
+}
+# The configured sources the id registry in redaction_pairs reads, as "n TAB id TAB path", one a line: the
+# interpreter's tomllib table when config_toml_state answers loaded through one, so every spelling tomllib reads
+# is read as the agentsync report reads it (B13 round 46 ruling 199, C3034 with C3083); else an awk over the
+# lines, which reads a bare, "source" or 'source' header and a bare or quoted id or path key, a basic value as
+# written to its closing quote and a literal one raw (C3056), a comment after either, the spellings
+# config_toml_state's structural check accepts. Its one argument, when given, is config_toml_state's sources
+# output, which the caller has read already.
+config_source_records() {
+	local t
+	[ -f "$CONFIG" ] || return 0
+	t="${1-$(config_toml_state sources)}"
+	case "$t" in
+	loaded$'\n'sources | loaded$'\n'sources$'\n'*)
+		t="${t#loaded$'\n'sources}"
+		[ -z "$t" ] || printf '%s\n' "${t#$'\n'}"
+		return 0
+		;;
+	esac
+	LC_ALL=C awk '
+		function flush() { if (inside && id != "") print n "\t" id "\t" path; id = ""; path = "" }
+		function val(line,    v, q) { # the basic (as written) or literal value of a key line
+			v = line; sub(/^[^=]*=[[:space:]]*/, "", v); q = substr(v, 1, 1)
+			if (q == "\047") { v = substr(v, 2); sub(/\047.*$/, "", v); return v }
+			if (q == "\"" && match(v, /^"([^"\\]|\\.)*"/)) return substr(v, 2, RLENGTH - 2)
+			return ""
+		}
+		{ sub(/\r$/, "") }
+		/^[[:space:]]*\[/ {
+			flush()
+			inside = ($0 ~ /^[[:space:]]*\[\[[[:space:]]*(source|"source"|\047source\047)[[:space:]]*\]\]/)
+			if (inside) n++
+			next
+		}
+		inside && /^[[:space:]]*(id|"id"|\047id\047)[[:space:]]*=[[:space:]]*["\047]/ { id = val($0); next }
+		inside && /^[[:space:]]*(path|"path"|\047path\047)[[:space:]]*=[[:space:]]*["\047]/ { path = val($0); next }
+		END { flush() }' "$CONFIG" 2>/dev/null || true
 }
 # The shell report's Redaction section: fixed text, written after redact_stream (as the issue link is), so no
 # value can replace a word of it ("the login name" with a folder named "name").
@@ -13629,7 +13787,10 @@ fi
 # the inbox still has no folder to sync and gets "choose a folder to sync". Counted with tomllib through the
 # installed agentsync's interpreter (stdlib alone, so an older build answers too), as the report's
 # config.sources counts them: every spelling of the header and the kind key, paused and retired sources counted
-# (state-blind, as C2601 has it); the line reader only when that fails (B13 round 45 ruling 188, C2934).
+# (state-blind, as C2601 has it); the line reader only when that fails (B13 round 45 ruling 188, C2934). The
+# kind stripped as config._str strips it before SourceKind reads it, so `kind = " inbox "` is the inbox in both
+# readers (B13 round 46 ruling 199, C3087 with C3105): str.strip itself in the interpreter; blanks inside the
+# quotes in the line reader, which reads no TOML escape (a "\tinbox" only tomllib resolves).
 non_inbox_sources() { # $1: sources.toml; prints the number of [[source]] tables whose kind is not "inbox"
 	local n
 	if [ -x "$TOOL_PY" ]; then
@@ -13637,7 +13798,7 @@ non_inbox_sources() { # $1: sources.toml; prints the number of [[source]] tables
 with open(sys.argv[1], "rb") as f:
     d = tomllib.load(f)
 s = d.get("source", [])
-print(sum(1 for t in s if isinstance(t, dict) and t.get("kind") != "inbox") if isinstance(s, list) else 0)' "$1" 2>/dev/null)" || n=""
+print(sum(1 for t in s if isinstance(t, dict) and not (isinstance(t.get("kind"), str) and t["kind"].strip() == "inbox")) if isinstance(s, list) else 0)' "$1" 2>/dev/null)" || n=""
 		case "$n" in '' | *[!0-9]*) ;; *)
 			printf '%s\n' "$n"
 			return 0
@@ -13646,7 +13807,7 @@ print(sum(1 for t in s if isinstance(t, dict) and t.get("kind") != "inbox") if i
 	fi
 	awk '
 		/^[[:space:]]*\[/ { if (t && !ib) n++; t = ($0 ~ /^[[:space:]]*\[\[source\]\][[:space:]]*(#.*)?$/); ib = 0; next }
-		t && /^[[:space:]]*kind[[:space:]]*=[[:space:]]*("inbox"|\047inbox\047)[[:space:]]*(#.*)?$/ { ib = 1 }
+		t && /^[[:space:]]*kind[[:space:]]*=[[:space:]]*("[[:space:]]*inbox[[:space:]]*"|\047[[:space:]]*inbox[[:space:]]*\047)[[:space:]]*(#.*)?$/ { ib = 1 }
 		END { if (t && !ib) n++; print n + 0 }
 	' "$1" 2>/dev/null || echo 0
 }

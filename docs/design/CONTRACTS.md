@@ -46166,6 +46166,10 @@ header of bare keys, a source table's id or path line the awk readers do not rea
 every multi-line value that is no key, header or comment), never a blanket private only. Tests:
 `test_report_redaction.py::test_both_reports_reach_one_verdict_on_a_config_that_does_not_parse_c2840_c2915` (both
 locales, with an interpreter and with none) and `test_a_config_that_parses_keeps_the_shell_reports_issue_link_c2915`.
+Amended 2026-11-24, §16.286 C3034, C3084: the structural check accepts what the widened id reader reads (a bare,
+`"source"` or `'source'` header, a bare or quoted id or path key, a basic or literal value, a comment after it), calls
+a top-level source key unparsed, and calls a multi-line string or array still open at end of file unparsed. Test:
+`test_install_oneshot.py::test_the_structural_check_follows_the_widened_reader_c3034_c3084`.
 
 **The shell's TOML readers read a value and count a source as tomllib does** (C2913, C2934; ruling 188; privacy).
 agentsync_dir_values' basic() took a line-ending backslash with blanks after it as an escape of a blank, and its
@@ -46176,6 +46180,10 @@ non_inbox_sources counted `[[source]]` lines by a pattern, so `[[ "source" ]]` c
 (stdlib alone), state-blind, the line reader its fallback (C2934). Tests:
 `test_install_oneshot.py::test_the_toml_reader_reads_a_blank_ended_continuation_and_quoted_inline_values_c2913` and
 `test_install_sh_counts_sources_as_the_report_reads_them_c2934` (each config read by both twins).
+Amended 2026-11-24, §16.286 C3087, C3105: both readers strip the kind as config._str does before SourceKind reads it,
+so `kind = " inbox "` is the inbox: the interpreter compares `kind.strip()` (a kind that is no string counts as a
+folder, as the loader refuses it), and the line reader allows blanks inside the quotes but reads no TOML escape. Test:
+`test_install_oneshot.py::test_the_line_reader_strips_the_kind_as_config_str_does_c3087_c3105`.
 
 **A listed name is read whole, and a pandoc path's true value is cut** (C2877, C2880 with C2914; ruling 189; privacy).
 listed_folder_lines wrote each row with bash 3.2's builtin printf, which a SIGCHLD broke with EINTR while -e stopped

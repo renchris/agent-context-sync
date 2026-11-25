@@ -24327,8 +24327,10 @@ def test_the_shell_report_redacts_the_mdm_host_as_mdmhost(tmp_path: Path, login:
 
 SHELL_HELPER_FNS = re.compile(
     r"(?ms)^(?:generic_folder|generic_home_dir|agent_words_name|id_key|listed_folder_lines"
-    r"|config_path_values|agentsync_dir_values|py_strip|cloud_listing|cloud_listed)\(\) \{\n.*?^\}$|"
-    # B13 round 44: the [convert]/[agentsync] values' strip (C2698) and the CloudStorage listing (C2669)
+    r"|config_path_values|agentsync_dir_values|py_strip|cloud_listing|cloud_listed"
+    r"|config_toml_state|config_source_records)\(\) \{\n.*?^\}$|"
+    # B13 round 44: the [convert]/[agentsync] values' strip (C2698) and the CloudStorage listing (C2669); B13
+    # round 46 ruling 199 (C3034 with C3083): the source table the id registry reads
     + r"^CLOUD_ORDER_AWK='.*?'$|"
     + _REPORT_CUTS_BLOCK
 )
@@ -27469,6 +27471,9 @@ def test_the_folder_list_reader_keeps_every_row_under_a_sigchld_with_errexit_liv
         ("[['source']]", '"kind" = "inbox"', 0),
         ("[[source]]", "'kind' = 'inbox'", 0),
         ("[[source]]", 'kind = "local"', 1),
+        ("[[source]]", 'kind = " inbox "', 0),
+        ("[[source]]", "kind = '\tinbox '", 0),
+        ("[[source]]", 'kind = "inbox\\n"', 0),
     ],
 )
 def test_install_sh_counts_sources_as_the_report_reads_them_c2934(
@@ -27801,9 +27806,7 @@ def test_both_reports_compute_a_failed_step_with_no_install_run_c2824(
         ('[[source]]\nid = "plans"\nkind = "local"\npath = "~/Contoso Plans"\n', "loaded"),
         ('[[source]]\r\nid = "plans"\r\npath = "~/Contoso Plans"\r\n\r\n[convert]\r\n', "loaded"),
         ('["convert"]\npandoc_path = "/opt/x/pandoc"\n[ \'agentsync\' . "x" ]\nk = 1\n', "loaded"),
-        ('[[ "source" ]]\nid = "plans"\npath = "~/Contoso Plans"\n', "unparsed"),
         ('[[source]\nid = "plans"\npath = "~/Contoso Plans"\n', "unparsed"),
-        ("[[source]]\nid = 'plans'\npath = \"~/Contoso Plans\"\n", "unparsed"),
         ('[[source]]\nid = "plans"\npath = "~/Contoso Plans\n', "unparsed"),
         ('[[source]]\nid = "plans"\nnot a key\n', "unparsed"),
     ],
@@ -27813,9 +27816,9 @@ def test_the_structural_check_reads_a_whole_header_in_any_spelling_c2915(
 ) -> None:
     """B13 round 45 ruling 188, C2915 (review): where no interpreter has tomllib, config_toml_state's
     structural check decides, never a blanket private only: a quoted or dotted header and CRLF line ends are
-    whole TOML and read as loaded; a half-closed header, a garbage line, an id or path the awk readers do not
-    read as a basic string, and an id under a quoted `[[ "source" ]]` header (which the id reader skips) read
-    as unparsed."""
+    whole TOML and read as loaded; a half-closed header, a garbage line and an id or path the awk readers do
+    not read read as unparsed. Since B13 round 46 ruling 199 (C3034, C3056) a quoted header and a literal id
+    are read, and so loaded: test_the_structural_check_follows_the_widened_reader_c3034_c3084."""
     config = tmp_path / "sources.toml"
     config.write_bytes(body.encode("utf-8"))
     harness = "\n".join(
@@ -27837,3 +27840,165 @@ def test_the_shell_link_fills_the_outcome_option_the_report_gives_every_step_c28
     )
     cp = _bash_run([BASH32, "-c", harness], capture_output=True, text=True)
     assert cp.stdout.splitlines() == [setup_report.Outcome("failed", n, (), 41).form_label for n in range(6)]
+
+
+# ---- B13 round 46 lane RB: ruling 199's shell halves ------------------------------------------------------
+
+
+def _toml_shell(tmp_path: Path, body: str, call: str, *, tool_py: str = "") -> str:
+    """``call`` over a sources.toml holding ``body`` with config_toml_state, config_source_records and
+    config_path_values defined, the interpreter ``tool_py`` (none when empty) and no uv."""
+    config = tmp_path / "sources.toml"
+    config.write_bytes(body.encode("utf-8"))
+    harness = "\n".join(
+        [
+            _shell_function("watchdog"),
+            _shell_function("with_timeout"),
+            'tool_python() { printf "%s" "$TOOL_PY"; }; find_uv() { :; }',
+            _shell_function("config_toml_state"),
+            _shell_function("config_source_records"),
+            _shell_function("config_path_values"),
+            'CONFIG="$1"',
+            call,
+        ]
+    )
+    cp = _bash_run(
+        [BASH32, "-c", harness, "x", str(config)],
+        capture_output=True,
+        env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "TOOL_PY": tool_py, "LC_ALL": "C"},
+    )
+    assert (cp.returncode, cp.stderr) == (0, b""), cp
+    return cp.stdout.decode("utf-8")
+
+
+_R46_HEADERS = ["[[source]]", '[[ "source" ]]', "[[ 'source' ]]"]
+_R46_VALUES = [
+    ('id = "gamma-birch"', 'path = "~/Kestrel Alder/notes"'),
+    ("id = 'gamma-birch' # it's here", "path = '~/Kestrel Alder/notes' # Contoso's"),
+    ("\"id\" = 'gamma-birch'", '"path" = "~/Kestrel Alder/notes" # a "quoted" note'),
+    ("'id' = \"gamma-birch\"", "'path' = '~/Kestrel Alder/notes'"),
+]
+
+
+@pytest.mark.parametrize("tool_py", ["tomllib", "none"])
+@pytest.mark.parametrize("header", _R46_HEADERS)
+@pytest.mark.parametrize(("id_line", "path_line"), _R46_VALUES)
+def test_the_id_registry_reads_every_source_spelling_tomllib_reads_c3034_c3083_c3056(
+    tmp_path: Path, tool_py: str, header: str, id_line: str, path_line: str
+) -> None:
+    """B13 round 46 ruling 199, C3034 with C3083 and C3056 (privacy): the id registry read only a bare
+    `[[source]]` header and a basic `id = "..."`, so a literal id or a quoted header left the id in clear in a
+    report the shell called public, while the agentsync report cut it. With an interpreter the registry reads
+    tomllib's own table; without one a widened awk reads the same spellings; config_path_values reads a
+    literal or quoted-key path too. Each reads as tomllib reads the file, a second source after it numbered
+    second."""
+    second = '[[source]]\nid = "b-two"\npath = "~/Wombat Two"\n'
+    body = f"[agentsync]\nprincipal = 'x'\n\n{header}\n{id_line}\n{path_line}\n\n{second}"
+    data = tomllib.loads(body)
+    want = "".join(f"{n}\t{t['id']}\t{t['path']}\n" for n, t in enumerate(data["source"], 1))
+    py = sys.executable if tool_py == "tomllib" else ""
+    assert _toml_shell(tmp_path, body, 'printf "%s\\n" "$(config_toml_state)"', tool_py=py) == "loaded\n"
+    assert _toml_shell(tmp_path, body, "config_source_records", tool_py=py) == want
+    assert _toml_shell(tmp_path, body, "config_path_values") == "".join(
+        f"{t['path']}\n" for t in data["source"]
+    )
+
+
+def test_the_id_registry_reads_tomllib_table_when_an_interpreter_answers_c3083(tmp_path: Path) -> None:
+    """B13 round 46 ruling 199, C3083: with an interpreter the registry reads tomllib's table, so an inline
+    array of tables (no line the awk reads) is read whole and a `[[source]]` written inside a multi-line
+    string is none; a non-string id, an id or path holding a TAB or LF is dropped; with none the structural
+    check calls the inline array unparsed, as the awk reads no id there."""
+    body = (
+        'source = [{id = "inline-x", path = "~/Wombat Y"}, {id = 7, path = "~/Seven"},'
+        ' {id = "tab-id", path = "~/A\\tB"}, {id = "plain-z"}]\n'
+        '[agentsync]\nnote = """\n[[source]]\nid = "hidden-id"\n"""\n'
+    )
+    assert tomllib.loads(body)["source"][0]["id"] == "inline-x"
+    py = sys.executable
+    assert _toml_shell(tmp_path, body, "config_source_records", tool_py=py) == (
+        "1\tinline-x\t~/Wombat Y\n4\tplain-z\t\n"
+    )
+    assert _toml_shell(tmp_path, body, 'printf "%s\\n" "$(config_toml_state)"') == "unparsed\n"
+
+
+@pytest.mark.parametrize(
+    ("body", "want"),
+    [
+        ('[[ "source" ]]\nid = "plans"\npath = "~/Contoso Plans"\n', "loaded"),
+        ("[[source]]\nid = 'plans' # it's\npath = '~/Contoso Plans'\n", "loaded"),
+        ('[[ \'source\' ]]\n"id" = "plans"\n\'path\' = "~/Contoso \\"Q\\" Plans" # a "note"\n', "loaded"),
+        ('[[source]]\nid = "plans"\npath = """~/Contoso Plans"""\n', "unparsed"),
+        ('source = [{id = "plans", path = "~/Contoso Plans"}]\n', "unparsed"),
+        ("[agentsync]\nprincipal = [\n", "unparsed"),
+        ('[agentsync]\nnote = """\nopen\n', "unparsed"),
+        ("[agentsync]\nnote = '''\nopen\n", "unparsed"),
+        ('[agentsync]\nprincipal = ["a",\nfoo = 1\n', "unparsed"),
+        ('[agentsync]\nnote = """\n[[source]]\nid = "plans"\npath = "~/Contoso Plans"\n', "unparsed"),
+        ('[agentsync]\nprincipal = [\n "x",\n]\nnote = """\na ] [\n"""\n', "loaded"),
+    ],
+)
+def test_the_structural_check_follows_the_widened_reader_c3034_c3084(
+    tmp_path: Path, body: str, want: str
+) -> None:
+    """B13 round 46 ruling 199: with no interpreter the structural check accepts exactly what the widened id
+    reader reads (C3034, C3056: a quoted header, a literal id or path, a quoted key, a comment), a top-level
+    source key it never reads stays unparsed, and a multi-line string or array still open at end of file is
+    unparsed, as tomllib refuses it (C3084: a `[[source]]` written inside an unclosed string was read as none
+    while the shell report stayed public). Each verdict is tomllib's, but where the awk reader reads less."""
+    assert _toml_shell(tmp_path, body, 'printf "%s\\n" "$(config_toml_state)"') == f"{want}\n"
+    try:
+        tomllib.loads(body)
+        parsed = True
+    except tomllib.TOMLDecodeError:
+        parsed = False
+    assert parsed or want == "unparsed"
+
+
+_C2913_BODIES = [
+    '[convert]\npandoc_path = """~/Private\\   \n      Tool/pandoc"""\n',
+    '[convert]\npandoc_path = """~/Private\\ \t\n\n   Tool/pandoc"""\n',
+    '[convert]\npandoc_path = """\\\n    ~/PrivateTool/pandoc"""\n',
+]
+
+
+@pytest.mark.parametrize("body", _C2913_BODIES)
+def test_the_toml_reader_strips_a_record_ending_cr_first_c3085(tmp_path: Path, body: str) -> None:
+    """B13 round 46 ruling 199, C3085 (privacy): agentsync_dir_values read $0 with a CRLF file's CR on it, so
+    a line-ending backslash before the CR was read as an escaped CR, the line was not joined and the shell
+    registered `~/Private <CR> Tool/pandoc` where tomllib reads `~/PrivateTool/pandoc`. The CR goes first."""
+    crlf = body.replace("\n", "\r\n")
+    want = tomllib.loads(crlf)["convert"]["pandoc_path"]
+    assert want == tomllib.loads(body)["convert"]["pandoc_path"]
+    assert _dir_values(tmp_path, crlf, "convert", "pandoc_path") == [f"pandoc_path\t{want}"]
+    assert _dir_values(tmp_path, crlf, "convert", "pandoc_path", "esc") == [f"pandoc_path\t{want}"]
+
+
+def test_a_crlf_multi_line_value_reads_its_newline_as_tomllib_does_c3085(tmp_path: Path) -> None:
+    """B13 round 46 ruling 199, C3085: a plain CRLF multi-line value read `\\r\\n` into the path; tomllib
+    reads each CRLF as a newline, which the pandoc caller's escaped form writes `\\n`."""
+    body = '[convert]\r\npandoc_path = """\r\n~/Contoso\r\nTool/pandoc"""\r\n'
+    assert tomllib.loads(body)["convert"]["pandoc_path"] == "~/Contoso\nTool/pandoc"
+    assert _dir_values(tmp_path, body, "convert", "pandoc_path", "esc") == [
+        "pandoc_path\t~/Contoso\\nTool/pandoc"
+    ]
+    assert _dir_values(tmp_path, body, "convert", "pandoc_path") == ["pandoc_path\t~/Contoso Tool/pandoc"]
+
+
+@pytest.mark.parametrize("kind", ['kind = " inbox "', "kind = '\tinbox '", 'kind = "inbox"'])
+def test_the_line_reader_strips_the_kind_as_config_str_does_c3087_c3105(tmp_path: Path, kind: str) -> None:
+    """B13 round 46 ruling 199, C3087 with C3105: non_inbox_sources compared the raw kind, so `kind = " inbox
+    "` counted a folder where config._str strips it and the report reads the inbox alone (HAVE_SOURCES=1 and a
+    first sync over an inbox-only config). With no interpreter the line reader allows blanks inside the
+    quotes, and both readers agree with load_config."""
+    config = tmp_path / "sources.toml"
+    config.write_text(f'[[source]]\nid = "contoso-inbox"\n{kind}\npath = "~/x"\n', encoding="utf-8")
+    harness = "\n".join([_shell_function("non_inbox_sources"), 'non_inbox_sources "$1"'])
+    cp = _bash_run(
+        [BASH32, "-c", harness, "x", str(config)],
+        capture_output=True,
+        text=True,
+        env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "TOOL_PY": ""},
+    )
+    assert (cp.returncode, cp.stdout, cp.stderr) == (0, "0\n", ""), cp
+    assert [s.kind for s in load_config(config).sources] == [SourceKind.INBOX]
