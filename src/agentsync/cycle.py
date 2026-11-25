@@ -286,7 +286,8 @@ _FAMILY_PARSE_META = "family-parse-v1:"
 ``_Cycle._reread_family_stubs`` has read every Office row of the source settled with a family mismatch, so
 each is read once under the ``family_parse`` key and never again (B13 round 45 C2925, ruling 196; modeled on
 :data:`_ZERO_BYTES_META`).  Until then ``family-parse-v1:<source_id>:<stable_id>`` marks each row it read,
-whatever the answer, and the token, once set, takes those marks away."""
+whatever the answer, set only once the row's fetch returned (a failed fetch leaves it unmarked, as a dataless
+row is; B13 round 46 C3107 with C3097, ruling 202), and the token, once set, takes those marks away."""
 
 
 def _zero_byte_mismatches() -> frozenset[str]:
@@ -5877,8 +5878,9 @@ class _Cycle:
         row listed this pass, not dataless, in scope, not in the queue and not withheld as settling is
         read, from this Mac and never downloaded (a fetch with a budget of no bytes; a dataless row holds the
         token unset until it is read), as a re-read (a conversion that gives the stub it has moves
-        only its key), with each row marked whatever the answer; a row whose converter cannot run is left
-        unmarked for a cycle where it can.  Once no such row of the source is left unmarked, the source's
+        only its key), with each row read marked whatever the answer; a row whose converter cannot run, or
+        whose fetch fails, is left unmarked for a cycle that reads it (B13 round 46 C3107 with C3097, ruling
+        202).  Once no such row of the source is left unmarked, the source's
         :data:`_FAMILY_PARSE_META` token is set and the marks go, so the read is never repeated. Each row
         is read through :meth:`_read_rows_once`, the zero-byte pass's loop.  Never in a dry run."""
         key = _FAMILY_PARSE_META + src.id
@@ -5927,18 +5929,22 @@ class _Cycle:
         return bool(outs) and all(o.options_hash == current for o in outs)
 
     def _family_reread(self, src: SourceConfig, arm: LocalArm, row: ItemRow, acc: _SourceAcc) -> None:
-        """One row of :meth:`_reread_family_stubs`: marked read, fetched from this Mac with no download, and
-        converted again as a re-read, counted in ``read again`` (C2925).  A row whose converter cannot run now
-        (pandoc missing for a ``.docx``) is left unmarked, so the token waits for a cycle where it can."""
+        """One row of :meth:`_reread_family_stubs`: fetched from this Mac with no download, marked read once
+        the fetch returns, and converted again as a re-read, counted in ``read again`` (C2925).  A row whose
+        converter cannot run now (pandoc missing for a ``.docx``) or whose fetch fails (evicted, gone or
+        unreadable since the walk) is left unmarked, so the token waits for a cycle that reads it (B13 round
+        46 C3107 with C3097, ruling 202)."""
         conv = self.registry.for_name(row.name)
         if conv is None or not self._runs(conv):
             return
-        self.manifest.set_meta(f"{_FAMILY_PARSE_META}{src.id}:{row.stable_id}", "1")
         try:
             fetched = arm.fetch(_item_from_row(row), self.staging, ByteBudget(0, 1))
-        except Exception as exc:  # evicted, gone or unreadable since the walk: it stays as it is
+        except Exception as exc:  # evicted, gone or unreadable since the walk: it stays as it is, unmarked
             log.info("%s: %s was not read again for the family rule: %s", row.source_id, row.rel_path, exc)
             return
+        # marked only once its bytes were read, inside _read_rows_once's savepoint: a failed fetch leaves the
+        # row unmarked and the token open, as a dataless row does (B13 round 46 C3107 with C3097, ruling 202)
+        self.manifest.set_meta(f"{_FAMILY_PARSE_META}{src.id}:{row.stable_id}", "1")
         try:
             started = _reread_clock()
             self._reread_n += 1
@@ -8175,23 +8181,29 @@ _CONTAINER_REASONS = frozenset(
         content_policy.NOT_OOXML_REASON,
         content_policy.ZERO_BYTES_REASON,
         content_policy.ENCRYPTED_OFFICE_REASON,
+        content_policy.ENCRYPTED_PDF_REASON,
     )
 )
 """The stub reasons an Office name's container alone gives (``policy.screen_file``): bytes that are not a ZIP
-at offset 0 (:func:`_container_moved`)."""
+at offset 0 (:func:`_container_moved`), ``encrypted-pdf`` among them when the screen sniffs a PDF header with
+``/Encrypt`` in such bytes (B13 round 46 C3046, ruling 202)."""
 
 
 def _container_moved(row: ItemRow, fetched: FetchResult) -> bool:
     """True when the staged bytes of an Office name are a ZIP at offset 0 and ``row`` is a stub the
-    container alone gave (its reason one of :data:`_CONTAINER_REASONS`), or are not one and ``row`` stands
-    for a page (present, no reason) (B13 round 45 C2924, ruling 196).  Any other row (a label refusal, an
-    inbox duplicate, an encrypted-pdf answer, a failed conversion) says nothing of the container, so it
-    moves nothing: calling those container stubs read every touch of them as a first read.  H1 reads a
-    ZIP's members, which zipfile finds behind a preamble, so such a save is TOUCHED_NOT_CHANGED, which
-    publishes nothing: a page stayed up for bytes the screen calls not-ooxml, and a not-ooxml stub stayed
-    for clean bytes with the same H1.  Such bytes are converted, where ``convert_file`` screens the
-    container first.  H1 stays as it is: a purge keys on it, as in ``_Cycle._relabelled``.  Bytes that
-    cannot be read move nothing (the conversion would fail the same way)."""
+    container alone gave (its reason one of :data:`_CONTAINER_REASONS`, ``encrypted-pdf`` included: B13
+    round 46 C3046), or are not one and ``row`` stands for a page (present, no reason) or is a
+    family-mismatch stub (``convert._common.FAMILY_MISMATCH_RE``, never the not-a-ZIP ``NOT_OOXML_REASON``),
+    which was made from bytes that passed the container screen (B13 round 45 C2924, ruling 196; round 46
+    C3096, ruling 202).  Any other row (a label refusal, an inbox duplicate, a failed conversion) says
+    nothing of the container, so it moves nothing: calling those container stubs read every touch of them as
+    a first read.  A family-mismatch stub converted on non-ZIP bytes becomes ``NOT_OOXML_REASON``, which
+    moves nothing there, so it is read once, never on every touch.  H1 reads a ZIP's members, which zipfile
+    finds behind a preamble, so such a save is TOUCHED_NOT_CHANGED, which publishes nothing: a page stayed
+    up for bytes the screen calls not-ooxml, and a not-ooxml stub stayed for clean bytes with the same H1.
+    Such bytes are converted, where ``convert_file`` screens the container first.  H1 stays as it is: a
+    purge keys on it, as in ``_Cycle._relabelled``.  Bytes that cannot be read move nothing (the conversion
+    would fail the same way)."""
     if not row.name.lower().endswith(content_policy.OOXML_SUFFIXES):
         return False
     try:
@@ -8200,7 +8212,9 @@ def _container_moved(row: ItemRow, fetched: FetchResult) -> bool:
         return False
     if zip0:
         return row.state_reason in _CONTAINER_REASONS
-    return row.state_reason is None and row.state in (RowState.LIVE, RowState.DATALESS)
+    if row.state_reason is None:
+        return row.state in (RowState.LIVE, RowState.DATALESS)
+    return convert_common.FAMILY_MISMATCH_RE.fullmatch(row.state_reason) is not None
 
 
 def _stubbed_for_path(row: ItemRow) -> bool:

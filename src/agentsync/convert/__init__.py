@@ -341,8 +341,9 @@ def convert_file(
 
 
 def _container_screen(conv: Converter, src: Path, name: str) -> str | None:
-    """The guard's own screen answer (``policy.screen_file``: empty-output, encrypted-office or not-ooxml) for
-    an Office name whose staged bytes are not a ZIP at offset 0, else None (B13 round 45 C2924, ruling 196).
+    """The guard's own screen answer (``policy.screen_file``: empty-output, encrypted-office, encrypted-pdf or
+    not-ooxml) for an Office name whose staged bytes are not a ZIP at offset 0, else None (B13 round 45 C2924,
+    ruling 196; encrypted-pdf when the screen sniffs a PDF header with ``/Encrypt``, round 46 C3046).
     Only the first bytes are read on the common path (``policy.zip_at_offset_0``); the full screen runs only
     for bytes that are not a ZIP there.  None for a converter with no guard (no screen to mirror) and for
     bytes that cannot be read, which the converter then reports as before."""

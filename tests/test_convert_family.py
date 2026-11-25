@@ -34,7 +34,7 @@ from agentsync.convert.xlsx import XlsxConverter
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.manifest import Manifest
 from agentsync.model import ConversionStatus, RowState
-from agentsync.policy import NOT_OOXML_REASON
+from agentsync.policy import ENCRYPTED_PDF_REASON, NOT_OOXML_REASON
 from agentsync.setup_report import quarantine_class
 from test_convert_builders import build_potx, build_pptx_rich, make_zip
 from test_review_fixes import all_objects, cfg_text, git, item_id, make_env, page_fm, run, write_config
@@ -2381,6 +2381,58 @@ def test_a_touched_office_file_whose_container_changes_is_converted_again_c2924(
     assert states == ([page, stub, page] if first == "clean" else [stub, page, stub]), states
 
 
+_ENCRYPTED_PDF_PREAMBLE = b"%PDF-1.7\n<< /Encrypt << /Filter /Standard >> >>\n" + b"\x00Contoso junk" * 10
+
+
+def test_an_office_stub_the_pdf_sniff_gave_is_converted_again_when_its_bytes_are_a_clean_zip_c3046(
+    tmp_path: Path,
+) -> None:
+    """B13 round 46 C3046 (ruling 202): a non-ZIP Office name whose bytes hold a PDF header with ``/Encrypt``
+    is screened ``encrypted-pdf`` (``policy.screen_file`` sniffs the PDF before the not-ooxml branch), and
+    ``_CONTAINER_REASONS`` named only not-ooxml, empty-output and encrypted-office, so clean bytes with the
+    same H1 kept the encrypted-pdf stub until their content changed. ``encrypted-pdf`` is one of the
+    container's own answers: a clean, polyglot, clean run is a page, the stub, a page."""
+    config, src = make_env(tmp_path)
+    path = src / "Contoso book.xlsx"
+    states = []
+    for preamble in (b"", _ENCRYPTED_PDF_PREAMBLE, b""):
+        _workbook(path, preamble=preamble)
+        assert run(config).exit_code == 0
+        row = _row(config, path.name)
+        states.append((row.state, row.state_reason))
+    page, stub = (RowState.LIVE, None), (RowState.QUARANTINED, ENCRYPTED_PDF_REASON)
+    assert states == [page, stub, page], states
+
+
+def test_a_family_mismatch_stub_whose_bytes_gain_a_preamble_is_converted_once_c3096(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 46 C3096 (ruling 202): a Word package named ``.potx`` settles as the family-mismatch stub;
+    junk put before the same ZIP leaves H1 unchanged, and ``_container_moved`` read only a page row as moved
+    on non-ZIP bytes, so the stub kept the family reason where a fresh copy of those bytes is
+    ``NOT_OOXML_REASON``.
+    A family-mismatch stub was made from bytes that passed the container screen, so on non-ZIP bytes it is a
+    move: converted once to ``NOT_OOXML_REASON``, which moves nothing there (no loop), and the family stub
+    comes back when the junk is taken away."""
+    config, src = make_env(tmp_path)
+    path = word_package(src / "Contoso notes.potx")
+    clean = path.read_bytes()
+    assert run(config).exit_code == 0
+    assert _row(config, path.name).state_reason == _DECK_STUB
+    tries = _tries(monkeypatch)
+    path.write_bytes(b"\x00Contoso junk" * 10 + clean)
+    assert run(config).exit_code == 0
+    assert tries == [path.name], tries
+    assert _row(config, path.name).state_reason == NOT_OOXML_REASON
+    tries.clear()
+    assert run(config).exit_code == 0
+    assert tries == [], "a not-ooxml stub on non-ZIP bytes is no move: no loop"
+    path.write_bytes(clean)
+    assert run(config).exit_code == 0
+    assert tries == [path.name], tries
+    assert _row(config, path.name).state_reason == _DECK_STUB
+
+
 def _without_types_namespace(path: Path) -> Path:
     """``path``'s package with ``[Content_Types].xml``'s ``<Types>`` stripped of its ``xmlns``: Override and
     Default in no namespace, which openpyxl still reads by local name (B13 round 45 C2854)."""
@@ -2587,6 +2639,53 @@ def test_a_family_stub_online_only_when_the_pass_runs_holds_the_token_open_c2925
         assert m.get_meta(cycle_mod._FAMILY_PARSE_META + "src") == "done"
 
 
+def test_a_family_reread_whose_fetch_fails_leaves_the_row_unmarked_and_the_token_open_c3107(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 46 C3107 with C3097 (ruling 202): ``_family_reread`` marked the row before its fetch, so a
+    file evicted or unreadable between the walk and the family pass (a fetch with no download budget that
+    raises BudgetExhaustedError) left the row marked, the token was set, and once the file was back its
+    unchanged H1 kept the old stub for good. The mark is set only after the fetch returns: a failed fetch
+    leaves the row unmarked and the token unset, and the next pass reads it once and sets the token."""
+    from agentsync.arm_local import LocalArm  # noqa: PLC0415
+    from agentsync.errors import BudgetExhaustedError  # noqa: PLC0415
+
+    config, src = make_env(tmp_path)
+    with monkeypatch.context() as old:
+        _older_family_rule(old)
+        _decoy_potx(src / "Contoso template.potx")
+        assert run(config).exit_code == 0
+    assert _row(config, "Contoso template.potx").state_reason == _DECK_STUB
+    mark = f"{cycle_mod._FAMILY_PARSE_META}src:{item_id(config, 'Contoso template.potx')}"
+    real = LocalArm.fetch
+    failed: list[str] = []
+
+    def evicted(self, item, dest_dir, budget):  # type: ignore[no-untyped-def]
+        if budget.max_bytes == 0 and item.name == "Contoso template.potx" and not failed:
+            failed.append(item.name)
+            raise BudgetExhaustedError("Contoso template.potx is online-only since the walk")
+        return real(self, item, dest_dir, budget)
+
+    tries = _tries(monkeypatch)
+    with monkeypatch.context() as gone:
+        gone.setattr(LocalArm, "fetch", evicted)
+        assert run(config).exit_code == 0
+    assert failed == ["Contoso template.potx"], "the family pass fetched the row with no download budget"
+    assert tries == [] and _row(config, "Contoso template.potx").state_reason == _DECK_STUB
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(cycle_mod._FAMILY_PARSE_META + "src") is None, "a failed fetch set the token"
+        assert m.get_meta(mark) is None, "a failed fetch marked the row read"
+    assert run(config).exit_code == 0
+    assert tries == ["Contoso template.potx"], tries
+    assert _row(config, "Contoso template.potx").state is RowState.LIVE
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(cycle_mod._FAMILY_PARSE_META + "src") == "done"
+        assert m.get_meta(mark) is None, "the token takes the marks away"
+    tries.clear()
+    assert run(config).exit_code == 0
+    assert tries == [], "the token holds: no family re-read again"
+
+
 def test_a_touched_office_stub_the_container_did_not_give_is_no_container_move_c2924(
     tmp_path: Path,
 ) -> None:
@@ -2611,3 +2710,14 @@ def test_a_touched_office_stub_the_container_did_not_give_is_no_container_move_c
     for reason in others:
         for path in (junk, clean):
             assert not moved(reason, RowState.QUARANTINED, path), (reason, path.name)
+    # B13 round 46 C3046: encrypted-pdf is the container's own answer for an Office name's non-ZIP bytes
+    assert moved(ENCRYPTED_PDF_REASON, RowState.QUARANTINED, clean)
+    assert not moved(ENCRYPTED_PDF_REASON, RowState.QUARANTINED, junk)
+    pdf = dataclasses.replace(
+        page, name="Contoso.pdf", state=RowState.QUARANTINED, state_reason=ENCRYPTED_PDF_REASON
+    )
+    for path in (junk, clean):
+        assert not cycle_mod._container_moved(pdf, SimpleNamespace(path=path))  # type: ignore[arg-type]
+    # B13 round 46 C3096: a family-mismatch stub came from a ZIP, so non-ZIP bytes move it; clean ones do not
+    assert moved(_DECK_STUB, RowState.QUARANTINED, junk)
+    assert not moved(_DECK_STUB, RowState.QUARANTINED, clean)

@@ -46466,6 +46466,10 @@ C2925's `family_parse` moves every Office key. Tests:
 cache), `test_convert_family.py::test_a_touched_office_file_whose_container_changes_is_converted_again_c2924`
 (clean, preamble, clean and the other way round through three syncs) and
 `test_convert_family.py::test_a_touched_office_stub_the_container_did_not_give_is_no_container_move_c2924`.
+Amended 2026-11-24, §16.288 C3046: `_container_screen` also returns `encrypted-pdf` (a PDF header with `/Encrypt`
+in non-ZIP bytes), which joins `_CONTAINER_REASONS`, so it no longer stands among the rows that move nothing.
+Amended 2026-11-24, §16.288 C3096: on non-ZIP bytes a family-mismatch stub (`FAMILY_MISMATCH_RE`, never
+`NOT_OOXML_REASON`) moves too, since it was made from a ZIP; it is converted once to `NOT_OOXML_REASON`.
 
 **A helper's time-out fix builds it again only if it still does not answer** (C2817; `agentsync.ops.doctor`; amends
 §16.233 C915 and §16.243 C1227). Every helper's build goes through `ocr._build`, which runs `open_` (a `--version`
@@ -46560,6 +46564,9 @@ Office suffix's options hash and no other), `test_convert_family.py::test_a_publ
 read, `read again 2`, the token set, nothing read on the next sync),
 `test_convert_family.py::test_a_family_stub_online_only_when_the_pass_runs_holds_the_token_open_c2925` and the
 C2703 shape test, which now reads the shared loop.
+Amended 2026-11-24, §16.288 C3107 with C3097: "each row read is marked whatever the answer" holds for a row whose
+fetch returned; a row whose fetch fails (evicted or unreadable since the walk) is left unmarked, as a dataless row
+is, and holds the token unset until a pass reads it.
 
 **A source's own banner line never stands for the leading one** (C2929; ruling 196; `agentsync.policy`).
 `has_banner` took the banner anywhere in a body's first eight lines and `with_banner` returned such a body
@@ -46777,7 +46784,47 @@ Reserved for round 46 lane B of B13.
 
 ### 16.288 Round 46: the converters: a kept Office answer read again only from the bytes and the fetch that were read, the container answers and the family parse corrected, and speech's CA words (2026-11-24, wave B13 round 46 lane E)
 
-Reserved for round 46 lane E of B13.
+Each item is built as its verifier corrected it, as the lead's rulings 198 to 205 settle it. A dated line this
+round writes reads `Amended 2026-11-24, §16.288 C<n>`.
+
+**The family re-read marks a row only once its fetch returned** (C3107 with C3097, one defect; ruling 202;
+`agentsync.cycle`; amends §16.283 C2925). `_family_reread` set the row's `family-parse-v1:<source>:<stable id>` mark
+before `arm.fetch`, and a fetch that raised (a file evicted or unreadable between the walk and the pass: with a
+budget of no bytes an online-only file raises BudgetExhaustedError) was logged and returned, so the row's savepoint
+committed the mark, `all(...)` over the named rows held, the token was set, and once the file was back its unchanged
+H1 kept the old stub for good. The mark is set after the fetch returns, inside `_read_rows_once`'s savepoint, so a
+failed fetch leaves the row unmarked and the token open, as a dataless row does; an `_after_fetch` that raises still
+rolls the mark back. A file that stays unreadable keeps the token open and costs one failed open with no download and
+one log line a sync, the cost the dataless rule already accepts. `_zero_byte_reread` stays as it is: its probe
+returns None rather than raising, and a zero-byte file that later holds bytes has a new stat and goes through the
+queue. Test: `test_convert_family.py::test_a_family_reread_whose_fetch_fails_leaves_the_row_unmarked_and_the_token_open_c3107`
+(the decoy template's fetch raises BudgetExhaustedError once: no token, no mark; the next sync reads it once, a page,
+the token set; the sync after it reads nothing).
+
+**`encrypted-pdf` is one of an Office name's container answers** (C3046; ruling 202; `agentsync.cycle`,
+`agentsync.convert`; amends §16.283 C2924). `policy.screen_file` runs `sniff_container` before its not-ooxml
+branch, so an Office name whose bytes are not a ZIP at offset 0 and hold `%PDF-` in their first 1024 bytes and
+`/Encrypt` anywhere is screened `encrypted-pdf (/Encrypt in the trailer)`, and `_container_screen` returns that.
+`_CONTAINER_REASONS` named only `not-ooxml`, `empty-output` and `encrypted-office`, so clean bytes with the same H1
+(zipfile reads the members behind the preamble) kept the encrypted-pdf stub until their content changed.
+`_CONTAINER_REASONS` gains `ENCRYPTED_PDF_REASON`; an encrypted-pdf row on non-ZIP bytes moves nothing, and a `.pdf`
+name never reaches the reason, since `_container_moved` reads only an `OOXML_SUFFIXES` name. The `_container_screen`,
+`_CONTAINER_REASONS` and `_container_moved` docstrings say so. Tests:
+`test_convert_family.py::test_an_office_stub_the_pdf_sniff_gave_is_converted_again_when_its_bytes_are_a_clean_zip_c3046`
+(clean, polyglot, clean: a page, the encrypted-pdf stub, a page) and the C2924 no-move test's encrypted-pdf rows (a
+move on a clean ZIP, none on junk, none for `Contoso.pdf`).
+
+**A family-mismatch stub on bytes that are no longer a ZIP is converted once** (C3096; ruling 202;
+`agentsync.cycle`; amends §16.283 C2924). A Word package named `.potx` settles as `not-ooxml: a Word document, not
+a deck (not the type its name says)`; junk put before the same ZIP leaves H1 unchanged, and `_container_moved` read
+only a page row as moved on non-ZIP bytes, so the row kept the family reason where a fresh copy of the same bytes is
+`NOT_OOXML_REASON`. A stub whose reason fully matches `convert._common.FAMILY_MISMATCH_RE` was made from bytes that
+passed the container screen, so on non-ZIP bytes it is a move; no other stub reason is added (a failed conversion, a
+label refusal or a duplicate loops, as C2924's review found). Converted, the row becomes `NOT_OOXML_REASON`, which
+moves nothing on non-ZIP bytes, so nothing loops, and taking the junk away again converts it back to the family
+stub. Tests: `test_convert_family.py::test_a_family_mismatch_stub_whose_bytes_gain_a_preamble_is_converted_once_c3096`
+(the stub, junk put before it, `NOT_OOXML_REASON` after one try, no try on the next sync, the stub back once the junk
+goes) and the C2924 no-move test's family-mismatch rows.
 
 ### 16.289 Round 46: the prompt goes to v43 (a none, an unread inbox and a step 2 or step 3 error told from how the run ended), CI's head and limit, the gate's ceiling comment, dated lines, and the guides (2026-11-24, wave B13 round 46 lane D)
 
