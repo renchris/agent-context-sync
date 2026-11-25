@@ -4474,6 +4474,77 @@ def test_both_reports_cut_a_tilde_name_path_of_a_source_with_no_string_id_c3244(
     assert shell == python_rows and shell_private == python_private, (shell, python_rows)
 
 
+_C3303_PATHS = {
+    # written path in sources.toml, the value both reports read, the words neither may print
+    "uXXXX head": ("~k\\u0065strel/Zephyr Quarry", "~kestrel/Zephyr Quarry", "kestrel|zephyr|quarry"),
+    "u001c before the head": (
+        "\\u001c~kestrel/Zephyr Quarry",
+        "~kestrel/Zephyr Quarry",
+        "kestrel|zephyr|quarry",
+    ),
+    "u0085 in the head": (
+        "~ali\\u0085ce/Zephyr Quarry",
+        "~ali\x85ce/Zephyr Quarry",
+        "ali\x85ce|zephyr|quarry",
+    ),
+    "u001c in the head": (
+        "~ali\\u001cce/Zephyr Quarry",
+        "~ali\x1cce/Zephyr Quarry",
+        "ali\x1cce|zephyr|quarry",
+    ),
+}
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize("python", ["tomllib", "none"])
+@pytest.mark.parametrize("parsed", ["loaded", "unparsed"])
+@pytest.mark.parametrize("case", list(_C3303_PATHS))
+def test_both_reports_cut_a_refused_source_path_written_with_an_escape_c3303(
+    env: dict[str, str],  # noqa: F811
+    case: str,
+    parsed: str,
+    python: str,
+    locale: str,
+) -> None:
+    """B13 round 47 ruling 207, C3303 (privacy): the shell's fallback scan read a basic source path as
+    written, so `~k\\u0065strel/Zephyr Quarry` was registered escaped and `kestrel` printed in clear, in a
+    public shell report where no interpreter answers. One tbasic decoder reads it as tomllib does: neither
+    report shows the name or a folder, with or without tomllib, loaded or not, the same rows, one verdict."""
+    if python == "tomllib":
+        _tool_python(env["HOME"])
+    home = Path(env["HOME"])
+    juniper = _cloud(env) / "OneDrive-Contoso" / "Juniper Notes"
+    juniper.mkdir(parents=True)
+    written, value, words = _C3303_PATHS[case]
+    body = (
+        default_config_text()
+        + local_source_table("juniper", juniper)
+        + f'\n[[source]]\nid = "extra-notes"\nkind = "local"\npath = "{written}"\n'
+        + ("this line is no TOML\n" if parsed == "unparsed" else "")
+    )
+    said = [
+        f"I set {value} in sources.toml",
+        "the sync of Juniper Notes went on",
+        f"{value} names another home",
+    ]
+    texts: list[str] = []
+    shell, python_rows, shell_private, python_private = _both_reports(
+        env,
+        [],
+        said,
+        locale,
+        config=home / "agent-context" / "sources.toml",
+        config_body=body,
+        texts_out=texts,
+    )
+    for name, text in zip(("shell", "agentsync"), texts, strict=True):
+        leaks = [ln for ln in text.splitlines() if re.search(f"(?i){words}", ln)]
+        assert not leaks, (name, leaks)
+    assert python_rows[0] == "I set ~<user>/<path> in sources.toml", python_rows
+    assert python_private == (parsed == "unparsed"), texts[1]
+    assert shell == python_rows and shell_private == python_private, (shell, python_rows)
+
+
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
 @pytest.mark.parametrize("python", ["tomllib", "none"])
 @pytest.mark.parametrize("second", ['id = "kestrel-birch"', "\"id\" = 'kestrel-birch'"])

@@ -3048,20 +3048,42 @@ listed_folder_names() {
 # as a separator); \b and \f are their bytes, which the list spelling shows as \010 and \014 (B13 round 38 C1414;
 # round 40 C1802); another
 # \uXXXX or \UXXXXXXXX is its UTF-8 bytes (json.dumps writes only control characters so); \\ and \" are \ and ".
+# The decoder is TOML_BASIC_AWK, below, which config_source_records shares (B13 round 47 ruling 207, C3303).
+# One TOML basic-string body decoder, tbasic(v), which config_path_values and config_source_records both include
+# in their awk, so the refused-path loop reads a source path as the path readers read it (B13 round 47 ruling 207,
+# C3303: an escape in a refused path left the decoded account name in clear). Read in one pass from the left, so
+# an escaped backslash before a t stays a backslash and a t. A whitespace escape (\t, \n, \r, \u0009, \u000A,
+# \u000D) is one space, \b and \f their bytes, another \uXXXX or \UXXXXXXXX its UTF-8 bytes, \\ and \" a backslash
+# and a quote, and any other escape its character. Run under LC_ALL=C; the awk text holds no apostrophe.
+TOML_BASIC_AWK='function hex(h,    i, v) {
+	v = 0; h = tolower(h)
+	for (i = 1; i <= length(h); i++) v = v * 16 + index("0123456789abcdef", substr(h, i, 1)) - 1
+	return v
+}
+function utf8(c) {
+	if (c < 128) return sprintf("%c", c)
+	if (c < 2048) return sprintf("%c%c", 192 + int(c / 64), 128 + c % 64)
+	if (c < 65536) return sprintf("%c%c%c", 224 + int(c / 4096), 128 + int(c / 64) % 64, 128 + c % 64)
+	return sprintf("%c%c%c%c", 240 + int(c / 262144), 128 + int(c / 4096) % 64, 128 + int(c / 64) % 64, 128 + c % 64)
+}
+function tbasic(v,    out, i, e, x, c) {
+	out = ""; x = "0123456789ABCDEFabcdef"
+	while ((i = index(v, "\\")) > 0) {
+		out = out substr(v, 1, i - 1); e = substr(v, i + 1, 1); v = substr(v, i + 2)
+		if (e ~ /^[tnr]$/) out = out " "
+		else if (e == "b") out = out "\010" # its byte, which the list spelling shows as \010 (C1414, C1802)
+		else if (e == "f") out = out "\014"
+		else if (e == "u" && match(v, "^[" x "][" x "][" x "][" x "]") ||
+			e == "U" && match(v, "^[" x "][" x "][" x "][" x "][" x "][" x "][" x "][" x "]")) {
+			c = hex(substr(v, 1, RLENGTH)); v = substr(v, RLENGTH + 1)
+			out = out (c == 9 || c == 10 || c == 13 ? " " : utf8(c))
+		} else out = out e
+	}
+	return out v
+}'
 config_path_values() {
 	[ -f "$CONFIG" ] || return 0
-	LC_ALL=C awk '
-		function hex(h,    i, v) {
-			v = 0; h = tolower(h)
-			for (i = 1; i <= length(h); i++) v = v * 16 + index("0123456789abcdef", substr(h, i, 1)) - 1
-			return v
-		}
-		function utf8(c) {
-			if (c < 128) return sprintf("%c", c)
-			if (c < 2048) return sprintf("%c%c", 192 + int(c / 64), 128 + c % 64)
-			if (c < 65536) return sprintf("%c%c%c", 224 + int(c / 4096), 128 + int(c / 64) % 64, 128 + c % 64)
-			return sprintf("%c%c%c%c", 240 + int(c / 262144), 128 + int(c / 4096) % 64, 128 + int(c / 64) % 64, 128 + c % 64)
-		}
+	LC_ALL=C awk "$TOML_BASIC_AWK"'
 		# a literal one raw, as tomllib reads it: no escape, its TAB a space as above (B13 round 46 ruling 199, C3056)
 		/^[[:space:]]*(path|"path"|\047path\047)[[:space:]]*=[[:space:]]*\047[^\047]*\047[[:space:]]*(#.*)?$/ {
 			v = $0; sub(/^[^=]*=[[:space:]]*\047/, "", v); sub(/\047.*$/, "", v); gsub(/\t/, " ", v)
@@ -3073,20 +3095,7 @@ config_path_values() {
 			v = $0; sub(/^[^=]*=[[:space:]]*/, "", v)
 			if (match(v, /^"([^"\\]|\\.)*"[[:space:]]*(#.*)?$/)) { match(v, /^"([^"\\]|\\.)*"/); v = substr(v, 2, RLENGTH - 2) }
 			else { sub(/^"/, "", v); sub(/"[[:space:]]*$/, "", v) }
-			out = ""
-			while ((i = index(v, "\\")) > 0) {
-				out = out substr(v, 1, i - 1); e = substr(v, i + 1, 1); v = substr(v, i + 2)
-				x = "0123456789ABCDEFabcdef"
-				if (e ~ /^[tnr]$/) out = out " "
-				else if (e == "b") out = out "\010" # its byte, which the list spelling shows as \010 (C1414, C1802)
-				else if (e == "f") out = out "\014"
-				else if (e == "u" && match(v, "^[" x "][" x "][" x "][" x "]") ||
-					e == "U" && match(v, "^[" x "][" x "][" x "][" x "][" x "][" x "][" x "][" x "]")) {
-					c = hex(substr(v, 1, RLENGTH)); v = substr(v, RLENGTH + 1)
-					out = out (c == 9 || c == 10 || c == 13 ? " " : utf8(c))
-				} else out = out e
-			}
-			print out v
+			print tbasic(v)
 		}' "$CONFIG" 2>/dev/null || true
 }
 # The [agentsync] table's state_dir, docs_repo, cache_dir and log_dir as "<key> TAB <value>", the first of each,
@@ -3549,8 +3558,9 @@ redaction_pairs() {
 	if [ -f "$CONFIG" ]; then
 		while IFS= read -r line; do
 			# a path naming another account's home is no folder of this Mac: setup_report reads it as None and
-			# cuts it with the refused values (B13 round 46 ruling 198)
-			case "$line" in \~[!/]*) continue ;; esac
+			# cuts it with the refused values (B13 round 46 ruling 198), read stripped as Python strips it first, so
+			# a decoded \u001c before the ~ is no folder either (B13 round 47 ruling 207, C3303)
+			case "$(py_strip "$line")" in \~[!/]*) continue ;; esac
 			known+=("$line") cfgpaths+=("$line")
 		done < <(config_path_values)
 	fi
@@ -4374,6 +4384,7 @@ redaction_pairs() {
 	if [ -f "$CONFIG" ]; then
 		while IFS= read -r line; do
 			case "$line" in "$cs"/* | \~/Library/CloudStorage/* | "$hp/Library/CloudStorage/"* | \~[!/]*) continue ;; esac
+			case "$(py_strip "$line")" in \~[!/]*) continue ;; esac # stripped as Python strips it (C3303)
 			# the inbox itself is registered below, after the own folders (C3055); a configured folder strictly
 			# below a kept target is the person's own, registered here through own_folder_values, whose filter
 			# keeps a bare `inbox` uncut (B13 round 47 ruling 206, C3242; never tested against the inbox
@@ -7651,8 +7662,9 @@ else:
 # The configured sources the id registry in redaction_pairs reads, as "n TAB id TAB path", one a line: the
 # interpreter's tomllib table when config_toml_state answers loaded through one, so every spelling tomllib reads
 # is read as the agentsync report reads it (B13 round 46 ruling 199, C3034 with C3083); else an awk over the
-# lines, which reads a bare, "source" or 'source' header and a bare or quoted id or path key, a basic value as
-# written to its closing quote and a literal one raw (C3056), a comment after either, the spellings
+# lines, which reads a bare, "source" or 'source' header and a bare or quoted id or path key, a basic value to
+# its closing quote, a path decoded by TOML_BASIC_AWK as config_path_values decodes it (B13 round 47 ruling 207,
+# C3303: the refused-path loop registered it escaped) and an id as written, and a literal one raw (C3056), a comment after either, the spellings
 # config_toml_state's structural check accepts, the first id and the first path of each table, as
 # setup_report._scanned_sources (B13 round 47 ruling 207, C3246: the last id won, the first printed in clear). Its first argument, when given, is config_toml_state's sources
 # output, which the caller has read already. Given a second word paths, the path of every [[source]] table that
@@ -7678,16 +7690,18 @@ config_source_records() {
 		return 0
 		;;
 	esac
-	M="${2-}" LC_ALL=C awk '
+	M="${2-}" LC_ALL=C awk "$TOML_BASIC_AWK"'
 		function flush() {
 			if (inside && ENVIRON["M"] == "paths") { if (path != "") print path }
 			else if (inside && id != "") print n "\t" id "\t" path
 			id = ""; path = ""; hid = 0; hpath = 0
 		}
-		function val(line,    v, q) { # the basic (as written) or literal value of a key line
+		# the literal (raw) or basic value of a key line, a basic one decoded by tbasic when DEC is set (a path:
+		# C3303), else as written (an id, whose form admits no backslash)
+		function val(line, dec,    v, q) {
 			v = line; sub(/^[^=]*=[[:space:]]*/, "", v); q = substr(v, 1, 1)
 			if (q == "\047") { v = substr(v, 2); sub(/\047.*$/, "", v); return v }
-			if (q == "\"" && match(v, /^"([^"\\]|\\.)*"/)) return substr(v, 2, RLENGTH - 2)
+			if (q == "\"" && match(v, /^"([^"\\]|\\.)*"/)) { v = substr(v, 2, RLENGTH - 2); return dec ? tbasic(v) : v }
 			return ""
 		}
 		{ sub(/\r$/, "") }
@@ -7699,7 +7713,7 @@ config_source_records() {
 		}
 		# the first id and the first path of a table count, as setup_report._scanned_sources reads them (C3246)
 		inside && !hid && /^[[:space:]]*(id|"id"|\047id\047)[[:space:]]*=[[:space:]]*["\047]/ { hid = 1; id = val($0); next }
-		inside && !hpath && /^[[:space:]]*(path|"path"|\047path\047)[[:space:]]*=[[:space:]]*["\047]/ { hpath = 1; path = val($0); next }
+		inside && !hpath && /^[[:space:]]*(path|"path"|\047path\047)[[:space:]]*=[[:space:]]*["\047]/ { hpath = 1; path = val($0, 1); next }
 		END { flush() }' "$CONFIG" 2>/dev/null || true
 }
 # The shell report's Redaction section: fixed text, written after redact_stream (as the issue link is), so no

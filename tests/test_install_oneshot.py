@@ -24370,6 +24370,8 @@ SHELL_HELPER_FNS = re.compile(
     # B13 round 44: the [convert]/[agentsync] values' strip (C2698) and the CloudStorage listing (C2669); B13
     # round 46 ruling 199 (C3034 with C3083): the source table the id registry reads
     + r"^CLOUD_ORDER_AWK='.*?'$|"
+    # B13 round 47 ruling 207 (C3303): the decoder config_path_values and config_source_records share
+    + r"^TOML_BASIC_AWK='.*?'$|"
     + _REPORT_CUTS_BLOCK
 )
 
@@ -27945,6 +27947,12 @@ def test_the_shell_link_fills_the_outcome_option_the_report_gives_every_step_c28
 # ---- B13 round 46 lane RB: ruling 199's shell halves ------------------------------------------------------
 
 
+def _toml_basic_awk() -> str:
+    """install.sh's TOML_BASIC_AWK assignment, the basic-string decoder its config readers share (C3303)."""
+    found = re.search(r"(?ms)^TOML_BASIC_AWK='.*?'$", INSTALL_SH.read_text(encoding="utf-8"))
+    return found.group(0) if found is not None else ""  # an awk that calls tbasic without it fails on its own
+
+
 def _toml_shell(tmp_path: Path, body: str, call: str, *, tool_py: str = "") -> str:
     """``call`` over a sources.toml holding ``body`` with config_toml_state, config_source_records and
     config_path_values defined, the interpreter ``tool_py`` (none when empty) and no uv."""
@@ -27955,6 +27963,7 @@ def _toml_shell(tmp_path: Path, body: str, call: str, *, tool_py: str = "") -> s
             _shell_function("watchdog"),
             _shell_function("with_timeout"),
             'tool_python() { printf "%s" "$TOOL_PY"; }; find_uv() { :; }',
+            _toml_basic_awk(),
             _shell_function("config_toml_state"),
             _shell_function("config_source_records"),
             _shell_function("config_path_values"),
@@ -28042,6 +28051,30 @@ def test_a_source_path_holding_a_tab_or_lf_keeps_its_id_record_c3243_c3302(
     assert _toml_shell(tmp_path, body, "config_source_records", tool_py=sys.executable) == (
         "1\twombat-ledger\t~/Development/Kestrel Alder\n2\tquokka-notes\t~/Quokka Notes\n"
     )
+
+
+_C3303_ESCAPES = '~/K\\tA\\nB\\"C\\\\D\\u0041E\\U0001F600F\\u0085G\\u001cH\\rI\\u0009J'
+
+
+@pytest.mark.parametrize("quote", ["path", '"path"'])
+def test_one_basic_string_decoder_reads_a_source_path_as_the_path_reader_does_c3303(
+    tmp_path: Path, quote: str
+) -> None:
+    """B13 round 47 ruling 207, C3303 (privacy): with no interpreter, config_source_records read a basic path
+    as written, so the refused-path loop registered `~k\\u0065strel/...` escaped and the decoded account name
+    printed in clear. One tbasic decoder, shared with config_path_values, reads it: the same bytes from both
+    readers, each whitespace escape one space as tomllib's TAB or LF is in the records; an id is left raw."""
+    body = f'[[source]]\nid = "kestrel-alder"\n{quote} = "{_C3303_ESCAPES}"\n'
+    want = tomllib.loads(body)["source"][0]["path"]
+    for c in "\t\n\r":
+        want = want.replace(c, " ")
+    assert want == '~/K A B"C\\DAE\U0001f600F\x85G\x1cH I J'
+    assert _toml_shell(tmp_path, body, "config_path_values") == want + "\n"
+    paths = 'config_source_records "$(config_toml_state sources)" paths'
+    assert _toml_shell(tmp_path, body, paths) == want + "\n"
+    assert _toml_shell(tmp_path, body, "config_source_records") == f"1\tkestrel-alder\t{want}\n"
+    literal = body.replace(f'"{_C3303_ESCAPES}"', "'~/K\\u0041'")
+    assert _toml_shell(tmp_path, literal, paths) == "~/K\\u0041\n"
 
 
 @pytest.mark.parametrize("tool_py", ["tomllib", "none"])
