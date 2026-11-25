@@ -41412,6 +41412,8 @@ expected (`an empty folder chosen as a source: pause it or fill it`), keyed on t
 (outside a domain: the detail ends in the constant and the fix is the words above) and
 `::test_an_empty_local_folder_keeps_its_warn_with_the_pause_or_check_fix_c1401` (two local folders: a [warn] with that
 fix, no Finder or Full Disk Access words, the pause words `loop.empty_root_fix`'s own).
+Amended 2026-11-24, §16.287 C3008: `<root>` is prose, `doctor._prose_path`'s unquoted `~/<rest>` (the `$'...'` word
+only for a name holding a control character), never `_shell_path`'s quoted word.
 
 **Every clause beside a lost hold and queue names both lines** (C1428; ruling 94 kept). With the hold on all and a
 queued purge, governance/ moved aside, status's NEXT leads with governance.hold, while the [ok] heartbeat (below the
@@ -46328,6 +46330,8 @@ Test: `test_the_inbox_sources_fix_over_a_non_folder_is_the_persons_move_aside_c2
 Amended 2026-11-24, §16.287 C3094, C3009: a looping link at the folder's name is not a folder too (the listable row's
 generic OSError branch, keyed on inbox_state, never on ELOOP alone), and the volume row of a dangling or looping link
 reads `volume UUID not checked: <folder> is not a folder` with that fix, never `is missing`.
+Amended 2026-11-24, §16.287 C3008: `<folder>` in `restore <folder> as a folder` is prose, unquoted
+(`doctor._prose_path`), never `_shell_path`'s `~/'<rest>'` word.
 
 **A sync names an inbox that is not a folder in a note of its own** (C2814; ruling 194). LocalArm records
 `arm_local.UNKNOWN_NOTDIR` for "." when its root is a file or a link, and the cycle stores it in the unlisted kinds.
@@ -46891,6 +46895,19 @@ source's reads `the inbox (<id>) is not a folder: <path> is a file, a link to a 
 sync lists it until it is moved aside: keeping a copy, move it aside and put a folder back at that name, or fix path
 in [[source]] id = "<id>" in <config>; it does not block the next step`, still a note, never a wait. Test:
 `test_another_inbox_that_is_not_a_folder_gets_its_own_remedy_never_step_2_c3044`; the C2814 test is unchanged.
+
+**A folder named in prose is unquoted** (C3008; ruling 204; amends §16.247 C1401 and §16.282 C2809). `_shell_path`'s
+one-shell-word form, `~/'<rest>'`, read like a typo where a fix names a folder in a sentence (`restore
+~/'agent-context/inbox' as a folder`), the third round it was found. `doctor._prose_path` writes `~/<rest>` (or `~`,
+or the path as it is) unquoted, blanks included, unless `arm_local._LIST_ESCAPED_RE` matches, when it is
+`_shell_path`'s `$'...'` word, so no escape sequence reaches the terminal (C1414). It names the folder above that
+refuses a search and the folder below it in `_parent_fix`, the folder in `inbox_not_a_folder_fix`, and `<root>` in
+`loop.empty_folder_fix` (doctor passes it). Every word inside a command to type keeps `_shell_path` (`chmod u+rwx`,
+`chmod -N`, `chmod 700`, `chmod u+rx`), and so do the ACL fixes' `to the folder <word>`, which `cli._folder_refuses`
+compares; readers of these fixes match their heads only. Test:
+`test_a_folder_named_in_prose_is_unquoted_and_every_command_word_keeps_its_quote_c3008` (a blank, a control
+character, the locked folder's chmod still reaching it in bash); the C2809, C2808, C1401 and state-folder tests take
+the prose form.
 
 ### 16.288 Round 46: the converters: a kept Office answer read again only from the bytes and the fetch that were read, the container answers and the family parse corrected, and speech's CA words (2026-11-24, wave B13 round 46 lane E)
 

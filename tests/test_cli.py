@@ -4014,7 +4014,7 @@ def test_an_inbox_link_into_a_locked_folder_gets_the_persons_parent_fix_c2808(
         locked.chmod(0o700)
     listable = rows[f"source.{box.id}.listable"]
     assert listable.fix is not None and listable.fix.startswith(
-        f"the person gives this account search access to {doctor._shell_path(locked)}, a folder above "
+        f"the person gives this account search access to {doctor._prose_path(locked)}, a folder above "
     ), listable.fix
     assert "chmod u+rwx" in listable.fix and doctor.is_persons_fix(listable.fix)
     volume = rows[f"source.{box.id}.volume"]
@@ -4135,7 +4135,7 @@ def test_the_inbox_sources_fix_over_a_non_folder_is_the_persons_move_aside_c2809
     box = next(s for s in config.sources if s.kind is SourceKind.INBOX)
     rows = doctor._check_local_source(config, box, Path(sys.executable))
     want = (
-        f"restore {doctor._shell_path(folder)} as a folder: keeping a copy, move the file or link at that "
+        f"restore {doctor._prose_path(folder)} as a folder: keeping a copy, move the file or link at that "
         "name aside, then run step 2 again"
     )
     listable = next(r for r in rows if r.name.endswith(".listable"))
@@ -6613,7 +6613,7 @@ def test_library_refusing_a_search_or_a_linked_state_folder_is_still_one_fail_th
         vol.chmod(0o700)
         root.unlink()
         (vol / "agentsync").rename(root)
-    assert f"search access to {doctor._shell_path(vol)}, a folder above" in fix, fix
+    assert f"search access to {doctor._prose_path(vol)}, a folder above" in fix, fix
     assert named["disk.state"].detail.endswith(f" free at {vol}"), named["disk.state"]
 
 

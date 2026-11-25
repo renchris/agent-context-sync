@@ -1966,8 +1966,8 @@ def test_a_state_folder_under_a_folder_this_account_cannot_search_is_the_persons
     finally:
         parent.chmod(0o700)
     want = (
-        f"the person gives this account search access to {doctor._shell_path(parent)}, a folder above "
-        f"{doctor._shell_path(root)} that refuses it one, then run the same command again; it is this "
+        f"the person gives this account search access to {doctor._prose_path(parent)}, a folder above "
+        f"{doctor._prose_path(root)} that refuses it one, then run the same command again; it is this "
         f"account's own folder at mode 0000, so chmod u+rwx {doctor._shell_path(parent)} gives it"
     )
     assert fix == want and doctor.is_persons_fix(fix), fix
@@ -2658,8 +2658,9 @@ def test_an_empty_cloud_folder_outside_a_file_provider_domain_reads_as_empty_as_
 
 
 def _empty_folder_words(config: Config, root: Path) -> str:
-    """Ruling 130's fix for the empty folder ``root`` of source ``local-fixture``, spelled out."""
-    word = "~/" + shlex.quote(str(root.relative_to(Path.home())))
+    """Ruling 130's fix for the empty folder ``root`` of source ``local-fixture``, spelled out: the folder in
+    prose, unquoted (B13 round 46 C3008)."""
+    word = "~/" + str(root.relative_to(Path.home()))
     shown = doctor._shown(config.config_path)
     pause = f'set state = "paused" in [[source]] id = "local-fixture" in {shown}'
     return f"if {word} is meant to be empty, {pause}; else check that {word} is the folder you meant"
@@ -2758,6 +2759,56 @@ def test_a_listable_line_spells_a_synced_folders_name_as_the_list_does_c1414(
             )[0]
         )
         assert word.startswith("~/$'Library/CloudStorage/") and _ls_d(word) == str(root), word
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a mode-000 folder")
+def test_a_folder_named_in_prose_is_unquoted_and_every_command_word_keeps_its_quote_c3008(
+    sample_config: Config,
+) -> None:
+    """B13 round 46 C3008 (ruling 204; amends ruling 130 and C2809): doctor's prose named a folder as one
+    shell word, ``restore ~/'agent-context/inbox' as a folder``, which reads as a typo. A folder in prose is
+    ``~/<rest>`` unquoted (a blank included), and a name holding a control character keeps the ``$'...'`` word
+    so no escape sequence reaches the terminal; every word inside a command (the chmod) keeps its quote and
+    still reaches the folder in bash."""
+    home = Path.home()
+    assert doctor._prose_path(home / "agent-context" / "inbox") == "~/agent-context/inbox"
+    assert (
+        doctor._prose_path(home) == "~"
+        and doctor._prose_path("/Volumes/Contoso Files") == "/Volumes/Contoso Files"
+    )
+    assert doctor.inbox_not_a_folder_fix(home / "Contoso Files" / "inbox") == (
+        "restore ~/Contoso Files/inbox as a folder: keeping a copy, move the file or link at that name "
+        "aside, then run step 2 again"
+    )
+    odd = home / _C1414_NAME
+    odd.mkdir()
+    word = doctor._prose_path(odd)
+    assert word == doctor._shell_path(odd) and word.startswith("~/$'Contoso\\e[7m"), word
+    assert _ls_d(word) == str(odd)
+    locked = home / "Contoso Locked"
+    root = locked / "drop"
+    root.mkdir(parents=True)
+    locked.chmod(0)
+    try:
+        fix = doctor._parent_fix(root)
+    finally:
+        locked.chmod(0o755)
+    assert fix == (
+        "the person gives this account search access to ~/Contoso Locked, a folder above ~/Contoso "
+        "Locked/drop that refuses it one, then run the same command again; it is this account's own folder "
+        "at mode 0000, so chmod u+rwx ~/'Contoso Locked' gives it"
+    ), fix
+    assert _ls_d("~/'Contoso Locked'") == str(locked)
+    empty = home / "Contoso Files" / "Contoso Empty"
+    empty.mkdir(parents=True)
+    src = dataclasses.replace(sample_config.sources[0], kind=SourceKind.LOCAL, path=empty, sentinel=None)
+    listable = by_name(doctor._check_local_source(sample_config, src, Path(sys.executable)))[
+        "source.local-fixture.listable"
+    ]
+    assert listable.fix is not None and listable.fix.startswith(
+        "if ~/Contoso Files/Contoso Empty is meant to be empty, "
+    ), listable.fix
+    assert listable.fix.endswith("else check that ~/Contoso Files/Contoso Empty is the folder you meant")
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root lists a mode-000 folder")

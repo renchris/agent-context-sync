@@ -825,6 +825,15 @@ def _shell_path(path: Path | str) -> str:
     :func:`ansi_c_word`'s ``$'...'`` form instead, never raw, so a fix never sends an escape sequence to the
     terminal and still names the real folder when pasted (B13 round 38 C1414, ruling 126)."""
     p = str(path)
+    rest = _below_home(p)
+    if rest is None:
+        return _quoted(p)
+    return "~/" + _quoted(rest) if rest else "~"
+
+
+def _below_home(p: str) -> str | None:
+    """The part of ``p`` below the home folder (as HOME gives it, or resolved), ``""`` for the home folder
+    itself, None outside it (:func:`_shell_path`, :func:`_prose_path`)."""
     home = Path.home()
     forms = {str(home)}
     with contextlib.suppress(OSError, RuntimeError):  # a home folder that does not resolve (a symlink loop)
@@ -834,10 +843,27 @@ def _shell_path(path: Path | str) -> str:
         if not h:  # HOME=/ : every path would be "below" it
             continue
         if p == h:
-            return "~"
+            return ""
         if p.startswith(h + "/"):
-            return "~/" + _quoted(p[len(h) + 1 :])
-    return _quoted(p)
+            return p[len(h) + 1 :]
+    return None
+
+
+def _prose_path(path: Path | str) -> str:
+    """``path`` as a sentence names it, unquoted: ``~/<rest>`` below the home folder, ``~`` for it, else the
+    path as it is, which both setup reports cut as they cut the config's plain ``~/<path>`` form; a path
+    holding a character :data:`arm_local._LIST_ESCAPED_RE` matches is :func:`_shell_path`'s ``$'...'`` word,
+    so prose never sends an escape sequence to the terminal (C1414). Only for a folder named in prose (the
+    folder above that refuses a search, the inbox to restore, the empty folder to check): every word inside a
+    command to type keeps :func:`_shell_path`, and the ACL fixes' ``to the folder <word>`` keeps it too, as
+    ``cli._folder_refuses`` compares it (B13 round 46 C3008, ruling 204; amends ruling 130 and C2809)."""
+    p = str(path)
+    if arm_local._LIST_ESCAPED_RE.search(p):
+        return _shell_path(path)
+    rest = _below_home(p)
+    if rest is None:
+        return p
+    return "~/" + rest if rest else "~"
 
 
 def ansi_c_word(text: str) -> str:
@@ -1502,8 +1528,8 @@ def _parent_fix(root: Path) -> str:
             f"the folder itself refuses it, and chmod -N {_shell_path(root)} removes its ACL"
         )
     fix = (
-        f"the person gives this account search access to {_shell_path(above)}, a folder above "
-        f"{_shell_path(root)} that refuses it one, then run the same command again"
+        f"the person gives this account search access to {_prose_path(above)}, a folder above "
+        f"{_prose_path(root)} that refuses it one, then run the same command again"
     )
     try:
         st = above.lstat()  # every folder above it allows a search, so this one is seen
@@ -3033,9 +3059,9 @@ def inbox_not_a_folder_fix(folder: Path) -> str:
     """The fix for the source on the kept inbox when a file or a link that is not a folder has its name (B13
     round 45 C2809, ruling 194): the person's (``restore `` is a PERSONS_FIX_RE opening, so cli's NEXT and
     install.sh's PERSONS_FAILS split never hand the agent the person's file), naming the folder as typed,
-    never a link's target, with step 2's own remedy."""
+    never a link's target (in prose, :func:`_prose_path`, B13 round 46 C3008), with step 2's own remedy."""
     return (
-        f"restore {_shell_path(folder)} as a folder: keeping a copy, move the file or link at that name "
+        f"restore {_prose_path(folder)} as a folder: keeping a copy, move the file or link at that name "
         "aside, then run step 2 again"
     )
 
@@ -3116,7 +3142,7 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
                 fix = None
                 if src.kind is not SourceKind.INBOX:
                     fix = empty_folder_fix(
-                        src.id, root=_shell_path(root), config_shown=_shown(config.config_path)
+                        src.id, root=_prose_path(root), config_shown=_shown(config.config_path)
                     )
             out.append(_bad(f"{base}.listable", f"{shown} {detail}", Severity.WARN, fix=fix))
         else:

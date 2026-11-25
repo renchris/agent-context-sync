@@ -395,9 +395,10 @@ def pause_clause(sid: str, config_shown: str) -> str:
 def empty_folder_fix(sid: str, *, root: str, config_shown: str) -> str:
     """The fix for doctor's ``source.<id>.listable`` [warn] on an empty folder outside every File Provider
     domain, cloud or local, never an inbox: the walk reads it as complete, so no Finder step and no grant;
-    paused if it is meant to be empty, else checked as the folder meant (``root`` as one shell word; B13 round
-    38 C1401 with C1408 and C1427, ruling 130). It stays a [warn]: an [ok] would hide an empty mount point or
-    a wrong path."""
+    paused if it is meant to be empty, else checked as the folder meant (B13 round 38 C1401 with C1408 and
+    C1427, ruling 130; ``root`` as prose names it, unquoted unless it holds a control character, doctor's
+    ``_prose_path``, B13 round 46 C3008). It stays a [warn]: an [ok] would hide an empty mount point or a
+    wrong path."""
     pause = pause_clause(sid, config_shown)
     return f"if {root} is meant to be empty, {pause}; else check that {root} is the folder you meant"
 
