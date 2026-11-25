@@ -3314,7 +3314,7 @@ def test_the_kept_inbox_probe_is_bounded_and_run_only_by_a_failed_root_read_c331
     monkeypatch.setattr(arm_local, "LISTING_TIMEOUT_S", 1.0)
     monkeypatch.setattr(config_module, "inbox_entry", held)
     try:
-        with _bounded(30):
+        with _bounded(90):
             began = time.monotonic()
             assert config_module.live_inbox(config) is None  # names no kept inbox
             assert time.monotonic() - began < 10  # bounded: never the held stat's 20 s
@@ -3324,6 +3324,11 @@ def test_the_kept_inbox_probe_is_bounded_and_run_only_by_a_failed_root_read_c331
                 [src] = [r for r in report.sources if r.source_id == box.id]
                 assert any("reading the root did not return within 1s" in a for a in src.alarms), src.alarms
                 assert calls, mode
+            # the CLI sync: its NEXT reads the entry too (inbox_state, the not-a-folder note), bounded alike
+            calls.clear()
+            began = time.monotonic()
+            cli.main(["sync", "--config", str(config.config_path)])
+            assert calls and time.monotonic() - began < 15, (len(calls), time.monotonic() - began)
             monkeypatch.setattr(config_module, "inbox_entry", real)
             (kept.parent / "contoso-drop").mkdir()
             kept.unlink()

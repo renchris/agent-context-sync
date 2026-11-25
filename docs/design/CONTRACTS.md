@@ -48022,7 +48022,9 @@ hold, and `config.live_inbox` did the same for the guide on every sync. The cycl
 `LocalArm.root_probe` (`cycle._kept_inbox_shown`, over `config.kept_inbox_entry`, the one read
 `kept_inbox_not_a_folder` is built on), run only by the four root branches that name it, under `call_with_timeout`
 with `listing_timeout_s`; past it the scan is held with the root read's own words (`reading the root did not return
-within <n>s`). `live_inbox` bounds its read the same way, and past it names no kept inbox. A link through a file
+within <n>s`). `live_inbox` bounds its read the same way, and past it names no kept inbox; so do `inbox_state` (past
+it `not read (timed out)`) and loop's `_inbox_root_not_a_folder` (past it no not-a-folder note), through one helper,
+`config.bounded_inbox_read`, so the CLI sync's NEXT holds no command either. A link through a file
 failed the root's lstat with ENOTDIR, which set no `root_notdir`, so loop's note promised that a later sync lists it:
 that branch sets `root_notdir` when the probe names the inbox, so the kept inbox's restore note follows. A link into a
 folder this account cannot search read `source root unreadable: <the link's target>: Permission denied`; the probe's

@@ -66,13 +66,16 @@ from agentsync.arm_local import (
 )
 from agentsync.config import (
     INBOX_ENTRY_FOLDER,
+    INBOX_ENTRY_NOT_A_FOLDER,
     INBOX_ENTRY_UNREAD,
     INBOX_LIVE,
     Config,
     SourceConfig,
+    bounded_inbox_read,
     canonical_source_root,
     inbox_entry,
     inbox_state,
+    kept_inbox_entry,
     kept_inbox_not_a_folder,
     live_inbox,
 )
@@ -982,22 +985,30 @@ def _inbox_root_not_a_folder(
     if not manifest.get_meta(_ROOT_UNLISTED_META + src.id) or src.path is None:
         return None
     kinds = _unlisted_kinds(manifest, src, ["."])
-    typed = expand(config.docs_repo).parent / "inbox"
+    if kinds not in (frozenset({UNKNOWN_MISSING}), frozenset({UNKNOWN_NOTDIR})):
+        return None
+    root = expand(src.path)
+
+    def read() -> tuple[Path, str] | tuple[None, str]:
+        # the kept entry read once (config.kept_inbox_entry, which kept_inbox_not_a_folder, the one test, is
+        # built on), or this source's own path for any other inbox's not-a-folder finding
+        on = kept_inbox_entry(config, src)
+        if on is not None:
+            return on
+        return None, inbox_entry(root) if kinds == frozenset({UNKNOWN_NOTDIR}) else ""
+
     try:
-        kept = expand(src.path) == canonical_source_root(typed)
-        if kinds == frozenset({UNKNOWN_MISSING}):
-            if kept and inbox_entry(typed) == INBOX_ENTRY_FOLDER:
-                return _INBOX_FOLDER_AGAIN
-            if kept_inbox_not_a_folder(config, src) is None:
-                return None
-        elif kinds == frozenset({UNKNOWN_NOTDIR}):
-            if inbox_entry(typed if kept else expand(src.path)) == INBOX_ENTRY_FOLDER:
-                return _INBOX_FOLDER_AGAIN
-        else:
-            return None
+        got = bounded_inbox_read(read)  # a stat held past the listings' limit holds no command (C3311)
     except OSError:
         return None
-    return (_shown(typed), True) if kept else (_display_path(src.path), False)
+    if got is None:
+        return None
+    typed, entry = got
+    if entry == INBOX_ENTRY_FOLDER:
+        return _INBOX_FOLDER_AGAIN
+    if kinds == frozenset({UNKNOWN_MISSING}) and (typed is None or entry != INBOX_ENTRY_NOT_A_FOLDER):
+        return None
+    return (_shown(typed), True) if typed is not None else (_display_path(src.path), False)
 
 
 def _missing_root_wait(config: Config, sid: str, pause: str, *, state: str = "") -> str:

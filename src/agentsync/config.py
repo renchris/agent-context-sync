@@ -12,10 +12,10 @@ import re
 import stat
 import tempfile
 import tomllib
-from collections.abc import Collection, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from agentsync.errors import AccountHomeError, ConfigError
 from agentsync.model import SourceKind, SourceState
@@ -883,6 +883,23 @@ def ensure_inbox(config_path: Path) -> tuple[Config, SourceConfig | None]:
     return config, next(s for s in config.sources if s.id == sid)
 
 
+_T = TypeVar("_T")
+
+
+def bounded_inbox_read(read: Callable[[], _T]) -> _T | None:
+    """``read()`` under the listings' time limit (``arm_local.LISTING_TIMEOUT_S``, read at call time), None
+    past it: a stat that follows the kept inbox's link may wait on a privacy prompt, and status, sync's NEXT
+    and the guide read that entry, so none of them holds the command (B13 round 47 C3311). ``read``'s own
+    exception is raised as it is."""
+    # arm_local imports this module, so the bound is imported here; its limit is read at call time
+    from agentsync import arm_local  # noqa: PLC0415 - arm_local imports config: a module-level import cycles
+
+    try:
+        return arm_local.call_with_timeout(read, arm_local.LISTING_TIMEOUT_S, name="agentsync-inbox")
+    except arm_local.CallTimedOutError:
+        return None
+
+
 INBOX_ENTRY_ABSENT = "absent"
 INBOX_ENTRY_FOLDER = "folder"
 INBOX_ENTRY_NOT_A_FOLDER = "not-a-folder"
@@ -967,18 +984,26 @@ def inbox_state(config: Config) -> tuple[Path, str]:
     another kind's source reads ``not added (<folder> is source '<id>' (<kind>, <state>), not an inbox
     source)``, and none reads ``not added (no source on <folder>)``.  Reads the disk only through
     :func:`inbox_entry` (one lstat, and a stat for a link) and the readlinks canonical_source_root and
-    same_folder already make.  An entry that cannot be read (a link into a folder this account cannot search,
-    a parent this account cannot search, a privacy refusal under CloudStorage) reads ``not read (<why>)``, the
-    OSError's own words with no path, never ``is not a folder``: os.path.isdir would call such a link to a
-    real folder not a folder, and os.path.lexists would call a denied entry absent (B13 round 44 C2644 with
-    C2636, ruling 180; round 45 C2936, ruling 194)."""
+    same_folder already make; the first two under :func:`bounded_inbox_read`, past which the entry reads
+    ``not read (timed out)`` (B13 round 47 C3311).  An entry that cannot be read (a link into a folder this
+    account cannot search, a parent this account cannot search, a privacy refusal under CloudStorage) reads
+    ``not read (<why>)``, the OSError's own words with no path, never ``is not a folder``: os.path.isdir
+    would call such a link to a real folder not a folder, and os.path.lexists would call a denied entry
+    absent (B13 round 44 C2644 with C2636, ruling 180; round 45 C2936, ruling 194)."""
     folder = expand(config.docs_repo).parent / "inbox"
-    kind = inbox_entry(folder)
+
+    def read() -> tuple[str, Path | None]:
+        kind = inbox_entry(folder)
+        if kind.startswith(INBOX_ENTRY_UNREAD) or kind == INBOX_ENTRY_NOT_A_FOLDER:
+            return kind, None
+        return kind, canonical_source_root(folder)
+
+    got = bounded_inbox_read(read)  # past the listings' limit: not read (B13 round 47 C3311)
+    kind, kept = got if got is not None else (f"{INBOX_ENTRY_UNREAD}timed out", None)
     if kind.startswith(INBOX_ENTRY_UNREAD):
         return folder, f"not read ({kind[len(INBOX_ENTRY_UNREAD) :]})"
-    if kind == INBOX_ENTRY_NOT_A_FOLDER:
+    if kind == INBOX_ENTRY_NOT_A_FOLDER or kept is None:
         return folder, f"not added ({folder} is not a folder)"
-    kept = canonical_source_root(folder)
     on = [s for s in config.sources if s.path is not None and same_folder(expand(s.path), kept)]
     inbox = sorted((s for s in on if s.kind == SourceKind.INBOX), key=lambda s: s.state != SourceState.LIVE)
     if inbox:
@@ -1009,9 +1034,6 @@ def live_inbox(config: Config) -> Path | list[tuple[Path, str]] | None:
     listings' time limit, since a link's target may sit where a privacy prompt holds a stat: past it the
     entry counts as one it cannot read, so the guide names no kept inbox rather than holding the sync (B13
     round 47 C3311)."""
-    # arm_local imports this module, so the bound is imported here; its limit is read at call time
-    from agentsync import arm_local  # noqa: PLC0415 - arm_local imports config: a module-level import cycles
-
     inboxes = sorted(
         (
             (s.path, s.id)
@@ -1022,12 +1044,7 @@ def live_inbox(config: Config) -> Path | list[tuple[Path, str]] | None:
     )
     folder = expand(config.docs_repo).parent / "inbox"
     kept = canonical_source_root(folder)
-    try:
-        entry = arm_local.call_with_timeout(
-            lambda: inbox_entry(folder), arm_local.LISTING_TIMEOUT_S, name="agentsync-inbox"
-        )
-    except arm_local.CallTimedOutError:
-        entry = f"{INBOX_ENTRY_UNREAD}timed out"
+    entry = bounded_inbox_read(lambda: inbox_entry(folder)) or f"{INBOX_ENTRY_UNREAD}timed out"
     if entry not in (INBOX_ENTRY_ABSENT, INBOX_ENTRY_FOLDER):
         inboxes = [(path, sid) for path, sid in inboxes if not same_folder(path, kept)]
     elif any(same_folder(path, kept) for path, _ in inboxes):
