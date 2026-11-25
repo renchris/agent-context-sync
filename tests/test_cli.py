@@ -500,6 +500,36 @@ def test_a_page_the_land_gate_cannot_read_names_its_chmod_and_the_sync_says_it_w
     assert git(repo, "rev-list", "--count", "HEAD").strip() == "2"
 
 
+def test_a_sync_that_fails_after_the_land_gate_passed_never_says_the_gate_blocked_it_c3227(
+    initialised: Config,
+    local_source_dir: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """B13 round 47 C3227: a cycle that raises carries a blocking ``CYCLE`` finding, so keying on blocking
+    findings made a commit that failed after the gate passed read ``commit none (blocked by the land gate)``
+    and a NEXT naming the gate. Only the gate's own block does."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
+    (local_source_dir / "projects" / "sample.txt").write_text("changed before a failed commit\n")
+
+    def locked(*_a: object, **_k: object) -> None:
+        raise GitError(["commit"], 128, "fatal: database is locked")
+
+    monkeypatch.setattr(gitops, "commit_cycle", locked)
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    out = capsys.readouterr().out
+    run_line = next(x for x in out.splitlines() if x.startswith("run "))
+    assert " · commit none (no content change) · " in run_line, run_line
+    assert "BLOCKING CYCLE -: cycle failed: git commit failed (128): fatal: database is locked" in out, out
+    assert "land gate" not in out, out
+    assert [x for x in out.splitlines() if x.startswith(loop.NEXT_PREFIX)] == [
+        x for x in loop.next_lines(initialised) if x.startswith(loop.NEXT_PREFIX)
+    ]
+    assert "land gate" not in (initialised.docs_repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
+
+
 def test_a_commit_with_no_mirror_change_says_what_its_zero_counts(capsys: pytest.CaptureFixture[str]) -> None:
     """``N change(s)`` counts the mirror pages sources changed. A commit beside 0 holds other docs-repo files
     (a baseline flip in INDEX.md, the agent's _eval drafts), and the header says so; with no commit it reads

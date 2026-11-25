@@ -1113,7 +1113,7 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     one count per source: at 0 every changed online-only file would otherwise get one."""
     if report.commit_sha:
         commit = report.commit_sha[:12]
-    elif any(f.blocking for f in report.lint_findings):  # never "no content change" (B13 round 47 C3227)
+    elif report.land_gate_blocked:  # never "no content change" (B13 round 47 C3227)
         commit = "none (blocked by the land gate)"
     else:
         commit = "none (no content change)"
@@ -1851,7 +1851,7 @@ def _cmd_sync(args: argparse.Namespace) -> int:
         _sync_document(config, report)
         clio.error_doc(clio.Reason.state_refused, said)
         return report.exit_code or EXIT_FAILED
-    blocked = None if report.commit_sha else loop.land_gate_step(report.lint_findings)
+    blocked = loop.land_gate_step(report.lint_findings) if report.land_gate_blocked else None
     if hints and not clio.json_mode() and blocked is not None:
         # the land gate held the commit: that is the step, never the loop's, whose rules never see the gate
         # and named a baseline question as if the sync had landed; its WAITING ON YOU lines stay (B13 round 47

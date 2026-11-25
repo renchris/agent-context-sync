@@ -1091,6 +1091,7 @@ class CycleReport:
     new_manifest_by_job: bool = False  # 2026-10-23 (§16.185 E74): the background job's new start, said by this run
     carried: tuple[MirrorChange, ...] = ()  # 2026-11-25 (§16.292 C3228): blocked runs' pages this commit holds
     carried_runs: tuple[int, ...] = ()  # 2026-11-25 (§16.292 C3228): those runs, named in the commit body
+    land_gate_blocked: bool = False  # 2026-11-25 (§16.292 C3227): the gate held the commit, never a CYCLE finding
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"
 """``schema`` value of the per-channel-per-month JSON the Teams arm writes and the teams converter reads.
@@ -47812,10 +47813,14 @@ BLOCKING lines <where>): <the first one's page>: <its fix, less a closing ", the
 `` `~/.local/bin/agentsync sync` ``. `_cmd_sync` prints it as the one NEXT, `where` `above`, right after the
 heartbeat-refused stop and in place of the loop's NEXT, with the loop's WAITING ON YOU lines kept; STATE.md's
 `## Next` takes it as rule 1's fix with `where` `under ## Lint findings` (`loop.LINT_FINDINGS_BELOW`), since its
-findings follow. With a blocking finding and no commit the run line reads `commit none (blocked by the land gate)`.
-`sync --json` is unchanged (`outcome: blocked`). Tests:
+findings follow. When the gate held the commit the run line reads `commit none (blocked by the land gate)`. All three readers
+(the run line, the NEXT and STATE.md) key on `CycleReport.land_gate_blocked`, set where the gate blocks, never on
+the blocking findings alone: a cycle that raises after the gate passed carries a blocking `CYCLE` finding (`cycle
+failed: ...`), and keeps `commit none (no content change)` and the loop's NEXT. `sync --json` is unchanged
+(`outcome: blocked`). Tests:
 `test_a_page_the_land_gate_cannot_read_names_its_chmod_and_the_sync_says_it_was_blocked_c3227` (a mode-000 page
-through one sync, STATE.md's copy, then chmod 600 and a commit) and
+through one sync, STATE.md's copy, then chmod 600 and a commit),
+`test_a_sync_that_fails_after_the_land_gate_passed_never_says_the_gate_blocked_it_c3227` and
 `test_state_md_next_is_the_blocking_finding_that_held_the_commit`.
 
 **The commit that lands blocked runs' pages counts them and names those runs** (C3228; ruling 212). A run the land

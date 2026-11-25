@@ -2441,6 +2441,7 @@ class _Cycle:
         # earlier blocked runs' changes this run's commit holds, and those runs (B13 round 47 C3228)
         self._carried: list[MirrorChange] = []
         self._carried_runs: list[int] = []
+        self._gate_blocked = False  # the land gate held this run's commit (B13 round 47 C3227)
         # per source: the stable ids and paths its walk withheld as still settling, and the pages a new start
         # kept for them (P117)
         self._withheld: dict[str, tuple[frozenset[str], frozenset[str]]] = {}
@@ -2639,6 +2640,7 @@ class _Cycle:
             else:  # nothing would land: the gate guards a commit, and a clean tree makes none
                 log.info("clean worktree: nothing to land; land gate skipped (RECONCILE always runs it)")
             blocked = any(f.blocking for f in self.findings)
+            self._gate_blocked = blocked  # the gate's own block, never a cycle failure's finding (C3227)
             if blocked:
                 log.error("land gate blocked the commit: %d blocking finding(s)", self._blocking_count())
                 self.manifest.discard_pending(self.run_id)
@@ -4089,6 +4091,7 @@ class _Cycle:
             path_reread_held=path_held,
             carried=tuple(sorted(self._carried, key=lambda c: (c.path, c.op.value))),
             carried_runs=tuple(self._carried_runs),
+            land_gate_blocked=self._gate_blocked,
         )
 
     def _path_outcomes(self) -> tuple[int, int, int, int, int, int]:

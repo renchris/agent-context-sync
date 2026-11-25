@@ -2224,8 +2224,12 @@ def test_state_md_opens_with_the_next_step(env: Env) -> None:
 def test_state_md_next_is_the_blocking_finding_that_held_the_commit(env: Env) -> None:
     """The loop's rules never see the land gate: a blocked commit is the NEXT step, as in ``curate``."""
     skill.write_skill(env.repo)  # under the isolated HOME: rule 1's skill check passes
+
+    def blocked(*findings: LintFinding) -> CycleReport:
+        return dataclasses.replace(report(findings=findings), land_gate_blocked=True)
+
     finding = LintFinding("SYMLINK", "topics/a/x.md", "a symlink", blocking=True)
-    env.pub.write_state(report(findings=(finding,)), [status("src")])
+    env.pub.write_state(blocked(finding), [status("src")])
     # B13 round 47 C3227, ruling 212: the sync's NEXT words, the BLOCKING lines under ## Lint findings
     want = loop.next_step(
         env.config,
@@ -2238,12 +2242,17 @@ def test_state_md_next_is_the_blocking_finding_that_held_the_commit(env: Env) ->
     assert _state_next_block(env.text("_sync/STATE.md")) == want.lines()
     # B13 round 16 T55: the count by number, at 2 as well
     other = dataclasses.replace(finding, path="topics/a/y.md")
-    env.pub.write_state(report(findings=(finding, other)), [status("src")])
+    env.pub.write_state(blocked(finding, other), [status("src")])
     assert _state_next_block(env.text("_sync/STATE.md"))[0] == (
         "NEXT: the land gate blocked this sync's commit (2 blocking findings, the BLOCKING lines under ## "
         "Lint findings): topics/a/x.md: a symlink; then run `~/.local/bin/agentsync sync`"
     )
     env.pub.write_state(report(findings=(dataclasses.replace(finding, blocking=False),)), [status("src")])
+    assert _state_next_block(env.text("_sync/STATE.md")) == loop.next_step(env.config).lines()
+    # B13 round 47 C3227: a cycle that failed after the gate passed has a blocking CYCLE finding, never the
+    # gate's block
+    failed = LintFinding("CYCLE", "-", "cycle failed: database is locked")
+    env.pub.write_state(report(findings=(failed,)), [status("src")])
     assert _state_next_block(env.text("_sync/STATE.md")) == loop.next_step(env.config).lines()
 
 

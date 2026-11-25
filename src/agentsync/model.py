@@ -590,6 +590,9 @@ class CycleReport:
     # written to the CHANGELOG again, which those runs did (B13 round 47 C3228, ruling 212)
     carried: tuple[MirrorChange, ...] = ()
     carried_runs: tuple[int, ...] = ()
+    # the land gate held this run's commit: a cycle that failed after the gate passed carries a blocking
+    # ``CYCLE`` finding too, which never reads as the gate's block (B13 round 47 C3227)
+    land_gate_blocked: bool = False
 
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"

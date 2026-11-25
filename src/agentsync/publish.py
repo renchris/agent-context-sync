@@ -2540,7 +2540,11 @@ class Publisher:
         alarm here names that line (B13 round 9 K42)."""
         from agentsync import loop  # noqa: PLC0415 - loop imports cycle, which imports this module
 
-        blocked = loop.land_gate_step(report.lint_findings, where=loop.LINT_FINDINGS_BELOW)
+        blocked = (
+            loop.land_gate_step(report.lint_findings, where=loop.LINT_FINDINGS_BELOW)
+            if report.land_gate_blocked
+            else None
+        )
         fixes = [blocked] if blocked else []
         next_lines = loop.next_lines(self._config, fixes=fixes, count_queue=False, in_state=True) or [
             f"(the next step could not be worked out: run `{skill.AGENTSYNC_BIN} status`)"
