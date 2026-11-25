@@ -20,6 +20,7 @@ import os
 from pathlib import Path
 
 from agentsync import fsutil
+from agentsync.errors import AccountHomeError
 from agentsync.paths import expand, is_temporary
 
 log = logging.getLogger(__name__)
@@ -235,15 +236,29 @@ def config_dir_skipped(config_dir: Path, home: Path | None = None) -> bool:
     return is_temporary(home if home is not None else Path.home()) and not is_temporary(config_dir)
 
 
+def _config_dir() -> tuple[Path | None, str | None]:
+    """``$CLAUDE_CONFIG_DIR`` expanded, or ``(None, why)`` when it is a ``~name`` form
+    :func:`agentsync.paths.expand` refuses (ruling 193: never another account's home); ``(None, None)`` when
+    it is unset or empty.  Only that refusal is caught, so any other defect still surfaces; the refused copy
+    is left out of :func:`skill_paths`, and :func:`write_skill` logs one warning naming it (C3038)."""
+    value = os.environ.get("CLAUDE_CONFIG_DIR")
+    if not value:
+        return None, None
+    try:
+        return expand(value), None
+    except AccountHomeError as exc:
+        return None, str(exc)
+
+
 def skill_paths() -> list[Path]:
     """Where the skill goes: ``~/.claude/skills/agentsync-docs/SKILL.md``, then the same under
     ``$CLAUDE_CONFIG_DIR/skills`` when that variable is set, resolves to a different folder and is not
     left out for a temporary home (:func:`config_dir_skipped`).  Every reader of the skill's state goes by
     this list (the write, the loop's check, status), so a copy that is left out is not reported missing."""
     dirs = [expand(DEFAULT_SKILLS_DIR)]
-    config_dir = os.environ.get("CLAUDE_CONFIG_DIR")
-    if config_dir and not config_dir_skipped(expand(config_dir)):
-        extra = expand(config_dir) / "skills"
+    config_dir, _ = _config_dir()
+    if config_dir is not None and not config_dir_skipped(config_dir):
+        extra = config_dir / "skills"
         try:
             same = extra.resolve() == dirs[0].resolve()
         except (OSError, RuntimeError):  # 3.11 raises RuntimeError on a symlink loop; the write then warns
@@ -267,11 +282,15 @@ def write_skill(docs_repo: Path) -> list[tuple[Path, bool]]:
     """Write :func:`skill_text` to every :func:`skill_paths` entry; ``(path, written)`` per copy that is now
     current (False: already up to date). A copy that cannot be read or written is logged as a warning and left
     out; this never raises, so it cannot fail a cycle (best-effort by contract, CONTRACTS §16.16). The
-    ``$CLAUDE_CONFIG_DIR`` copy a temporary home leaves out (:func:`config_dir_skipped`) is one info line."""
+    ``$CLAUDE_CONFIG_DIR`` copy a temporary home leaves out (:func:`config_dir_skipped`) is one info line, and
+    one whose value names another account's home (``~name``, refused by :func:`agentsync.paths.expand`) is
+    one warning naming it and left out (C3038)."""
     text = skill_text(docs_repo)
     done: list[tuple[Path, bool]] = []
-    config_dir = os.environ.get("CLAUDE_CONFIG_DIR")
-    if config_dir and config_dir_skipped(expand(config_dir)):
+    config_dir, refused = _config_dir()
+    if refused is not None:
+        log.warning("skill: no copy under $CLAUDE_CONFIG_DIR: %s", refused)
+    elif config_dir is not None and config_dir_skipped(config_dir):
         log.info(
             "skill: no copy under $CLAUDE_CONFIG_DIR: the home folder is a temporary one, that one is not"
         )

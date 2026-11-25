@@ -106,6 +106,27 @@ def test_sync_without_claude_config_dir_writes_only_the_home_copy(
     assert sorted(Path.home().rglob("SKILL.md")) == [home_skill()]  # one copy, nowhere else under HOME
 
 
+def test_a_claude_config_dir_naming_another_home_leaves_its_copy_out_and_the_sync_ends_ok(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """B13 round 46 C3038 (ruling 198): a ``~name`` CLAUDE_CONFIG_DIR, which expand refuses since ruling 193,
+    is a left-out copy with one warning naming it, never a raise: write_skill keeps its never-raises contract,
+    skill_paths, the loop's skill_state and status read only the home copy, and the sync ends ok."""
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", "~contoso/.claude")
+    assert skill.skill_paths() == [home_skill()]
+    with caplog.at_level(logging.WARNING, logger="agentsync.skill"):
+        assert skill.write_skill(initialised.docs_repo) == [(home_skill(), True)]
+    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1 and "no copy under $CLAUDE_CONFIG_DIR" in warnings[0]
+    assert "~contoso/.claude" in warnings[0]
+    assert loop.skill_state(initialised.docs_repo) == "current"
+    home_skill().unlink()
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert home_skill().read_text(encoding="utf-8") == skill.skill_text(initialised.docs_repo)
+    assert cli.main(["status", "--config", cfg]) == cli.EXIT_OK
+
+
 def test_dry_run_writes_no_skill(initialised: Config) -> None:
     assert cli.main(["sync", "--mode", "dry_run", "--config", str(initialised.config_path)]) == cli.EXIT_OK
     assert not home_skill().exists()
