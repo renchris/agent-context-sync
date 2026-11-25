@@ -16817,6 +16817,11 @@ it, up to 10 minutes, and skips that sync ("skipped, lock busy") if it is still 
 Amended 2026-10-28, §16.214 C629: when the lock's body is blanks only, the line reads `<label>: another sync is still
 running (or install.sh or a check holds the lock); waiting for it to end, at most 10 minutes`, in
 `cycle.UNRECORDED_LOCK_WAIT_QUIET`'s words; a recorded body keeps the line the prompt quotes.
+Amended 2026-11-24, §16.286 C3024: the skipped first sync is recorded `skipped 75 lock-busy` under a named holder and
+`skipped 75 lock-busy-unrecorded-holder` when the lock's body named none (the probe read blanks, or the body is still
+blank right after the skip, a read only), which setup_report words as the lock still held past the wait, never as
+another sync; lock-busy stays for older logs. Test:
+`tests/test_install_oneshot.py::test_a_first_sync_skipped_under_a_holder_that_recorded_nothing_says_so_c3024`.
 
 **Prompt words from another lane** (lane RB's G47 and G65, §16.65). A report that holds a `Private only:` line gets
 no `issue link (review the report first):` line, and its `NEXT:` names `bring-back.md` alone, so step 3's "its last
@@ -17087,6 +17092,8 @@ older install.sh) keeps the old reading except for a skipped step. A skipped ste
 no clause about who converts the files is added (for `no-sources` and `status-failed` no sync follows). The
 borrowed path, already labelled "an earlier run's", is unchanged. Test:
 `tests/test_setup_report.py::test_a_first_sync_that_printed_no_counts_borrows_none_from_an_earlier_run`.
+Amended 2026-11-24, §16.286 C3024: a skipped first sync is `skipped 75 lock-busy` or, under a holder that recorded
+nothing, `skipped 75 lock-busy-unrecorded-holder`; either prints no counts and borrows none.
 
 **A prompt newer than the report's agentsync says so** (H23). On a scenario-D Mac the installed agentsync, older
 than the pasted prompt, writes the report with its own step names and checks, and nothing said so. When the

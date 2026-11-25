@@ -14337,7 +14337,17 @@ else
 		# agentsync's own "skipped: lock held by ..." line above names the holder; this one only closes the step
 		# (B13 round 7 H31: a third line said the same news again).
 		say "$SYNC_LABEL: skipped, lock busy"
-		step_end skipped 75 lock-busy
+		# under a holder that recorded nothing (the probe read a blank body, or one taken after the probe whose
+		# body is still blank: a read, nothing locked or written) the note says so, never another sync's, as
+		# setup_report words lock-busy-unrecorded-holder; lock-busy stays for a named holder and older logs (B13
+		# round 46 C3024)
+		grc=0
+		[ -z "$l" ] || [ "$SYNC_LOCK_BARE" -eq 1 ] || LC_ALL=C grep -q '[^[:space:]]' "$l" 2>/dev/null || grc=$?
+		if [ "$SYNC_LOCK_BARE" -eq 1 ] || [ "$grc" -eq 1 ]; then
+			step_end skipped 75 lock-busy-unrecorded-holder
+		else
+			step_end skipped 75 lock-busy
+		fi
 	elif [ "$SYNC_RC" -eq 78 ]; then
 		# A config the sync cycle refuses (a source still mirrored but gone from sources.toml: cycle.py's
 		# _refuse_vanished_sources) loads, so the config step passed; a re-run fails the same way, and its fix

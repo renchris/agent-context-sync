@@ -28326,3 +28326,35 @@ def test_an_older_build_reads_a_denied_inbox_as_inbox_state_does_c3088(
     assert want == "not read (Permission denied)", want
     assert cp.returncode == 0, cp.stdout + cp.stderr
     assert cp.stdout.splitlines()[2:] == [f"inbox state: {want}"], cp.stdout + cp.stderr
+
+
+# ---- B13 round 46 lane RB: C3024 ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("held", ["an empty body", "none"])
+def test_a_first_sync_skipped_under_a_holder_that_recorded_nothing_says_so_c3024(
+    env: dict[str, str], folder: Path, wheel: Path, held: str
+) -> None:
+    """B13 round 46 C3024: the first sync's rc 75 under a lock whose body named no holder (install.sh, a
+    check or a cycle starting holds it as well as a sync) was booked `skipped 75 lock-busy`, which install.log
+    and the report read as another sync. It notes lock-busy-unrecorded-holder, as setup_report words it; with
+    no lock held the note stays lock-busy."""
+    lock = Path(env["HOME"]) / "Library" / "Application Support" / "agentsync" / "agentsync.lock"
+    lock.parent.mkdir(parents=True)
+    tool_py = Path(env["HOME"]) / ".local" / "share" / "uv" / "tools" / "agentsync" / "bin" / "python"
+    tool_py.parent.mkdir(parents=True)
+    _write_exe(tool_py, STUB_TOOL_PYTHON)  # the tool names <state_dir>/agentsync.lock, as _held_sync's does
+    e = {**env, "STUB_SYNC_LOCK": str(lock), "STUB_PY": sys.executable, "STUB_SYNC_RC": "75"}
+    fd = None
+    if held == "an empty body":  # held with no body, as lockf holds it
+        fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o600)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+    try:
+        cp = install_sh(e, str(wheel), "--source-local", str(folder))
+    finally:
+        if fd is not None:
+            os.close(fd)
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert "first sync: skipped, lock busy" in cp.stdout.splitlines(), cp.stdout
+    note = "lock-busy-unrecorded-holder" if held == "an empty body" else "lock-busy"
+    assert ("first-sync", "skipped", "75", note) in steps(install_log(env)), install_log(env)
