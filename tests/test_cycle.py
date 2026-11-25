@@ -8872,7 +8872,7 @@ def test_materialise_never_calls_a_file_it_names_withheld_or_unknown_c2813(
         "once it settles"
     )
     assert (settling in box.alarms) is not known, box.alarms
-    assert not any(a.startswith("note: ") for a in box.alarms), "an unnamed file still says withheld"
+    assert not any("named by materialise" in a for a in box.alarms), "an unnamed file still says withheld"
     # B13 round 46 C3093 with C3045 (ruling 204): a dry run shows the withheld alarm as a real run does
     dry = run(config, mode=CycleMode.DRY_RUN, only=["inbox"])
     (box,) = [r for r in dry.sources if r.source_id == "inbox"]
@@ -8888,10 +8888,13 @@ def test_materialise_never_calls_a_file_it_names_withheld_or_unknown_c2813(
     assert box.enumeration_complete is False and box.cursor_advanced is False, box
     assert not any("withheld" in a for a in box.alarms), box.alarms
     note = (
-        "note: 1 inbox item named by materialise is inside the 600s settle window, so the listing stays "
+        "1 inbox item named by materialise is inside the 600s settle window, so the listing stays "
         "INCOMPLETE and the cursor held until a sync after it settles"
     )
-    assert note in box.alarms, box.alarms
+    # B13 round 47 C3214 with C3229 and C3259: no ``note: `` head under an alarm, and a named file with no row
+    # yet is told once, by _forced_ids' line, never also counted in the settle-window line
+    told = [a for a in box.alarms if name in a or "named by materialise" in a]
+    assert told == ([note] if known else [settling]), box.alarms
 
 
 def test_a_no_media_recording_stub_stays_uncounted_and_unplanned_c2039(

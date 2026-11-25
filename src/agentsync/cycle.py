@@ -705,23 +705,28 @@ def _parse_iso(value: str | None) -> datetime | None:
     return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
 
-def _withheld_lines(withheld: Sequence[str], named: Collection[str], quiescence_s: int | float) -> list[str]:
+def _withheld_lines(
+    withheld: Sequence[str], named: Collection[str], quiescence_s: int | float, backed: Collection[str] = ()
+) -> list[str]:
     """The lines for the inbox files a walk withheld as still settling, built in ``_scan_and_classify`` so a
     dry run shows them as a real run does (B13 round 46 C3093 with C3045, ruling 204: a dry run lost them when
     C2813 moved the alarm after the work-queue beat). A path a ``materialise PATH`` run names is read, or told
     as still being written, so it is never also reported withheld (B13 round 45 C2813); when every withheld
     path is named, one line says why the listing still reads INCOMPLETE, since the INCOMPLETE mark and the
     cursor hold stay as the walk did hold the file back (B13 round 46 C3010, makes worse True for marking the
-    pass complete)."""
+    pass complete). The line counts only the named paths with a manifest row (``backed``): a new file with no
+    row yet already gets ``_forced_ids``' one ``is still being written`` line, so it is never told twice; and
+    it has no ``note: `` head, since it is carried in the alarms and every reader prints it as ``alarm: ...``
+    (B13 round 47 C3214 with C3229 and C3259)."""
     alarm = withheld_alarm([p for p in withheld if p not in named], quiescence_s)
     if alarm is not None:
         return [alarm]
-    if not withheld:
+    n = sum(1 for p in withheld if p in backed)
+    if not n:
         return []
-    n = len(withheld)
     verb, it = ("is", "it settles") if n == 1 else ("are", "they settle")
     return [
-        f"note: {plural(n, 'inbox item')} named by materialise {verb} inside the {quiescence_s}s settle "
+        f"{plural(n, 'inbox item')} named by materialise {verb} inside the {quiescence_s}s settle "
         f"window, so the listing stays INCOMPLETE and the cursor held until a sync after {it}"
     ]
 
@@ -4757,10 +4762,13 @@ class _Cycle:
         acc.pass_kind = scan.pass_kind
         acc.enumeration_complete = scan.enumeration_complete
         acc.alarms += list(scan.alarms)
+        named = self.forced_paths.get(src.id, set()) if self.forced_paths else set()
         acc.alarms += _withheld_lines(
             scan.withheld_paths,
-            self.forced_paths.get(src.id, set()) if self.forced_paths else set(),
+            named,
             src.quiescence_s,
+            # a named path with a row, the test _forced_ids reads (B13 round 47 C3259)
+            {p for p in named if self.manifest.item_by_path(src.id, p) is not None},
         )
         if self.suppressions.items or self.suppressions.globs or self.audited:  # never come back (C15 7)
             kept = tuple(

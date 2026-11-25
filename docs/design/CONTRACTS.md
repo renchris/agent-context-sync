@@ -46530,6 +46530,9 @@ Amended 2026-11-24, §16.287 C3093, C3045, C3010: the alarm is built in `_scan_a
 real run does, and when every withheld path is named one line says why the listing stays INCOMPLETE: `note: <n>
 inbox item(s) named by materialise is (are) inside the <quiescence_s>s settle window, so the listing stays INCOMPLETE
 and the cursor held until a sync after it settles (they settle)`; the mark and the hold stay.
+Amended 2026-11-25, §16.292 C3214, C3229, C3259: the line has no `note: ` head (it is carried in the alarms, so
+every reader printed `alarm: note: ...`) and counts only the named paths with a manifest row, so a new file with no row
+is told once, by `is still being written`.
 
 **One bounded run parser and git's trailer extraction for every run reader** (C2920). `_head_run_id` read
 `Agentsync-Run` with a regex over HEAD's whole message while `_newest_run_trailer` and `_highest_recorded_run` took
@@ -47266,6 +47269,9 @@ the forced pass complete stays refused (C3010's makes worse True, C2813's ruling
 and the mark drives the removal and work filters and doctor's incomplete-pass count. Test: the C2813 test's dry run
 (`2 inbox items withheld:` naming the unnamed file) and its run naming the only settling file (no withheld alarm, the
 note, INCOMPLETE, the cursor held).
+Amended 2026-11-25, §16.292 C3214, C3229, C3259: the line reads `1 inbox item named by materialise is inside the
+600s settle window, ...`, printed `alarm: 1 inbox item ...`, and a named file with no row yet gets only `_forced_ids`'
+line.
 
 **Every run number agentsync reads is bounded, read whole and found past an invalid one** (C3042, C3090, C3091; amends
 §16.282 C2920). C2920 bounded the trailer readers only: STATE.md's `run:` line, CHANGELOG.md's index line and a month
@@ -47866,6 +47872,14 @@ read `heartbeat <path> is corrupt (<path>: not valid JSON: ...)`, the path twice
 already holds it; both now read `heartbeat is corrupt (<error>)` with their own tails (`; rewriting it`, `; the next
 sync of a live source rewrites it`), and read_heartbeat's messages, which doctor's [warn] builds on, are unchanged.
 Test: `test_a_sync_over_a_corrupt_heartbeat_warns_of_it_once_c3004` (the path once in each twin).
+
+**The settle-window line is an alarm's own words, and a file is told once** (C3214 with C3229 and C3259). `cycle._withheld_lines`'
+line for named settling files began `note: `, yet rode in the alarms, so the CLI, STATE.md and the commit body read
+`alarm: note: 1 inbox item named by materialise ...`; it now reads `1 inbox item named by materialise is inside the
+<quiescence_s>s settle window, so the listing stays INCOMPLETE and the cursor held until a sync after it settles`. It
+counts only the named paths with a manifest row, the test `_forced_ids` reads, so a new file with no row gets only
+`materialise: <rel> is still being written ...` and no second line, and with none left there is no line. Test:
+`test_materialise_never_calls_a_file_it_names_withheld_or_unknown_c2813` (a known and a new file: one line each).
 
 ### 16.293 Round 47: the converters: ruling 202's Office twins closed (UTF-32 text, a no-namespace `<Types>`, the container answers before the cache, xlsx's emitter 1.0.7) and one noun per family (2026-11-25, wave B13 round 47 lane E)
 

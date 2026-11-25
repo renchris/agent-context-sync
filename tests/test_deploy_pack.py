@@ -9704,10 +9704,21 @@ with C3089 and C3103 (q_word)."""
 _ROUND_47_B_PARAGRAPH_AMENDS = (
     ("14", "**STATE.md and INDEX.md name the next step (2026-10-05, KISS K08b).**", "§16.292 C3227"),
     ("16.287", "**A sync says a corrupt heartbeat once** (C3004", "§16.292 C3216"),
+    (
+        "16.282",
+        "**materialise never calls a file it names withheld or unknown** (C2813)",
+        "§16.292 C3214, C3229, C3259",
+    ),
+    (
+        "16.287",
+        "**A dry run shows the withheld alarm, and a named settling file says why",
+        "§16.292 C3214, C3229, C3259",
+    ),
 )
 """Round 47 lane B's dated lines: C3227's at §14's item 13, STATE.md's blocking-finding step, now
 ``loop.land_gate_step``'s words (B13 round 47 C3227, ruling 212); C3216's under §16.287's C3004 paragraph, its
-two WARNINGs naming the path once."""
+two WARNINGs naming the path once; C3214's under the C2813 and C3010 paragraphs, the settle-window line
+without its ``note: `` head."""
 _ROUND_45_RB_PARAGRAPH_AMENDS = (
     (
         "16.116",
