@@ -1,15 +1,22 @@
 from __future__ import annotations
 
+import contextlib
 import dataclasses
+import os
 import re
+import signal
 import tomllib
+from collections.abc import Callable, Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from agentsync import policy as policy_mod
 from agentsync.config import (
     DEFAULT_EXCLUDES,
     MIN_PAGE_BYTES,
+    NOT_A_FILE,
     RETIRE_ADVICE,
     SOURCE_ID_RE,
     BreakerConfig,
@@ -25,10 +32,12 @@ from agentsync.config import (
     local_source_table,
     parse_config,
     parse_size,
+    read_config_bytes,
+    set_source_exclude,
     toml_string,
 )
 from agentsync.errors import ConfigError
-from agentsync.governance import parse_governance
+from agentsync.governance import load_governance, parse_governance
 from agentsync.model import SourceKind, SourceState
 
 
@@ -304,6 +313,97 @@ def test_sample_config_fixture(sample_config: Config, local_source_dir: Path) ->
     assert src.exclude == DEFAULT_EXCLUDES
     assert sample_config.layout.mirror == sample_config.docs_repo / "mirror"
     assert sample_config.state_paths.db.name == "manifest.sqlite"
+
+
+_GOOD_CONFIG = "# Contoso sources.toml\n[governance]\narchive = false\n"
+
+
+def _config_entry(tmp_path: Path, kind: str) -> Path:
+    """sources.toml as one kind of entry a config reader can meet (B13 round 47's entry-kind rule)."""
+    good = tmp_path / "real.toml"
+    good.write_text(_GOOD_CONFIG, encoding="utf-8")
+    cfg = tmp_path / "sources.toml"
+    if kind == "file":
+        cfg.write_text(_GOOD_CONFIG, encoding="utf-8")
+    elif kind == "link to a file":
+        cfg.symlink_to(good)
+    elif kind == "folder":
+        cfg.mkdir()
+    elif kind == "fifo":
+        os.mkfifo(cfg)
+    elif kind == "link to a fifo":
+        os.mkfifo(tmp_path / "pipe")
+        cfg.symlink_to(tmp_path / "pipe")
+    elif kind == "dangling link":
+        cfg.symlink_to(tmp_path / "gone.toml")
+    elif kind == "device":
+        cfg.symlink_to("/dev/null")
+    return cfg
+
+
+@contextlib.contextmanager
+def _bounded(seconds: int) -> Iterator[None]:
+    """Fail, never hang, if a read blocks (a plain open of a FIFO waits for a writer forever)."""
+
+    def hung(*_: object) -> None:
+        raise TimeoutError("a config read blocked")
+
+    old = signal.signal(signal.SIGALRM, hung)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old)
+
+
+_READERS: dict[str, Callable[[Path], Any]] = {
+    "load_config": load_config,
+    "append_to_config": lambda p: append_to_config(p, "# kept\n"),
+    "set_source_exclude": lambda p: set_source_exclude(p, "contoso", ()),
+    "load_governance": load_governance,
+    "policy": lambda p: policy_mod._policy_from_file(p, required=False),
+}
+
+
+@pytest.mark.parametrize("reader", sorted(_READERS))
+@pytest.mark.parametrize(
+    "kind", ["file", "link to a file", "folder", "fifo", "link to a fifo", "dangling link", "device"]
+)
+def test_every_config_reader_returns_on_every_kind_of_entry_c3307(
+    tmp_path: Path, reader: str, kind: str
+) -> None:
+    """B13 round 47 C3307 with C3251, C3254 and C3290: load_config, append_to_config, the exclude editor,
+    load_governance and policy's _policy_from_file read sources.toml with a plain open, which waits forever
+    on a FIFO, so status, sync, add-source and setup-report all hung. Every one reads through
+    config.read_config_bytes, so each returns or raises ConfigError on every kind of entry, under a timeout;
+    a FIFO, a link to one and a device are `not a file`, a folder keeps `Is a directory`, and a link to a real
+    file reads as the file."""
+    cfg = _config_entry(tmp_path, kind)
+    with _bounded(10):
+        try:
+            _READERS[reader](cfg)
+        except (ConfigError, IsADirectoryError) as exc:  # load_governance's folder stays the open's own error
+            got: str | None = str(exc)
+        else:
+            got = None
+    if kind in ("fifo", "link to a fifo", "device"):
+        assert got is not None and NOT_A_FILE in got, got  # policy keeps its own `cannot read the ... table`
+    elif kind == "folder":
+        assert got is not None and "Is a directory" in got, got
+    elif kind == "dangling link":
+        assert reader in ("load_governance", "policy") or (got is not None and "not found" in got), got
+    elif reader != "set_source_exclude":  # the file holds no source contoso, so the editor refuses it
+        assert got is None, got
+
+
+def test_read_config_bytes_follows_a_link_and_refuses_a_fifo_by_its_descriptor_c3307(tmp_path: Path) -> None:
+    """B13 round 47 C3307 (C3254: links followed, never lstat): a symlinked sources.toml is a working
+    setup."""
+    assert read_config_bytes(_config_entry(tmp_path, "link to a file")) == _GOOD_CONFIG.encode()
+    (tmp_path / "f").mkdir()
+    with _bounded(10), pytest.raises(OSError, match="not a file"):
+        read_config_bytes(_config_entry(tmp_path / "f", "fifo"))
 
 
 def test_load_config_missing_file_names_add_source(tmp_path: Path) -> None:

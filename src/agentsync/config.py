@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import contextlib
 import errno
+import io
 import json
 import os
 import re
@@ -716,11 +717,59 @@ def _graph_company_line(text: str) -> int:
     return 0
 
 
+NOT_A_FILE = "not a file (a FIFO, a socket or a device)"
+""":class:`NotAFileError`'s reason: what a config read says of a path that is there and is neither a regular
+file nor a folder, after ``cannot read: `` (B13 round 47 C3307 with C3251, C3254 and C3290)."""
+
+
+class NotAFileError(OSError):
+    """:func:`read_config_bytes`' refusal of a path that is there but is neither a regular file nor a folder
+    (a FIFO, a socket, a device): an OSError, so every caller that maps a read's OSError maps this one too,
+    with :data:`NOT_A_FILE` as its ``strerror``."""
+
+
+def read_config_bytes(path: Path) -> bytes:
+    """The bytes of the config file at ``path``, read so no reader can block on what is there: opened
+    ``O_NONBLOCK | O_CLOEXEC``, links followed (a symlinked sources.toml is a working setup), then judged on
+    the open descriptor (``fstat``, no race with a separate stat). A FIFO opens at once and is refused, as are
+    a socket and a device, by :class:`NotAFileError`; a folder raises IsADirectoryError, the words a plain
+    read gave it (``cannot read: Is a directory``); FileNotFoundError and every other OSError are the open's
+    own. load_config, append_to_config, the exclude editor, governance.load_governance and policy's
+    ``_policy_from_file`` read through it: a plain read of a FIFO at sources.toml waited forever, so every
+    command hung (B13 round 47 C3307 with C3251, C3254 and C3290)."""
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+    except OSError as exc:
+        if exc.errno in (errno.EOPNOTSUPP, errno.ENXIO):  # a socket (macOS, Linux)
+            raise NotAFileError(errno.EINVAL, NOT_A_FILE, str(path)) from None
+        raise
+    try:
+        mode = os.fstat(fd).st_mode
+        if stat.S_ISDIR(mode):
+            raise IsADirectoryError(errno.EISDIR, os.strerror(errno.EISDIR), str(path))
+        if not stat.S_ISREG(mode):
+            raise NotAFileError(errno.EINVAL, NOT_A_FILE, str(path))
+        os.set_blocking(fd, True)
+        chunks: list[bytes] = []
+        while chunk := os.read(fd, 1 << 16):
+            chunks.append(chunk)
+    finally:
+        os.close(fd)
+    return b"".join(chunks)
+
+
+def read_config_text(path: Path, *, newline: str | None = None) -> str:
+    """:func:`read_config_bytes` decoded as UTF-8 the way ``Path.read_text`` (``newline=None``, universal
+    newlines) or ``open(newline="")`` (line endings kept) decoded it before (B13 round 47 C3307)."""
+    with io.TextIOWrapper(io.BytesIO(read_config_bytes(path)), encoding="utf-8", newline=newline) as fh:
+        return fh.read()
+
+
 def load_config(path: Path | None = None) -> Config:
     """Read and validate sources.toml (default ``~/agent-context/sources.toml``); raises ConfigError."""
     p = expand(path) if path is not None else default_config_path()
     try:
-        text = p.read_text(encoding="utf-8")
+        text = read_config_text(p)
     except FileNotFoundError:
         raise ConfigError(f"{p}: not found; run `{AGENTSYNC_BIN} add-source <folder>` to create it") from None
     except OSError as exc:
@@ -945,7 +994,7 @@ def append_to_config(config_path: Path, table: str) -> Config:
     p = expand(config_path)
     target = p.resolve()  # a symlinked sources.toml keeps its link
     try:
-        text = target.read_text(encoding="utf-8")
+        text = read_config_text(target)
         mode = target.stat().st_mode & 0o777
     except FileNotFoundError:
         raise ConfigError(f"{p}: not found; run `{AGENTSYNC_BIN} add-source <folder>` to create it") from None
@@ -997,8 +1046,7 @@ def set_source_exclude(
     p = expand(config_path)
     target = p.resolve()  # a symlinked sources.toml keeps its link
     try:
-        with target.open(encoding="utf-8", newline="") as fh:  # a CRLF file stays CRLF
-            text = fh.read()
+        text = read_config_text(target, newline="")  # a CRLF file stays CRLF
         mode = target.stat().st_mode & 0o777
     except FileNotFoundError:
         raise ConfigError(f"{p}: not found") from None

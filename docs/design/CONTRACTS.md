@@ -47889,6 +47889,22 @@ judges and parses the same bytes, through `_page_bytes_intact`, the one-page tes
 `test_a_refused_stub_is_rendered_again_from_one_read_of_its_page_c3314` (every read after the first failing) and
 the C3106 tests unchanged.
 
+**No config read waits on what is at sources.toml** (C3307 with C3251, C3254 and C3290). `load_config`,
+`append_to_config`, the exclude editor (`set_source_exclude`), `governance.load_governance` and policy's
+`_policy_from_file` opened sources.toml with a plain read, which waits for a writer forever on a FIFO, so status,
+sync, add-source and every reader of the config hung. Each reads through `config.read_config_bytes(path)`: one
+`O_RDONLY | O_NONBLOCK | O_CLOEXEC` open, links followed (a symlinked sources.toml stays a working setup, never an
+lstat refusal), then `fstat` on the descriptor, so no separate stat can race the open. A FIFO, a socket or a device
+raises `config.NotAFileError`, an OSError whose reason is `config.NOT_A_FILE`, `not a file (a FIFO, a socket or a
+device)`, so load_config's own mapping says `<path>: cannot read: not a file (a FIFO, a socket or a device)` and the
+CLI exits 78; a folder raises IsADirectoryError and keeps `cannot read: Is a directory`; a missing file keeps `not
+found; run add-source`. `read_config_text` decodes as each reader did (universal newlines, or `newline=""` for the
+exclude editor, so a CRLF file stays CRLF). The report's raw readers and install.sh's `write_report` guard are lanes
+RA's and RB's halves, by name. Tests: `test_every_config_reader_returns_on_every_kind_of_entry_c3307` (five readers
+by seven kinds of entry, each under a timeout),
+`test_read_config_bytes_follows_a_link_and_refuses_a_fifo_by_its_descriptor_c3307` and
+`test_status_and_add_source_over_a_fifo_config_exit_78_and_never_hang_c3307`.
+
 ### 16.293 Round 47: the converters: ruling 202's Office twins closed (UTF-32 text, a no-namespace `<Types>`, the container answers before the cache, xlsx's emitter 1.0.7) and one noun per family (2026-11-25, wave B13 round 47 lane E)
 
 Round 47's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 47"; specs `round47/items/C<n>.md`, the

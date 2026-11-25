@@ -61,7 +61,7 @@ from typing import Any, cast
 
 from agentsync import fsutil, gitops
 from agentsync.config import SOURCE_ID_RE as _SOURCE_ID_RE
-from agentsync.config import Config
+from agentsync.config import Config, NotAFileError, read_config_bytes
 from agentsync.convert.pieces import PieceStore
 from agentsync.errors import AgentSyncError, ConfigError, ManifestSchemaError
 from agentsync.manifest import (
@@ -344,9 +344,11 @@ def load_governance(config_path: Path) -> GovernanceConfig:
     """Read ``[governance]`` from sources.toml at ``config_path``; a missing file gives the defaults."""
     path = expand(config_path)
     try:
-        data = path.read_bytes()
+        data = read_config_bytes(path)  # never blocks on a FIFO (B13 round 47 C3307 with C3251)
     except FileNotFoundError:
         return GovernanceConfig()
+    except NotAFileError as exc:
+        raise ConfigError(f"{path}: cannot read: {exc.strerror}") from None
     try:
         doc = tomllib.loads(data.decode("utf-8"))
     except (tomllib.TOMLDecodeError, UnicodeDecodeError) as exc:

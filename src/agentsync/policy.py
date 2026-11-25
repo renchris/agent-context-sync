@@ -147,8 +147,10 @@ def parse_policy_table(table: Mapping[str, object], *, where: str) -> PolicyConf
 
 
 def _policy_from_file(path: Path, *, required: bool) -> PolicyConfig | None:
+    from agentsync.config import read_config_text  # noqa: PLC0415 - lazy: config imports this module
+
     try:
-        doc = tomllib.loads(path.read_text(encoding="utf-8"))
+        doc = tomllib.loads(read_config_text(path))  # never blocks on a FIFO (B13 round 47 C3307 with C3251)
     except FileNotFoundError:
         return None
     except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:

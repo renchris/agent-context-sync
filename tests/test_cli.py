@@ -9982,6 +9982,38 @@ def test_the_sources_line_marks_a_paused_or_retired_source_c3002(
     assert out.rstrip("\n").splitlines()[-1] == f"sources: inbox, project-alpha ({state})", out
 
 
+def test_status_and_add_source_over_a_fifo_config_exit_78_and_never_hang_c3307(
+    tmp_path: Path, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 47 C3307 with C3254 and C3290: a FIFO at sources.toml hung status, sync and add-source in a
+    plain open; each now refuses it as not a file and exits 78, under its own timeout."""
+    import signal  # noqa: PLC0415
+
+    cfg = tmp_path / "sources.toml"
+    os.mkfifo(cfg)
+
+    def hung(*_: object) -> None:
+        raise TimeoutError("hung on the fifo config")
+
+    for argv in (
+        ["status", "--config", str(cfg)],
+        ["sync", "--config", str(cfg)],
+        ["add-source", str(local_source_dir), "--config", str(cfg)],
+    ):
+        old = signal.signal(signal.SIGALRM, hung)
+        signal.alarm(20)
+        try:
+            capsys.readouterr()
+            rc = cli.main(argv)
+            err = capsys.readouterr().err
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old)
+        assert rc == cli.EXIT_CONFIG, (argv, rc, err)
+        assert "not a file" in err, (argv, err)
+    assert stat.S_ISFIFO(os.lstat(cfg).st_mode), "add-source wrote nothing over it"
+
+
 def test_a_sync_over_a_corrupt_heartbeat_warns_of_it_once_c3004(
     initialised: Config, caplog: pytest.LogCaptureFixture
 ) -> None:
