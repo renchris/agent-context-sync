@@ -541,8 +541,10 @@ _ODD_NAMES = (
         "Join\u2060",
     ),
     *("BOM\ufeffhere", "Arabic\u061cmark", "C1\u009bhere"),
-    # near each escaped range, never escaped: a hair space, per mille, a no-break space, the euro sign
-    *("Hair\u200ahere", "Per\u2030mille", "No\u00a0break", "Euro\u20ac", "Caf\u00e9", "Why?", "Back\\slash"),
+    # a hair space and a no-break space, escaped since B13 round 47 C3333 as blanks str.strip trims
+    *("Hair\u200ahere", "No\u00a0break", "Ideo\u3000space"),
+    # near each escaped range, never escaped: per mille, the euro sign
+    *("Per\u2030mille", "Euro\u20ac", "Caf\u00e9", "Why?", "Back\\slash"),
     *("Bob's notes", "Project Alpha"),
 )
 

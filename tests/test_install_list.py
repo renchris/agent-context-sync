@@ -397,3 +397,78 @@ def test_a_folder_named_as_another_ones_octal_spelling_is_still_its_twin_c1802(e
     assert cp.stderr.splitlines()[0] == (
         f"usage error: --source-local {lib}/Contoso\\177Del: {LOOK_ALIKE_WORDS} (see --help)"
     ), cp.stderr
+
+
+def _octal(ch: str) -> str:
+    """``ch`` as LIST_ESC_AWK's oct() spells it: a backslash and three octal digits per UTF-8 byte."""
+    return "".join(f"\\{b:03o}" for b in ch.encode("utf-8"))
+
+
+_NON_ASCII_BLANKS = tuple(chr(c) for c in range(0x80, 0x110000) if chr(c).isspace())
+"""Every character outside ASCII that ``str.isspace`` is true for, which Python's ``str.strip`` trims."""
+_BLANK_NEAR_MISSES = (
+    *("\u00a1", "\u167f", "\u1681", "\u180e", "\u1fff"),
+    *("\u2030", "\u205e", "\u2061", "\u3001"),
+)
+"""Beside each blank's range, no blank and never escaped (U+180E stopped being one in Unicode 6.3)."""
+
+
+def test_a_folder_ending_in_a_non_ascii_blank_lists_escaped_c3333(env: dict[str, str]) -> None:  # noqa: F811
+    """B13 round 47 C3333 (ruling 209): ``Project`` and ``Project<U+3000>`` side by side printed as two rows
+    of the same text, so the person could paste ``Project`` for the folder they chose. A name ending in a
+    blank outside ASCII (U+3000, U+00A0) is an escaped row now, the plain sibling stays plain, each listed
+    once, and --json keeps the real path with the escaped mark."""
+    lib = _cloud(env) / "OneDrive-Contoso"
+    names = ("Project", "Project\u3000", "Kestrel", "Kestrel\u00a0")
+    for n in names:
+        (lib / n).mkdir(parents=True)
+    cp = install_sh(env, "--list-folders", "--all")
+    assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
+    rows = cp.stdout.splitlines()[:-1]
+    assert sorted(rows) == sorted(
+        [
+            f"{lib}/Project",
+            f"{ESCAPED_MARK} {lib}/Project\\343\\200\\200",
+            f"{lib}/Kestrel",
+            f"{ESCAPED_MARK} {lib}/Kestrel\\302\\240",
+        ]
+    ), rows
+    assert not [r for r in rows if re.search("[\u3000\u00a0]", r)], rows
+    doc = json.loads(install_sh(env, "--list-folders", "--json").stdout)
+    got = sorted((f["path"], f.get("mark")) for f in doc["folders"])
+    assert got == sorted(
+        [
+            (f"{lib}/Project", None),
+            (f"{lib}/Project\u3000", ESCAPED_MARK),
+            (f"{lib}/Kestrel", None),
+            (f"{lib}/Kestrel\u00a0", ESCAPED_MARK),
+        ]
+    ), got
+
+
+def test_the_list_escapes_every_non_ascii_blank_as_its_python_twin_does_c3333() -> None:
+    """B13 round 47 C3333: LIST_ESC_AWK's escd and esc mark every blank outside ASCII str.isspace names, each
+    as its octal bytes, and arm_local's ``_LIST_ESCAPED_RE`` (list_shown_name, doctor.list_spelling) holds the
+    same set; the characters next to each range, and U+200B (escaped since U-B11), read as before."""
+    [awk] = re.findall(r"^LIST_ESC_AWK='(.*?)^'$", INSTALL_SH.read_text(encoding="utf-8"), flags=re.M | re.S)
+    names = [f"Project{ch}" for ch in (*_NON_ASCII_BLANKS, *_BLANK_NEAR_MISSES, "\u200b")]
+    shown = subprocess.run(
+        ["/usr/bin/awk", "-v", "mark=", awk + '{ print (escd($0) ? "E " : "P ") shown($0) }'],
+        input="".join(n + "\n" for n in names).encode(),
+        capture_output=True,
+        check=True,
+        env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
+    ).stdout.decode()
+    want = [
+        *(f"E Project{_octal(ch)}" for ch in _NON_ASCII_BLANKS),
+        *(f"P Project{ch}" for ch in _BLANK_NEAR_MISSES),
+        "E Project\\342\\200\\213",
+    ]
+    assert len(_NON_ASCII_BLANKS) == 19 and "\u0085" in _NON_ASCII_BLANKS and "\u2029" in _NON_ASCII_BLANKS
+    assert shown.split("\n")[:-1] == want
+    py = [
+        ("E " if arm_local._LIST_ESCAPED_RE.search(n) else "P ")
+        + arm_local._LIST_ESCAPED_RE.sub(arm_local.list_escaped_char, n)
+        for n in names
+    ]
+    assert py == want

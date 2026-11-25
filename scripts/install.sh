@@ -11547,10 +11547,14 @@ LIST_ESC_AWK='function esc(s,    o, i, c) {
 		else if (c ~ /[[:cntrl:]]/) o = o oct(s, i, 1)
 		# a C1 control (U+0080-U+009F, NEL among them) and U+2028, U+2029: line breaks to Python\047s
 		# splitlines, which the report reads install.out with, though not to LC_ALL=C (C932 review)
-		else if (c == "\302" && substr(s, i + 1, 1) ~ /[\200-\237]/) { o = o oct(s, i, 2); i++ }
+		# and every other character outside ASCII str.isspace() is true for, a blank Python\047s strip trims:
+		# U+00A0, U+1680, U+2000-U+200A, U+202F, U+205F and U+3000, so a folder ending in one is never
+		# listed as the folder without it (B13 round 47 C3333)
+		else if (c == "\302" && substr(s, i + 1, 1) ~ /[\200-\240]/) { o = o oct(s, i, 2); i++ }
 		# and the bidi and zero-width ones, which reorder or hide what a path reads as: U+200B-U+200F,
 		# U+202A-U+202E, U+2060, U+2066-U+2069, U+FEFF and U+061C (U-B11)
-		else if (c == "\342" && substr(s, i + 1, 2) ~ /^(\200[\213-\217\250-\256]|\201[\240\246-\251])$/) { o = o oct(s, i, 3); i += 2 }
+		else if (c == "\342" && substr(s, i + 1, 2) ~ /^(\200[\200-\217\250-\257]|\201[\237\240\246-\251])$/) { o = o oct(s, i, 3); i += 2 }
+		else if ((c == "\341" && substr(s, i + 1, 2) == "\232\200") || (c == "\343" && substr(s, i + 1, 2) == "\200\200")) { o = o oct(s, i, 3); i += 2 }
 		else if (c == "\357" && substr(s, i + 1, 2) == "\273\277") { o = o oct(s, i, 3); i += 2 }
 		else if (c == "\330" && substr(s, i + 1, 1) == "\234") { o = o oct(s, i, 2); i++ }
 		else o = o c
@@ -11564,7 +11568,7 @@ function oct(s, i, n,    k, o) { # the N bytes of S from I, each \ooo; one "?" u
 	for (k = 0; k < n; k++) o = o octb[substr(s, i + k, 1)]
 	return o
 }
-function escd(s) { return s ~ /[[:cntrl:]]|\302[\200-\237]|\342\200[\213-\217\250-\256]|\342\201[\240\246-\251]|\357\273\277|\330\234/ }
+function escd(s) { return s ~ /[[:cntrl:]]|\302[\200-\240]|\342\200[\200-\217\250-\257]|\342\201[\237\240\246-\251]|\341\232\200|\343\200\200|\357\273\277|\330\234/ }
 function kept(s) { return (synced != "" && index(s, synced) == 1) || (inside != "" && index(s, inside) == 1) }
 function bare(s) {
 	if (synced != "" && index(s, synced) == 1) return substr(s, length(synced) + 1)

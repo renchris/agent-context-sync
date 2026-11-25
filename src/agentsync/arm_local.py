@@ -151,9 +151,13 @@ escaped form also covers the line separators and, since 8528ea2a4, bidi and zero
 them a control character."""
 
 _LIST_ESCAPES = {"\n": "\\n", "\x1e": "\\n", "\t": "\\t", "\r": "\\r"}
-_LIST_ESCAPED_RE = re.compile("[\x00-\x1f\x7f-\x9f\u200b-\u200f\u2028-\u202e\u2060\u2066-\u2069\ufeff\u061c]")
+_LIST_ESCAPED_RE = re.compile(
+    "[\x00-\x1f\x7f-\xa0\u1680\u2000-\u200f\u2028-\u202f\u205f\u2060\u2066-\u2069\u3000\ufeff\u061c]"
+)
 """What install.sh's ``LIST_ESC_AWK`` escapes (its ``escd``): a control character (``[[:cntrl:]]`` under
-LC_ALL=C), a C1 control, U+2028 and U+2029, and the bidi and zero-width ones U+200B-U+200F, U+202A-U+202E,
+LC_ALL=C), a C1 control, U+2028 and U+2029, every other character outside ASCII ``str.isspace`` is true for
+(U+00A0, U+1680, U+2000-U+200A, U+202F, U+205F and U+3000, so a folder ending in one never shows as the folder
+without it: B13 round 47 C3333), and the bidi and zero-width ones U+200B-U+200F, U+202A-U+202E,
 U+2060, U+2066-U+2069, U+FEFF and U+061C (U-B11). A change to that awk changes this with it:
 ``test_list_shown_name_spells_a_folder_as_install_shs_list_does_c1244`` runs the awk over bidi and zero-width
 names too, so a commit that widens one and not the other is red."""
