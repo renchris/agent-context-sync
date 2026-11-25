@@ -593,6 +593,8 @@ class CycleReport:
     # the land gate held this run's commit: a cycle that failed after the gate passed carries a blocking
     # ``CYCLE`` finding too, which never reads as the gate's block (B13 round 47 C3227)
     land_gate_blocked: bool = False
+    # this run's commit holds a mirror/ path; the CLI's no-mirror-page note is for one that holds none (C3228)
+    commit_holds_mirror: bool = False
 
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"

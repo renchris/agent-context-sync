@@ -549,6 +549,24 @@ def test_a_commit_with_no_mirror_change_says_what_its_zero_counts(capsys: pytest
     )
 
 
+def test_a_commit_that_holds_a_mirror_page_never_says_no_source_changed_one_c3228(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 47 C3228, ruling 212: the ``(no source changed a mirror page; ...)`` note was decided by this
+    run's change count alone, so a commit that removes a mirror page no source change named (here one deleted
+    by hand) said no mirror page changed. It is printed only when the commit holds no mirror/ path."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
+    page = _a_mirror_page(initialised)
+    rel = page.relative_to(initialised.docs_repo).as_posix()
+    page.unlink()
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    (run_line,) = [x for x in capsys.readouterr().out.splitlines() if x.startswith("run ")]
+    assert f"D\t{rel}" in git(initialised.docs_repo, "show", "--name-status", "--format=", "HEAD")
+    assert run_line.endswith(" · 0 changes"), run_line
+
+
 def test_a_commit_that_lands_blocked_runs_pages_says_so_not_that_no_source_changed_one_c3228(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

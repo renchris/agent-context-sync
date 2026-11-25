@@ -117,6 +117,7 @@ from agentsync.errors import (
     BudgetExhaustedError,
     ConfigError,
     DatalessRefusedError,
+    GitError,
     GraphThrottled,
     LockHeldError,
     ProviderTimeoutError,
@@ -2442,6 +2443,7 @@ class _Cycle:
         self._carried: list[MirrorChange] = []
         self._carried_runs: list[int] = []
         self._gate_blocked = False  # the land gate held this run's commit (B13 round 47 C3227)
+        self._commit_holds_mirror = False  # this run's commit holds a mirror/ path (C3228)
         # per source: the stable ids and paths its walk withheld as still settling, and the pages a new start
         # kept for them (P117)
         self._withheld: dict[str, tuple[frozenset[str], frozenset[str]]] = {}
@@ -4092,6 +4094,7 @@ class _Cycle:
             carried=tuple(sorted(self._carried, key=lambda c: (c.path, c.op.value))),
             carried_runs=tuple(self._carried_runs),
             land_gate_blocked=self._gate_blocked,
+            commit_holds_mirror=self._commit_holds_mirror,
         )
 
     def _path_outcomes(self) -> tuple[int, int, int, int, int, int]:
@@ -4601,6 +4604,7 @@ class _Cycle:
         subject = gitops.commit_subject([*self._carried, *self.changes], source_ids)
         sha = gitops.commit_cycle(self.repo, subject, body)
         if sha is not None:
+            self._commit_holds_mirror = _commit_holds_mirror(self.repo, sha)
             tree = gitops.head_tree_sha(self.repo)
             if tree is not None:
                 self.manifest.set_tree_sha(tree)
@@ -8454,6 +8458,18 @@ def _net_changes(rows: Sequence[MirrorChange]) -> list[MirrorChange]:
         elif before_c.op is ChangeOp.DELETED:
             net[c.path] = c
     return list(net.values())
+
+
+def _commit_holds_mirror(repo: Path, sha: str) -> bool:
+    """Whether commit ``sha`` adds, changes or removes a path under mirror/: the CLI's "no source changed a
+    mirror page" note is for a commit that holds none (B13 round 47 C3228, ruling 212); one that removes a
+    page no source change named (a page deleted by hand) holds one."""
+    try:
+        out = gitops.run_git(repo, "diff-tree", "--no-commit-id", "--name-only", "-r", "-z", "--root", sha)
+    except GitError:
+        log.debug("cannot list commit %s's paths", sha, exc_info=True)
+        return True  # unknown: never claim the commit holds no mirror page
+    return any(path.startswith("mirror/") for path in out.stdout.split("\0"))
 
 
 def _carried_notes(carried: Sequence[MirrorChange], runs: Sequence[int]) -> list[str]:

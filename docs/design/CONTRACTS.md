@@ -1092,6 +1092,7 @@ class CycleReport:
     carried: tuple[MirrorChange, ...] = ()  # 2026-11-25 (§16.292 C3228): blocked runs' pages this commit holds
     carried_runs: tuple[int, ...] = ()  # 2026-11-25 (§16.292 C3228): those runs, named in the commit body
     land_gate_blocked: bool = False  # 2026-11-25 (§16.292 C3227): the gate held the commit, never a CYCLE finding
+    commit_holds_mirror: bool = False  # 2026-11-25 (§16.292 C3228): the commit holds a mirror/ path
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"
 """``schema`` value of the per-channel-per-month JSON the Teams arm writes and the teams converter reads.
@@ -47838,12 +47839,14 @@ note per source, `carried from blocked runs 4-5: <source> 0a 2m 0r 0d` (`text.ru
 `runs 2, 4-5`), never an `Agentsync-Run` key, whose readers would take those runs for this commit's; the CHANGELOG
 gets no second line, `append_changelog` still taking this run's changes alone. `CycleReport.carried` and
 `carried_runs` hold them, and the run line reads `0 changes this run; 2 mirror pages from blocked runs 4-5 land in
-this commit`; the no-mirror-page note is printed only for a commit that carries none. A run that failed for
+this commit`; the no-mirror-page note is printed only for a commit that holds no mirror/ path
+(`CycleReport.commit_holds_mirror`, read from the commit's own paths with `git diff-tree`, so one that removes a
+page no source change named, a page deleted by hand, never says no mirror page changed). A run that failed for
 another cause and left its pages uncommitted is carried under the same words. Tests:
 `test_a_commit_counts_and_names_the_blocked_runs_whose_pages_it_lands_c3228` (two blocked runs, then a clean one
-titled `0a 2m` naming runs 4-5), `test_a_blocked_change_undone_by_git_checkout_is_not_carried_c3228`, `test_blocked_runs_changes_net_per_page_c3228`
-and
-`test_a_commit_that_lands_blocked_runs_pages_says_so_not_that_no_source_changed_one_c3228`.
+titled `0a 2m` naming runs 4-5), `test_a_blocked_change_undone_by_git_checkout_is_not_carried_c3228`, `test_blocked_runs_changes_net_per_page_c3228`,
+`test_a_commit_that_lands_blocked_runs_pages_says_so_not_that_no_source_changed_one_c3228` and
+`test_a_commit_that_holds_a_mirror_page_never_says_no_source_changed_one_c3228`.
 
 **A file at the docs path reads baseline missing** (C3239; ruling 211). With a file where the docs repo belongs, the
 read of `_eval/questions.md` raised NotADirectoryError, which `loop._eval_status` logged as unreadable and returned

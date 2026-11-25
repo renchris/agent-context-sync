@@ -1123,7 +1123,7 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
         pages = plural(len(report.carried), "mirror page")
         land = "lands" if len(report.carried) == 1 else "land"
         counted += f" this run; {pages} from blocked {run_span(report.carried_runs)} {land} in this commit"
-    elif report.commit_sha and not report.changes:
+    elif report.commit_sha and not report.changes and not report.commit_holds_mirror:
         counted += " (no source changed a mirror page; the commit holds other docs-repo files)"
     # its own line, never on the summary install.sh's awk sums (B13 round 24 B37)
     if report.new_manifest_pages:
