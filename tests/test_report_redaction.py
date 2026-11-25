@@ -4476,6 +4476,45 @@ def test_both_reports_cut_a_tilde_name_path_of_a_source_with_no_string_id_c3244(
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
 @pytest.mark.parametrize("python", ["tomllib", "none"])
+@pytest.mark.parametrize("second", ['id = "kestrel-birch"', "\"id\" = 'kestrel-birch'"])
+def test_both_reports_read_the_first_of_a_repeated_id_and_go_private_c3246(
+    env: dict[str, str],  # noqa: F811
+    second: str,
+    python: str,
+    locale: str,
+) -> None:
+    """B13 round 47 ruling 207, C3246 (privacy): a `[[source]]` table holding `id` twice, which tomllib
+    refuses, passed the shell's structural check where no interpreter answers, so the shell report stayed
+    public, cut only the last id and printed `Sync of kestrel-alder stopped`, while the agentsync report
+    went private only and cut the first. Both now cut the first id alike, print the same rows and each says
+    private only, with or without tomllib."""
+    if python == "tomllib":
+        _tool_python(env["HOME"])
+    body = (
+        default_config_text()
+        + f'\n[[source]]\nid = "kestrel-alder"\n{second}\nkind = "local"\npath = "~/Development/WombatDocs"\n'
+    )
+    said = ["Sync of kestrel-alder stopped", "Sync of kestrel-birch stopped"]
+    texts: list[str] = []
+    shell, python_rows, shell_private, python_private = _both_reports(
+        env,
+        [],
+        said,
+        locale,
+        config=Path(env["HOME"]) / "agent-context" / "sources.toml",
+        config_body=body,
+        texts_out=texts,
+    )
+    for name, text in zip(("shell", "agentsync"), texts, strict=True):
+        leaks = [ln for ln in text.splitlines() if re.search("(?i)kestrel-alder|wombat", ln)]
+        assert not leaks, (name, leaks)
+    assert python_rows[0] == "Sync of <source-1> stopped", python_rows
+    assert python_private, texts[1]
+    assert shell == python_rows and shell_private == python_private, (shell, python_rows)
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize("python", ["tomllib", "none"])
 @pytest.mark.parametrize("escape", ["\\t", "\\n"])
 def test_both_reports_cut_an_id_whose_path_holds_a_tab_or_lf_c3243_c3302(
     env: dict[str, str],  # noqa: F811

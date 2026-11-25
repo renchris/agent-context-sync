@@ -28105,6 +28105,60 @@ def test_the_structural_check_follows_the_widened_reader_c3034_c3084(
     assert parsed or want == "unparsed"
 
 
+_C3246_BODIES = {
+    "id then id": (
+        '[[source]]\nid = "kestrel-alder"\nid = "kestrel-birch"\npath = "~/Contoso/Docs"\n',
+        "unparsed",
+    ),
+    "id then quoted id": (
+        '[[source]]\nid = "kestrel-alder"\n"id" = \'kestrel-birch\'\npath = "~/Contoso/Docs"\n',
+        "unparsed",
+    ),
+    "literal id then id": (
+        "[[source]]\n'id' = 'kestrel-alder'\nid = \"kestrel-birch\"\npath = \"~/Contoso/Docs\"\n",
+        "unparsed",
+    ),
+    "path twice": (
+        '[[source]]\nid = "kestrel-alder"\npath = "~/Contoso/Docs"\npath = "~/Contoso/Other"\n',
+        "unparsed",
+    ),
+    "a key twice in a table": ('[agentsync]\ndocs_repo = "~/Docs"\n docs_repo = "~/Other"\n', "unparsed"),
+    "dotted key twice": ('[agentsync]\na . "b" = 1\na.b = 2\n', "unparsed"),
+    "two sources": (
+        '[[source]]\nid = "kestrel-alder"\npath = "~/Contoso/Docs"\n'
+        '[[source]]\nid = "kestrel-birch"\npath = "~/Contoso/Other"\n',
+        "loaded",
+    ),
+    "one key per table": ('[agentsync]\ndocs_repo = "~/Docs"\n[convert]\ndocs_repo = "~/Other"\n', "loaded"),
+    "dotted siblings": ("[agentsync]\na.b = 1\na.c = 2\n", "loaded"),
+}
+
+
+@pytest.mark.parametrize("name", list(_C3246_BODIES))
+def test_the_structural_check_calls_a_repeated_key_unparsed_and_the_records_take_the_first_c3246(
+    tmp_path: Path, name: str
+) -> None:
+    """B13 round 47 ruling 207, C3246 (privacy): with no interpreter a `[[source]]` table holding `id` twice
+    passed the structural check, though tomllib refuses it, so the shell report stayed public and cut only
+    the last id, the first in clear. The check calls a whole key written twice in one table unparsed (`id`,
+    `"id"` and `'id'` one key, a dotted path whole), its key set reset at every header, as tomllib does,
+    and the records take each table's first id and first path, as setup_report._scanned_sources does."""
+    body, want = _C3246_BODIES[name]
+    assert _toml_shell(tmp_path, body, 'printf "%s\\n" "$(config_toml_state)"') == f"{want}\n"
+    try:
+        tomllib.loads(body)
+        parsed = "loaded"
+    except tomllib.TOMLDecodeError:
+        parsed = "unparsed"
+    assert parsed == want
+    if "kestrel" in body:
+        first = "1\tkestrel-alder\t~/Contoso/Docs\n" + (
+            "2\tkestrel-birch\t~/Contoso/Other\n" if want == "loaded" else ""
+        )
+        for py in ("", sys.executable):
+            assert _toml_shell(tmp_path, body, "config_source_records", tool_py=py) == first
+
+
 _C2913_BODIES = [
     '[convert]\npandoc_path = """~/Private\\   \n      Tool/pandoc"""\n',
     '[convert]\npandoc_path = """~/Private\\ \t\n\n   Tool/pandoc"""\n',

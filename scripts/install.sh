@@ -7541,7 +7541,8 @@ PRIVATE_ONLY="" # 1 once fallback_redaction says the shell report is for a priva
 # string (an id that is a number or boolean aside, which tomllib reads and both reports drop: B13 round 47 ruling
 # 207, C3244), or a
 # line outside every multi-line value that is no key, header or comment, or a multi-line string or array still
-# open at end of file (B13 round 46 ruling 199, C3084); else "loaded" (B13 round 45 ruling 188, C2840 with
+# open at end of file (B13 round 46 ruling 199, C3084), or a whole key written twice in one table (`id`, `"id"`
+# and `\'id\'` one key, a dotted path whole, the key set reset at every header: C3246); else "loaded" (B13 round 45 ruling 188, C2840 with
 # C2915). Given "sources", an interpreter that answers loaded also prints a line "sources", then each [[source]]
 # table tomllib reads as "n TAB id TAB path" (n its place among the tables, in config order), a string id only,
 # a path that is no string printed empty, each TAB or LF in a path one space and a record dropped only for an
@@ -7600,6 +7601,20 @@ else:
 	done
 	LC_ALL=C awk '
 		function unq(s) { gsub(/"([^"\\]|\\.)*"|\047[^\047]*\047/, "\"\"", s); return s }
+		# a key as one whole form: its bare, basic or literal parts unquoted, the blanks around each dot dropped,
+		# the full dotted path joined by \001, so id, "id" and \047id\047 are one key and a.b is not a.c (C3246)
+		function keyform(t,    o, m) {
+			o = ""
+			while (match(t, /^[ \t]*([A-Za-z0-9_-]+|"[^"]*"|\047[^\047]*\047)[ \t]*/)) {
+				m = substr(t, 1, RLENGTH); t = substr(t, RLENGTH + 1)
+				sub(/^[ \t]+/, "", m); sub(/[ \t]+$/, "", m)
+				if (m ~ /^["\047]/) m = substr(m, 2, length(m) - 2)
+				o = o "\001" m
+				if (substr(t, 1, 1) != ".") break
+				t = substr(t, 2)
+			}
+			return o "\002" t
+		}
 		ml != "" { if (index($0, ml)) ml = ""; next }
 		depth > 0 { s = unq($0); sub(/#.*/, "", s); depth += gsub(/\[/, "[", s) - gsub(/\]/, "]", s); next }
 		{ sub(/\r$/, ""); s = $0; sub(/^[ \t]+/, "", s) }
@@ -7610,10 +7625,13 @@ else:
 			if (s !~ ("^\\[\\[" k "\\]\\][ \t]*(#.*)?$") && s !~ ("^\\[" k "\\][ \t]*(#.*)?$")) bad = 1
 			src = (s ~ /^\[\[[ \t]*(source|"source"|\047source\047)[ \t]*\]\]/)
 			hdr = 1
+			split("", seen) # each table, each [[source]] too, starts a key set of its own (C3246)
 			next
 		}
 		!index(s, "=") { bad = 1; next }
 		!hdr && s ~ /^(source|"source"|\047source\047)[ \t]*[.=]/ { bad = 1; next } # sources the id reader never reads
+		# a whole key written twice in one table, which tomllib refuses (B13 round 47 ruling 207, C3246)
+		{ k = keyform(substr(s, 1, index(s, "=") - 1)); if (k in seen) bad = 1; seen[k] = 1 }
 		src && s ~ /^["\047]?(id|path)["\047]?[ \t]*=/ {
 			if (s ~ /^(id|"id"|\047id\047)[ \t]*=[ \t]*("[^"\\]*"|\047[^\047]*\047)[ \t]*(#.*)?$/) next
 			# a number or boolean id, which tomllib reads and both reports drop as no string (C3244)
@@ -7635,7 +7653,8 @@ else:
 # is read as the agentsync report reads it (B13 round 46 ruling 199, C3034 with C3083); else an awk over the
 # lines, which reads a bare, "source" or 'source' header and a bare or quoted id or path key, a basic value as
 # written to its closing quote and a literal one raw (C3056), a comment after either, the spellings
-# config_toml_state's structural check accepts. Its first argument, when given, is config_toml_state's sources
+# config_toml_state's structural check accepts, the first id and the first path of each table, as
+# setup_report._scanned_sources (B13 round 47 ruling 207, C3246: the last id won, the first printed in clear). Its first argument, when given, is config_toml_state's sources
 # output, which the caller has read already. Given a second word paths, the path of every [[source]] table that
 # holds one, whatever its id (none, a number, one no source id), one a line and nothing else, as
 # setup_report._unloaded_config and _scanned_sources keep a path-only table: the refused-path loop alone reads it,
@@ -7663,7 +7682,7 @@ config_source_records() {
 		function flush() {
 			if (inside && ENVIRON["M"] == "paths") { if (path != "") print path }
 			else if (inside && id != "") print n "\t" id "\t" path
-			id = ""; path = ""
+			id = ""; path = ""; hid = 0; hpath = 0
 		}
 		function val(line,    v, q) { # the basic (as written) or literal value of a key line
 			v = line; sub(/^[^=]*=[[:space:]]*/, "", v); q = substr(v, 1, 1)
@@ -7678,8 +7697,9 @@ config_source_records() {
 			if (inside) n++
 			next
 		}
-		inside && /^[[:space:]]*(id|"id"|\047id\047)[[:space:]]*=[[:space:]]*["\047]/ { id = val($0); next }
-		inside && /^[[:space:]]*(path|"path"|\047path\047)[[:space:]]*=[[:space:]]*["\047]/ { path = val($0); next }
+		# the first id and the first path of a table count, as setup_report._scanned_sources reads them (C3246)
+		inside && !hid && /^[[:space:]]*(id|"id"|\047id\047)[[:space:]]*=[[:space:]]*["\047]/ { hid = 1; id = val($0); next }
+		inside && !hpath && /^[[:space:]]*(path|"path"|\047path\047)[[:space:]]*=[[:space:]]*["\047]/ { hpath = 1; path = val($0); next }
 		END { flush() }' "$CONFIG" 2>/dev/null || true
 }
 # The shell report's Redaction section: fixed text, written after redact_stream (as the issue link is), so no
