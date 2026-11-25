@@ -2353,6 +2353,12 @@ replan_waiting_recording, logs and marks pending on PublishError or OSError and 
 nothing is pending, the REFUSED and QUARANTINED loop taking the same flag (C2918, makes worse True). Tests: a meta at 7
 with the label REFUSED shows `# [WAITING]` and a re-rendered superseded tombstone after one sync and no commit after the
 next; a waiting stub at chmod 0 logs the warning, leaves the meta at 7 and renders once it is readable.
+(2026-11-24) Ruling 201 amends this one: the marker also waits on a refused or quarantined stub whose live page is a
+regular file that cannot be read now (`a stub could not be rendered again`) and on a tombstone whose page cannot be read
+or whose rerender_tombstone raised PublishError or OSError (`a tombstone could not be rendered again`;
+_rerender_tombstones returns rewritten and pending); a missing, linked, hand-edited or reaped page, or one matching its
+row that does not parse, holds nothing, and the C2851 test seeds a real superseded tombstone (round 46 C3106 with C3092
+and C3040, C3041 with C3095; lane B's ae50076aa).
 (196) A kept answer is keyed on, and put back with, everything that decides it, completing rulings 175 and 185 (lane E;
 C2923, C2924, C2925, C2929). _reread_zero_byte_stubs snapshots, beside `reread`, _reread_first, _reread_kept, acc's
 per-result scalars, _tally's conversion keys and the row's membership in _converted_ok and _waiting_ids through a

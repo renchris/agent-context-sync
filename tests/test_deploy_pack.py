@@ -864,6 +864,15 @@ def test_rulings_150_and_183_keep_their_words_and_dated_lines_name_round_45s_cha
     at = lanes.index(line183)
     assert lanes.index(words183) + len(words183) + 1 == at < lanes.index("(184) An xlsx cut")
     assert "with no STUB_RENDER bump" in lanes and publish.STUB_RENDER == 8
+    # B13 round 46 ruling 201: ruling 195 keeps its words; a dated line right after it names both pending
+    # sources, held to cycle.py's own log words
+    words195 = "leaves the meta at 7 and renders once it is readable."
+    line195 = "(2026-11-24) Ruling 201 amends this one: the marker also waits on a refused or quarantined"
+    at, end = lanes.index(line195), lanes.index("(196) A kept answer")
+    assert lanes.index(words195) + len(words195) + 1 == at < end
+    cycle_src = (ROOT / "src" / "agentsync" / "cycle.py").read_text(encoding="utf-8")
+    for said in ("a stub could not be rendered again", "a tombstone could not be rendered again"):
+        assert f"`{said}`" in lanes[at:end] and f"%s: {said} (%s)" in cycle_src
 
 
 def test_ruling_166_keeps_its_words_and_a_dated_line_records_call_5s_decline_c2673() -> None:
