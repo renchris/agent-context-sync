@@ -46342,6 +46342,9 @@ the person's file. A local source's root of that kind keeps its wait and its lis
 Amended 2026-11-24, §16.287 C3007: the walk's alarm, its echoed warning and STATE.md name that source's folder as
 typed too, `source root is not a folder: <folder> is a file, a link to a file or a dangling link (walk skipped;
 nothing is deleted; inbox state says what to do)`, never the link's target.
+Amended 2026-11-24, §16.287 C3044: step 2's remedy is for the source on the kept inbox only; any other inbox source's
+note ends `keeping a copy, move it aside and put a folder back at that name, or fix path in [[source]] id = "<id>" in
+<config>; it does not block the next step`.
 
 **Every home renders its stubs and tombstones again once, and the marker waits for every page** (C2851 with C2917,
 C2918; ruling 195, amending ruling 183). `publish.STUB_RENDER` is 8: a home that ran 7 before C2647's loop stored meta
@@ -46879,6 +46882,15 @@ a link to a file or a dangling link (walk skipped; nothing is deleted; inbox sta
 `root_missing` and `root_notdir` set as before, so the stored kind and the C2814 note are unchanged; every other
 source keeps its text. Test: `test_the_walks_alarm_names_the_kept_inbox_as_typed_never_a_links_target_c3007` (a file,
 a dangling link, a link to a file and a self-link: the alarm, the warning and STATE.md name no target).
+
+**Another inbox source that is not a folder gets its own remedy, never step 2's** (C3044; ruling 204; amends §16.282
+C2814). C2814's note told every inbox source whose root is not a folder to `run step 2 again`, which recreates only
+the kept inbox, so a second inbox that followed it turned the note into a missing-root wait. `_inbox_root_not_a_folder`
+returns the path and whether the source is the one on the kept inbox; that note keeps its words, and any other inbox
+source's reads `the inbox (<id>) is not a folder: <path> is a file, a link to a file or a dangling link, and no later
+sync lists it until it is moved aside: keeping a copy, move it aside and put a folder back at that name, or fix path
+in [[source]] id = "<id>" in <config>; it does not block the next step`, still a note, never a wait. Test:
+`test_another_inbox_that_is_not_a_folder_gets_its_own_remedy_never_step_2_c3044`; the C2814 test is unchanged.
 
 ### 16.288 Round 46: the converters: a kept Office answer read again only from the bytes and the fetch that were read, the container answers and the family parse corrected, and speech's CA words (2026-11-24, wave B13 round 46 lane E)
 

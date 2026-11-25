@@ -2785,6 +2785,38 @@ def test_an_inbox_that_is_not_a_folder_is_a_note_naming_it_as_typed_c2814(tmp_pa
     assert (step.rule, step.waits) == (before.rule, before.waits), (step, before)
 
 
+def test_another_inbox_that_is_not_a_folder_gets_its_own_remedy_never_step_2_c3044(tmp_path: Path) -> None:
+    """B13 round 46 C3044 (ruling 204): C2814's note told every inbox source whose root is not a folder to run
+    step 2 again, which recreates only the kept inbox, so following it for a second inbox turned the note into
+    a missing-root wait. That source's note says to put a folder back at that name or fix its path, keeping a
+    copy; still a note, never a wait; the kept inbox's note is unchanged (the C2814 test)."""
+    root = tmp_path / "Contoso Gamma"
+    (root / "Gamma Empty").mkdir(parents=True)
+    config = _synced(tmp_path, root)
+    config, box = ensure_inbox(config.config_path)
+    assert box is not None
+    drop = tmp_path / "Contoso Drop"
+    drop.mkdir()
+    cfg = config.config_path
+    cfg.write_text(cfg.read_text(encoding="utf-8") + inbox_source_table("zz-drop", drop), encoding="utf-8")
+    config = load_config(cfg)
+    assert run_cycle(config, mode=None).exit_code == 0
+    before = loop.next_step(config)
+    drop.rename(tmp_path / "drop-moved")  # moved aside, never removed
+    drop.write_text("contoso note\n", encoding="utf-8")
+    assert run_cycle(config, mode=None).exit_code == 0
+    step = loop.next_step(config)
+    note = (
+        f"the inbox (zz-drop) is not a folder: {publish._display_path(drop)} is a file, a link to a file or "
+        "a dangling link, and no later sync lists it until it is moved aside: keeping a copy, move it aside "
+        'and put a folder back at that name, or fix path in [[source]] id = "zz-drop" in '
+        f"{loop._shown(cfg)}; it does not block the next step"
+    )
+    assert note in step.notes, step.notes
+    assert not any("step 2" in n for n in step.notes if n.startswith("the inbox (zz-drop)")), step.notes
+    assert (step.rule, step.waits) == (before.rule, before.waits), (step, before)
+
+
 @pytest.mark.parametrize("entry", ["file", "dangling-link", "link-to-file", "self-link"])
 def test_the_walks_alarm_names_the_kept_inbox_as_typed_never_a_links_target_c3007(
     tmp_path: Path, entry: str, caplog: pytest.LogCaptureFixture

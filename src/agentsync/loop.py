@@ -904,14 +904,16 @@ def _unlisted_kinds(manifest: Manifest, src: SourceConfig, names: Sequence[str])
     return frozenset(str(stored[n]) for n in names)
 
 
-def _inbox_root_not_a_folder(config: Config, manifest: Manifest, src: SourceConfig) -> str:
+def _inbox_root_not_a_folder(config: Config, manifest: Manifest, src: SourceConfig) -> tuple[str, bool]:
     """The inbox source's path as a person typed it when its last walk found its root not a folder, else ""
-    (B13 round 45 C2814): the walk stored ``UNKNOWN_NOTDIR`` for "." (a file, a link at the root), or, for
-    the source on the kept inbox, the walk found the link's target missing while the kept entry is a link
-    or file that is not a folder (:func:`config.inbox_entry`), since the stored path is the link's target.
-    The kept inbox is shown by its typed name, never the target."""
+    (B13 round 45 C2814), and whether it is the source on the kept inbox: the walk stored ``UNKNOWN_NOTDIR``
+    for "." (a file, a link at the root), or, for the source on the kept inbox, the walk found the link's
+    target missing while the kept entry is a link or file that is not a folder (:func:`config.inbox_entry`),
+    since the stored path is the link's target. The kept inbox is shown by its typed name, never the target.
+    Only the kept inbox's note gives step 2's remedy, which recreates that folder alone; any other inbox
+    source's note says to put a folder back or fix its path (B13 round 46 C3044, ruling 204)."""
     if not manifest.get_meta(_ROOT_UNLISTED_META + src.id) or src.path is None:
-        return ""
+        return "", False
     kinds = _unlisted_kinds(manifest, src, ["."])
     typed = expand(config.docs_repo).parent / "inbox"
     try:
@@ -919,12 +921,12 @@ def _inbox_root_not_a_folder(config: Config, manifest: Manifest, src: SourceConf
         if kinds == frozenset({UNKNOWN_MISSING}) and not (
             kept and inbox_entry(typed) == INBOX_ENTRY_NOT_A_FOLDER
         ):
-            return ""
+            return "", False
     except OSError:
-        return ""
+        return "", False
     if kinds not in (frozenset({UNKNOWN_NOTDIR}), frozenset({UNKNOWN_MISSING})):
-        return ""
-    return _shown(typed) if kept else _display_path(src.path)
+        return "", False
+    return (_shown(typed), True) if kept else (_display_path(src.path), False)
 
 
 def _missing_root_wait(config: Config, sid: str, pause: str, *, state: str = "") -> str:
@@ -1314,7 +1316,8 @@ def next_step(
     # mirrored files the last walk missed)
     empty: list[tuple[SourceConfig, dict[str, int], list[str], list[str], int, int]] = []
     inbox_partial: list[str] = []  # an inbox listing ran but could not finish (often a file being written)
-    inbox_not_a_folder: dict[str, str] = {}  # an inbox whose root is not a folder: its id -> its path shown
+    # an inbox whose root is not a folder: its id -> its path shown, and whether it is the kept inbox (C3044)
+    inbox_not_a_folder: dict[str, tuple[str, bool]] = {}
     blocked: list[str] = []  # a Graph source the network policy fails: IT's to fix
     held: list[str] = []  # a local walk timed out on a read macOS holds for an Allow prompt (field N8)
     signin: list[str] = []
@@ -1388,13 +1391,15 @@ def next_step(
                                     )
                             elif other:
                                 inbox_partial.append(src.id)
-                        elif src.kind is SourceKind.INBOX and (
-                            shown_root := _inbox_root_not_a_folder(config, manifest, src)
+                        elif (
+                            src.kind is SourceKind.INBOX
+                            and (not_folder := _inbox_root_not_a_folder(config, manifest, src))[0]
                         ):
                             # a file or a link at the inbox's name: a note naming it as typed, with step 2's
-                            # remedy, never a wait (it gates no baseline question) and never "a later sync
-                            # lists" (B13 round 45 C2814)
-                            inbox_not_a_folder[src.id] = shown_root
+                            # remedy for the kept inbox (any other's: put a folder back or fix its path),
+                            # never a wait (it gates no baseline question) and never "a later sync lists"
+                            # (B13 round 45 C2814; round 46 C3044)
+                            inbox_not_a_folder[src.id] = not_folder
                         elif manifest.get_meta(_ROOT_UNLISTED_META + src.id) and _unlisted_kinds(
                             manifest, src, ["."]
                         ) == frozenset({UNKNOWN_MISSING}):
@@ -1744,11 +1749,19 @@ def next_step(
             f"the network refuses Microsoft Graph for {', '.join(sorted(blocked))} (proxy, TLS inspection or "
             f"PAC): IT must allow it; `{BIN} it-request --out {it_request.DEFAULT_OUT}` drafts the request"
         )
-    for sid, shown_root in sorted(inbox_not_a_folder.items()):
+    for sid, (shown_root, on_kept) in sorted(inbox_not_a_folder.items()):
+        # step 2 recreates the kept inbox alone: any other inbox source is put back or pointed at a folder by
+        # the person (B13 round 46 C3044, ruling 204); either way a note, never a wait
+        remedy = (
+            "keeping a copy, move it aside, then run step 2 again"
+            if on_kept
+            else "keeping a copy, move it aside and put a folder back at that name, or fix path in "
+            f'[[source]] id = "{sid}" in {_shown(config.config_path)}'
+        )
         notes.append(
             f"the inbox ({sid}) is not a folder: {shown_root} is a file, a link to a file or a dangling "
-            "link, and no later sync lists it until it is moved aside: keeping a copy, move it aside, then "
-            "run step 2 again; it does not block the next step"
+            f"link, and no later sync lists it until it is moved aside: {remedy}; it does not block the next "
+            "step"
         )
     if inbox_partial:
         notes.append(
