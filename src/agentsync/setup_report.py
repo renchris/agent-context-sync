@@ -159,7 +159,7 @@ from agentsync.config import (
     load_config,
     toml_string,
 )
-from agentsync.errors import ConfigError
+from agentsync.errors import AccountHomeError, ConfigError
 from agentsync.install_log import (  # B13 round 47 C3241: the install.log parser, re-exported
     _END_RE,
     _INSTALL_LINE_RE,  # noqa: F401  (a reader's test checks a line against it)
@@ -2917,10 +2917,37 @@ def parse_friction(text: str) -> Friction:
     return Friction(attempts=tuple(attempts), text=text)
 
 
+FRICTION_DEFAULT = "~/agent-context/setup/friction.md"
+"""The setup prompt's friction log, where ``$AGENTSYNC_FRICTION_LOG`` names none."""
+SETUP_LOG_DEFAULT = "~/agent-context/setup/install.log"
+"""install.sh's own log, where ``$AGENTSYNC_SETUP_LOG`` names none."""
+
+
+def _env_log(env: str, default: str) -> tuple[Path, str | None]:
+    """The log ``$env`` names, expanded, else ``default``; and None, or the raw value when ``paths.expand``
+    refuses it (a ``~name`` value: another account's home), in which case the path is that raw value
+    unexpanded, never the default file (B13 round 47 C3292): ``setup-report`` exited 2 and wrote no report
+    for a ``~name`` friction or setup log. The one resolver of both log variables; every reader takes the
+    :class:`_Run`'s path, and a refused one is registered as a refused value and named as a log not read.
+    ``AGENTSYNC_CONFIG`` and ``--config`` keep their usage error (exit 2, C2822)."""
+    raw = os.environ.get(env, "").strip()
+    if not raw:
+        return expand(default), None
+    try:
+        return expand(raw), None
+    except AccountHomeError:
+        return Path(raw), raw
+
+
+def _env_log_refusal(env: str) -> str:
+    """How the report names a log variable whose ``~name`` value it did not read (B13 round 47 C3292)."""
+    return f"${env} names another account's home; export it as an absolute path (not read)"
+
+
 def default_friction_path() -> Path:
-    """``$AGENTSYNC_FRICTION_LOG``, else ``~/agent-context/setup/friction.md`` (the setup prompt's file)."""
-    env = os.environ.get(FRICTION_ENV, "").strip()
-    return expand(env) if env else expand("~/agent-context/setup/friction.md")
+    """``$AGENTSYNC_FRICTION_LOG``, else ``~/agent-context/setup/friction.md`` (the setup prompt's file);
+    never raising: a refused ``~name`` value is returned unexpanded (:func:`_env_log`)."""
+    return _env_log(FRICTION_ENV, FRICTION_DEFAULT)[0]
 
 
 def read_friction(path: Path) -> Friction | None:
@@ -4552,9 +4579,9 @@ def _launchctl_print(run: Callable[[Sequence[str], float], tuple[int, str]], lab
 
 
 def default_setup_log() -> Path:
-    """``$AGENTSYNC_SETUP_LOG``, else ``~/agent-context/setup/install.log`` (scripts/install.sh writes it)."""
-    env = os.environ.get(SETUP_LOG_ENV, "").strip()
-    return expand(env) if env else expand("~/agent-context/setup/install.log")
+    """``$AGENTSYNC_SETUP_LOG``, else ``~/agent-context/setup/install.log`` (scripts/install.sh writes it);
+    never raising: a refused ``~name`` value is returned unexpanded (:func:`_env_log`)."""
+    return _env_log(SETUP_LOG_ENV, SETUP_LOG_DEFAULT)[0]
 
 
 def cloud_storage_root() -> Path:
@@ -5014,7 +5041,8 @@ class _Run:
         self.red = Redactor()
         self.facts = _Facts()
         self.friction: Friction | None = None
-        self.friction_path = default_friction_path()
+        # B13 round 47 C3292: one resolver, never raising; a refused ~name value is kept to be cut and named
+        self.friction_path, self.friction_refused = _env_log(FRICTION_ENV, FRICTION_DEFAULT)
         self.friction_error: str | None = None
         self.listing_note: str | None = None
         # the CloudStorage listing's result, when it did not finish within _LISTING_S: build_report looks
@@ -5023,10 +5051,11 @@ class _Run:
         # The app names before a registered CloudStorage organisation ("Dropbox" of "Dropbox-<org-2>"): not
         # names, so the residue check skips them.
         self.provider_heads: frozenset[str] = frozenset()
-        self.install_log = default_setup_log()
+        self.install_log, self.setup_log_refused = _env_log(SETUP_LOG_ENV, SETUP_LOG_DEFAULT)
         self.install_runs: list[InstallRun] = []
         with contextlib.suppress(OSError):
-            self.install_runs = read_install_runs(self.install_log)
+            if self.setup_log_refused is None:
+                self.install_runs = read_install_runs(self.install_log)
         self.outcome: Outcome | None = None  # set by the Summary
         self.run_type: str | None = None
         self.loop_stage: str | None = None
@@ -5506,11 +5535,14 @@ def _resolver_hosts(text: str) -> list[str]:
     return hosts
 
 
-def _recorded_proxy_hosts() -> list[str]:
+def _recorded_proxy_hosts(r: _Run) -> list[str]:
     """The ``proxy-hosts`` file beside the friction log, which install.sh's ``--log-start`` and ``--log``
-    keep: the proxy and rewrite hosts in force when the agent logged a line, one a line (B13 round 11 M29)."""
+    keep: the proxy and rewrite hosts in force when the agent logged a line, one a line (B13 round 11 M29);
+    beside the run's own friction log, none beside one it did not read (B13 round 47 C3292)."""
+    if r.friction_refused is not None:
+        return []
     with contextlib.suppress(OSError, ValueError):
-        text = (default_friction_path().parent / "proxy-hosts").read_text(encoding="utf-8", errors="replace")
+        text = (r.friction_path.parent / "proxy-hosts").read_text(encoding="utf-8", errors="replace")
         return [ln for ln in text.splitlines() if re.fullmatch(r"[a-z0-9._-]+", ln)]
     return []
 
@@ -6592,7 +6624,7 @@ def _build_redactor(r: _Run) -> Redactor:
     has_list = False
     with contextlib.suppress(Exception):
         out_path = install_out_path(r.install_log)
-        if out_path.is_file() and not out_path.is_symlink():
+        if r.setup_log_refused is None and out_path.is_file() and not out_path.is_symlink():  # C3292
             has_list, printed = listed_folder_rows(
                 out_path.read_text(encoding="utf-8", errors="replace"), home_path()
             )
@@ -6660,6 +6692,8 @@ def _build_redactor(r: _Run) -> Redactor:
     raw_pandoc = _raw_pandoc_path(r.config_path)
     pandoc: Path | None = None
     refused = list(cfg.refused) if isinstance(cfg, _RawConfig) else []
+    # B13 round 47 C3292: a ~name log variable the report did not read, cut as a refused config value is
+    refused += [raw for raw in (r.friction_refused, r.setup_log_refused) if raw]
     if r.config is not None:
         pandoc = r.config.convert.pandoc_path
     elif raw_pandoc:
@@ -6756,9 +6790,11 @@ def _build_redactor(r: _Run) -> Redactor:
     # after the LaunchAgent's, in install.sh's order, so no shared <proxy-N> moves (B13 round 11 M29). A proxy
     # the person unset since (the git stop asks them to) is no longer in force, yet the line still names it.
     with contextlib.suppress(OSError, UnicodeDecodeError):
-        for host in _resolver_hosts(default_friction_path().read_text(encoding="utf-8", errors="replace")):
+        # B13 round 47 C3292: the run's own friction log, never a refused one
+        text = "" if r.friction_refused else r.friction_path.read_text(encoding="utf-8", errors="replace")
+        for host in _resolver_hosts(text):
             _add_proxy_host(red, host)
-    for host in _recorded_proxy_hosts():
+    for host in _recorded_proxy_hosts(r):
         _add_proxy_host(red, host)
     # A git remote's host last, as install.sh numbers it (B13 round 16 T88), the docs repo's after the rest
     # (round 17 U93), each as a rewrite base: its host, then its path when a company word is in it (U15)
@@ -7093,7 +7129,15 @@ def _run_text_lines(r: _Run) -> list[str]:
     """The lines of the run's own text the report embeds that can name a link's target: install.out, the
     friction log (v33 has the agent log the sync's error itself, ruling 9) and the log folder's files, each
     its last :data:`_TAIL_BYTES` (as Recent errors reads them); each read fails quietly (B13 round 27 P34)."""
-    paths = [install_out_path(r.install_log), r.friction_path]
+    # B13 round 47 C3292: never a log, or the folder of one, the report did not read
+    paths = [
+        p
+        for p, no in (
+            (install_out_path(r.install_log), r.setup_log_refused),
+            (r.friction_path, r.friction_refused),
+        )
+        if no is None
+    ]
     with contextlib.suppress(OSError):
         paths += sorted(p for p in r.log_dir().iterdir() if p.is_file())
     lines: list[str] = []
@@ -8534,6 +8578,8 @@ def _open_runs(r: _Run, lines: Sequence[str], pending: bool) -> int:
 
 
 def _installer_output(r: _Run) -> list[str]:
+    if r.setup_log_refused is not None:  # B13 round 47 C3292: never beside a log the report did not read
+        return [f"Installer output not read: {_env_log_refusal(SETUP_LOG_ENV)}."]
     path = install_out_path(r.install_log)
     try:
         lines = _tail(path)
@@ -18014,6 +18060,8 @@ def _install_line(
     r: _Run, runs: Sequence[InstallRun], scoped: bool, end: datetime | None = None, *, stopped: bool = False
 ) -> str:
     if not r.install_runs:
+        if r.setup_log_refused is not None:  # B13 round 47 C3292: named as a log not read
+            return f"- install.sh: the install log was not read: {_env_log_refusal(SETUP_LOG_ENV)}"
         # no log at all is not a log with no run in it, as the shell report says it (B13 round 5 F29)
         if not r.install_log.is_file():
             return "- install.sh: no install log"
@@ -20542,7 +20590,10 @@ def _local_work_line() -> str | None:
     unreadable count is install.sh's (``UNREAD_PATCHES_ENV``) when it gives one: a patch an earlier attempt's
     report carried is not missing from bring-back.md (B13 round 16 T24).
     install.sh's fallback writes the same line (``fallback_local_work_line``)."""
-    kept = default_setup_log().parent / "local-work"
+    log, refused = _env_log(SETUP_LOG_ENV, SETUP_LOG_DEFAULT)
+    if refused is not None:  # B13 round 47 C3292: never beside a log the report did not read
+        return None
+    kept = log.parent / "local-work"
     patches = (
         []
         if kept.is_symlink()  # as find, which does not follow it
@@ -20804,7 +20855,10 @@ def _build_report(
     r.time_scale = scale
     r.now = moment
     if friction_path is not None:
-        r.friction_path = expand(friction_path)
+        try:
+            r.friction_path, r.friction_refused = expand(friction_path), None
+        except AccountHomeError:  # B13 round 47 C3292: a ~name path, kept unexpanded and not read
+            r.friction_path, r.friction_refused = Path(friction_path), str(friction_path)
     try:
         red = _build_redactor(r)
     except Exception:  # redaction facts are best effort; the patterns (email, GUID, hex) still apply
@@ -20821,7 +20875,10 @@ def _build_report(
             _register_name_tail(red, _register_identity(red, r))
     r.red = red
     try:
-        r.friction = read_friction(r.friction_path)
+        if r.friction_refused is not None:  # B13 round 47 C3292: named as a log not read
+            r.friction_error = _env_log_refusal(FRICTION_ENV)
+        else:
+            r.friction = read_friction(r.friction_path)
     except Exception as exc:
         r.friction_error = f"{type(exc).__name__}: {exc}"
     fr = r.friction

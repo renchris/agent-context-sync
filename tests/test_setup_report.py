@@ -30724,3 +30724,35 @@ def test_a_checkout_outside_src_agent_context_sync_is_shown_as_its_path_c3208(
     assert where == shown.format(home=home), where
     assert directory == (None if place.endswith(".whl") else path)
     assert not any("\x80" <= c <= "\x9f" for c in where), where
+
+
+@pytest.mark.parametrize("env_name", [setup_report.FRICTION_ENV, setup_report.SETUP_LOG_ENV])
+def test_a_tilde_name_log_variable_is_named_as_a_log_not_read_and_the_report_written_c3292(
+    fake_mac: dict[str, Path],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    env_name: str,
+) -> None:
+    """B13 round 47 C3292: a `~name` value in AGENTSYNC_FRICTION_LOG or AGENTSYNC_SETUP_LOG raised in
+    paths.expand, so setup-report exited 2 and wrote no report. One resolver (_env_log) returns the raw
+    value unexpanded, never the default file: the report is written (exit 0), its section names the variable
+    and says the log was not read, the value is cut as a refused one, and every other reader takes the
+    report's path."""
+    monkeypatch.setenv(env_name, "~kestrel/Zephyr Quarry/f.md")
+    out = tmp_path / "r.md"
+    capsys.readouterr()
+    assert cli.main(["setup-report", "--out", str(out), "--config", str(fake_mac["config"])]) == 0
+    text = out.read_text(encoding="utf-8")
+    said = f"${env_name} names another account's home; export it as an absolute path (not read)"
+    assert said in text, text
+    for raw in ("kestrel", "Zephyr", "Quarry"):
+        assert raw not in text, (raw, [ln for ln in text.splitlines() if raw in ln])
+    assert setup_report._env_log(env_name, "~/x") == (
+        Path("~kestrel/Zephyr Quarry/f.md"),
+        "~kestrel/Zephyr Quarry/f.md",
+    )
+    monkeypatch.setenv(env_name, "~/elsewhere/f.md")
+    assert setup_report._env_log(env_name, "~/x") == (Path.home() / "elsewhere" / "f.md", None)
+    monkeypatch.delenv(env_name)
+    assert setup_report._env_log(env_name, "~/x") == (Path.home() / "x", None)
