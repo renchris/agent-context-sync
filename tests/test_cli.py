@@ -4836,6 +4836,56 @@ def test_a_docs_repo_remote_governance_does_not_allow_is_the_persons_in_status(
     assert "run `git" not in out and "do what the fix on its [FAIL] line below says" not in out, out
 
 
+def test_a_file_at_the_docs_path_is_the_persons_in_status_c3238(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 47 C3238 (ruling 211): with a file where the docs repo belongs, status's NEXT said "the docs
+    repo does not exist yet: run add-source" right above the [FAIL] docs_repo.git line that names moving the
+    file aside, and add-source wrote a [[source]] table before it failed on the path. The NEXT now names that
+    line's fix as the person's, runs nothing and writes nothing; the document names the checks entry."""
+    cfg = str(initialised.config_path)
+    shutil.rmtree(initialised.docs_repo)
+    initialised.docs_repo.write_text("not a folder\n", encoding="utf-8")
+    before = initialised.config_path.read_bytes()
+    cli.main(["status", "--config", cfg])
+    out = capsys.readouterr().out
+    lines = out.splitlines()
+    assert lines[0] == loop.NEXT_PREFIX + loop.DOCS_NOT_A_FOLDER_STEP, out
+    fail = next(i for i, ln in enumerate(lines) if ln.startswith("[FAIL] docs_repo.git"))
+    assert "exists but is not a directory (fix: move " in lines[fail] and fail > 0, out
+    assert "add-source" not in lines[0] and "baseline draft" not in out, out
+    assert initialised.config_path.read_bytes() == before
+    cli.main(["status", "--json", "--config", cfg])
+    doc = json.loads(capsys.readouterr().out)["status"]
+    document_form = loop.DOCS_NOT_A_FOLDER_STEP.replace(loop.DOCS_FAIL_BELOW, loop.DOCS_FAIL_DOC)
+    assert doc["next"][0]["when"] == document_form, doc
+
+
+def test_a_link_to_a_real_docs_folder_beside_a_refused_remote_keeps_the_governance_next_c3238(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Ruling 211's link row: a docs path that links to a real docs folder is a folder to rule 1, as to
+    doctor's docs_repo.git, so rule 1 gives it no docs-path NEXT: the NEXT stays the FAILs' own. The agent's
+    docs_repo.symlinks fix comes first (B13 round 14 Q1: the agent's own before the person's), and the
+    governance.remote step, the person's, is the one rule 1 gives once that FAIL is gone."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK  # the skill written: rule 1 reaches the FAILs
+    capsys.readouterr()
+    real = initialised.docs_repo.parent / "real-docs"
+    initialised.docs_repo.rename(real)
+    initialised.docs_repo.symlink_to(real)
+    git(real, "remote", "add", "origin", "https://git.contoso.example/team/kb.git")
+    cli.main(["status", "--config", cfg])
+    out = capsys.readouterr().out
+    first = out.splitlines()[0]
+    assert "[ok  ] docs_repo.git" in out and "[FAIL] governance.remote" in out, out
+    assert loop.DOCS_NOT_A_FOLDER_STEP not in out and loop.DOCS_PARENT_STEP not in out, out
+    assert "add-source" not in first, first
+    assert first == "NEXT: the docs_repo.symlinks check failed: do what the fix on its [FAIL] line below says"
+    governance_step = f"the governance.remote check failed: {PERSONS_STEP}"
+    assert loop.next_step(initialised, fixes=[governance_step]).step == governance_step
+
+
 @pytest.mark.parametrize(
     ("name", "where", "table", "detail"),
     [

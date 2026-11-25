@@ -47836,6 +47836,28 @@ every other OSError is still logged and reads `""`, so a questions.md that exist
 and is never hidden as missing. Tests: `test_baseline_under_a_file_at_the_docs_path_is_missing` and
 `test_baseline_questions_that_cannot_be_read_stay_a_draft`.
 
+**A file at the docs repo's path is the person's** (C3238; ruling 211). Rule 1 sent the agent to add-source whenever
+`<docs>/.git` was not there, so a file at the docs path, a dangling link there, or `~/agent-context` itself a file got
+`the docs repo does not exist yet: run add-source` right above the `[FAIL] docs_repo.git` line naming the person's
+fix, and add-source wrote a `[[source]]` table before it failed on the path. `paths.docs_repo_state(repo)` is now the
+one reading doctor's `_check_docs_repo` and `loop.next_step` share (with `paths.nearest_existing`, moved from doctor
+unchanged): `creatable` (nothing there, the nearest existing path above a folder this account can write and search),
+`uncreatable` (that path a file or not writable), `not_a_folder` (something there, or a link, that is no folder),
+`folder` and `git`; a link to a folder reads as the folder. Doctor's words and verdicts are unchanged. Rule 1 gives
+add-source only for `creatable` and `folder`; `not_a_folder` gives `loop.DOCS_NOT_A_FOLDER_STEP`, `something that is
+not a folder is where the docs repo belongs (a file, or a link to no folder): moving it aside, keeping a copy, as the
+fix on the docs_repo.git [FAIL] line below says, is the person's, not a step for the agent: show them that line`, and
+`uncreatable` gives `loop.DOCS_PARENT_STEP`, `the docs repo does not exist and cannot be created: a path above it is
+not a folder, or this account cannot write to it (the docs_repo.git [FAIL] line below names it); fixing that is the
+person's, not a step for the agent: show them that line`, which never repeats doctor's `mkdir -p` fix (it cannot work
+over a file) and chains no step after it. Neither names a path (§16.20); `status --json` gives `the docs_repo.git
+entry in checks` for `the docs_repo.git [FAIL] line below` (`loop.DOCS_FAIL_BELOW`/`DOCS_FAIL_DOC`, ruling 128). A
+sync stops on such a path before it prints a NEXT, so only status prints these. Tests:
+`test_rule_1_and_doctor_read_the_docs_path_alike_c3238` (eight states through both callers),
+`test_rule_1_names_the_docs_fail_as_the_persons_c3238`, `test_a_docs_path_under_the_cloud_folder_reads_as_doctor_reads_it_c3238`,
+`test_a_file_at_the_docs_path_is_the_persons_in_status_c3238` and
+`test_a_link_to_a_real_docs_folder_beside_a_refused_remote_keeps_the_governance_next_c3238`.
+
 ### 16.293 Round 47: the converters: ruling 202's Office twins closed (UTF-32 text, a no-namespace `<Types>`, the container answers before the cache, xlsx's emitter 1.0.7) and one noun per family (2026-11-25, wave B13 round 47 lane E)
 
 Round 47's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 47"; specs `round47/items/C<n>.md`, the

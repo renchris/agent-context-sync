@@ -2519,6 +2519,7 @@ _DOCUMENT_FORMS = (
     (_FIX_BELOW, "do what the fix in its checks entry says"),
     (_WHY_BELOW, "its checks entry says why"),
     (loop.QUEUE_REFUSED_NOTE_STATUS, loop.QUEUE_REFUSED_NOTE_DOC),
+    (loop.DOCS_FAIL_BELOW, loop.DOCS_FAIL_DOC),
     *governance.LOST_HOLD_WAITS_DOC.items(),
 )
 """Each pointer status's text view gives at a line "below" and the form ``status --json``'s document gives in

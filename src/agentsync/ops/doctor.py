@@ -85,7 +85,15 @@ from agentsync.ops.lock import (
     read_heartbeat,
     read_regular_text,
 )
-from agentsync.paths import StatePaths, default_cache_dir, default_log_dir, expand, is_cloud_path
+from agentsync.paths import (
+    StatePaths,
+    default_cache_dir,
+    default_log_dir,
+    docs_repo_state,
+    expand,
+    is_cloud_path,
+)
+from agentsync.paths import nearest_existing as _nearest_existing
 from agentsync.skill import AGENTSYNC_BIN, HELPER_RETRY_CLAUSE
 from agentsync.text import plural
 
@@ -763,24 +771,6 @@ def _fda_fix(image: Path) -> str:
     )
 
 
-def _nearest_existing(path: Path) -> Path:
-    """``path`` or its closest ancestor this account can see. A folder above it that refuses a search makes
-    ``exists()`` raise PermissionError on Python 3.11, which ended the disk check in a generic "report it"
-    FAIL that took status's NEXT from state_dir's, the person's; the walk steps past it to the folder that
-    refuses, whose ``statvfs`` needs a search only of the folders above it (B13 round 22 Z73, Z3, Z34). Read
-    through a link first, where it can be, so a state folder that links to another volume is measured there
-    (lane B's reviewer: the walk stopped at the link's own folder, on the wrong volume)."""
-    p = Path(os.path.realpath(expand(path)))
-    while p != p.parent:
-        try:
-            if p.exists():
-                break
-        except OSError:
-            pass
-        p = p.parent
-    return p
-
-
 def _gib(n: int) -> str:
     """Format a byte count in GiB with one decimal."""
     return f"{n / 1024**3:.1f} GiB"
@@ -1391,22 +1381,21 @@ def _check_docs_repo(config: Config) -> list[CheckResult]:
     else:
         out.append(_ok("docs_repo.location", f"{repo} is outside ~/Library/CloudStorage"))
 
-    is_git = False
-    if not repo.exists() and not repo.is_symlink():
-        anchor = _nearest_existing(repo.parent)
-        if anchor.is_dir() and os.access(anchor, os.W_OK | os.X_OK):
-            out.append(
-                _ok("docs_repo.git", f"{repo} does not exist yet; `{BIN} add-source <folder>` creates it")
+    # one reading with the loop's rule 1, so status's NEXT sends add-source only where this line is ok (B13
+    # round 47 C3238, ruling 211)
+    state, anchor = docs_repo_state(repo)
+    is_git = state == "git"
+    if state == "creatable":
+        out.append(_ok("docs_repo.git", f"{repo} does not exist yet; `{BIN} add-source <folder>` creates it"))
+    elif state == "uncreatable":
+        out.append(
+            _bad(
+                "docs_repo.git",
+                f"{repo} does not exist and {anchor} is not writable",
+                fix=f"mkdir -p {_shell_path(repo)}",
             )
-        else:
-            out.append(
-                _bad(
-                    "docs_repo.git",
-                    f"{repo} does not exist and {anchor} is not writable",
-                    fix=f"mkdir -p {_shell_path(repo)}",
-                )
-            )
-    elif not repo.is_dir():
+        )
+    elif state == "not_a_folder":
         out.append(
             _bad(
                 "docs_repo.git",
@@ -1414,8 +1403,7 @@ def _check_docs_repo(config: Config) -> list[CheckResult]:
                 fix=f"move {_shell_path(repo)} aside",
             )
         )
-    elif (repo / ".git").exists():
-        is_git = True
+    elif is_git:
         out.append(_ok("docs_repo.git", f"{repo} is a git repository"))
     else:
         out.append(

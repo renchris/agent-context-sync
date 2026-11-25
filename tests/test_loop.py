@@ -161,6 +161,118 @@ def test_rule_1_missing_docs_repo_without_a_folder(tmp_path: Path) -> None:
     ]
 
 
+def _docs_path_state(config: Config, state: str) -> None:
+    """Puts the docs repo's path of ``config`` (an initialised git repo) in ``state``, a row of
+    :func:`test_rule_1_and_doctor_read_the_docs_path_alike_c3238`."""
+    docs = config.docs_repo
+    if state == "git":
+        return
+    shutil.rmtree(docs)
+    if state == "folder":
+        docs.mkdir()
+    elif state == "file":
+        docs.write_text("not a folder\n", encoding="utf-8")
+    elif state == "dangling link":
+        docs.symlink_to(docs.parent / "gone")
+    elif state == "link to a folder":
+        real = docs.parent / "real-docs"
+        real.mkdir()
+        docs.symlink_to(real)
+    elif state == "parent a file":
+        shutil.rmtree(docs.parent)
+        docs.parent.write_text("not a folder\n", encoding="utf-8")
+    elif state == "parent not writable":
+        docs.parent.chmod(0o555)
+    else:
+        assert state == "missing", state
+
+
+@pytest.mark.parametrize(
+    ("state", "route"),
+    [
+        ("git", None),
+        ("folder", "add-source"),
+        ("missing", "add-source"),
+        ("link to a folder", "add-source"),
+        ("file", loop.DOCS_NOT_A_FOLDER_STEP),
+        ("dangling link", loop.DOCS_NOT_A_FOLDER_STEP),
+        ("parent a file", loop.DOCS_PARENT_STEP),
+        ("parent not writable", loop.DOCS_PARENT_STEP),
+    ],
+)
+def test_rule_1_and_doctor_read_the_docs_path_alike_c3238(
+    tmp_path: Path, state: str, route: str | None
+) -> None:
+    """B13 round 47 C3238 (ruling 211): rule 1 sent the agent to add-source whenever ``<docs>/.git`` was not
+    there, so a file at the docs path, or ``~/agent-context`` itself a file, got add-source, which wrote a
+    [[source]] table and then failed on the path, while doctor's docs_repo.git FAILed it with the person's
+    fix. Both now read ``paths.docs_repo_state``: add-source only where docs_repo.git is ok, the person's
+    NEXT (no add-source, no step chained after it) where it FAILs, and a git repo passes rule 1's docs
+    check."""
+    config = _setup(tmp_path)
+    _docs_path_state(config, state)
+    try:
+        if state == "parent not writable" and os.access(config.docs_repo.parent, os.W_OK):
+            pytest.skip("this account writes a mode-0555 folder")
+        [check] = [r for r in doctor._check_docs_repo(config) if r.name == "docs_repo.git"]
+        step = loop.next_step(config)
+        if route is None:
+            assert check.ok and step.step not in (loop.DOCS_NOT_A_FOLDER_STEP, loop.DOCS_PARENT_STEP)
+            assert "add-source" not in step.step, step.step
+        elif route == "add-source":
+            assert check.ok, check
+            assert step.rule == 1 and step.step.startswith("the docs repo does not exist yet: run `"), step
+        else:
+            assert not check.ok, check
+            assert step.rule == 1 and step.step == route, step
+            assert "add-source" not in step.step and "run `" not in step.step
+            assert "not a step for the agent" in step.step
+    finally:
+        if state == "parent not writable":
+            config.docs_repo.parent.chmod(0o755)
+
+
+def test_rule_1_names_the_docs_fail_as_the_persons_c3238(tmp_path: Path) -> None:
+    """C3238's words: the NEXT points at the docs_repo.git [FAIL] line and never repeats a path (§16.20) or
+    doctor's ``mkdir -p``, which cannot work where ``~/agent-context`` is a file."""
+    config = _setup(tmp_path)
+    shutil.rmtree(config.docs_repo)
+    config.docs_repo.write_text("not a folder\n", encoding="utf-8")
+    assert _lines(config) == [
+        "NEXT: something that is not a folder is where the docs repo belongs (a file, or a link to no "
+        "folder): moving it aside, keeping a copy, as the fix on the docs_repo.git [FAIL] line below says, "
+        "is the person's, not a step for the agent: show them that line"
+    ]
+    shutil.rmtree(config.docs_repo.parent)
+    config.docs_repo.parent.write_text("not a folder\n", encoding="utf-8")
+    assert _lines(config) == [
+        "NEXT: the docs repo does not exist and cannot be created: a path above it is not a folder, or this "
+        "account cannot write to it (the docs_repo.git [FAIL] line below names it); fixing that is the "
+        "person's, not a step for the agent: show them that line"
+    ]
+    assert "mkdir" not in loop.DOCS_PARENT_STEP and str(tmp_path) not in loop.DOCS_PARENT_STEP
+
+
+def test_a_docs_path_under_the_cloud_folder_reads_as_doctor_reads_it_c3238(tmp_path: Path) -> None:
+    """Ruling 211's cloud row: a docs path linked into ``~/Library/CloudStorage`` takes the same reading in
+    both callers: a file there is the person's NEXT beside doctor's docs_repo.git FAIL, never add-source; a
+    folder there is no docs-path NEXT of rule 1's (docs_repo.location's own FAIL speaks for the location)."""
+    config = _setup(tmp_path)
+    cloud = Path.home() / "Library" / "CloudStorage" / "OneDrive-Contoso" / "kb"
+    cloud.parent.mkdir(parents=True)
+    shutil.rmtree(config.docs_repo)
+    cloud.write_text("not a folder\n", encoding="utf-8")
+    config.docs_repo.symlink_to(cloud)
+    checks = {r.name: r for r in doctor._check_docs_repo(config)}
+    assert not checks["docs_repo.location"].ok and not checks["docs_repo.git"].ok
+    assert loop.next_step(config).step == loop.DOCS_NOT_A_FOLDER_STEP
+    cloud.unlink()
+    cloud.mkdir()
+    checks = {r.name: r for r in doctor._check_docs_repo(config)}
+    assert checks["docs_repo.git"].ok
+    assert loop.next_step(config).step not in (loop.DOCS_NOT_A_FOLDER_STEP, loop.DOCS_PARENT_STEP)
+
+
 def test_rule_1_missing_or_stale_skill(tmp_path: Path, folder: Path) -> None:
     config = _synced(tmp_path, folder)
     want = [

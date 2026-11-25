@@ -9,6 +9,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from typing import Literal
 
 APP_NAME = "agentsync"
 
@@ -79,6 +80,55 @@ def is_under(path: Path, root: Path) -> bool:
     """Return True when ``path`` equals or lies beneath ``root`` (lexically, after ``expand``)."""
     p, r = expand(path), expand(root)
     return p == r or r in p.parents
+
+
+def nearest_existing(path: Path) -> Path:
+    """``path`` or its closest ancestor this account can see. A folder above it that refuses a search makes
+    ``exists()`` raise PermissionError on Python 3.11, which ended the disk check in a generic "report it"
+    FAIL that took status's NEXT from state_dir's, the person's; the walk steps past it to the folder that
+    refuses, whose ``statvfs`` needs a search only of the folders above it (B13 round 22 Z73, Z3, Z34). Read
+    through a link first, where it can be, so a state folder that links to another volume is measured there
+    (lane B's reviewer: the walk stopped at the link's own folder, on the wrong volume). Here, not in doctor,
+    since the loop's rule 1 reads it too (:func:`docs_repo_state`; B13 round 47 C3238)."""
+    p = Path(os.path.realpath(expand(path)))
+    while p != p.parent:
+        try:
+            if p.exists():
+                break
+        except OSError:
+            pass
+        p = p.parent
+    return p
+
+
+DocsRepoState = Literal["creatable", "uncreatable", "not_a_folder", "folder", "git"]
+"""Where the docs repo's path stands (:func:`docs_repo_state`)."""
+
+
+def docs_repo_state(repo: Path) -> tuple[DocsRepoState, Path]:
+    """Where the docs repo's path stands, the one reading doctor's docs_repo.git check and the loop's rule 1
+    share, so status's NEXT sends the agent to add-source only where that check is ok (B13 round 47 C3238,
+    ruling 211):
+
+    - ``creatable``: nothing is there, not even a link, and the nearest existing path above it is a folder
+      this account can write and search (add-source creates it);
+    - ``uncreatable``: nothing is there, and that nearest existing path is not a folder (``~/agent-context``
+      itself a file) or this account cannot write or search it;
+    - ``not_a_folder``: something is there, or a link (a dangling one too), and it is not a folder;
+    - ``folder``: a folder, or a link to one, with no ``.git`` (add-source runs git init);
+    - ``git``: a git repository.
+
+    The path given back is that nearest existing path for the two missing states, else ``repo`` expanded."""
+    repo = expand(repo)
+    if not repo.exists() and not repo.is_symlink():
+        anchor = nearest_existing(repo.parent)
+        writable = anchor.is_dir() and os.access(anchor, os.W_OK | os.X_OK)
+        return ("creatable" if writable else "uncreatable"), anchor
+    if not repo.is_dir():
+        return "not_a_folder", repo
+    if (repo / ".git").exists():
+        return "git", repo
+    return "folder", repo
 
 
 def cloud_storage_roots() -> tuple[Path, ...]:

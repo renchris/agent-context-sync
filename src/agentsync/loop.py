@@ -101,7 +101,7 @@ from agentsync.errors import AgentSyncError, ConfigError
 from agentsync.manifest import Manifest, ManifestBusyError, ManifestNotCurrentError
 from agentsync.model import LintFinding, PassKind, RowState, SourceKind, Verdict
 from agentsync.ops import launchd
-from agentsync.paths import DocsLayout, expand, same_folder
+from agentsync.paths import DocsLayout, docs_repo_state, expand, same_folder
 from agentsync.publish import _display_path
 from agentsync.text import plural
 
@@ -337,6 +337,30 @@ reader of status (B13 round 35 C959, ruling 109)."""
 QUEUE_REFUSED_NOTE_DOC = f"{QUEUE_REFUSED_BARE}: the governance.purge_queue entry in checks says why"
 """:data:`QUEUE_REFUSED_NOTE_STATUS` in ``status --json``'s document, which has no line "below": the checks
 entry by its id (B13 round 38 C1448; ruling 128)."""
+
+DOCS_FAIL_BELOW = "the docs_repo.git [FAIL] line below"
+"""Where rule 1's NEXT for a docs path the person must fix points: status prints that line under its NEXT (a
+sync stops on such a path before it prints one; B13 round 47 C3238)."""
+DOCS_FAIL_DOC = "the docs_repo.git entry in checks"
+""":data:`DOCS_FAIL_BELOW` in ``status --json``'s document (ruling 128)."""
+DOCS_NOT_A_FOLDER_STEP = (
+    "something that is not a folder is where the docs repo belongs (a file, or a link to no folder): "
+    f"moving it aside, keeping a copy, as the fix on {DOCS_FAIL_BELOW} says, is the person's, not a step "
+    "for the agent: show them that line"
+)
+"""Rule 1's NEXT for a docs path that is there, or a link, but no folder (``paths.docs_repo_state``
+``not_a_folder``): doctor FAILs it with the move-aside fix, which is the person's, so the agent runs nothing,
+and never add-source, which wrote a [[source]] table and then failed on the path (B13 round 47 C3238, ruling
+211). No path: the [FAIL] line names it (CONTRACTS §16.20)."""
+DOCS_PARENT_STEP = (
+    "the docs repo does not exist and cannot be created: a path above it is not a folder, or this account "
+    f"cannot write to it ({DOCS_FAIL_BELOW} names it); fixing that is the person's, not a step for the "
+    "agent: show them that line"
+)
+"""Rule 1's NEXT for a missing docs path whose nearest existing path above is not a writable folder
+(``paths.docs_repo_state`` ``uncreatable``; ``~/agent-context`` itself a file): the person's, pointed at the
+[FAIL] line without its ``mkdir -p`` fix, which cannot work over a file, and never add-source or a step
+chained after the fix (B13 round 47 C3238, ruling 211)."""
 
 EMPTY_ROOT_GRANT_STATUS = (
     f"`{BIN} status`'s source.{{sid}}.listable [warn] line names the folder and the Python"
@@ -1300,7 +1324,12 @@ def next_step(
 
     # Rule 1: status FAILs.
     live = config.live_sources()
-    if not (docs / ".git").exists():
+    docs_state, _ = docs_repo_state(docs)  # doctor's docs_repo.git reading (B13 round 47 C3238, ruling 211)
+    if docs_state == "not_a_folder":
+        return done(DOCS_NOT_A_FOLDER_STEP, 1)
+    if docs_state == "uncreatable":
+        return done(DOCS_PARENT_STEP, 1)
+    if docs_state != "git":
         # add-source creates whatever is missing (KISS K14; init is hidden). A source id, never its path.
         folder = next((s for s in live if s.kind is SourceKind.LOCAL), None)
         which = f"the folder of source {folder.id!r}" if folder is not None else "a folder to sync"
