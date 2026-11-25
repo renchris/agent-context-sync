@@ -48,6 +48,7 @@ from agentsync.skill import HELPER_RETRY_CLAUSE
 from conftest import config_text, fails_without_a_fix
 from media_kit import fake_media
 from speech_kit import fake_speech, place_models
+from test_config import _bounded
 from test_ocr import write_fake
 
 GIT = shutil.which("git") or "/usr/bin/git"
@@ -2591,6 +2592,86 @@ def test_the_sentinel_row_splits_a_refusal_as_the_listable_row_does_c3043(
     assert not r.ok and r.detail == f"{sub / 'README.txt'}: permission denied", r
     assert r.fix == want and "Full Disk Access" not in want, r.fix
     assert want.startswith("the person gives this account search access to ") and str(sub.name) in want, want
+
+
+_SENTINEL_ENTRIES = (
+    "folder",
+    "file",
+    "link-to-folder",
+    "link-to-file",
+    "dangling-link",
+    "self-link",
+    "two-link-loop",
+    "link-through-a-file",
+    "fifo",
+    "unsearchable-folder",
+    "deny-readattr",
+)
+
+
+@pytest.mark.parametrize("entry", _SENTINEL_ENTRIES)
+def test_the_sentinel_rows_fix_names_the_sentinel_when_nothing_above_refuses_c3252(
+    sample_config: Config, entry: str
+) -> None:
+    """B13 round 47 C3252 (ruling 210): a sentinel whose lstat was refused under a listable root always got
+    _parent_fix, which, with no folder above refusing a search, calls the sentinel ``the folder`` and asks for
+    read, write and search access. _parent_fix stays for a folder above that refuses (the C3043 test); else
+    the fix names the sentinel and ``chmod -N``, never ``ls -le`` (refused under a deny-readattr ACL) or
+    _search_fix's words. Over every kind of entry at the sentinel's name the row returns, raises nothing, and
+    an lstat that reads it (a link is never followed) says ``present``."""
+    src = sample_config.sources[0]
+    assert src.path is not None
+    target = src.path / "README.txt"
+    target.unlink(missing_ok=True)
+    near, locked = src.path, False
+    if entry == "folder" or entry == "unsearchable-folder":
+        target.mkdir()
+        locked = entry == "unsearchable-folder"
+    elif entry in ("file", "deny-readattr"):
+        target.write_text("sentinel\n", encoding="utf-8")
+    elif entry == "link-to-folder":
+        (near / "contoso-drop").mkdir()
+        target.symlink_to(near / "contoso-drop")
+    elif entry in ("link-to-file", "link-through-a-file"):
+        (near / "contoso-note.txt").write_text("x\n", encoding="utf-8")
+        target.symlink_to(near / "contoso-note.txt" / ("sub" if entry == "link-through-a-file" else ""))
+    elif entry == "dangling-link":
+        target.symlink_to(near / "contoso-missing")
+    elif entry == "self-link":
+        target.symlink_to("README.txt")
+    elif entry == "two-link-loop":
+        (near / "contoso-loop").symlink_to(target)
+        target.symlink_to(near / "contoso-loop")
+    else:
+        os.mkfifo(target)
+    if entry == "deny-readattr":
+        if sys.platform != "darwin" or os.geteuid() == 0:
+            pytest.skip("a deny-readattr ACL is macOS's, and root ignores it")
+        me = subprocess.run(["id", "-un"], capture_output=True, text=True, check=True).stdout.strip()
+        subprocess.run(["chmod", "+a", f"{me} deny readattr", str(target)], check=True)
+    if locked:
+        target.chmod(0)
+    try:
+        with _bounded(30):
+            row = by_name(run_checks(sample_config))["source.local-fixture.sentinel"]
+    finally:
+        if entry == "deny-readattr":
+            subprocess.run(["chmod", "-N", str(target)], check=True)
+        if locked:
+            target.chmod(0o700)
+    if entry != "deny-readattr":
+        assert row.ok and row.detail == "README.txt present", row
+        return
+    shown = doctor._shell_path(target)
+    assert not row.ok and row.detail == f"{target}: permission denied", row
+    assert row.fix == (
+        f"the person gives this account read-attributes access to the sentinel {shown}; nothing above it "
+        f"refuses a search, so an ACL or a privacy setting on the sentinel itself refuses it, and chmod -N "
+        f"{shown} removes its ACL"
+    ), row.fix
+    rest = row.fix.replace(shown, "")
+    assert "folder" not in rest and "ls -le" not in rest and "write" not in rest, row.fix
+    assert doctor.is_persons_fix(row.fix), row.fix
 
 
 def test_source_missing(sample_config: Config, tmp_path: Path) -> None:

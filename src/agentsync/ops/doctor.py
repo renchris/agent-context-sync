@@ -1538,6 +1538,20 @@ def _parent_fix(root: Path) -> str:
     return fix
 
 
+def _sentinel_fix(target: Path) -> str:
+    """The fix of a sentinel whose lstat is refused while nothing above it refuses a search: an ACL or a
+    privacy setting on the sentinel itself, the person's (B13 round 47 C3252). Named "the sentinel", since an
+    entry that cannot be stat'd may be a file or a folder; an lstat needs read-attributes access alone, and
+    ``ls -le`` is refused too under a deny-readattr ACL, so neither :func:`_search_fix`'s read and write
+    access nor its ``ls`` is offered."""
+    shown = _shell_path(target)
+    return (
+        f"the person gives this account read-attributes access to the sentinel {shown}; nothing above it "
+        f"refuses a search, so an ACL or a privacy setting on the sentinel itself refuses it, and chmod -N "
+        f"{shown} removes its ACL"
+    )
+
+
 def _read_only(path: Path) -> bool:
     """Whether ``path`` is on a volume mounted read-only (no write for anyone, whatever its mode)."""
     try:
@@ -3259,9 +3273,12 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
                     )
                 )
             else:
-                out.append(
-                    _bad(f"{base}.sentinel", f"{sentinel}: permission denied", fix=_parent_fix(target))
+                # _parent_fix only when a folder above refuses a search, as the listable row has it; else the
+                # sentinel's own ACL or privacy setting (B13 round 47 C3252)
+                fix = (
+                    _parent_fix(target) if _unsearchable_above(target) is not None else _sentinel_fix(target)
                 )
+                out.append(_bad(f"{base}.sentinel", f"{sentinel}: permission denied", fix=fix))
         except OSError as exc:
             # Any other answer (the path is a file, an I/O error, a sync app that stopped answering) is this
             # line's own: leaving the check with it cost the source its other lines and their fixes.

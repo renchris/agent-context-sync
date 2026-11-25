@@ -47245,6 +47245,8 @@ permission denied` with `_parent_fix(<sentinel>)`, the person's, naming the subf
 Amended 2026-11-25, §16.292 C3313, C3253, C3256: the volume row says `is not a folder` for all five entries (a
 file and a link to a file too), and a configured sentinel there reads `[ok] <folder>/<sentinel> not checked: <folder>
 is not a folder; the listable line above says what to do`, spelled from the typed path, never probed.
+Amended 2026-11-25, §16.292 C3252: that EACCES under a listable root keeps `_parent_fix(<sentinel>)` only when a
+folder above refuses a search; else the fix names the sentinel and `chmod -N` (`doctor._sentinel_fix`).
 
 **A sync's alarm names the kept inbox as typed, never a link's target** (C3007; ruling 204; amends §16.282 C2814). The
 source on the kept inbox stores canonical_source_root's answer, the link's target, so with a link at the inbox's name
@@ -48065,6 +48067,16 @@ folder` with `inbox_not_a_folder_fix`. The flag is never keyed on NotADirectoryE
 `[[source]]` whose path is a file keeps `is not a directory` and both probes. Tests:
 `test_doctor_checks_no_sentinel_or_volume_under_a_kept_inbox_that_is_not_a_folder_c3313` (eleven kinds of entry,
 under a timeout) and the C2809 test (a sentinel axis, the volume row asserted for every entry).
+**The sentinel row's fix names the sentinel when nothing above it refuses a search** (C3252; ruling 210; amends
+§16.287 C3043). An EACCES on a sentinel under a listable root always got `_parent_fix(<sentinel>)`, which, with no
+folder above refusing, called the sentinel `the folder` and asked for read, write and search access. The fix is now
+`_parent_fix` only when `_unsearchable_above(<sentinel>)` names a folder, as the listable row has it; else
+`doctor._sentinel_fix`: `the person gives this account read-attributes access to the sentinel <path>; nothing above
+it refuses a search, so an ACL or a privacy setting on the sentinel itself refuses it, and chmod -N <path> removes its
+ACL`, the person's, "the sentinel" since an entry that cannot be stat'd may be a file or a folder. An lstat needs read
+attributes alone, and `ls -le` is refused under a deny-readattr ACL too (measured), so `_search_fix`'s file wording is
+never used (makes worse True for it). Test: `test_the_sentinel_rows_fix_names_the_sentinel_when_nothing_above_refuses_c3252`
+(ten kinds of entry at the sentinel's name and a deny-readattr ACL, macOS only, under a timeout).
 
 ### 16.293 Round 47: the converters: ruling 202's Office twins closed (UTF-32 text, a no-namespace `<Types>`, the container answers before the cache, xlsx's emitter 1.0.7) and one noun per family (2026-11-25, wave B13 round 47 lane E)
 
