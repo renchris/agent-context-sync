@@ -875,6 +875,32 @@ def test_rulings_150_and_183_keep_their_words_and_dated_lines_name_round_45s_cha
         assert f"`{said}`" in lanes[at:end] and f"%s: {said} (%s)" in cycle_src
 
 
+def test_rulings_181_191_and_197_take_round_46s_dated_lines_c3003_c3029_c3086() -> None:
+    """B13 round 46 C3003 (lane RB, amending ruling 191), C3029 and C3086 (lane RA, ruling 205): each ruling
+    keeps its words and a dated line right after it says what changed, held to the writers' own words:
+    install.sh's bare-run NEXT and ``setup_report.NOT_LIVE_CLAUSE``, the report's expected-turns part and its
+    older --no-folder failure words. The guide's expected-turns row and section 4 say the same."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    lanes = _page("docs/lanes/COMMON.md")
+    source = inspect.getsource(setup_report)
+    turns = "step 3 asks at most once whether to add a folder (not logged)"
+    older = "an older install.sh ended such a run 0, and that is no success"
+    assert turns in source and older in " ".join(re.sub(r'"\s*\n\s*f?"', "", source).split())
+    assert "the person's own edit of sources.toml" in setup_report.NOT_LIVE_CLAUSE
+    line181 = "(2026-11-24) Step 3's at-most-once folder question is no turn beyond the unavoidable ones"
+    line191 = "(2026-11-24) Ruling 205's cluster amends this one: on a bare run ending EXIT_RC 0"
+    line197 = "(2026-11-24) Ruling 205 amends this one too: step 3's at-most-once folder question"
+    assert lanes.index("(181) ") < lanes.index(line181) < lanes.index("(182) ")
+    assert lanes.index("(191) ") < lanes.index(line191) < lanes.index("(192) ")
+    assert lanes.index("(197) ") < lanes.index(line197) < lanes.index("ROUND 46 RULINGS")
+    flat = " ".join(lanes.split())
+    assert f"`{turns}`" in flat and "`setup_report.NOT_LIVE_CLAUSE`" in flat
+    page = " ".join(_feedback_page().split())
+    assert f"| `expected turns: ... · {turns} · ...` |" in page
+    assert "older install.sh ended such a run 0, and that is no success` (B13 round 46 C3086" in page
+
+
 def test_ruling_166_keeps_its_words_and_a_dated_line_records_call_5s_decline_c2673() -> None:
     """B13 round 44 C2673: ruling 166 still described C2470's v2 pass as built, and §16.273 said C2470 is not
     built "by the lead's ruling" with no record of it. As C2069 did for ruling 138, the ruling keeps its

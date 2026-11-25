@@ -2140,6 +2140,9 @@ step 1's list and runs step 2 again with one --source-local per folder named, or
 and goes on to the report syncs (C2659).
 (2026-11-23) Step 3's question whether to add a folder stands after step 1's exceptions' none, since `nothing to draft
 yet` is a fact that question lacked, and v42 asks it once a session (round 45 C2831, ruling 197).
+(2026-11-24) Step 3's at-most-once folder question is no turn beyond the unavoidable ones and never changes the
+outcome: the report's expected-turns line names it, `step 3 asks at most once whether to add a folder (not logged)`,
+once the attempt reached step 3, and the prompt logs nothing for it (round 46 C3029, ruling 205; lane RA's 25e9f0142).
 (182) A tombstone's successor, unit-removed flag and title follow what they derive from, completing ruling 164 (lane B;
 C2646 with C2706, C2704 with C2648, C2613, C2672). Publisher.tombstone adds `self._successors_again(rows)` to its
 changes after its loop and before the `if changes:` guard, so a kept unit-removed whole tombstone whose item is deleted
@@ -2290,6 +2293,10 @@ still ending on `no folder is synced yet`; STUB_INIT_RC=78, a [FAIL] and a statu
 real_env fresh bare run still exiting 2 on `no folder to sync yet`; each refusal row pinned to its exact usage error,
 the --list-folders row named as the generic guard (C2844). §16.276's wording is widened by a dated line in lane RB's
 commit; lane RB sends lane RA its literals and order and lane D its words first.
+(2026-11-24) Ruling 205's cluster amends this one: on a bare run ending EXIT_RC 0 whose NEXT opens status's rule-2 `no
+folder is synced yet: ask the operator`, install.sh prints its own `--source-local` form, keyed on the NEXT text, with
+`setup_report.NOT_LIVE_CLAUSE` naming each paused or retired folder and its state as the person's own edit of
+sources.toml; the --no-folder swap after it and loop.py's rule 2 are unchanged (round 46 C3003; lane RB's 99c5d60f9).
 (192) The report reads, scores and words a none as install.sh made it, completing rulings 178 and 179 (lanes RA and D;
 C2946 with C2801, C2836 and C2932, C2802, C2947 with C2837 and C2861, C2933 with C2911 and C2846, C2842, C2803, C2848
 with C2863, C2865). InstallRun.chose_no_folder splits args with shlex, skips the operand of --source-local, --cwd,
@@ -2398,6 +2405,9 @@ v41's block (9acf0c54b) as scenario C's first old copy.
 NEXT, step 1's none branches running it as step 2 says and step 3's sync loop never started after it, and gives
 `inbox state: not read (<why>)` a branch of its own after the no-drop-folder sentence, beside C2868's not-checked one,
 with step 2's `inbox: not read:` line shown (round 46 C3102, C3112, C3113, C3013).
+(2026-11-24) Ruling 205 amends this one too: step 3's at-most-once folder question is no turn beyond the unavoidable ones and never changes the
+outcome: the report's expected-turns line names it, `step 3 asks at most once whether to add a folder (not logged)`,
+once the attempt reached step 3, and the prompt logs nothing for it (round 46 C3029, ruling 205; lane RA's 25e9f0142).
 
 ROUND 46 RULINGS (lead; every lane builds to them; the prompt goes to v43 in lane D's one commit, ruling 205):
 (198) A config value whose spelling a reader refuses is skipped per field and cut, and a redactor that could not be
