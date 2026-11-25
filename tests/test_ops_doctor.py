@@ -2518,7 +2518,79 @@ def test_source_posix_permission_denied(sample_config: Config) -> None:
     assert not r["source.local-fixture.listable"].ok
     if os.geteuid() != 0:
         assert "permission denied" in r["source.local-fixture.listable"].detail
-        assert not r["source.local-fixture.sentinel"].ok
+        # the root itself unread: the sentinel row points up, with no fix of its own (B13 round 46 C3043)
+        sentinel = r["source.local-fixture.sentinel"]
+        assert sentinel.ok and sentinel.fix is None, sentinel
+        assert sentinel.detail == (
+            f"{src / 'README.txt'} not checked: {src} cannot be read (permission denied); the listable line "
+            "above says what to do"
+        ), sentinel.detail
+
+
+@pytest.mark.parametrize("case", ["eperm", "locked-above", "locked-subfolder"])
+def test_the_sentinel_row_splits_a_refusal_as_the_listable_row_does_c3043(
+    sample_config: Config, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    """B13 round 46 C3043 (ruling 204): the sentinel row's bare ``except PermissionError`` gave the Full Disk
+    Access fix for every refusal, beside a listable row C2808 had split. EPERM keeps the TCC words and fix; an
+    EACCES when the listing already failed (a locked folder above the root) points to the listable line with
+    no fix; an EACCES under a listable root (a nested sentinel in a locked subfolder) is the person's
+    _parent_fix naming that subfolder."""
+    src = sample_config.sources[0]
+    assert src.path is not None
+    root = src.path
+    if case == "eperm":
+        target = root / "README.txt"
+        real = Path.lstat
+
+        def refused(self: Path) -> os.stat_result:
+            if self == target:
+                raise PermissionError(errno.EPERM, "Operation not permitted", str(self))
+            return real(self)
+
+        monkeypatch.setattr(Path, "lstat", refused)
+        r = by_name(run_checks(sample_config))["source.local-fixture.sentinel"]
+        assert not r.ok and r.detail == f"{target}: not permitted (TCC)", r
+        assert r.fix is not None and "Full Disk Access" in r.fix, r.fix
+        return
+    if os.geteuid() == 0:
+        pytest.skip("root searches a mode-000 folder")
+    if case == "locked-above":
+        locked = tmp_path / "contoso-locked"
+        moved = locked / "src"
+        locked.mkdir()
+        root.rename(moved)
+        config = dataclasses.replace(sample_config, sources=(dataclasses.replace(src, path=moved),))
+        locked.chmod(0)
+        try:
+            rows = by_name(run_checks(config))
+        finally:
+            locked.chmod(0o755)
+        listable, r = rows["source.local-fixture.listable"], rows["source.local-fixture.sentinel"]
+        assert not listable.ok and listable.detail == f"{moved}: permission denied", listable
+        assert r.ok and r.fix is None, r
+        assert r.detail == (
+            f"{moved / 'README.txt'} not checked: {moved} cannot be read (permission denied); the listable "
+            "line above says what to do"
+        ), r.detail
+        return
+    sub = root / "sub"
+    sub.mkdir()
+    (sub / "README.txt").write_text("sentinel\n", encoding="utf-8")
+    config = dataclasses.replace(
+        sample_config, sources=(dataclasses.replace(src, sentinel="sub/README.txt"),)
+    )
+    sub.chmod(0o600)
+    try:
+        rows = by_name(run_checks(config))
+        want = doctor._parent_fix(sub / "README.txt")
+    finally:
+        sub.chmod(0o755)
+    listable, r = rows["source.local-fixture.listable"], rows["source.local-fixture.sentinel"]
+    assert listable.ok, listable
+    assert not r.ok and r.detail == f"{sub / 'README.txt'}: permission denied", r
+    assert r.fix == want and "Full Disk Access" not in want, r.fix
+    assert want.startswith("the person gives this account search access to ") and str(sub.name) in want, want
 
 
 def test_source_missing(sample_config: Config, tmp_path: Path) -> None:

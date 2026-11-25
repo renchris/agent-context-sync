@@ -46325,6 +46325,9 @@ or link at that name aside, then run step 2 again` (`doctor.inbox_not_a_folder_f
 the person's: the finder's `move the file or link ... aside` opening read as the agent's step, so the agent would
 have moved the person's file (makes worse True for that wording). Every other source keeps its config-path fixes.
 Test: `test_the_inbox_sources_fix_over_a_non_folder_is_the_persons_move_aside_c2809`.
+Amended 2026-11-24, §16.287 C3094, C3009: a looping link at the folder's name is not a folder too (the listable row's
+generic OSError branch, keyed on inbox_state, never on ELOOP alone), and the volume row of a dangling or looping link
+reads `volume UUID not checked: <folder> is not a folder` with that fix, never `is missing`.
 
 **A sync names an inbox that is not a folder in a note of its own** (C2814; ruling 194). LocalArm records
 `arm_local.UNKNOWN_NOTDIR` for "." when its root is a file or a link, and the cycle stores it in the unlisted kinds.
@@ -46847,6 +46850,20 @@ replaced tombstone to `# [NO LONGER PRODUCED]` with its new hashes stored, and a
 `test_a_tombstone_not_rendered_again_holds_the_stub_render_meta_c3040` (a render raising OSError once, a page at mode
 000), `test_an_unreadable_refused_stub_holds_the_stub_render_meta_c3106`,
 `test_hand_edited_stubs_and_tombstones_still_let_the_stub_render_meta_through_c3106`.
+
+**Doctor tells the kept inbox's link as inbox_state does, and its sentinel row splits a refusal** (C3094 with C3009,
+C3043; ruling 204; amends §16.282 C2809). A looping link at the kept inbox raised a plain ELOOP OSError, which skipped
+C2809's not-a-folder branch: the listable row read `Too many levels of symbolic links` with a look-in-Finder fix while
+status said move it aside, and a dangling link's volume row said `is missing` beside rows that said not a folder.
+`_check_local_source`'s generic OSError branch reads `<folder> is not a folder` with `inbox_not_a_folder_fix` when
+typed_inbox is set (any other source keeps its generic row), and the volume row of a dangling or looping link at the
+kept inbox reads `volume UUID not checked: <folder> is not a folder` with the same fix and no probe. The sentinel row's
+bare `except PermissionError` gave the Full Disk Access fix for every refusal: EPERM keeps it; an EACCES when the
+listing already failed reads `[ok] <sentinel> not checked: <root> cannot be read (<why>); the listable line above
+says what to do`, no fix; an EACCES under a listable root (a nested sentinel in a locked subfolder) is `<sentinel>:
+permission denied` with `_parent_fix(<sentinel>)`, the person's, naming the subfolder. Tests: the C2809 test's
+`self-link` and `two-link-loop` rows and its volume asserts,
+`test_the_sentinel_row_splits_a_refusal_as_the_listable_row_does_c3043`, `test_source_posix_permission_denied`.
 
 ### 16.288 Round 46: the converters: a kept Office answer read again only from the bytes and the fetch that were read, the container answers and the family parse corrected, and speech's CA words (2026-11-24, wave B13 round 46 lane E)
 

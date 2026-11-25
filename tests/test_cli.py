@@ -4098,7 +4098,7 @@ def test_a_value_in_the_file_under_another_accounts_home_is_a_config_error_c3039
         assert "run the command again" not in out + err and "Traceback" not in out + err, err
 
 
-@pytest.mark.parametrize("entry", ["file", "dangling-link", "link-to-file"])
+@pytest.mark.parametrize("entry", ["file", "dangling-link", "link-to-file", "self-link", "two-link-loop"])
 def test_the_inbox_sources_fix_over_a_non_folder_is_the_persons_move_aside_c2809(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, entry: str
 ) -> None:
@@ -4106,7 +4106,10 @@ def test_the_inbox_sources_fix_over_a_non_folder_is_the_persons_move_aside_c2809
     doctor showed the link's target and fixed it with a [[source]] path edit, while step 2 said move it
     aside. The source on that folder is shown as typed, and its listable (and a dangling link's volume) fix
     is ``restore <inbox> as a folder: keeping a copy, move the file or link at that name aside, then run
-    step 2 again``, the person's by PERSONS_FIX_RE."""
+    step 2 again``, the person's by PERSONS_FIX_RE. B13 round 46 C3094 with C3009 (ruling 204): a looping link
+    (one link to itself, two to each other) read as "Too many levels of symbolic links" with a look-in-Finder
+    fix and a dangling link's volume row said "is missing": doctor keys on inbox_state's answer, so each says
+    ``is not a folder`` with the same fix on both rows, and no row says missing, Finder or a mount check."""
     home = tmp_path / "home"
     home.mkdir()
     cfg = home / "sources.toml"
@@ -4119,10 +4122,16 @@ def test_the_inbox_sources_fix_over_a_non_folder_is_the_persons_move_aside_c2809
         folder.write_text("contoso note\n", encoding="utf-8")
     elif entry == "dangling-link":
         folder.symlink_to(home / "contoso-missing")
-    else:
+    elif entry == "link-to-file":
         (home / "contoso-note.txt").write_text("x\n", encoding="utf-8")
         folder.symlink_to(home / "contoso-note.txt")
+    elif entry == "self-link":
+        folder.symlink_to("inbox")
+    else:
+        (home / "contoso-loop").symlink_to(folder)
+        folder.symlink_to(home / "contoso-loop")
     config = load_config(cfg)
+    assert inbox_state(config)[1] == f"not added ({folder} is not a folder)"
     box = next(s for s in config.sources if s.kind is SourceKind.INBOX)
     rows = doctor._check_local_source(config, box, Path(sys.executable))
     want = (
@@ -4135,9 +4144,12 @@ def test_the_inbox_sources_fix_over_a_non_folder_is_the_persons_move_aside_c2809
     for row in rows:
         assert "contoso-missing" not in row.detail + (row.fix or ""), row
         assert "contoso-note.txt" not in row.detail + (row.fix or ""), row
-    if entry == "dangling-link":
+        for words in ("is missing", "opens in Finder", "volume is mounted", "Too many levels"):
+            assert words not in row.detail + (row.fix or ""), row
+    if entry in ("dangling-link", "self-link", "two-link-loop"):
         volume = next(r for r in rows if r.name.endswith(".volume"))
-        assert volume.fix == want, volume
+        assert volume.detail == f"volume UUID not checked: {doctor.list_spelling(folder)} is not a folder"
+        assert volume.fix == want and not volume.ok and volume.severity is doctor.Severity.ERROR, volume
 
 
 def test_status_shows_the_policy_and_a_broken_policy_fails(

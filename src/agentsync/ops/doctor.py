@@ -3086,6 +3086,7 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
     out: list[CheckResult] = []
     listed = False
     unread: str | None = None  # why the listing could not read the folder, for the volume row (C2808)
+    looped = False  # the kept inbox's entry is a link the listing could not follow (a loop; C3094)
     try:
         first = call_with_timeout(lambda: _first_entry(root), _LISTING_TIMEOUT_S, name="doctor-listing")
         listed = True
@@ -3171,8 +3172,17 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
             )
             out.append(_bad(f"{base}.listable", f"{shown}: permission denied", fix=fix))
     except OSError as exc:
-        unread = (exc.strerror or type(exc).__name__).lower()
-        out.append(_bad(f"{base}.listable", f"{shown}: {exc.strerror or exc}", fix=look_fix))
+        if typed_inbox is not None:
+            # keyed on inbox_state's answer, never on ELOOP alone: a looping link at the kept inbox is not a
+            # folder, as status and step 2 say, while a loop under any other source keeps the generic row
+            # (B13 round 46 C3094, ruling 204); the volume row below says the same, with no probe
+            looped = True
+            out.append(
+                _bad(f"{base}.listable", f"{shown} is not a folder", fix=inbox_not_a_folder_fix(typed_inbox))
+            )
+        else:
+            unread = (exc.strerror or type(exc).__name__).lower()
+            out.append(_bad(f"{base}.listable", f"{shown}: {exc.strerror or exc}", fix=look_fix))
 
     if src.sentinel:
         target = root / src.sentinel
@@ -3188,8 +3198,24 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
                     fix=f'restore {sentinel}, or change sentinel in [[source]] id = "{src.id}"',
                 )
             )
-        except PermissionError:
-            out.append(_bad(f"{base}.sentinel", f"{sentinel}: not permitted (TCC)", fix=_fda_fix(image)))
+        except PermissionError as exc:
+            # split as the listable row is (B13 round 46 C3043, ruling 204): EPERM is macOS privacy; any other
+            # refusal is a folder's mode or ACL, said once on the listable line when the root itself could not
+            # be read, else the person's fix naming the folder below the root that refuses a search
+            if exc.errno == errno.EPERM:
+                out.append(_bad(f"{base}.sentinel", f"{sentinel}: not permitted (TCC)", fix=_fda_fix(image)))
+            elif unread is not None:
+                out.append(
+                    _ok(
+                        f"{base}.sentinel",
+                        f"{sentinel} not checked: {shown} cannot be read ({unread}); the listable line above "
+                        "says what to do",
+                    )
+                )
+            else:
+                out.append(
+                    _bad(f"{base}.sentinel", f"{sentinel}: permission denied", fix=_parent_fix(target))
+                )
         except OSError as exc:
             # Any other answer (the path is a file, an I/O error, a sync app that stopped answering) is this
             # line's own: leaving the check with it cost the source its other lines and their fixes.
@@ -3215,11 +3241,14 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
     # The value is the APFS volume's UUID (getattrlist ATTR_VOL_UUID of the mount point), for a File Provider
     # domain as for a plain folder: nothing in it is the domain's, so it is labelled as what it is.
     kind = "volume"
-    if not listed and _is_missing(root):
+    if not listed and (looped or _is_missing(root)):
+        # a dangling or looping link at the kept inbox is not a folder here too, as the listable row and
+        # inbox state say, never "missing" (B13 round 46 C3009 with C3094, ruling 204)
+        said = "is missing" if typed_inbox is None else "is not a folder"
         out.append(
             _bad(
                 f"{base}.volume",
-                f"{kind} UUID not checked: {shown} is missing",
+                f"{kind} UUID not checked: {shown} {said}",
                 fix=missing_fix() if typed_inbox is None else inbox_not_a_folder_fix(typed_inbox),
             )
         )
