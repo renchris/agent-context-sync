@@ -48055,6 +48055,7 @@ opening), never `inbox_not_a_folder_fix` or step 2 (makes worse True for those).
 sits on a volume), and a local source keeps `is not a directory`. Test:
 `test_a_second_inbox_that_is_not_a_folder_reads_not_a_folder_with_its_own_remedy_c3215` (eleven kinds of entry, under
 a timeout).
+
 **A kept inbox linked to a real folder is shown by its typed path** (C3217; ruling 210; amends §16.282 C2807). The
 source on the kept inbox stores canonical_source_root's answer, the link's target, so with a link to a real folder
 there inbox_state said `live <home>/agent-context/inbox` while doctor's listable row, AGENTS.md and CLAUDE.md named the
@@ -48066,6 +48067,7 @@ fix keep the resolved root, the folder a grant or a chmod reaches (an unread lin
 `config.live_inbox` returns the typed folder on its kept branch, still matched by same_folder; its two callers only
 show it. Tests: `test_a_kept_inbox_linked_to_a_real_folder_is_shown_by_its_typed_path_c3217` (eleven kinds of entry,
 under a timeout) and the C2807 test's link-to-folder rows, which now name the typed path.
+
 **Doctor probes no sentinel or volume under a kept inbox that is not a folder** (C3313 with C3253 and C3256; ruling
 210; amends §16.282 C2809 and §16.287 C3094). The volume guard skipped the probe only for a dangling or looping link,
 so a file or a link to a file at the kept inbox printed a volume UUID, and a configured sentinel was probed under the
@@ -48077,6 +48079,7 @@ folder` with `inbox_not_a_folder_fix`. The flag is never keyed on NotADirectoryE
 `[[source]]` whose path is a file keeps `is not a directory` and both probes. Tests:
 `test_doctor_checks_no_sentinel_or_volume_under_a_kept_inbox_that_is_not_a_folder_c3313` (eleven kinds of entry,
 under a timeout) and the C2809 test (a sentinel axis, the volume row asserted for every entry).
+
 **The sentinel row's fix names the sentinel when nothing above it refuses a search** (C3252; ruling 210; amends
 §16.287 C3043). An EACCES on a sentinel under a listable root always got `_parent_fix(<sentinel>)`, which, with no
 folder above refusing, called the sentinel `the folder` and asked for read, write and search access. The fix is now
@@ -48087,6 +48090,7 @@ ACL`, the person's, "the sentinel" since an entry that cannot be stat'd may be a
 attributes alone, and `ls -le` is refused under a deny-readattr ACL too (measured), so `_search_fix`'s file wording is
 never used (makes worse True for it). Test: `test_the_sentinel_rows_fix_names_the_sentinel_when_nothing_above_refuses_c3252`
 (ten kinds of entry at the sentinel's name and a deny-readattr ACL, macOS only, under a timeout).
+
 **The inbox heartbeat warn points at the listable row while the kept inbox is not a folder** (C3218; ruling 210;
 amends §16.22's doctor `heartbeat.<id>` item). With the kept inbox not a folder every pass is incomplete, and after 3
 the warn's fix read `sync -v; a full pass that lists all of <id> clears this` (under install.sh,
