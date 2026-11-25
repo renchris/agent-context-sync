@@ -383,6 +383,34 @@ def test_setup_makes_what_is_inside_its_folders_owner_only_before_status_looks(
     assert "tightened" not in capsys.readouterr().out, "nothing left to say on the next run"
 
 
+def _a_mirror_page(config: Config) -> Path:
+    return sorted(p for p in (config.docs_repo / "mirror").rglob("*.md") if p.name != "CLAUDE.md")[0]
+
+
+def test_the_lints_checkout_command_puts_a_hand_edited_page_back_owner_only_c3226(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 47 C3226, ruling 212: the hand-edit finding said ``git checkout -- <page>``, and git writes a
+    working-tree file under the shell's umask, so under umask 022 the page came back 644 and status failed
+    docs_repo.permissions. The printed command, run as typed under umask 022, leaves it 600 and status OK."""
+    assert cli.main(["sync", "--once", "--config", str(initialised.config_path)]) == cli.EXIT_OK
+    capsys.readouterr()
+    repo, page = initialised.docs_repo, _a_mirror_page(initialised)
+    page.write_text(page.read_text(encoding="utf-8") + "\nedited by an agent\n", encoding="utf-8")
+    [finding] = [f for f in lints.lint_mirror_frontmatter(repo) if "rendered_sha256" in f.message]
+    command = re.fullmatch(r".*restore it with `(.+)`", finding.message)
+    assert command is not None, finding.message
+    assert command[1].startswith("(umask 077 && git -C "), command[1]
+    old = os.umask(0o022)
+    try:
+        subprocess.run(command[1], shell=True, check=True, capture_output=True)
+    finally:
+        os.umask(old)
+    assert stat.S_IMODE(page.stat().st_mode) == 0o600
+    assert git(repo, "status", "--porcelain") == ""
+    assert doctor._check_permissions(initialised)[0].ok
+
+
 @pytest.mark.parametrize(
     ("key", "spelled"),
     [("log_dir", "{home}"), ("log_dir", "{home}/x/.."), ("cache_dir", "{home}"), ("state_dir", "{home}")],

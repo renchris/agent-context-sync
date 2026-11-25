@@ -47773,6 +47773,18 @@ and tabs, so `invalid<CR>750` and `7<CR>500` are no run while a CRLF-ended trail
 other run_git caller keeps text mode. Tests: the C2920 test's `invalid<CR>750`, `7<CR>500` and verbatim CRLF rows, and
 `test_run_git_raw_keeps_a_lone_cr_that_text_mode_turns_into_lf_c3310`.
 
+**A page the land gate tells you to put back stays owner-only** (C3226; ruling 212). The hand-edit finding said
+``restore it with `git checkout -- <page>` ``, and git writes a working-tree file under the shell's umask whatever
+`core.sharedRepository` says, so under umask 022 the page came back 644, status failed docs_repo.permissions, and no
+sync cleared it: `Publisher._write_bytes` returned early on unchanged bytes. The finding now reads ``restore it with
+`(umask 077 && git -C <docs_repo> checkout -- '<page>')` ``, both paths written as doctor writes a path in a fix
+(`lints._checkout_advice`). `_write_bytes`, on a regular file whose bytes are unchanged, clears its group and other
+bits through one descriptor opened with `O_NOFOLLOW` before it returns False (`publish._owner_only`), bounded by the
+pages a sync already writes, still no change and no commit. Tests: `test_hand_edited_body_is_blocking`,
+`test_the_lints_checkout_command_puts_a_hand_edited_page_back_owner_only_c3226` (the printed command under umask
+022, then docs_repo.permissions OK) and
+`test_a_page_republished_with_unchanged_bytes_is_made_owner_only_and_is_no_change_c3226`.
+
 ### 16.293 Round 47: the converters: ruling 202's Office twins closed (UTF-32 text, a no-namespace `<Types>`, the container answers before the cache, xlsx's emitter 1.0.7) and one noun per family (2026-11-25, wave B13 round 47 lane E)
 
 Round 47's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 47"; specs `round47/items/C<n>.md`, the

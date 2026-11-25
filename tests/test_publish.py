@@ -1401,6 +1401,18 @@ def test_restore_then_republish(env: Env) -> None:
     assert parse_mirror_page(env.text("mirror/src/a.docx.md"))[0].status is PageStatus.CURRENT
 
 
+def test_a_page_republished_with_unchanged_bytes_is_made_owner_only_and_is_no_change_c3226(env: Env) -> None:
+    """B13 round 47 C3226, ruling 212: a page whose bytes are unchanged is not written again, so one a ``git
+    checkout`` under umask 022 put back at 644 kept that mode through every sync. Republishing it now clears
+    its group and other bits, and it is still no change, so no commit."""
+    row = env.observe("vol:1", "a.docx")
+    [first] = env.publish(row, result(unit()))
+    page = env.repo / first.path
+    page.chmod(0o644)
+    assert env.publish(row, result(unit())) == []
+    assert page.stat().st_mode & 0o777 == 0o600
+
+
 def test_reap_removes_due_tombstones_only(env: Env) -> None:
     a = env.observe("vol:1", "deep/dir/a.docx")
     b = env.observe("vol:2", "b.docx")

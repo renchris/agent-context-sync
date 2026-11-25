@@ -246,6 +246,16 @@ def lint_no_symlinks(repo: Path) -> list[LintFinding]:
     return _sorted(findings)
 
 
+def _checkout_advice(repo: Path, path: str) -> str:
+    """The command that puts a hand-edited page back: ``git checkout`` under ``umask 077`` in a subshell,
+    since git writes a working-tree file under the shell's umask whatever ``core.sharedRepository`` says, so a
+    plain checkout under umask 022 left the page 644 and docs_repo.permissions failing (B13 round 47 C3226,
+    ruling 212). Both paths are written as doctor writes a path in a fix."""
+    from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module
+
+    return f"(umask 077 && git -C {doctor._shell_path(repo)} checkout -- {doctor._quoted(path)})"
+
+
 def _lint_one_page(repo: Path, path: str) -> list[LintFinding]:
     full = repo / path
     if full.is_symlink() or not full.is_file():
@@ -288,7 +298,7 @@ def _lint_one_page(repo: Path, path: str) -> list[LintFinding]:
                 "FRONTMATTER",
                 path,
                 f"body does not match rendered_sha256: {top}/ is written only by agentsync (hand edit?); "
-                f"restore it with `git checkout -- {path}`",
+                f"restore it with `{_checkout_advice(repo, path)}`",
             )
         )
     # A tombstone opens with the banner, then its heading (B13 round 4 Q9); one written before that opens

@@ -22,6 +22,7 @@ import re
 import secrets
 import shlex
 import shutil
+import stat
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -843,6 +844,21 @@ def render_archive_page(
     return render_mirror_page(_with_trust(fm), body)
 
 
+def _owner_only(path: Path) -> None:
+    """Clear the group and other bits of the regular file at ``path``, read and changed through one
+    descriptor opened without following a link (cycle's ``_clear_group_other``, which publish cannot import).
+    A page whose bytes are unchanged is not written again, so one a ``git checkout`` under umask 022 put back
+    at 644 kept that mode through every sync (B13 round 47 C3226, ruling 212). A symlink swapped in is ELOOP,
+    which the caller treats as a page to write again."""
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    try:
+        mode = os.fstat(fd).st_mode
+        if stat.S_ISREG(mode) and mode & 0o077:
+            os.fchmod(fd, stat.S_IMODE(mode) & 0o700)
+    finally:
+        os.close(fd)
+
+
 # ---------------------------------------------------------------------------------------------------------
 # the publisher
 # ---------------------------------------------------------------------------------------------------------
@@ -900,6 +916,7 @@ class Publisher:
         elif path.is_file():
             try:
                 if path.stat().st_size == len(data) and path.read_bytes() == data:
+                    _owner_only(path)
                     return False
             except OSError:
                 pass

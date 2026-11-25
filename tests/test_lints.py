@@ -15,6 +15,7 @@ import pytest
 from agentsync import gitops, lints, slug
 from agentsync.frontmatter import MirrorFrontmatter, render_mirror_page
 from agentsync.model import LintFinding, PageStatus, RenderedUnit, UnitKind
+from agentsync.ops import doctor
 from agentsync.ops.launchd import LAUNCHD_PATH
 from agentsync.policy import UNTRUSTED_BANNER
 from conftest import copy_docs_repo
@@ -211,7 +212,9 @@ def test_hand_edited_body_is_blocking(repo: Path) -> None:
     write(repo, "mirror/src/a.docx.md", page().replace("hello", "hello, edited by an agent"))
     [finding] = lints.lint_mirror_frontmatter(repo)
     assert finding.blocking and "rendered_sha256" in finding.message
-    assert "git checkout -- mirror/src/a.docx.md" in finding.message
+    # B13 round 47 C3226, ruling 212: git writes the page under the shell's umask, so the command sets 077
+    command = f"(umask 077 && git -C {doctor._shell_path(repo)} checkout -- 'mirror/src/a.docx.md')"
+    assert finding.message.endswith(f"restore it with `{command}`")
 
 
 def test_body_without_trailing_newline_hash_is_accepted(repo: Path) -> None:
