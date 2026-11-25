@@ -9347,6 +9347,22 @@ _ROUND_47_E_PARAGRAPH_AMENDS = (
 """Round 47 lane E's dated lines no one claim holds alone: C3262's at §7's cache sentence and at §16.3's
 encrypted-files sentence, the rule said once by name and bytes beside the C3101 lines kept as written (B13
 round 47 C3262 with C3275, C3320 and C3329, ruling 215)."""
+
+
+_ROUND_47_RB_PARAGRAPH_AMENDS = (
+    ("16.29", "- The list is what it was: sorted, at most 200, then `(N more)`.", "§16.291 C3332, C3336"),
+    ("16.300", "No new stdout line: the `(N more)` line is unchanged", "§16.291 C3336"),
+    (
+        "16.281",
+        "**The person's none is honored at every NEXT that would ask for folders again, never over a failed",
+        "§16.291 C3332, C3206",
+    ),
+    ("16.286", "**A bare run's no-folder NEXT is install.sh's own**", "§16.291 C3332"),
+)
+"""Round 47 lane RB's dated lines: C3332's and C3336's under §16.29's list bullet (the paused and retired
+marks, every top folder past the cap), C3336's under §16.300.18's list options, C3332 with C3206 under
+§16.281's ruling 191 paragraph (the held folder's path, step 2's own nothing-to-draft NEXT) and C3332 under
+§16.286's C3003 paragraph."""
 _ROUND_46_RB_PARAGRAPH_AMENDS = (
     (
         "16.67",
@@ -9667,6 +9683,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_46_E_PARAGRAPH_AMENDS,
         *_ROUND_46_RB_PARAGRAPH_AMENDS,
         *_ROUND_47_E_PARAGRAPH_AMENDS,
+        *_ROUND_47_RB_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")

@@ -8946,6 +8946,10 @@ NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: run install.s
 
 - The list is what it was: sorted, at most 200, then `(N more)`. A mark goes before the path, so the path
   still ends the line and an unmarked line still starts with `/`.
+  Amended 2026-11-25, §16.291 C3332, C3336: a folder sources.toml holds paused or retired is marked `[paused] ` or
+  `[retired] ` (`[synced]` wins), never counted as synced, and one the list does not hold prints as its own row first;
+  under the default cap every top folder is listed, past 200 too, and only deeper rows are cut (an explicit `--limit
+  N` stays at most N).
 - **A folder inside or around a synced one has a mark of its own** (review, 2026-10-07). A sync reads the
   whole tree under a source. So a listed folder inside a synced folder is synced already, and it has
   `[inside a synced folder] ` before its path (`INSIDE_MARK`). A listed folder that holds a synced one has
@@ -46273,6 +46277,9 @@ still turns it the person's choice; loop.py's rule 2 is unchanged. Tests:
 `test_both_held_folder_readers_read_as_the_loader_does_c3003`, and the bare re-run rows of
 `test_no_folder_turns_status_no_folder_next_into_the_persons_choice_c2910` and
 `test_a_bare_rerun_counts_a_paused_or_retired_folder_and_syncs_c2700`.
+Amended 2026-11-25, §16.291 C3332, C3206: each held folder in that clause reads `<id> (<state>) at <path>`, and with
+EXIT_RC 0 and no `--no-folder` step 2's own `nothing to draft yet` NEXT names its `<SELF><BASE_ARGS> --source-local
+"<folder>"` run in place of add-source, loop.py's words unchanged.
 
 **A state read that did not finish says so, and the shell report never guesses the inbox** (C2948 with C2868 and
 C2935, C2810, C2808's installer half; ruling 194; data integrity; makes worse True for an explicit live line and for
@@ -47121,6 +47128,8 @@ and the q_word comment already say; both reports register that word's UTF-8 and 
 **A bare run's no-folder NEXT is install.sh's own** (C3003; amends ruling 191, dated line there). A bare run that
 ends 0 on status's rule-2 opener ends on the `--source-local` form, with `; not live: <id> (<state>), ...` naming each
 paused or retired folder as the person's edit of sources.toml; lane RA mirrors it in `_install_sh_said_no_folder`.
+Amended 2026-11-25, §16.291 C3332: each folder in `; not live: ...` reads `<id> (<state>) at <path>`, the path
+escaped as the folder list escapes it, in install.sh and `_install_sh_said_no_folder` alike.
 
 **The shell report marks a config path that is not a file `(exists)`** (C3019). Something at the config path that
 is not a file reads `(exists)` with `- loads: no: it is a folder or something else that is not a file` and no table
@@ -47535,7 +47544,46 @@ Reserved for round 47 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round
 
 ### 16.291 Round 47: the installer: the shell halves of rulings 206 and 207, a file at the docs repo's path the person's to move aside, paused and retired folders marked in step 1's list, and C2060 waits on the operator (2026-11-25, wave B13 round 47 lane RB)
 
-Reserved for round 47 lane RB of B13.
+Wave B13 round 47 lane RB builds install.sh's halves of the lead's rulings 206 to 216 and the installer items of round
+47's rehearsal, review and harvest (`docs/plans/bring-back-ocr.md`, "B13 round 47"; each item the verifier's
+corrected fix). A dated line this round writes reads `Amended 2026-11-25, §16.291 C<n>`.
+
+**A paused or retired folder is marked in step 1's list and never offered as a folder to add** (C3332 with C3269;
+ruling 214; turn; dated lines under §16.29's list bullet and §16.281's and §16.286's C3003 lines). synced_folders collects
+the non-inbox sources sources.toml holds that are not live; a listed row whose folder matches one by the synced set's
+key() and provider_link_resolved is marked `[paused] ` or `[retired] ` (PAUSED_MARK, RETIRED_MARK, `[synced]`
+winning), one the list does not hold prints as its own row first, and none is counted in `synced` or line 1; the
+`--json` row carries `"state": "paused"` or `"retired"`. When such a row is shown the exit-0 NEXT ends `; a folder
+marked [paused] or [retired] above is in sources.toml but not synced, and --source-local leaves it so: setting a
+folder to live is the person's own edit of sources.toml, never the agent's`, and a pasted marked row is refused at
+exit 2 as a pasted `[synced]` row is. held_sources_clause names each held folder `<id> (<state>) at <path>`, the path
+escaped as the list escapes it, and setup_report._install_sh_said_no_folder builds the same items, braces doubled for
+its later format; both install.out readers (`listed_folder_lines`, `setup_report._LIST_MARKS`) strip the two marks.
+Step 2 over a paused folder prints `already configured: source ... (local, paused)` and exits 0 on that NEXT
+(C3269). Tests: `test_install_list.py::test_a_paused_or_retired_folder_is_marked_and_never_counted_c3332`,
+`test_setup_report.py::test_the_report_names_each_held_folder_as_install_sh_does_c3332`,
+`test_install_oneshot.py::test_step_2_over_a_paused_folder_says_already_configured_and_the_held_clause_c3269` and
+`test_both_held_folder_readers_read_as_the_loader_does_c3003`,
+`test_report_redaction.py::test_both_reports_cut_a_folder_step_1_marked_paused_or_retired_c3332`.
+
+**Step 2's nothing-to-draft NEXT names its own `--source-local` run** (C3206; makes worse True for changing loop.py's
+words; amends ruling 191's NEXT, dated line at §16.281). With EXIT_RC 0 and no `--no-folder`, the `(`
+`` `~/.local/bin/agentsync add-source "<folder>"` `` `)` of loop.py's `nothing to draft yet` NEXT becomes
+`(<SELF><BASE_ARGS> --source-local "<folder>", one --source-local per folder)`, an inbox clause kept; a plain
+`agentsync sync` outside setup keeps loop.py's add-source words. Tests:
+`test_install_oneshot.py::test_step_2s_nothing_to_draft_next_names_its_source_local_run_c3206` and
+`test_a_failed_step_2_never_names_the_source_local_run_for_nothing_to_draft_c3206`.
+
+**A cut folder list keeps every top folder** (C3336's installer half; ruling 216; dated lines under §16.29's list
+bullet and §16.300.18's options). Under the default cap every depth-1 row (each provider's top folders and each library) is
+listed, past 200 too, and only deeper rows are cut; an explicit `--limit N` stays at most N, and `(N more)` and the
+NEXT's `past the first M` count from the rows shown. Tests:
+`test_install_list.py::test_a_cut_list_keeps_every_top_folder_before_subfolders_c3336` and
+`test_the_default_cap_lists_every_top_folder_past_200_c3336`.
+
+**The --no-folder swap's comment names C3003's rewrite** (C3282 with C3309). The comment over the swap no longer says a
+bare run keeps status's rule-2 NEXT; COMMON.md's ruling 191 text stays as its dated line amends it (ruling 213).
+Test: `test_install_oneshot.py::test_the_no_folder_swaps_comment_names_c3003s_rewrite_above_it_c3282`.
 
 ### 16.292 Round 47: a reader keeps the bytes its writer wrote, the kept inbox's state decided by one check and told in one phrase, a file at the docs repo's path the person's, and the land gate's block naming its fix (2026-11-25, wave B13 round 47 lane B)
 
@@ -48305,6 +48353,9 @@ more than 9 digits lists every folder. A re-run the list's NEXT names repeats th
 
 No new stdout line: the `(N more)` line is unchanged, and only when folders are left out does the exit-0 NEXT end
 with `; N folders past the first M are not listed: <install.sh> --list-folders --all` (`1 folder ... is`).
+Amended 2026-11-25, §16.291 C3336: the default cap of 200 keeps every top folder (each provider's and library's
+depth-1 rows), past 200 too, and cuts only deeper rows; `--limit N` stays at most N, and `(N more)` and the NEXT's
+`past the first M` count from the rows shown.
 
 The list's escape (`LIST_ESC_AWK`, one awk predicate under `LC_ALL=C` that bash 3.2 runs with no Python) also covers
 the bidi and zero-width characters U+200B-U+200F, U+202A-U+202E, U+2060, U+2066-U+2069, U+FEFF and U+061C: such a
