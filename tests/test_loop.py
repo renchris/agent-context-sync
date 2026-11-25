@@ -3492,6 +3492,56 @@ def test_doctor_checks_no_sentinel_or_volume_under_a_kept_inbox_that_is_not_a_fo
         assert not any("not checked" in d for d in details), details
 
 
+@pytest.mark.parametrize("entry", sorted(_ENTRY_KINDS))
+def test_the_inbox_heartbeat_warn_points_at_the_listable_row_when_not_a_folder_c3218(
+    tmp_path: Path, entry: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 47 C3218 (ruling 210): with the kept inbox not a folder, every pass is incomplete, and after
+    3 the heartbeat warn's fix said ``sync -v; a full pass that lists all of inbox clears this`` (install.sh's
+    note, that its own sync is that walk), which no sync can do. Over every kind of entry the check returns
+    and raises nothing; one that is not a folder keeps ``deletions held`` and its fix names
+    ``source.<id>.listable``, on status's path and install's alike, and below 3 passes the ok line points
+    there in place of ``a warn after 3``."""
+    root = tmp_path / "Contoso Gamma"
+    (root / "Gamma Empty").mkdir(parents=True)
+    config = _synced(tmp_path, root)
+    config, box = ensure_inbox(config.config_path)
+    assert box is not None and run_cycle(config, mode=None).exit_code == 0
+    kept = config.docs_repo.parent / "inbox"
+    kept.rename(tmp_path / "inbox-moved")  # moved aside, never removed
+    locked = _put_entry(kept, entry)
+    name = f"heartbeat.{box.id}"
+    pointer = f"source.{box.id}.listable says what to do: no sync lists {box.id} until it is a folder again"
+    try:
+        if locked and os.access(locked[0], os.X_OK):
+            pytest.skip("this account searches a mode-0 folder")
+        with _bounded(90):
+            config = load_config(config.config_path)
+            assert run_cycle(config, mode=None).exit_code == 0
+            first = {r.name: r for r in doctor._check_heartbeat(config)}[name]
+            for _ in range(2):
+                assert run_cycle(config, mode=None).exit_code == 0
+            rows = [
+                {r.name: r for r in doctor._check_heartbeat(config)}[name],
+                {r.name: r for r in doctor._check_heartbeat(config, loop_checks=(name,))}[name],
+            ]
+            monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")
+            rows.append({r.name: r for r in doctor._check_heartbeat(config, loop_checks=())}[name])
+    finally:
+        for folder in locked:
+            folder.chmod(0o700)
+    if _ENTRY_KINDS[entry] != INBOX_ENTRY_NOT_A_FOLDER:
+        for row in (first, *rows):
+            assert pointer not in row.detail + (row.fix or ""), row
+        return
+    assert first.ok and first.detail.endswith(f"deletions held; {pointer}"), first
+    assert "a warn after" not in first.detail, first
+    for row in rows:
+        assert not row.ok and row.severity is Severity.WARN and "deletions held" in row.detail, row
+        assert row.fix == pointer and row.note is None, row
+        assert "sync -v" not in row.fix and "(" not in row.fix, row
+
+
 def test_an_empty_draft_over_an_empty_mirror_is_rule_4_beside_topic_pages_c2707(tmp_path: Path) -> None:
     """B13 round 44 C2707 (ruling 181): with a hand-written topic page, an empty draft over a mirror with no
     converted page skipped rule 4 (``not pages``) and reached rule 5, which pointed at WAITING ON YOU lines

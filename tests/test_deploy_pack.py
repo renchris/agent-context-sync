@@ -9715,12 +9715,13 @@ _ROUND_47_B_PARAGRAPH_AMENDS = (
         "§16.292 C3214, C3229, C3259",
     ),
     ("16.21", "2. `loop.status_line(config)`: `loop: skill <current|stale|missing>", "§16.292 C3257"),
+    ("16.22", "doctor `heartbeat.<id>` (incomplete for 3 passes or more) names no folder", "§16.292 C3218"),
 )
 """Round 47 lane B's dated lines: C3227's at §14's item 13, STATE.md's blocking-finding step, now
 ``loop.land_gate_step``'s words (B13 round 47 C3227, ruling 212); C3216's under §16.287's C3004 paragraph, its
 two WARNINGs naming the path once; C3214's under the C2813 and C3010 paragraphs, the settle-window line
 without its ``note: `` head; C3257's at §16.21's item 2, the loop line's ``inbox not a folder`` and ``?``
-(ruling 210)."""
+(ruling 210); C3218's at §16.22's heartbeat bullet, the inbox warn's pointer at ``source.<id>.listable``."""
 _ROUND_45_RB_PARAGRAPH_AMENDS = (
     (
         "16.116",

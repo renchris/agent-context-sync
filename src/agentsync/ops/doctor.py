@@ -4228,6 +4228,13 @@ def _check_heartbeat(
         last = entry.get("last_success_at")
         age = _age_s(last, now)
         incomplete = entry.get("consecutive_incomplete")
+        # the inbox on the kept folder while its entry is not a folder: the listable row has the person's
+        # remedy, and no sync lists it until then, so neither "sync -v" nor install's walk-next note is said;
+        # the one test, an lstat, never a listing (B13 round 47 C3218, ruling 210)
+        not_folder = src.kind is SourceKind.INBOX and kept_inbox_not_a_folder(config, src) is not None
+        pointer = (
+            f"source.{src.id}.listable says what to do: no sync lists {src.id} until it is a folder again"
+        )
         if age is None:
             out.append(_bad(name, "no successful pass yet", Severity.WARN, fix=f"{BIN} sync -v"))
         elif age > limit:
@@ -4259,6 +4266,9 @@ def _check_heartbeat(
             # an inbox pass is always full, so install's step-6 sync is that walk too. The setup report
             # (no loop_checks) runs after that sync, so an inbox there keeps ``sync -v``, which names a
             # cause no plain sync clears (B13 round 9 K75).
+            if not_folder:
+                out.append(_bad(name, detail, Severity.WARN, fix=pointer))
+                continue
             in_install = os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1"
             walked_next = src.kind is SourceKind.LOCAL or (
                 src.kind is SourceKind.INBOX and loop_checks is not None
@@ -4286,6 +4296,8 @@ def _check_heartbeat(
                     # actor-free, as the loop's: the FAIL's fix and NEXT say whose it is (B13 round 33 C746)
                     # and, under a lost hold, both lines that say what to do first (B13 round 38 C1428)
                     detail += f"; {stopped_listing_clause(stopped)}{loop.lost_hold_first(config, stopped)}"
+                elif not_folder:
+                    detail += f"; {pointer}"
                 else:
                     detail += f", a warn after {_INCOMPLETE_RUNS}"
             out.append(_ok(name, detail))

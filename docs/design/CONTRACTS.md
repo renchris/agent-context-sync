@@ -6540,6 +6540,8 @@ or empty for this case (a source sat incomplete for 900 passes):
   always full); the "a plain sync may run a delta" reason is withdrawn. The setup report's inbox keeps `sync -v`.
   Amended 2026-10-17, §16.107 O51: a Graph source and an inbox read `agentsync sync -v; a full pass that lists all
   of <id> clears this`, no bracket inside the line's own.
+  Amended 2026-11-25, §16.292 C3218: the inbox on the kept folder while its entry is not a folder reads `source.<id>.listable
+  says what to do: no sync lists <id> until it is a folder again`, on status's path and install's alike, never the note.
 - `walk` logs a zero-child cloud folder at info, not warning. The scan's one alarm still names the first five
   each pass (logged at warning, printed by `sync -v`, kept in STATE.md). **Amended 2026-10-11, §16.39 N28:**
   that alarm is printed and kept, not logged; a folder whose listing failed is logged at info too, and one
@@ -48077,6 +48079,17 @@ ACL`, the person's, "the sentinel" since an entry that cannot be stat'd may be a
 attributes alone, and `ls -le` is refused under a deny-readattr ACL too (measured), so `_search_fix`'s file wording is
 never used (makes worse True for it). Test: `test_the_sentinel_rows_fix_names_the_sentinel_when_nothing_above_refuses_c3252`
 (ten kinds of entry at the sentinel's name and a deny-readattr ACL, macOS only, under a timeout).
+**The inbox heartbeat warn points at the listable row while the kept inbox is not a folder** (C3218; ruling 210;
+amends §16.22's doctor `heartbeat.<id>` item). With the kept inbox not a folder every pass is incomplete, and after 3
+the warn's fix read `sync -v; a full pass that lists all of <id> clears this` (under install.sh,
+`_LISTING_YOURS_NOTE`, that its own sync is that walk), which no sync can do. `_check_heartbeat` decides the state by
+the one test, `config.kept_inbox_not_a_folder` (an lstat, never a listing), and the warn keeps its detail, `deletions
+held` included (install.sh's cleared_listings finds the line by it), with the fix `source.<id>.listable says what to
+do: no sync lists <id> until it is a folder again`, the row named, never "above" (the setup report's Doctor section
+may show none above), no bracket inside, and never the note; below 3 passes the ok line ends `; <that pointer>` in
+place of `, a warn after 3`. Graph and local sources and any other inbox keep their fixes. Test:
+`test_the_inbox_heartbeat_warn_points_at_the_listable_row_when_not_a_folder_c3218` (eleven kinds of entry, status's and
+install's paths, under a timeout).
 
 ### 16.293 Round 47: the converters: ruling 202's Office twins closed (UTF-32 text, a no-namespace `<Types>`, the container answers before the cache, xlsx's emitter 1.0.7) and one noun per family (2026-11-25, wave B13 round 47 lane E)
 
