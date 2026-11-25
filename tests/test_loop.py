@@ -3441,6 +3441,57 @@ def test_a_kept_inbox_linked_to_a_real_folder_is_shown_by_its_typed_path_c3217(
             assert "contoso-" not in text, text
 
 
+@pytest.mark.parametrize("entry", sorted(_ENTRY_KINDS))
+def test_doctor_checks_no_sentinel_or_volume_under_a_kept_inbox_that_is_not_a_folder_c3313(
+    tmp_path: Path, entry: str
+) -> None:
+    """B13 round 47 C3313 with C3253 and C3256 (ruling 210): over a file or a link to a file at the kept inbox
+    doctor printed a volume UUID, and a configured sentinel was probed under the link's target. Over every
+    kind of entry the rows return and raise nothing; one that is not a folder gets ``<inbox>/<sentinel> not
+    checked: <inbox> is not a folder`` and ``volume UUID not checked: <inbox> is not a folder``, spelled from
+    the typed path; a folder or a link to one keeps both probes, and so does an ordinary source on a file."""
+    root = tmp_path / "Contoso Gamma"
+    (root / "Gamma Empty").mkdir(parents=True)
+    config = _synced(tmp_path, root)
+    config, box = ensure_inbox(config.config_path)
+    assert box is not None
+    kept = config.docs_repo.parent / "inbox"
+    kept.rename(tmp_path / "inbox-moved")  # moved aside, never removed
+    locked = _put_entry(kept, entry)
+    try:
+        if locked and os.access(locked[0], os.X_OK):
+            pytest.skip("this account searches a mode-0 folder")
+        with _bounded(30):
+            config = load_config(config.config_path)
+            on = dataclasses.replace(config.source(box.id), sentinel="README.txt")
+            rows = {r.name: r for r in doctor._check_local_source(config, on, Path(sys.executable))}
+            plain = doctor._check_local_source(
+                config, dataclasses.replace(on, kind=SourceKind.LOCAL), Path(sys.executable)
+            )
+    finally:
+        for folder in locked:
+            folder.chmod(0o700)
+    sentinel, volume = rows[f"source.{box.id}.sentinel"], rows[f"source.{box.id}.volume"]
+    if _ENTRY_KINDS[entry] == INBOX_ENTRY_NOT_A_FOLDER:
+        assert sentinel.ok and sentinel.detail == (
+            f"{doctor.list_spelling(kept / 'README.txt')} not checked: {doctor.list_spelling(kept)} is not a "
+            "folder; the listable line above says what to do"
+        ), sentinel
+        assert volume.detail == f"volume UUID not checked: {doctor.list_spelling(kept)} is not a folder"
+        assert not volume.ok and volume.fix == doctor.inbox_not_a_folder_fix(kept), volume
+        for row in rows.values():
+            assert "contoso-" not in row.detail + (row.fix or ""), row
+    else:
+        assert "is not a folder" not in sentinel.detail + volume.detail, (sentinel, volume)
+    if entry in ("folder", "link-to-folder"):  # both probes as before
+        assert not sentinel.ok and "README.txt is missing" in sentinel.detail, sentinel
+        assert volume.ok and volume.detail.startswith("volume UUID "), volume
+    if entry == "file":  # an ordinary source on a file keeps its own rows and probes
+        details = [r.detail for r in plain]
+        assert any(d.endswith("is not a directory") for d in details), details
+        assert not any("not checked" in d for d in details), details
+
+
 def test_an_empty_draft_over_an_empty_mirror_is_rule_4_beside_topic_pages_c2707(tmp_path: Path) -> None:
     """B13 round 44 C2707 (ruling 181): with a hand-written topic page, an empty draft over a mirror with no
     converted page skipped rule 4 (``not pages``) and reached rule 5, which pointed at WAITING ON YOU lines

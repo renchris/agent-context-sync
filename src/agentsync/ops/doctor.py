@@ -3108,7 +3108,10 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
     out: list[CheckResult] = []
     listed = False
     unread: str | None = None  # why the listing could not read the folder, for the volume row (C2808)
-    looped = False  # the kept inbox's entry is a link the listing could not follow (a loop; C3094)
+    # the kept inbox's entry is not a folder and the listing failed on it (a file, a link that does not lead
+    # to a folder, a loop; C3094): the sentinel and volume rows say so, never probing the link's target (B13
+    # round 47 C3313 with C3253 and C3256); an ordinary source keeps its probes
+    not_folder = False
     try:
         first = call_with_timeout(lambda: _first_entry(root), _LISTING_TIMEOUT_S, name="doctor-listing")
         listed = True
@@ -3159,6 +3162,7 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
         return out
     except (FileNotFoundError, NotADirectoryError) as exc:
         if typed_inbox is not None:
+            not_folder = True
             out.append(
                 _bad(f"{base}.listable", f"{shown} is not a folder", fix=inbox_not_a_folder_fix(typed_inbox))
             )
@@ -3208,7 +3212,7 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
             # keyed on config.kept_inbox_not_a_folder's answer, never on ELOOP alone: a looping link at the
             # kept inbox is not a folder, as status and step 2 say, while a loop under any other source keeps
             # the generic row (B13 round 46 C3094, ruling 204); the volume row below says the same, no probe
-            looped = True
+            not_folder = True
             out.append(
                 _bad(f"{base}.listable", f"{shown} is not a folder", fix=inbox_not_a_folder_fix(typed_inbox))
             )
@@ -3216,7 +3220,17 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
             unread = (exc.strerror or type(exc).__name__).lower()
             out.append(_bad(f"{base}.listable", f"{shown}: {exc.strerror or exc}", fix=look_fix))
 
-    if src.sentinel:
+    if src.sentinel and not_folder:
+        assert typed_inbox is not None
+        # spelled from the folder as typed, never root (the link's target)
+        out.append(
+            _ok(
+                f"{base}.sentinel",
+                f"{list_spelling(typed_inbox / src.sentinel)} not checked: {shown} is not a folder; the "
+                "listable line above says what to do",
+            )
+        )
+    elif src.sentinel:
         target = root / src.sentinel
         sentinel = list_spelling(target)  # never raw (C1414)
         try:
@@ -3273,9 +3287,10 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
     # The value is the APFS volume's UUID (getattrlist ATTR_VOL_UUID of the mount point), for a File Provider
     # domain as for a plain folder: nothing in it is the domain's, so it is labelled as what it is.
     kind = "volume"
-    if not listed and (looped or _is_missing(root)):
-        # a dangling or looping link at the kept inbox is not a folder here too, as the listable row and
-        # inbox state say, never "missing" (B13 round 46 C3009 with C3094, ruling 204)
+    if not listed and (not_folder or (typed_inbox is None and _is_missing(root))):
+        # an entry at the kept inbox that is not a folder is not a folder here too, as the listable row and
+        # inbox state say, never "missing" or a UUID (B13 round 46 C3009 with C3094, ruling 204; round 47
+        # C3256)
         said = "is missing" if typed_inbox is None else "is not a folder"
         out.append(
             _bad(

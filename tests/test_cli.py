@@ -4272,10 +4272,11 @@ def test_a_value_in_the_file_under_another_accounts_home_is_a_config_error_c3039
 _LOOPS = ("self-link", "absolute-self-link", "two-link-loop", "relative-two-link-loop")
 
 
+@pytest.mark.parametrize("sentinel", [None, "README.txt"])
 @pytest.mark.parametrize("through_link", [False, True])
 @pytest.mark.parametrize("entry", ["file", "dangling-link", "link-to-file", *_LOOPS])
 def test_the_inbox_sources_fix_over_a_non_folder_is_the_persons_move_aside_c2809(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, entry: str, through_link: bool
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, entry: str, through_link: bool, sentinel: str | None
 ) -> None:
     """B13 round 45 C2809 (ruling 194): over a file, a dangling link or a link to a file at the kept inbox,
     doctor showed the link's target and fixed it with a [[source]] path edit, while step 2 said move it
@@ -4288,7 +4289,10 @@ def test_the_inbox_sources_fix_over_a_non_folder_is_the_persons_move_aside_c2809
     B13 round 47 C3300 (ruling 210): under a home reached through a link (``/tmp`` is ``/private/tmp``),
     canonical_source_root stopped a loop at a fixed depth, so the stored path and the typed one reached
     different links of it and every reader fell back to "Too many levels of symbolic links" and the sync's
-    ``source root is a symlink``; it stops at the first repeated link, as posixpath.realpath does."""
+    ``source root is a symlink``; it stops at the first repeated link, as posixpath.realpath does.
+    B13 round 47 C3313 with C3253 and C3256 (ruling 210): a file or a link to a file got a volume UUID, and a
+    configured sentinel was probed under the link's target (``is missing``, ``Not a directory``): every
+    entry's volume row says ``is not a folder`` and its sentinel row ``not checked``, from the typed path."""
     home = tmp_path / "home"
     home.mkdir()
     if through_link:
@@ -4320,6 +4324,7 @@ def test_the_inbox_sources_fix_over_a_non_folder_is_the_persons_move_aside_c2809
     config = load_config(cfg)
     assert inbox_state(config)[1] == f"not added ({folder} is not a folder)"
     box = next(s for s in config.sources if s.kind is SourceKind.INBOX)
+    box = dataclasses.replace(box, sentinel=sentinel)
     rows = doctor._check_local_source(config, box, Path(sys.executable))
     want = (
         f"restore {doctor._prose_path(folder)} as a folder: keeping a copy, move the file or link at that "
@@ -4331,12 +4336,24 @@ def test_the_inbox_sources_fix_over_a_non_folder_is_the_persons_move_aside_c2809
     for row in rows:
         assert "contoso-missing" not in row.detail + (row.fix or ""), row
         assert "contoso-note.txt" not in row.detail + (row.fix or ""), row
-        for words in ("is missing", "opens in Finder", "volume is mounted", "Too many levels"):
+        for words in (
+            "is missing",
+            "opens in Finder",
+            "volume is mounted",
+            "Too many levels",
+            "Not a directory",
+        ):
             assert words not in row.detail + (row.fix or ""), row
-    if entry in ("dangling-link", *_LOOPS):
-        volume = next(r for r in rows if r.name.endswith(".volume"))
-        assert volume.detail == f"volume UUID not checked: {doctor.list_spelling(folder)} is not a folder"
-        assert volume.fix == want and not volume.ok and volume.severity is doctor.Severity.ERROR, volume
+        assert not re.match(r"volume UUID [0-9A-F]{8}-", row.detail), row  # never a UUID probed (C3256)
+    volume = next(r for r in rows if r.name.endswith(".volume"))  # every entry (C3256)
+    assert volume.detail == f"volume UUID not checked: {doctor.list_spelling(folder)} is not a folder"
+    assert volume.fix == want and not volume.ok and volume.severity is doctor.Severity.ERROR, volume
+    if sentinel is not None:  # spelled from the typed path, never the link's target (C3253)
+        row = next(r for r in rows if r.name.endswith(".sentinel"))
+        assert row.ok and row.detail == (
+            f"{doctor.list_spelling(folder / sentinel)} not checked: {doctor.list_spelling(folder)} is not a "
+            "folder; the listable line above says what to do"
+        ), row
     if entry in _LOOPS:  # the walk's alarm and the loop's note read the same check (C3300)
         report = run_cycle(config, mode=None)
         [src] = [r for r in report.sources if r.source_id == box.id]
