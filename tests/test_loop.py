@@ -3426,7 +3426,8 @@ def test_a_kept_inbox_linked_to_a_real_folder_is_shown_by_its_typed_path_c3217(
         with _bounded(60):
             config = load_config(config.config_path)
             on = config.source(box.id)
-            rows = doctor._check_local_source(config, on, Path(sys.executable))
+            sentinel = dataclasses.replace(on, sentinel="README.txt")  # its row spelled as typed too (review)
+            rows = doctor._check_local_source(config, sentinel, Path(sys.executable))
             live = live_inbox(config)
             words = inbox_state(config)[1]
             assert run_cycle(config, mode=None).exit_code == 0
@@ -3440,11 +3441,15 @@ def test_a_kept_inbox_linked_to_a_real_folder_is_shown_by_its_typed_path_c3217(
         assert listable.detail.startswith(doctor.list_spelling(kept)), listable.detail
         assert live == kept, live
         assert f"`{publish._display_path(kept)}`" in guide, guide
+        row = next(r for r in rows if r.name == f"source.{box.id}.sentinel")
+        assert row.detail.startswith(doctor.list_spelling(kept / "README.txt")), row
     else:
         assert live != kept, live
     if _ENTRY_KINDS[entry] != INBOX_ENTRY_UNREAD:  # the person's grant names the real folder (C3113)
-        for text in (listable.detail, guide, str(live)):
+        for text in (listable.detail, guide, str(live), *(r.detail for r in rows)):
             assert "contoso-" not in text, text
+        for row in rows:  # a fix may name the real folder a grant reaches, never in a restore
+            assert not (row.fix or "").startswith("restore ") or "contoso-" not in row.fix, row
 
 
 @pytest.mark.parametrize("entry", sorted(_ENTRY_KINDS))

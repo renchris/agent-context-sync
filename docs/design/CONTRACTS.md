@@ -48059,7 +48059,9 @@ a timeout).
 source on the kept inbox stores canonical_source_root's answer, the link's target, so with a link to a real folder
 there inbox_state said `live <home>/agent-context/inbox` while doctor's listable row, AGENTS.md and CLAUDE.md named the
 target. Doctor's `shown` is now the folder as typed when `config.kept_inbox_entry` reads that entry as a folder
-(display only: `kept_inbox_not_a_folder` stays the one state test), and the listing, `cloud`, the inbox hint and every
+(display only: `kept_inbox_not_a_folder` stays the one state test), the sentinel row's path with it
+(`<folder>/<sentinel> is missing`, `restore <folder>/<sentinel>`), and the listing, `cloud`, the inbox hint, the
+sentinel's lstat and every
 fix keep the resolved root, the folder a grant or a chmod reaches (an unread link keeps naming its target, C3113).
 `config.live_inbox` returns the typed folder on its kept branch, still matched by same_folder; its two callers only
 show it. Tests: `test_a_kept_inbox_linked_to_a_real_folder_is_shown_by_its_typed_path_c3217` (eleven kinds of entry,

@@ -3102,12 +3102,15 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
     # the source on the kept inbox while a file or a link that is not a folder has its name: shown as typed,
     # never the link's target, with the person's one fix on the listable and volume rows (C2809)
     typed_inbox = kept_inbox_not_a_folder(config, src)  # the one test (B13 round 47 C3260, ruling 210)
+    shown_root = root  # the root as every detail spells it; never a check's path
     if typed_inbox is not None:
         shown = list_spelling(typed_inbox)
     elif (on_kept := kept_inbox_entry(config, src)) is not None and on_kept[1] == INBOX_ENTRY_FOLDER:
-        # a link to a real folder there: shown as typed too, display only; the listing, the hint and every
-        # fix keep the resolved root, the folder a grant or chmod reaches (B13 round 47 C3217)
-        shown = list_spelling(on_kept[0])
+        # a link to a real folder there: shown as typed too, the sentinel row's path with it, display only;
+        # the listing, the hint and every fix keep the resolved root, the folder a grant or chmod reaches (B13
+        # round 47 C3217)
+        shown_root = on_kept[0]
+        shown = list_spelling(shown_root)
 
     # only once the listing has answered: the fix reads the provider folder, which a hidden Allow prompt
     # holds too (B13 round 13 O47: read first, it held status past the listing's bound); once, for the
@@ -3247,7 +3250,7 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
         )
     elif src.sentinel:
         target = root / src.sentinel
-        sentinel = list_spelling(target)  # never raw (C1414)
+        sentinel = list_spelling(shown_root / src.sentinel)  # never raw (C1414); as typed (C3217)
         try:
             target.lstat()  # lstat never hydrates a dataless placeholder
             out.append(_ok(f"{base}.sentinel", f"{list_spelling(src.sentinel)} present"))  # never raw (C1675)
