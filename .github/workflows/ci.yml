@@ -100,6 +100,13 @@ name: ci
 # rerun green at 69:04, and 3aa3bfda's first was cancelled at 46:25, its rerun green at 67:09; runner waits reached
 # 13:55 (13b58a12's rerun, counted from the rerun's start), not counted against timeout-minutes (B13 round 45 C2878).
 # 2390257d, round 45's base, took 75:54 (pytest's step 75:28 at 9499 tests).
+# Round 45's eight jobs (0ad24fd7 to 6f4c436f) took 77:32 to 89:37 on their last attempts, all past 70, five past 80
+# and three past 86; the slowest green was 6f4c436f at 89:37 (pytest's step 89:02 at 9699 tests), and d132a14c's first
+# attempt failed a test at 91:40 (pytest's step 91:03,
+# test_a_run_with_no_end_line_and_a_closing_status_keeps_its_state_last_c764), its rerun green at 89:31, which left 105
+# only 13:20 above it, so it is 112: 20:20 above it, and the guides' head is 92; runner waits reached 0:04, not counted
+# against timeout-minutes (B13 round 46 C3060). 006e48a6, round 46's base, took 80:39 (pytest's step 80:00 at 9699
+# tests).
 on:
   workflow_dispatch:
   push:
@@ -116,7 +123,7 @@ concurrency:
 jobs:
   test:
     runs-on: macos-15
-    timeout-minutes: 105
+    timeout-minutes: 112
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

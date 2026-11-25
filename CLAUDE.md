@@ -81,7 +81,7 @@ for id in $(gh run list --commit "$(git rev-parse HEAD)" --json databaseId --jq 
 done
 ```
 
-The list can be empty for a few seconds after the push; retry. `ci` takes about 18 to 86 minutes once its job starts
+The list can be empty for a few seconds after the push; retry. `ci` takes about 18 to 92 minutes once its job starts
 (measured October and November 2026; 24 at 5120 tests, and the same tests and source ran 24 and then 21 minutes on two
 runs; the eight jobs from eaed1034 to fcafd734 took 18:05 to 28:34; the nine from fcafd734 to 7a54f938 took 19:29 to
 31:21; the thirteen from ed901cd3 to b1f4a087 took 24:34 to 32:18; the ten from c93fcd96 to 3ec66a92 took 30:06 to
@@ -120,14 +120,17 @@ base, took 72:31, 9282 tests and pytest's step 72:26; the eight after it, from d
 on their last attempts, all past 60, six past 70 and three past 80, the slowest on e9396380, 9502 tests and pytest's
 step 84:36, one attempt failed a test at 79:31, 13b58a12's first, and its rerun was green at 69:04, and one, 3aa3bfda's
 first, was cancelled at 46:25 and its rerun was green at 67:09; 2390257d, round 45's base, took 75:54, 9499 tests and
-pytest's step 75:28; one run took 34 on a runner loaded 5 to 8 per core), plus any wait for a macOS runner, counted from
-the run appearing to its job starting (one waited 63 minutes, on ef12f28f, another 50, one 21, on d8385ef6, one 25, on
-820c69dd, one 16, on 0c6b1207, one 38, on 19b1f575, one 36, on 63a12d0c, one 31, on c2ab2d12, one 22, on 877a47ab, one
-17, on 5bf1911e, one 16, on c6d8227c, one 50, on 293c8081, one 39, on 4d3ba971's rerun, counted from the rerun's start,
-one 32, on 526fa1e2, one 52, on ffefbe0f, one 31, on 10845acb, one 29, on 4041089d's rerun, counted from the
-rerun's start, one 26, on c72c736b, one 25, on 60835dd7, one 55, on dea3fabc, one 16, on bb3cf651, one 14, on
-13b58a12's rerun, counted from the rerun's start, and earlier ones 48 and 46); the job's limit is 105
-minutes (`timeout-minutes` in ci.yml), and a wait does not count against it.
+pytest's step 75:28; the eight after it, from 0ad24fd7 to 6f4c436f, took 77:32 to 89:37 on their last attempts, all
+past 70, five past 80 and three past 86, the slowest green on 6f4c436f, 9699 tests and pytest's step 89:02, and one
+attempt failed a test at 91:40, d132a14c's first, and its rerun was green at 89:31; 006e48a6, round 46's base, took
+80:39, 9699 tests and pytest's step 80:00; one run took 34 on a runner loaded 5 to 8 per core), plus any wait for a
+macOS runner, counted from the run appearing to its job starting (one waited 63 minutes, on ef12f28f, another 50, one
+21, on d8385ef6, one 25, on 820c69dd, one 16, on 0c6b1207, one 38, on 19b1f575, one 36, on 63a12d0c, one 31, on
+c2ab2d12, one 22, on 877a47ab, one 17, on 5bf1911e, one 16, on c6d8227c, one 50, on 293c8081, one 39, on 4d3ba971's
+rerun, counted from the rerun's start, one 32, on 526fa1e2, one 52, on ffefbe0f, one 31, on 10845acb, one 29, on
+4041089d's rerun, counted from the rerun's start, one 26, on c72c736b, one 25, on 60835dd7, one 55, on dea3fabc, one 16,
+on bb3cf651, one 14, on 13b58a12's rerun, counted from the rerun's start, and earlier ones 48 and 46); the job's limit
+is 112 minutes (`timeout-minutes` in ci.yml), and a wait does not count against it.
 
 A loop that prints nothing has read nothing: an empty list is not green. If ship-land's line says `no CI run for
 <sha> after N s` (exit 9 after `LANDED`), wait, and check that `gh run list --commit <sha>` is still empty about 15

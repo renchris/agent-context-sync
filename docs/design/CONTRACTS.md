@@ -26144,7 +26144,8 @@ is now well under the ci job's 80 minutes, `timeout-minutes` in ci.yml, raised f
 ci.yml, raised from 80 after a job took 66:14. **Amended 2026-11-13, §16.249 C1460:** the bound is now well under the ci job's
 100 minutes, `timeout-minutes` in ci.yml, raised from 90 after a job took 75:09. **Amended 2026-11-23, §16.284 C2878:**
 the bound is now well under the ci job's 105 minutes, `timeout-minutes` in ci.yml, raised from 100 after a job took
-85:06.
+85:06. **Amended 2026-11-24, §16.289 C3060:** the bound is now well under the ci job's 112 minutes, `timeout-minutes`
+in ci.yml, raised from 105 after a job took 91:40.
 
 ### 16.145 Round 19: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 19 lane D)
 
@@ -47140,6 +47141,21 @@ ceiling and its test stay; gate.sh's comment records the stopped part and the ru
 part that runs to its end past 11,700 s, or above twice a censored lower bound only if one recurs, never on one
 censored run alone. Test: `tests/test_gate_journal.py`
 `::test_the_ceiling_comment_names_a_part_stopped_at_the_old_ceiling_a_censored_lower_bound_c3065`.
+
+**CI's time is the time of round 45's jobs, the head is 92 and the limit 112** (C3060; `CLAUDE.md`,
+`docs/lanes/COMMON.md`, ci.yml, `tests/test_convert_recording.py`; dated line at §16.144 W70). Round 45's eight ci jobs
+on main (0ad24fd7 to 6f4c436f, re-timed with `gh api .../attempts/<n>/jobs`) took 77:32 to 89:37 on their last
+attempts, all past 70, five past 80 and three past the guides' head of 86: 605846fe 86:13, d132a14c's rerun 89:31 and
+6f4c436f 89:37 (pytest's step 89:02 at 9699 tests). d132a14c's first attempt failed a test
+(`test_a_run_with_no_end_line_and_a_closing_status_keeps_its_state_last_c764`) at 91:40, pytest's step 91:03, which
+left the 105 limit only 13:20, inside ci.yml's 15-minute rule; runner waits were 0:03 to 0:04. 006e48a6, round 46's
+base, took 80:39 (pytest's step 80:00 at 9699 tests). So `timeout-minutes` is 112, 20:20 above 91:40 by C571's margin,
+both guides' head is 92 (COMMON.md `the slowest, 91:40, in round 45, a failed first attempt; 89:37 green`), ci.yml's
+note and CLAUDE.md add the bracket and the base, and the recording tests' docstring and the W70 paragraph name 112.
+The verifier's "six past 80" counted five green jobs and the failed attempt; the note counts last attempts. Older
+sentences keep the 105 they measured against. Tests:
+`tests/test_deploy_pack.py::test_claude_md_gives_cis_time_and_its_limit` and
+`::test_the_recording_tests_limit_names_cis_own_limit`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
