@@ -2406,6 +2406,35 @@ def test_an_office_stub_the_pdf_sniff_gave_is_converted_again_when_its_bytes_are
     assert states == [page, stub, page], states
 
 
+@pytest.mark.parametrize("first", ["junk", "pdf"])
+def test_a_container_stub_whose_preamble_changes_container_is_converted_once_c3316(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, first: str
+) -> None:
+    """B13 round 47 C3316 (ruling 215): on bytes that are not a ZIP at offset 0, ``_container_moved`` moved
+    only a page or a family-mismatch stub, so a ``not-ooxml`` stub whose junk preamble became an encrypted
+    PDF's (H1 unchanged: zipfile reads the members behind either) kept ``not-ooxml``, and the reverse kept
+    ``encrypted-pdf``, for as long as the bytes stayed. A container stub there moves when
+    ``policy.container_reason`` of what the bytes sniff to now differs from its reason: junk, PDF, junk and
+    the reverse are each converted once to the fresh answer, and a quiet sync after each converts nothing."""
+    config, src = make_env(tmp_path)
+    clean = _workbook(tmp_path / "clean.xlsx").read_bytes()
+    path = src / "Contoso book.xlsx"
+    junk = b"\x00Contoso junk" * 10
+    order = (junk, _ENCRYPTED_PDF_PREAMBLE, junk) if first == "junk" else (_ENCRYPTED_PDF_PREAMBLE, junk) * 2
+    tries = _tries(monkeypatch)
+    for step, preamble in enumerate(order[:3]):
+        path.write_bytes(preamble + clean)
+        assert run(config).exit_code == 0
+        want = NOT_OOXML_REASON if preamble == junk else ENCRYPTED_PDF_REASON
+        row = _row(config, path.name)
+        assert (row.state, row.state_reason) == (RowState.QUARANTINED, want), (step, row.state_reason)
+        assert tries == [path.name], (step, tries)
+        tries.clear()
+        assert run(config).exit_code == 0
+        assert tries == [], f"step {step}: the stub agrees with its bytes, so a quiet sync reads nothing"
+        assert _row(config, path.name).state_reason == want
+
+
 def test_a_family_mismatch_stub_whose_bytes_gain_a_preamble_is_converted_once_c3096(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -2935,7 +2964,15 @@ def test_a_touched_office_stub_the_container_did_not_give_is_no_container_move_c
             assert not moved(reason, RowState.QUARANTINED, path), (reason, path.name)
     # B13 round 46 C3046: encrypted-pdf is the container's own answer for an Office name's non-ZIP bytes
     assert moved(ENCRYPTED_PDF_REASON, RowState.QUARANTINED, clean)
-    assert not moved(ENCRYPTED_PDF_REASON, RowState.QUARANTINED, junk)
+    # B13 round 47 C3316: a container stub on non-ZIP bytes moves when they sniff to another container answer
+    assert moved(ENCRYPTED_PDF_REASON, RowState.QUARANTINED, junk)
+    polyglot = tmp_path / "Contoso polyglot.xlsx"
+    polyglot.write_bytes(_ENCRYPTED_PDF_PREAMBLE + clean.read_bytes())
+    assert not moved(ENCRYPTED_PDF_REASON, RowState.QUARANTINED, polyglot)
+    assert moved(NOT_OOXML_REASON, RowState.QUARANTINED, polyglot)
+    empty = tmp_path / "Contoso empty.xlsx"
+    empty.write_bytes(b"")
+    assert not moved(NOT_OOXML_REASON, RowState.QUARANTINED, empty), "zero bytes are the zero-byte re-read's"
     pdf = dataclasses.replace(
         page, name="Contoso.pdf", state=RowState.QUARANTINED, state_reason=ENCRYPTED_PDF_REASON
     )

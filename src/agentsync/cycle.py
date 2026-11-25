@@ -8295,7 +8295,12 @@ def _container_moved(row: ItemRow, fetched: FetchResult) -> bool:
     C3096, ruling 202).  Any other row (a label refusal, an inbox duplicate, a failed conversion) says
     nothing of the container, so it moves nothing: calling those container stubs read every touch of them as
     a first read.  A family-mismatch stub converted on non-ZIP bytes becomes ``NOT_OOXML_REASON``, which
-    moves nothing there, so it is read once, never on every touch.  H1 reads a ZIP's members, which zipfile
+    moves nothing there, so it is read once, never on every touch.  A container stub on non-ZIP bytes moves
+    when ``policy.container_reason`` of what they sniff to now differs from its reason (a junk preamble made
+    an encrypted PDF's, or the reverse: B13 round 47 C3316), and once converted the two agree, so it is read
+    once; the sniff scans the file only for such a stub.  Zero bytes move nothing here: an unchanged H1 over
+    them is an older build's zero-byte answer, which ``_reread_zero_byte_stubs`` reads once as a re-read
+    (B13 round 43 C2219, C2422), never a conversion.  H1 reads a ZIP's members, which zipfile
     finds behind a preamble, so such a save is TOUCHED_NOT_CHANGED, which publishes nothing: a page stayed
     up for bytes the screen calls not-ooxml, and a not-ooxml stub stayed for clean bytes with the same H1.
     Such bytes are converted, where ``convert_file`` screens the container first.  H1 stays as it is: a
@@ -8311,6 +8316,14 @@ def _container_moved(row: ItemRow, fetched: FetchResult) -> bool:
         return row.state_reason in _CONTAINER_REASONS
     if row.state_reason is None:
         return row.state in (RowState.LIVE, RowState.DATALESS)
+    if row.state_reason in _CONTAINER_REASONS:  # the answer the bytes sniff to now (B13 round 47 C3316)
+        try:
+            kind = content_policy.sniff_container(fetched.path)
+        except OSError:
+            return False
+        if kind is content_policy.ContainerKind.EMPTY:  # zero bytes: _reread_zero_byte_stubs's, once (C2219)
+            return False
+        return content_policy.container_reason(kind, office_name=True) != row.state_reason
     return convert_common.FAMILY_MISMATCH_RE.fullmatch(row.state_reason) is not None
 
 

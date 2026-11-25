@@ -745,26 +745,52 @@ def screen_item_label(value: str | None, policy: PolicyConfig) -> Screening | No
     )
 
 
+def container_reason(kind: ContainerKind, *, office_name: bool) -> str | None:
+    """The stub reason the container alone gives, the answer :func:`screen_file` gives before or without a
+    label: ``encrypted-office`` for an encrypted CFB package and ``encrypted-pdf`` for a PDF header with
+    ``/Encrypt`` under any name, and for an Office name (``office_name``, a name ending in one of
+    :data:`OOXML_SUFFIXES`) that is not a ZIP at offset 0, ``empty-output`` for no bytes and ``not-ooxml``
+    for any other; None otherwise.  ``cycle._container_moved`` asks it of a container stub on non-ZIP bytes,
+    so a stub whose bytes now sniff to another container answer is converted again (B13 round 47 C3316: a
+    not-ooxml stub whose junk preamble became an encrypted PDF's, or the reverse, kept its stale reason)."""
+    if kind is ContainerKind.CFB_ENCRYPTED:
+        return ENCRYPTED_OFFICE_REASON
+    if kind is ContainerKind.PDF_ENCRYPTED:
+        return ENCRYPTED_PDF_REASON
+    if office_name and kind is not ContainerKind.ZIP:
+        # no bytes have no type to disagree with the name (B13 round 35 C930)
+        return ZERO_BYTES_REASON if kind is ContainerKind.EMPTY else NOT_OOXML_REASON
+    return None
+
+
+_CONTAINER_CODES = {
+    ENCRYPTED_OFFICE_REASON: "encrypted-office",
+    ENCRYPTED_PDF_REASON: "encrypted-pdf",
+    ZERO_BYTES_REASON: "empty-output",
+    NOT_OOXML_REASON: "not-ooxml",
+}
+"""Each :func:`container_reason` answer's screening code."""
+
+
 def screen_file(path: Path, *, name: str, policy: PolicyConfig) -> Screening | None:
     """Pre-conversion screen of a staged file: encryption first (UNREADABLE), then labels (REFUSED).
 
-    Never raises for file content; an unreadable file raises OSError (the converter would fail the same way).
+    The container's own answers are :func:`container_reason`'s, the label check between the encryption
+    answers and an Office name's not-a-ZIP answers.  Never raises for file content; an unreadable file raises
+    OSError (the converter would fail the same way).
     """
     kind = sniff_container(path)
-    if kind is ContainerKind.CFB_ENCRYPTED:
-        return Screening(ScreenStatus.UNREADABLE, "encrypted-office", ENCRYPTED_OFFICE_REASON)
-    if kind is ContainerKind.PDF_ENCRYPTED:
-        return Screening(ScreenStatus.UNREADABLE, "encrypted-pdf", ENCRYPTED_PDF_REASON)
-    if name.lower().endswith(OOXML_SUFFIXES) and kind is not ContainerKind.ZIP:
+    reason = container_reason(kind, office_name=name.lower().endswith(OOXML_SUFFIXES))
+    if reason is not None and kind in (ContainerKind.CFB_ENCRYPTED, ContainerKind.PDF_ENCRYPTED):
+        return Screening(ScreenStatus.UNREADABLE, _CONTAINER_CODES[reason], reason)
+    if reason is not None:
         # Never convert an Office name that is not a ZIP at offset 0: openpyxl / python-pptx would read it
         # anyway (zipfile tolerates a preamble) while the label screen might not have; fail closed.
         if policy.labels_active:
             decision = label_decision(read_labels(path, name=name, kind=kind), policy)
             if decision is not None:
                 return decision
-        if kind is ContainerKind.EMPTY:  # no bytes have no type to disagree with the name (B13 round 35 C930)
-            return Screening(ScreenStatus.UNREADABLE, "empty-output", ZERO_BYTES_REASON)
-        return Screening(ScreenStatus.UNREADABLE, "not-ooxml", NOT_OOXML_REASON)
+        return Screening(ScreenStatus.UNREADABLE, _CONTAINER_CODES[reason], reason)
     if not policy.labels_active:
         return None
     return label_decision(read_labels(path, name=name, kind=kind), policy)

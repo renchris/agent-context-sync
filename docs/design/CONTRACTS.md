@@ -4474,6 +4474,9 @@ UNTRUSTED_BANNER = '> [UNTRUSTED CONTENT] Third-party data mirrored by agentsync
 
 ZIP_MAGIC = b'PK\x03\x04'
 
+def container_reason(kind: ContainerKind, *, office_name: bool) -> str | None:
+    """The stub reason the container alone gives (encrypted-office, encrypted-pdf, empty-output, not-ooxml) or None."""
+
 def has_banner(body: str) -> bool:
     """True when the banner line is among the first lines of ``body``."""
 
@@ -46599,6 +46602,9 @@ Amended 2026-11-24, §16.288 C3046: `_container_screen` also returns `encrypted-
 in non-ZIP bytes), which joins `_CONTAINER_REASONS`, so it no longer stands among the rows that move nothing.
 Amended 2026-11-24, §16.288 C3096: on non-ZIP bytes a family-mismatch stub (`FAMILY_MISMATCH_RE`, never
 `NOT_OOXML_REASON`) moves too, since it was made from a ZIP; it is converted once to `NOT_OOXML_REASON`.
+Amended 2026-11-25, §16.293 C3316: on non-ZIP bytes a container stub moves too when `policy.container_reason` of
+what the bytes sniff to now differs from its reason (a junk preamble made an encrypted PDF's, or the reverse); once
+converted the two agree, so it moves nothing after.
 
 **A helper's time-out fix builds it again only if it still does not answer** (C2817; `agentsync.ops.doctor`; amends
 §16.233 C915 and §16.243 C1227). Every helper's build goes through `ocr._build`, which runs `open_` (a `--version`
@@ -47272,6 +47278,9 @@ name never reaches the reason, since `_container_moved` reads only an `OOXML_SUF
 `test_convert_family.py::test_an_office_stub_the_pdf_sniff_gave_is_converted_again_when_its_bytes_are_a_clean_zip_c3046`
 (clean, polyglot, clean: a page, the encrypted-pdf stub, a page) and the C2924 no-move test's encrypted-pdf rows (a
 move on a clean ZIP, none on junk, none for `Contoso.pdf`).
+Amended 2026-11-25, §16.293 C3316: an encrypted-pdf row on junk bytes moves now, since they sniff to `not-ooxml`,
+and a `not-ooxml` row on an encrypted PDF's preamble moves to `encrypted-pdf`; a row whose bytes sniff to its own
+reason still moves nothing.
 
 **A family-mismatch stub on bytes that are no longer a ZIP is converted once** (C3096; ruling 202;
 `agentsync.cycle`; amends §16.283 C2924). A Word package named `.potx` settles as `not-ooxml: a Word document, not
@@ -47538,6 +47547,28 @@ docstrings say so, and the C2854 test's docstring, which still said "in any name
 narrowed it (C3267, words only). Test:
 `test_convert_family.py::test_a_prefixed_content_types_child_under_a_no_namespace_types_is_read_c3264` (the
 prefixed Word package named `.xlsx` is `word` and the stub; the same under a foreign `ct` namespace is None).
+
+**A container stub on non-ZIP bytes is converted again when they sniff to another container answer** (C3316; ruling
+215; `agentsync.policy`, `agentsync.cycle`; amends §16.283 C2924 and §16.288 C3046). On bytes that are not a ZIP at
+offset 0, `_container_moved` moved only a page or a family-mismatch stub, and `policy.screen_file` sniffs an encrypted
+PDF (`%PDF-` in the first 1024 bytes, `/Encrypt` anywhere) before its not-ooxml branch, so a `not-ooxml` stub whose
+junk preamble became an encrypted PDF's kept `not-ooxml`, and an `encrypted-pdf` stub whose preamble became junk kept
+`encrypted-pdf`: H1 reads the ZIP members behind either, so the save is touched, not changed, and the stub was never
+screened again, its reason in STATE.md and `_sync/QUARANTINE.tsv` stale for as long as the bytes stayed. Both are
+UNREADABLE stubs, so nothing was published or withheld wrongly. `policy.container_reason(kind, *, office_name)` holds
+the container-only answers `screen_file` gives (`encrypted-office` and `encrypted-pdf` under any name; under an Office
+name that is not a ZIP, `empty-output` for no bytes and `not-ooxml` for any other; None otherwise), and `screen_file`
+keeps its order, the label check between the encryption answers and the Office branch. In `_container_moved`'s
+non-ZIP branch, a row whose reason is one of `_CONTAINER_REASONS` moves when `container_reason(sniff_container(...),
+office_name=True)` differs from it; an unreadable file moves nothing, zero bytes move nothing (an unchanged H1 over
+them is an older build's zero-byte answer, which `_reread_zero_byte_stubs` reads once as a re-read, C2219 and C2422),
+and a page row and a family-mismatch stub keep their branches. Once converted, the stored reason is the helper's answer, so the next touch moves nothing and nothing
+loops; a label refusal under an active rule is a label reason, outside `_CONTAINER_REASONS`. The sniff scans the file
+only for a container stub on non-ZIP bytes, never on every touch (the full `screen_file` would read labels too).
+Tests: `test_convert_family.py::test_a_container_stub_whose_preamble_changes_container_is_converted_once_c3316` (junk,
+PDF, junk and PDF, junk, PDF: each converted once to the fresh answer, a quiet sync after each converting nothing) and
+the C2924 no-move test's rows (an encrypted-pdf row on junk moves; on an encrypted PDF's preamble it does not, and a
+`not-ooxml` row there does).
 
 ### 16.294 Round 47: the prompt goes to v44 (a run read to its exit, an error keyed on its exit code, a paused or retired folder never offered again), CI's head and limit, dated lines, and the guides (2026-11-25, wave B13 round 47 lane D)
 
