@@ -30759,3 +30759,24 @@ def test_a_tilde_name_log_variable_is_named_as_a_log_not_read_and_the_report_wri
     assert setup_report._env_log(env_name, "~/x") == (Path.home() / "elsewhere" / "f.md", None)
     monkeypatch.delenv(env_name)
     assert setup_report._env_log(env_name, "~/x") == (Path.home() / "x", None)
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reaches every folder")
+def test_a_config_this_account_cannot_reach_reads_loads_not_checked_c3335(tmp_path: Path) -> None:
+    """B13 round 47 C3335 (lane RB's shell half reads the same): a sources.toml behind a folder this account
+    cannot search printed `not checked: this account cannot reach it: Permission denied` on its config line
+    and then `loads: no: PermissionError: ...`, where the shell report says whether it loads was not checked.
+    Both say `- loads: not checked (this account cannot reach it)`."""
+    locked = Path.home() / "locked"
+    cfg = locked / "Contoso-config.toml"
+    locked.mkdir()
+    cfg.write_text(default_config_text(), encoding="utf-8")
+    locked.chmod(0)
+    try:
+        rc, text, _secs = report(tmp_path, cfg)
+    finally:
+        locked.chmod(0o700)
+    assert rc == 0
+    conf = section(text, "Configuration")
+    assert "(not checked: this account cannot reach it: Permission denied)" in conf, conf
+    assert setup_report.CONFIG_UNREACHED_LOADS in conf.splitlines() and "- loads: no:" not in conf, conf

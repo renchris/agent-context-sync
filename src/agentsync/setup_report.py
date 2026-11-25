@@ -8934,12 +8934,23 @@ def _reach_words(found: bool | str, yes: str, no: str = "missing") -> str:
     return found if isinstance(found, str) else yes if found else no
 
 
+CONFIG_UNREACHED_LOADS = "- loads: not checked (this account cannot reach it)"
+"""The Configuration section's loads line for a sources.toml behind a folder this account cannot search (B13
+round 47 C3335): its config line says ``not checked: this account cannot reach it: <strerror>``, so whether it
+loads was not checked either, as install.sh's shell report says it, where this report printed ``loads: no:``
+and the open's PermissionError."""
+
+
 def _configuration(r: _Run) -> list[str]:
     # B13 round 22 Z10, Z27: each check of a path costs only its own line when a folder above refuses a search
     out = [f"- config: {r.config_path} ({_reach_words(_path_reached(r.config_path), 'exists')})"]
     if r.config is None:
         if r.config_missing:  # never "loads: no" (nor "loads: not ..."), the prompt's finish's failing config
             out.append("- loads: pending: no sources.toml yet (setup's step 2 writes it)")
+        elif isinstance(
+            _path_reached(r.config_path), str
+        ):  # B13 round 47 C3335: as the shell report says it, never a raise
+            out.append(CONFIG_UNREACHED_LOADS)
         else:
             out.append(f"- loads: no: {r.config_error}")
         return out
