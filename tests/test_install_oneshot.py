@@ -10318,14 +10318,16 @@ def test_a_tilde_command_runs_whatever_bytes_the_checkout_path_holds(
 
 
 def test_list_folders_caps_the_list_at_200(env: dict[str, str]) -> None:
+    """The cap cuts subfolders (B13 round 47 C3336: every top folder is listed under the default cap)."""
     lib = _cloud(env) / "OneDrive-Contoso"
     for i in range(205):
-        (lib / f"P{i:03d}").mkdir(parents=True)
+        (lib / "Projects" / f"P{i:03d}").mkdir(parents=True)
     cp = install_sh(env, "--list-folders")
     assert cp.returncode == 0, cp.stderr
     lines = cp.stdout.splitlines()
-    assert len(lines) == 202 and lines[199] == f"{lib}/P199" and lines[200] == "(5 more)"
-    assert steps(install_log(env)) == [("list-folders", "done", "0", "listed-205")]
+    assert len(lines) == 202 and lines[0] == f"{lib}/Projects" and lines[199] == f"{lib}/Projects/P198"
+    assert lines[200] == "(6 more)"
+    assert steps(install_log(env)) == [("list-folders", "done", "0", "listed-206")]
 
 
 @pytest.mark.parametrize("cloud_storage", ["absent", "empty"])
@@ -11635,7 +11637,8 @@ def test_list_folders_names_the_synced_folders_when_the_only_provider_was_denied
 
 
 def test_list_folders_prints_a_synced_folder_past_its_cap_first(env: dict[str, str]) -> None:
-    lib = _cloud(env) / "OneDrive-Contoso"
+    """The cap cuts subfolders (B13 round 47 C3336: every top folder is listed under the default cap)."""
+    lib = _cloud(env) / "OneDrive-Contoso" / "Projects"
     for i in range(205):
         (lib / f"P{i:03d}").mkdir(parents=True)
     _write_config(env, local_source_table("p001", lib / "P001"), local_source_table("p203", lib / "P203"))
@@ -11648,7 +11651,8 @@ def test_list_folders_prints_a_synced_folder_past_its_cap_first(env: dict[str, s
         "the list)"
     )
     assert lines[1] == f"[synced] {lib}/P203", "past the cap of 200: not in the list, so printed first"
-    assert lines[3] == f"[synced] {lib}/P001" and lines[201] == f"{lib}/P199" and lines[202] == "(5 more)"
+    assert lines[2] == f"[contains a synced folder] {lib}" and lines[4] == f"[synced] {lib}/P001"
+    assert lines[201] == f"{lib}/P198" and lines[202] == "(6 more)"
     assert len(lines) == 204 and sum(ln.startswith("[synced] ") for ln in lines) == 2
 
 
@@ -13010,7 +13014,8 @@ def test_a_checkout_reader_at_its_limit_drops_none_is_needed_whatever_the_instal
     _config_step_2_stops_on(env, "clean-real")
     if capped:  # the list's cap clause comes after the timeout clause
         for i in range(1, 206):
-            (_cloud(env) / "OneDrive-Contoso" / f"Wren Plan {i:03d}").mkdir(parents=True)
+            # subfolders: every top folder is listed under the default cap (B13 round 47 C3336)
+            (_cloud(env) / "OneDrive-Contoso" / "Wren Plans" / f"Wren Plan {i:03d}").mkdir(parents=True)
     _slow_tool_python(env, marker, 11, last="/src")
     cp = install_sh(env, "--list-folders", timeout=300)
     assert cp.returncode == 0, cp.stdout + cp.stderr

@@ -5,6 +5,7 @@ install.out register the same names. Every run is /bin/bash 3.2, through test_in
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 from pathlib import Path
@@ -79,7 +80,8 @@ def test_list_limit_3_keeps_the_more_line_and_names_the_rest_on_next(
 @pytest.mark.parametrize(
     ("opt", "past"),
     [
-        ([], ("5", "200")),
+        ([], None),  # B13 round 47 C3336: 205 top folders, every one listed under the default cap
+        (["--limit", "200"], ("5", "200")),
         (["--limit", "204"], ("1", "204")),
         (["--limit", "205"], None),
         (["-n", "9999"], None),
@@ -98,6 +100,60 @@ def test_list_cap_clause_only_when_folders_are_left_out(
     if past == ("1", "204"):
         assert "; 1 folder past the first 204 is not listed: " in cp.stdout
     assert ("(" in cp.stdout.splitlines()[-2]) == (past is not None)
+
+
+@pytest.mark.parametrize("opt", [[], ["--limit", "200"]])
+def test_the_default_cap_lists_every_top_folder_past_200_c3336(
+    env: dict[str, str],  # noqa: F811
+    opt: list[str],
+) -> None:
+    """B13 round 47 C3336 with ruling 216 (lane RB keeps every depth-1 row when it cuts): 205 top
+    folders, each with a subfolder. With no --limit every top folder is listed, past 200 too, and "(205
+    more)" and its NEXT count only the subfolders left out; an explicit --limit 200 stays at most 200, top
+    folders first."""
+    lib = _cloud(env) / "OneDrive-Contoso"
+    for i in range(205):
+        (lib / f"P{i:03d}" / "Sub").mkdir(parents=True)
+    cp = install_sh(env, "--list-folders", *opt)
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    lines = cp.stdout.splitlines()
+    shown = 205 if not opt else 200
+    assert lines[:-1] == [*(f"{lib}/P{i:03d}" for i in range(shown)), f"({410 - shown} more)"], lines[-3:]
+    found = PAST.search(lines[-1])
+    assert found is not None and found.groups() == (str(410 - shown), str(shown)), lines[-1]
+
+
+@pytest.mark.parametrize("json_run", [False, True])
+def test_a_cut_list_keeps_every_top_folder_before_subfolders_c3336(
+    env: dict[str, str],  # noqa: F811
+    json_run: bool,
+) -> None:
+    """B13 round 47 C3336 (installer half): 120 personal OneDrive folders, each with a subfolder, sorted ahead
+    of a SharePoint library, filled the 200 rows with OneDrive rows and hid the library whole behind "(41
+    more)". A cut keeps every folder 1 level inside a provider first, then subfolders in sort order up to the
+    cap; the rows stay in sort order, and the "(N more)" line and its --all NEXT stay."""
+    cs = _cloud(env)
+    lib = cs / "OneDrive-Contoso"
+    for i in range(120):
+        (lib / f"P{i:03d}" / "Sub").mkdir(parents=True)
+    alpha = cs / "OneDrive-SharedLibraries-Contoso" / "Project Alpha"
+    alpha.mkdir(parents=True)
+    want = [str(lib / f"P{i:03d}" / s) for i in range(120) for s in (["", "Sub"] if i < 79 else [""])]
+    want = [w.removesuffix("/") for w in want] + [str(alpha)]
+    assert len(want) == 200 and want == sorted(want)
+    cp = install_sh(
+        env, "--list-folders", *(["--json", "--limit", "200"] if json_run else [])
+    )  # JSON: no cap unasked
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    if json_run:
+        doc = json.loads(cp.stdout)
+        assert [f["path"] for f in doc["folders"]] == want and doc["total"] == 241, doc["total"]
+        assert doc["pagination"]["next"] is not None
+        return
+    lines = cp.stdout.splitlines()
+    assert lines[:-1] == [*want, "(41 more)"], lines[-4:]
+    found = PAST.search(lines[-1])
+    assert found is not None and found.groups() == ("41", "200"), lines[-1]
 
 
 @pytest.mark.parametrize(

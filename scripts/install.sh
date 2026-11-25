@@ -149,9 +149,11 @@
 #   --list-folders          only list the folders this Mac syncs, as candidates for --source-local: every
 #                           folder 1 or 2 levels inside each ~/Library/CloudStorage/<provider> (names only: no
 #                           file is opened; no dot folders), sorted, one full path per line, at most 200 then
-#                           "(N more)"; installs nothing and writes no report; it does create the setup folder
-#                           if missing, append its start, list-folders and end lines to the setup log, copy its
-#                           output to install.out, and leave the setup folder's contents owner-only, as every
+#                           "(N more)", except that every folder 1 level inside (each top folder and SharePoint
+#                           library) is listed, past 200 too, so "(N more)" leaves out only subfolders; installs
+#                           nothing and writes no report; it does create the setup folder if missing, append
+#                           its start, list-folders and end lines to the setup log, copy its output to
+#                           install.out, and leave the setup folder's contents owner-only, as every
 #                           run does (see "Setup log"); under AGENTSYNC_INSTALL_DRY_RUN=1 it writes none of
 #                           these. Exit 0 listed; 3 none (OneDrive not signed in, or nothing synced yet),
 #                           or a folder this Mac already syncs under ~/Library/CloudStorage is not on disk and
@@ -181,8 +183,9 @@
 #                           show apart from another, until the folder is renamed
 #   -a, --all               with --list-folders: list every folder, with no "(N more)" line (the time limits
 #                           and the depth of 2 still hold)
-#   -n, --limit NUMBER      with --list-folders: list at most NUMBER folders (1 or more; default 200), then
-#                           "(N more)"; when some are not listed, its NEXT: ends with the --all command
+#   -n, --limit NUMBER      with --list-folders: list at most NUMBER folders (1 or more; with no --limit, 200
+#                           and every top folder, above), those 1 level inside first, then "(N more)"; when some
+#                           are not listed, its NEXT: ends with the --all command
 #   --json                  with --list-folders (and --version, above): stdout is one JSON document in place of
 #                           the list, every folder unless --limit is given: {"folders":[{"path","state"[,"mark"]}],
 #                           "total","pagination","next"}, state listed, synced, inside_synced or contains_synced,
@@ -11390,7 +11393,23 @@ list_folders() {
 	LC_ALL=C tr '\n\000' '\036\n' <"$tmp/list0" >"$tmp/list" # one folder a line, a newline in it as RS
 	total="$(wc -l <"$tmp/list" | tr -d ' ')"
 	case "$LIST_MAX" in '') ;; all) max="$total" ;; *) max="$LIST_MAX" ;; esac
-	sort "$tmp/list" | awk -v m="$max" 'NR <= m' >"$tmp/shown" # awk reads it all: no SIGPIPE for sort under pipefail
+	# a cut keeps every folder 1 level inside a provider (a top folder or a SharePoint library) before any 2 levels
+	# inside, so the cut hides subfolders first and no library goes whole for a busy personal OneDrive sorted
+	# ahead of it: under the default cap every one of them, past 200 too, only deeper rows cut; an explicit
+	# --limit stays at most NUMBER, top folders first. The rows kept stay in sort order, and the cap the "(N
+	# more)" line and its NEXT count from is the number shown (B13 round 47 C3336, ruling 216). awk reads it
+	# all: no SIGPIPE for sort under pipefail
+	sort "$tmp/list" | CS="$cs/" LC_ALL=C awk -v m="$max" -v alltops="$([ -n "$LIST_MAX" ] || echo 1)" '{
+		row[NR] = $0
+		r = substr($0, length(ENVIRON["CS"]) + 1)
+		top[NR] = (substr($0, 1, length(ENVIRON["CS"])) == ENVIRON["CS"] && index(r, "/") > 0 && index(substr(r, index(r, "/") + 1), "/") == 0)
+		tops += top[NR]
+	}
+	END {
+		sub2 = m - tops
+		for (k = 1; k <= NR; k++) if (top[k] ? (alltops || kept++ < m) : (sub2-- > 0)) print row[k]
+	}' >"$tmp/shown"
+	[ "$total" -le "$max" ] || max="$(wc -l <"$tmp/shown" | tr -d ' ')"
 	# A Mac that already runs agentsync (field report 2026-10-07): the person chose its folders once, so the
 	# list says which they are and nobody is asked again. Only with a config: without one the output is what
 	# it always was. Also when a provider was denied or is still asking: the marks need only the config and
