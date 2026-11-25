@@ -17,11 +17,15 @@ from agentsync.config import local_source_table
 from agentsync.ops import doctor
 from test_install_oneshot import (  # noqa: F401  (fixtures)
     BASH32,
+    HELD_LIST_NEXT,
     INSTALL_SH,
+    LIST_NEXT,
     LOOK_ALIKE_WORDS,
     SHELL_HELPER_FNS,
     TWIN_MARK,
     _cloud,
+    _inbox,
+    _tool_python,
     _write_config,
     env,
     install_log,
@@ -121,6 +125,77 @@ def test_the_default_cap_lists_every_top_folder_past_200_c3336(
     assert lines[:-1] == [*(f"{lib}/P{i:03d}" for i in range(shown)), f"({410 - shown} more)"], lines[-3:]
     found = PAST.search(lines[-1])
     assert found is not None and found.groups() == (str(410 - shown), str(shown)), lines[-1]
+
+
+def _held(source_id: str, path: Path, state: str) -> str:
+    """A [[source]] table for the folder ``path`` in ``state`` (paused or retired)."""
+    extra = f'state = "{state}"\n' + ('retired_reason = "made-up"\n' if state == "retired" else "")
+    return local_source_table(source_id, path).replace('kind = "local"\n', f'kind = "local"\n{extra}')
+
+
+@pytest.mark.parametrize("live", [False, True])
+def test_a_paused_or_retired_folder_is_marked_and_never_counted_c3332(
+    env: dict[str, str],  # noqa: F811
+    live: bool,
+) -> None:
+    """B13 round 47 ruling 214, C3332 (turn): only live sources were marked, so a folder sources.toml holds
+    paused or retired was listed unmarked, offered, and --source-local left it held, so step 2 asked the
+    folder question again. It is marked [paused] or [retired] by its exact folder in the [synced] slot (an
+    escaped row's mark first), one the list does not reach is printed right after the unlisted [synced] rows,
+    none counts as synced, a live source at or above the same folder wins, and the NEXT says that setting one
+    live is the person's edit; with no live folder too. --json gives each row its state."""
+    home = Path(env["HOME"])
+    lib = _cloud(env) / "OneDrive-Contoso"
+    for d in ("Alpha", "Beta", "Kestrel\tPlans", "Gamma/In"):
+        (lib / d).mkdir(parents=True)
+    old = home / "Documents" / "Old Notes"  # never listed: outside ~/Library/CloudStorage
+    notes = home / "Documents" / "notes"
+    tables = [_inbox(env), _held("beta", lib / "Beta", "paused"), _held("old", old, "retired")]
+    tables.append(_held("kestrel", lib / "Kestrel\tPlans", "paused"))
+    if live:
+        tables += [local_source_table("gamma", lib / "Gamma"), local_source_table("notes", notes)]
+        tables += [_held("gamma-held", lib / "Gamma", "paused"), _held("in", lib / "Gamma" / "In", "retired")]
+    _write_config(env, *tables)
+    _tool_python(env)
+    cp = install_sh(env, "--list-folders")
+    assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
+    if live:
+        head = [
+            "already synced on this Mac: 2 folders (marked [synced] below: first the 1 outside the list, "
+            "then the list)",
+            f"[synced] {notes}",
+        ]
+        nxt = (
+            f"NEXT: this Mac already syncs 2 folders, and a re-run keeps them: run {INSTALL_SH}, with one "
+            '--source-local "<folder>" for each unmarked folder to add from the list above (none is needed)'
+        )
+        gamma = [f"[synced] {lib}/Gamma", f"[inside a synced folder] {lib}/Gamma/In"]
+    else:
+        head, nxt, gamma = [], LIST_NEXT, [f"{lib}/Gamma", f"{lib}/Gamma/In"]
+    assert cp.stdout.splitlines() == [
+        *head,
+        f"[retired] {old}",
+        f"{lib}/Alpha",
+        f"[paused] {lib}/Beta",
+        *gamma,
+        f"{ESCAPED_MARK} [paused] {lib}/Kestrel\\tPlans",
+        f"{nxt}{HELD_LIST_NEXT}",
+    ], cp.stdout
+    assert install_log(env)[-2].endswith(f" result=done note=listed-5 synced={2 if live else 0}"), (
+        install_log(env)
+    )
+    doc = json.loads(install_sh(env, "--list-folders", "--json").stdout)
+    rows = [(f["path"], f["state"], f.get("mark")) for f in doc["folders"]]
+    assert rows == [
+        *([(str(notes), "synced", None)] if live else []),
+        (str(old), "retired", None),
+        (f"{lib}/Alpha", "listed", None),
+        (f"{lib}/Beta", "paused", None),
+        (f"{lib}/Gamma", "synced" if live else "listed", None),
+        (f"{lib}/Gamma/In", "inside_synced" if live else "listed", None),
+        (f"{lib}/Kestrel\tPlans", "paused", ESCAPED_MARK),
+    ], rows
+    assert doc["total"] == 5
 
 
 @pytest.mark.parametrize("json_run", [False, True])

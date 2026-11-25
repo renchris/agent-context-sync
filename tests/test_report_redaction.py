@@ -3164,6 +3164,35 @@ def test_the_agentsync_report_cuts_a_folder_step_1_listed_but_not_configured_c28
     assert not leaks, (len(leaks), leaks[:4])
 
 
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+def test_both_reports_cut_a_folder_step_1_marked_paused_or_retired_c3332(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+) -> None:
+    """B13 round 47 C3332 (privacy): step 1 marks a folder sources.toml holds paused or retired `[paused] ` or
+    `[retired] `, so both install.out readers strip those marks too; a reader that kept one never registered
+    the row (the shell reads a row only under the CloudStorage root, the agentsync report a path only past
+    its marks), and a folder no longer configured or on disk printed in clear. Neither report prints the
+    folder's words."""
+    cs = _cloud(env) / "OneDrive-Contoso"
+    out = Path(env["HOME"]) / "agent-context" / "setup" / "install.out"
+    out.parent.mkdir(parents=True, mode=0o700)
+    out.write_text(
+        "# run=r1 2026-11-25T00:00:00Z install.sh --list-folders\n"
+        f"[paused] {cs}/Kestrel Plans\n[retired] {cs}/Wombat Ledger/Quokka Drafts\n",
+        encoding="utf-8",
+    )
+    said = [
+        f"the person named {cs}/Kestrel Plans",
+        "the person named Kestrel Plans and Quokka Drafts",
+        f"step 1 listed {cs}/Wombat Ledger/Quokka Drafts",
+    ]
+    shell, python, _sp, _pp = _both_reports(env, ["Juniper Notes"], said, locale)
+    assert len(shell) == len(python) == len(said), (shell, python)
+    leaks = [ln for ln in shell + python for w in ("Kestrel", "Wombat", "Quokka") if w in ln]
+    assert not leaks, leaks
+
+
 def test_a_listed_escaped_name_is_decoded_under_one_number_and_the_old_form_left_c2873() -> None:
     """B13 round 45 C2873 (ruling 190): only a row that opened with an escaped mark is decoded, `\\ooo` per
     byte, `\\t`, `\\r` and `\\n` as both LF and 0x1E; a twin-marked or plain row keeps its backslash as the

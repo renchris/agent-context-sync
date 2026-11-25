@@ -26273,7 +26273,8 @@ def test_both_readers_of_the_folder_list_strip_every_mark_install_sh_prints() ->
     round 36 C1001: an escaped row opens with ESCAPED_MARK and may then carry one other mark, so both readers
     strip it first and then one of the others, and an escaped synced row registers its whole name. B13 round
     37 ruling 121 (lane RB): TWIN_MARK and ESCAPED_KEPT_MARK open a row in the same slot, so both readers take
-    all three first marks, the shell's as one alternation, before the others."""
+    all three first marks, the shell's as one alternation, before the others. B13 round 47 C3332: the held
+    marks [paused] and [retired] too, in the slot [synced] takes."""
     script = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
     firsts = [
         re.findall(rf'^{name}="(\[[^"]+\])"$', script, flags=re.M)[0]
@@ -26284,8 +26285,8 @@ def test_both_readers_of_the_folder_list_strip_every_mark_install_sh_prints() ->
         re.findall(rf'^{name}_OLD="(\[[^"]+\])"$', script, flags=re.M)[0]
         for name in ("ESCAPED_MARK", "ESCAPED_KEPT_MARK")
     ]
-    marks = re.findall(r'^(?:SYNCED|INSIDE|CONTAINS)_MARK="(\[[^"]+\])"', script, flags=re.M)
-    assert len(marks) == 3 and len(re.findall(r'^[A-Z_]+_MARK="', script, flags=re.M)) == 6, marks
+    marks = re.findall(r'^(?:SYNCED|INSIDE|CONTAINS|PAUSED|RETIRED)_MARK="(\[[^"]+\])"', script, flags=re.M)
+    assert len(marks) == 5 and len(re.findall(r'^[A-Z_]+_MARK="', script, flags=re.M)) == 8, marks
     assert setup_report._LIST_MARKS[:3] == tuple(f"{m} " for m in firsts)
     assert setup_report._LIST_MARKS[3:5] == tuple(f"{m} " for m in olds)
     assert sorted(setup_report._LIST_MARKS[5:]) == sorted(f"{m} " for m in marks)
@@ -30242,7 +30243,10 @@ def test_the_loop_line_says_install_shs_own_form_on_status_rule_2_next_c3003(
             r.facts.doctor_problems.append(("FAIL", "state_dir.files", "x"))
         return setup_report._loop_line(r)
 
-    clause = setup_report.NOT_LIVE_CLAUSE.format(folders="wombat (paused), quokka (retired)")
+    # B13 round 47 C3332: each local folder by its path too, which the Loop line shows past the home folder
+    clause = setup_report.NOT_LIVE_CLAUSE.format(
+        folders="wombat (paused) at Wombat, quokka (retired) at Quokka"
+    )
     line = loop(inbox + paused + retired, ok)
     assert f"NEXT: {own}{clause}" in line and "add-source" not in line, line
     line = loop(inbox, ok)

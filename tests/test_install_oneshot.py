@@ -1752,8 +1752,8 @@ def test_a_bare_rerun_counts_a_paused_or_retired_folder_and_syncs_c2700(
     assert [p for p in home.rglob("SKILL.md") if p.parent.name == "agentsync-docs"], (
         "the sync wrote the skill"
     )
-    held = ", ".join(
-        f"{t['id']} ({t['state']})"
+    held = ", ".join(  # each held folder by its path as well as its id (B13 round 47 C3332)
+        f"{t['id']} ({t['state']}) at {Path(t['path']).expanduser()}"
         for t in tomllib.loads(cfg.read_text(encoding="utf-8"))["source"]
         if "state" in t
     )
@@ -10420,6 +10420,13 @@ LIST_NEXT = (
 )
 """--list-folders' NEXT: on a Mac that syncs no folder yet."""
 
+HELD_LIST_NEXT = (
+    "; a folder marked [paused] or [retired] above is in sources.toml but not synced, and --source-local "
+    "leaves it so: setting a folder to live is the person's own edit of sources.toml, never the agent's"
+)
+"""The clause --list-folders' NEXT ends with, before any other, once a row is marked paused or retired (B13
+round 47 C3332)."""
+
 
 def test_list_folders_without_a_synced_folder_prints_what_it_always_did(env: dict[str, str]) -> None:
     """A new Mac is asked which folders to sync, so its list is byte for byte what it was before a set-up
@@ -10454,7 +10461,8 @@ def test_list_folders_marks_the_folders_this_mac_already_syncs(env: dict[str, st
     line first, and a mark before each. A folder counts by the path agentsync syncs it under (a source
     written through OneDrive's own link in the home folder is the folder under CloudStorage). A paused
     source and the inbox are not folders it syncs, and a source deeper than the list goes is counted and
-    said to be outside it.
+    said to be outside it. B13 round 47 C3332: a paused source's folder is marked [paused], counted in
+    neither number, and the NEXT says it is the person's to set live.
 
     A sync reads the whole tree under a synced folder. So a listed folder inside one is synced too, and
     one that holds one would be read twice if it were added: each has a mark of its own, and only a folder
@@ -10486,6 +10494,7 @@ def test_list_folders_marks_the_folders_this_mac_already_syncs(env: dict[str, st
     keep = (
         f"NEXT: this Mac already syncs 2 folders, and a re-run keeps them: run {INSTALL_SH}, with one "
         '--source-local "<folder>" for each unmarked folder to add from the list above (none is needed)'
+        f"{HELD_LIST_NEXT}"
     )
     assert cp.stdout.splitlines() == [
         "already synced on this Mac: 2 folders (marked [synced] below)",
@@ -10493,7 +10502,7 @@ def test_list_folders_marks_the_folders_this_mac_already_syncs(env: dict[str, st
         f"[inside a synced folder] {cs}/OneDrive-Contoso/Documents/Plans",
         f"[contains a synced folder] {cs}/OneDrive-Contoso/FY26 Projects",
         f"[synced] {cs}/OneDrive-Contoso/FY26 Projects/Alpha",
-        f"{cs}/OneDrive-Contoso/FY26 Projects/Beta",
+        f"[paused] {cs}/OneDrive-Contoso/FY26 Projects/Beta",
         f"{cs}/SharedLibraries-Contoso/Team Site - Docs",
         keep,
     ]
@@ -11176,6 +11185,8 @@ def test_source_local_refuses_an_escaped_row_or_a_folder_with_a_look_alike_c1072
         ("[synced] <lib>/Real", "kept"),
         ("[inside a synced folder] <lib>/Real", "kept"),
         ("[contains a synced folder] <lib>/Real", "contains"),
+        ("[paused] <lib>/Real", "held"),  # B13 round 47 C3332
+        ("[retired] <lib>/Real", "held"),
     ],
 )
 def test_a_missing_source_local_folder_names_its_owner_c1407(
@@ -11185,7 +11196,8 @@ def test_a_missing_source_local_folder_names_its_owner_c1407(
     was refused with `fix the usage error above ..., then run the corrected command`, though putting it back
     or naming another folder is the person's. Such a refusal now takes the person's NEXT; a relative path,
     whose spelling the agent chose, keeps the corrected command; and a row pasted with a kept mark is refused
-    in its own words, never as a missing folder, with a NEXT the agent acts on.
+    in its own words, never as a missing folder, with a NEXT the agent acts on. B13 round 47 C3332: a row
+    marked [paused] or [retired] too, its NEXT saying that setting it live is the person's edit.
 
     B13 round 39 C1652: the prompt's step 2 forbids the re-run a NEXT names after `not a step for the agent`,
     so the person's NEXT carried an agent clause the agent could not reach. install.sh settles the owner: a
@@ -11229,17 +11241,22 @@ def test_a_missing_source_local_folder_names_its_owner_c1407(
         assert nxt.startswith(f"NEXT: fix the usage error above (see {INSTALL_SH} --help)"), nxt
     else:
         mark = given.split("] ", 1)[0] + "]"
-        why = (
-            "a sync would read the synced folder inside it twice"
-            if owner == "contains"
-            else "that folder already syncs"
-        )
+        why = {
+            "contains": "a sync would read the synced folder inside it twice",
+            "held": "that folder is in sources.toml but not synced",
+        }.get(owner, "that folder already syncs")
         assert cp.stderr.splitlines()[0] == (
             f"usage error: --source-local {lib}/Real: this is a row step 1 marked {mark}: {why}, so paste "
             "nothing for it (see --help)"
         ), cp.stderr
         assert "is not an existing folder" not in cp.stderr, cp.stderr
-        assert nxt.startswith("NEXT: leave that --source-local out: the folder it names "), nxt
+        if owner == "held":
+            assert nxt.startswith(
+                "NEXT: leave that --source-local out: setting that folder to live is the person's own edit "
+                "of sources.toml, never the agent's; then run the corrected command"
+            ), nxt
+        else:
+            assert nxt.startswith("NEXT: leave that --source-local out: the folder it names "), nxt
     assert "Fabrikam" not in nxt, "the NEXT names no folder"
     assert "run the command again with that row's path" not in nxt, "no re-run the prompt's step 2 forbids"
 
@@ -28214,7 +28231,12 @@ _C3003_TABLES = (
     '\n[[source]]\nid = "quokka-drop"\nkind = " inbox "\npath = "~/Quokka Drop"\nstate = "paused"\n'
     '\n[[source]]\nid = "live-one"\nkind = "local"\npath = "~/Live One"\n'
 )
-_C3003_HELD = "kestrel-plans (paused), wombat-notes (retired)"
+
+
+def _c3003_held(home: Path | str) -> str:
+    """held_sources_clause's items for :data:`_C3003_TABLES` under ``home``: each id, state and path (B13
+    round 47 C3332 added the path)."""
+    return f"kestrel-plans (paused) at {home}/Kestrel Plans, wombat-notes (retired) at {home}/Wombat Notes"
 
 
 def test_a_bare_run_ends_on_install_shs_own_no_folder_next_naming_held_folders_c3003(
@@ -28231,47 +28253,122 @@ def test_a_bare_run_ends_on_install_shs_own_no_folder_next_naming_held_folders_c
     stub = {**env, "STUB_STATUS_OUT": _rule_2_next(env), "STUB_STATUS_RC": "0"}
     cp = install_sh(stub, str(wheel))
     assert cp.returncode == 0, cp.stdout + cp.stderr
-    assert last_line(cp) == _bare_no_folder_next(env, wheel, _C3003_HELD) and one_next(cp), cp.stdout
+    assert last_line(cp) == _bare_no_folder_next(env, wheel, _c3003_held(env["HOME"])) and one_next(cp), (
+        cp.stdout
+    )
     assert "add-source" not in cp.stdout + cp.stderr, cp.stdout
     chosen = install_sh(stub, str(wheel), "--no-folder")
     assert chosen.returncode == 0 and last_line(chosen) == _chosen_next(env, wheel), chosen.stdout
 
 
-@pytest.mark.parametrize("tool_py", ["tomllib", "none"])
-def test_both_held_folder_readers_read_as_the_loader_does_c3003(tmp_path: Path, tool_py: str) -> None:
-    """B13 round 46 C3003: held_sources_clause reads with the installed interpreter's tomllib or, with none,
-    the line reader, and both name the paused and retired folders load_config reads, kind and state stripped
-    as config._str strips them."""
-    config = tmp_path / "sources.toml"
-    config.write_text(default_config_text() + _C3003_TABLES, encoding="utf-8")
+def _held_clause(config: Path, home: Path, tool_py: str) -> subprocess.CompletedProcess[str]:
+    """install.sh's held_sources_clause over ``config``, with the installed interpreter ``tool_py`` ("" for
+    the line reader) and LIST_ESC_AWK, its escape."""
+    [awk] = re.findall(r"^LIST_ESC_AWK='(.*?)^'$", INSTALL_SH.read_text(encoding="utf-8"), flags=re.M | re.S)
     harness = "\n".join(
         [
+            f"LIST_ESC_AWK={shlex.quote(awk)}",
             _shell_function("watchdog"),
             _shell_function("with_timeout"),
             _shell_function("held_sources_clause"),
             'held_sources_clause "$1"',
         ]
     )
-    cp = _bash_run(
+    return _bash_run(
         [BASH32, "-c", harness, "x", str(config)],
         capture_output=True,
         text=True,
-        env={
-            "PATH": "/usr/bin:/bin",
-            "HOME": str(tmp_path),
-            "TOOL_PY": sys.executable if tool_py == "tomllib" else "",
-        },
+        env={"PATH": "/usr/bin:/bin", "HOME": str(home), "TOOL_PY": tool_py},
     )
+
+
+@pytest.mark.parametrize("tool_py", ["tomllib", "none"])
+def test_both_held_folder_readers_read_as_the_loader_does_c3003(tmp_path: Path, tool_py: str) -> None:
+    """B13 round 46 C3003: held_sources_clause reads with the installed interpreter's tomllib or, with none,
+    the line reader, and both name the paused and retired folders load_config reads, kind and state stripped
+    as config._str strips them. B13 round 47 C3332: each local folder by its path too, the path load_config
+    holds; the expected clause is written out here, never built by either twin."""
+    config = tmp_path / "sources.toml"
+    config.write_text(default_config_text() + _C3003_TABLES, encoding="utf-8")
+    home = Path.home()  # the loader expands ~ against it: the shell gets the same HOME
+    cp = _held_clause(config, home, sys.executable if tool_py == "tomllib" else "")
     assert (cp.returncode, cp.stderr) == (0, ""), cp
     held = [
-        f"{s.id} ({s.state.value})"
+        f"{s.id} ({s.state.value}) at {s.path}"
         for s in load_config(config).sources
         if s.kind is not SourceKind.INBOX and s.state.value in ("paused", "retired")
     ]
-    assert ", ".join(held) == _C3003_HELD
-    assert cp.stdout == f"; not live: {_C3003_HELD}{_HELD_TAIL}"
-    # the report's own copy of the clause, which lane RA's _install_sh_said_no_folder mirror prints (C3003)
-    assert cp.stdout == setup_report.NOT_LIVE_CLAUSE.format(folders=_C3003_HELD)
+    assert ", ".join(held) == _c3003_held(home)
+    assert cp.stdout == (
+        f"; not live: kestrel-plans (paused) at {home}/Kestrel Plans, wombat-notes (retired) at "
+        f"{home}/Wombat Notes: setting a folder to live is the person's own edit of sources.toml, never "
+        "the agent's"
+    )
+
+
+def test_the_report_names_each_held_folder_as_install_sh_does_c3332() -> None:
+    """B13 round 47 C3332 (ruling 214): held_sources_clause names each paused or retired folder by its path as
+    well as its id, so the agent can match it to step 1's marked row, and the report's twin
+    (setup_report._install_sh_said_no_folder) builds the same items: one config, one paused folder, one
+    retired one whose path holds a TAB, which both escape as step 1's list does (`\\t`), never raw, and a
+    brace, which the report's Loop line formats as the folder's own."""
+    home = Path.home()
+    ctx = home / "agent-context"
+    (ctx / "setup").mkdir(parents=True, mode=0o700)
+    cfg = ctx / "sources.toml"
+    cfg.write_text(
+        default_config_text()
+        + inbox_source_table("inbox", ctx / "inbox")
+        + '\n[[source]]\nid = "kestrel-plans"\nkind = "local"\npath = "~/Kestrel {Plans}"\nstate = "paused"\n'
+        + '\n[[source]]\nid = "wombat-notes"\nkind = "local"\npath = "~/Wombat\\tNotes"\nstate = "retired"\n'
+        + 'retired_reason = "made-up"\n',
+        encoding="utf-8",
+    )
+    cp = _held_clause(cfg, home, sys.executable)
+    assert (cp.returncode, cp.stderr) == (0, ""), cp
+    assert cp.stdout == (
+        f"; not live: kestrel-plans (paused) at {home}/Kestrel {{Plans}}, wombat-notes (retired) at "
+        f"{home}/Wombat\\tNotes{_HELD_TAIL}"
+    ), cp.stdout
+    rule2 = "NEXT: no folder is synced yet: ask the operator which folders to sync (made up)"
+    (ctx / "setup" / "install.log").write_text(
+        "2026-11-25T10:00:00Z run=20261125T100000Z-7 start install.sh compat=43 commit=0123456789ab "
+        "kind=checkout source=- args=\n2026-11-25T10:00:00Z run=20261125T100000Z-7 end rc=0\n",
+        encoding="utf-8",
+    )
+    r = setup_report._Run(cfg, setup_report.ReportHooks(loop_next=lambda _config: [rule2]), 60.0)
+    said = setup_report._install_sh_said_no_folder(r, load_config(cfg), rule2)
+    # the Loop line formats it with install.sh's path, so a brace in a folder's path is the folder's own
+    shown = {"install_sh": setup_report.INSTALL_SH, "rerun": setup_report.INSTALL_SH}
+    own = setup_report.NO_FOLDER_NEXT.format(**shown)
+    assert said is not None and said.format(**shown).startswith(own), said
+    assert said.format(**shown).removeprefix(own) == cp.stdout
+
+
+def test_step_2_over_a_paused_folder_says_already_configured_and_the_held_clause_c3269(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 47 C3269 (turn; ruling 214's install pin): with the real agentsync, step 2 with
+    --source-local on a folder sources.toml holds paused prints add-source's `already configured: source ...
+    (local, paused)`, changes nothing, exits 0 and ends on the same no-folder NEXT with its clause naming that
+    folder by id, state and path: the line the setup prompt's v44 rule keys on."""
+    env = real_env
+    first = install_sh(env, str(wheel), timeout=300)
+    assert first.returncode == 2, first.stdout + first.stderr  # a first run with no folder
+    cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
+    folder = _cloud(env) / "OneDrive-Contoso" / "Kestrel Plans"
+    folder.mkdir(parents=True)
+    held = local_source_table("kestrel", folder).replace(
+        'kind = "local"\n', 'kind = "local"\nstate = "paused"\n'
+    )
+    cfg.write_text(cfg.read_text(encoding="utf-8") + held, encoding="utf-8")
+    before = cfg.read_text(encoding="utf-8")
+    cp = install_sh(env, str(wheel), "--source-local", str(folder), timeout=300)
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    said = f"already configured: source 'kestrel' (local, paused) has path {folder} in {cfg}"
+    assert said in (cp.stdout + cp.stderr).splitlines(), cp.stdout + cp.stderr
+    assert last_line(cp) == _bare_no_folder_next(env, wheel, f"kestrel (paused) at {folder}"), last_line(cp)
+    assert one_next(cp) and cfg.read_text(encoding="utf-8") == before
 
 
 def test_the_no_folder_swaps_comment_names_c3003s_rewrite_above_it_c3282() -> None:

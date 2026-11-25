@@ -4657,9 +4657,12 @@ _LIST_MARKS = (
     "[synced] ",
     "[inside a synced folder] ",
     "[contains a synced folder] ",
+    "[paused] ",
+    "[retired] ",
 )
 """install.sh's ``ESCAPED_MARK``, ``TWIN_MARK``, ``ESCAPED_KEPT_MARK``, ``ESCAPED_MARK_OLD``,
-``ESCAPED_KEPT_MARK_OLD``, ``SYNCED_MARK``, ``INSIDE_MARK`` and ``CONTAINS_MARK``, each with the space the
+``ESCAPED_KEPT_MARK_OLD``, ``SYNCED_MARK``, ``INSIDE_MARK``, ``CONTAINS_MARK``, ``PAUSED_MARK`` and
+``RETIRED_MARK`` (B13 round 47 C3332), each with the space the
 folder list puts after it (a test holds them equal to install.sh's). A row opens with at most one of the
 first five, then may carry one of the others, so they are stripped in this order (B13 round 36 C1001; round
 37 ruling 121, lane RB). The two ``_OLD`` marks are the escaped marks' words before B13 round 38 C1447
@@ -17755,7 +17758,9 @@ NOT_LIVE_CLAUSE = (
 )
 """install.sh's clause after :data:`NO_FOLDER_NEXT` naming each folder sources.toml holds that is not live, as
 ``<id> (paused)`` or ``<id> (retired)`` in config order, joined by ``, `` (B13 round 46 C3003, amending ruling
-191): the one copy of its words."""
+191): the one copy of its words. Since B13 round 47 C3332 a local folder's item ends `` at <path>``, its
+path as load_config holds it, escaped as step 1's list escapes a row (install.sh's held_sources_clause, byte
+for byte)."""
 _NO_FOLDER_OPENERS = ("NEXT: no folder is synced yet", "NEXT: no folder to sync yet")
 """The two NEXT openers install.sh turns into :data:`NO_FOLDER_CHOSEN_NEXT` on a run that recorded the
 person's none, whatever the config counts (status's rule 2 among them; ruling 191)."""
@@ -17794,8 +17799,17 @@ def _install_sh_said_no_folder(r: _Run, config: Config, found: str) -> str | Non
         chosen = latest.completed_none and ((inbox_only and missing) or found.startswith(_NO_FOLDER_OPENERS))
         return NO_FOLDER_CHOSEN_NEXT if chosen else None
     if latest.rc == 0 and found.startswith(_RULE2_OPENER):  # B13 round 46 C3003
+        # a local folder by its path too, escaped as step 1's list escapes a row, its braces doubled: the
+        # caller formats this line (B13 round 47 C3332)
         idle = [
             f"{s.id} ({s.state.value})"
+            + (
+                f" at {_LIST_ESCAPED_RE.sub(list_escaped_char, str(s.path))}".replace("{", "{{").replace(
+                    "}", "}}"
+                )
+                if s.path is not None
+                else ""
+            )
             for s in config.sources
             if s.kind is not SourceKind.INBOX and not s.is_live
         ]
