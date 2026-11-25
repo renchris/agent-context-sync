@@ -47273,6 +47273,8 @@ Amended 2026-11-25, §16.292 C3213, C3258, C3261: that note reads `the inbox (<i
 file or a link that does not lead to a folder, and no later sync lists it until a folder is back at that name or its
 path is fixed: keeping a copy, move it aside and put a folder back at that name, or fix path in [[source]] id =
 "<id>" in <config>; it does not block the next step`, its own `until`, since moving the file aside lists nothing.
+Amended 2026-11-25, §16.292 C3215: that source's walk alarm and doctor's listable row read `not a folder` too, each with
+its own `until` and remedy, never step 2's; the alarm keeps the full path, and the volume row is unchanged.
 
 **A folder named in prose is unquoted** (C3008; ruling 204; amends §16.247 C1401 and §16.282 C2809). `_shell_path`'s
 one-shell-word form, `~/'<rest>'`, read like a typo where a fix names a folder in a sentence (`restore
@@ -48020,6 +48022,22 @@ read (...)` and doctor's listable row and its fix); a local source keeps `source
 `test_the_walk_names_every_kept_inbox_entry_as_typed_c3312_c3211` (eleven kinds of entry, under a timeout) and
 `test_the_kept_inbox_probe_is_bounded_and_run_only_by_a_failed_root_read_c3311` (`sync` and `sync --dry-run` held,
 live_inbox bounded, a root that reads runs no probe).
+
+**A second inbox source that is not a folder reads `not a folder`, with its own remedy** (C3215; ruling 210; amends
+§16.287 C3044). Any inbox source other than the one on the kept inbox whose root is a file, a link to one, a FIFO or a
+path through a file read `source root is not a directory: <path>` in the walk (or `source root unreadable: <path>: Not
+a directory`) and `<path> is not a directory` with `point [[source]] ... path at a folder` in doctor, while its note
+said `is not a folder`. `LocalArm._other_inbox_alarm` now reads `source root is not a folder: <path> (walk skipped;
+nothing is deleted; no later sync lists it until a folder is back at that name or its path is fixed: the note that
+begins the inbox (<id>) is not a folder says how, and `~/.local/bin/agentsync status` prints it too)`, the path in full
+as configured (ruling 103), and a path through a file sets `root_notdir` too, so the note follows; doctor's listable
+row reads `<path> is not a folder` with `doctor.other_inbox_not_a_folder_fix`: `restore <path> as a folder: no later
+sync lists it until a folder is back at that name or its path is fixed; keeping a copy, move it aside and put a folder
+back at that name, or fix path in [[source]] id = "<id>" in <config>`, the person's (`restore ` is a PERSONS_FIX_RE
+opening), never `inbox_not_a_folder_fix` or step 2 (makes worse True for those). The volume row is unchanged (a file
+sits on a volume), and a local source keeps `is not a directory`. Test:
+`test_a_second_inbox_that_is_not_a_folder_reads_not_a_folder_with_its_own_remedy_c3215` (eleven kinds of entry, under
+a timeout).
 
 ### 16.293 Round 47: the converters: ruling 202's Office twins closed (UTF-32 text, a no-namespace `<Types>`, the container answers before the cache, xlsx's emitter 1.0.7) and one noun per family (2026-11-25, wave B13 round 47 lane E)
 

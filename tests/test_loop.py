@@ -3336,6 +3336,66 @@ def test_the_kept_inbox_probe_is_bounded_and_run_only_by_a_failed_root_read_c331
         release.set()
 
 
+@pytest.mark.parametrize("entry", sorted(_ENTRY_KINDS))
+def test_a_second_inbox_that_is_not_a_folder_reads_not_a_folder_with_its_own_remedy_c3215(
+    tmp_path: Path, entry: str
+) -> None:
+    """B13 round 47 C3215 (ruling 210): a second inbox source whose folder is a file read ``source root is
+    not a directory`` in the walk and ``is not a directory`` in doctor, while its note said ``is not a
+    folder``. Over every kind of entry at its path each reader returns and raises nothing; one the walk finds
+    is not a folder (a file, a link to one, a FIFO, a path through a file) reads ``not a folder`` in the
+    alarm, doctor and the note, with its own ``until`` and remedy, never step 2's, its full path kept; the
+    volume row is unchanged."""
+    root = tmp_path / "Contoso Gamma"
+    (root / "Gamma Empty").mkdir(parents=True)
+    config = _synced(tmp_path, root)
+    config, box = ensure_inbox(config.config_path)
+    assert box is not None
+    drop = tmp_path / "zz" / "inbox"
+    drop.mkdir(parents=True)
+    cfg = config.config_path
+    cfg.write_text(cfg.read_text(encoding="utf-8") + inbox_source_table("zz-drop", drop), encoding="utf-8")
+    assert run_cycle(load_config(cfg), mode=None).exit_code == 0
+    drop.rename(tmp_path / "drop-moved")  # moved aside, never removed
+    locked = _put_entry(drop, entry)
+    try:
+        if locked and os.access(locked[0], os.X_OK):
+            pytest.skip("this account searches a mode-0 folder")
+        with _bounded(60):
+            config = load_config(cfg)
+            on = config.source("zz-drop")
+            report = run_cycle(config, mode=None)
+            rows = doctor._check_local_source(config, on, Path(sys.executable))
+            step = loop.next_step(config)
+    finally:
+        for folder in locked:
+            folder.chmod(0o700)
+    assert on.path is not None
+    [src] = [r for r in report.sources if r.source_id == "zz-drop"]
+    listable = next(r for r in rows if r.name == "source.zz-drop.listable")
+    texts = [*src.alarms, *(r.detail + (r.fix or "") for r in rows), *step.notes]
+    assert not any("step 2" in t for t in texts if "zz-drop" in t or "zz/" in t), texts
+    if entry in ("file", "link-to-file", "fifo", "link-through-a-file"):
+        assert src.alarms == (
+            f"source root is not a folder: {on.path} (walk skipped; nothing is deleted; no later sync lists "
+            "it until a folder is back at that name or its path is fixed: the note that begins the inbox "
+            f"(zz-drop) is not a folder says how, and `{BIN} status` prints it too)",
+        ), src.alarms
+        assert listable.detail == f"{doctor.list_spelling(on.path)} is not a folder", listable.detail
+        assert listable.fix == (
+            f"restore {doctor._prose_path(on.path)} as a folder: no later sync lists it until a folder is "
+            "back at that name or its path is fixed; keeping a copy, move it aside and put a folder back at "
+            f'that name, or fix path in [[source]] id = "zz-drop" in {doctor._shown(cfg)}'
+        ), listable.fix
+        assert doctor.is_persons_fix(listable.fix)  # the person's, never handed to the agent
+        assert any(n.startswith("the inbox (zz-drop) is not a folder: ") for n in step.notes), step.notes
+        if entry != "link-through-a-file":  # the volume row as it was: a file sits on a volume
+            volume = next(r for r in rows if r.name == "source.zz-drop.volume")
+            assert volume.ok and volume.detail.startswith("volume UUID "), volume
+    for text in texts:
+        assert "is not a directory" not in text or "zz" not in text, text
+
+
 def test_an_empty_draft_over_an_empty_mirror_is_rule_4_beside_topic_pages_c2707(tmp_path: Path) -> None:
     """B13 round 44 C2707 (ruling 181): with a hand-written topic page, an empty draft over a mirror with no
     converted page skipped rule 4 (``not pages``) and reached rule 5, which pointed at WAITING ON YOU lines

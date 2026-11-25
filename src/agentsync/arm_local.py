@@ -1295,6 +1295,17 @@ class LocalArm:
             f"({self.source_id}) is not a folder says what to do, and `{AGENTSYNC_BIN} status` prints it too)"
         )
 
+    def _other_inbox_alarm(self) -> str:
+        """The root branches' alarm for an inbox source other than the one on the kept inbox whose root is not
+        a folder: ``not a folder``, as doctor and loop's note say it, its full path kept (ruling 103), and its
+        own ``until``, the person's folder put back or path fixed, never step 2's, which recreates the kept
+        inbox alone (B13 round 47 C3215, ruling 210; C3044, C3261)."""
+        return (
+            f"source root is not a folder: {self.root} (walk skipped; nothing is deleted; no later sync "
+            "lists it until a folder is back at that name or its path is fixed: the note that begins the "
+            f"inbox ({self.source_id}) is not a folder says how, and `{AGENTSYNC_BIN} status` prints it too)"
+        )
+
     def _incomplete(self, alarm: str) -> ScanResult:
         log.warning("%s: %s", self.source_id, alarm, extra={ECHOED_ALARM: True})
         return ScanResult(
@@ -1506,6 +1517,9 @@ class LocalArm:
                     f"source root is not read: {shown[1]}: {exc.strerror} (walk skipped; nothing is deleted; "
                     f"`{AGENTSYNC_BIN} status` says what to do)"
                 )
+            if exc.errno == errno_mod.ENOTDIR and self.kind is SourceKind.INBOX:  # a path through a file
+                self.root_notdir = True
+                return self._incomplete(self._other_inbox_alarm())
             return self._incomplete(f"source root unreadable: {self.root}: {exc.strerror}")
         if stat.S_ISLNK(root_st.st_mode):
             self.root_notdir = True
@@ -1520,6 +1534,8 @@ class LocalArm:
                 return shown
             if shown[0] is not None:
                 return self._incomplete(self._not_a_folder_alarm(shown[0]))
+            if self.kind is SourceKind.INBOX:  # any other inbox source: its own remedy (round 47 C3215)
+                return self._incomplete(self._other_inbox_alarm())
             return self._incomplete(f"source root is not a directory: {self.root}")
         if not isinstance(volume, str):
             return self._incomplete(f"volume UUID unavailable for {self.root}: {volume}")

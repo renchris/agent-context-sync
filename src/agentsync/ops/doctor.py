@@ -3060,6 +3060,18 @@ def inbox_not_a_folder_fix(folder: Path) -> str:
     )
 
 
+def other_inbox_not_a_folder_fix(config: Config, src: SourceConfig) -> str:
+    """The fix for an inbox source other than the one on the kept inbox whose root is not a folder (B13 round
+    47 C3215, ruling 210): the person's (``restore `` is a PERSONS_FIX_RE opening), its path in full as
+    configured, and loop's note's own ``until`` and remedy (C3261), never step 2's."""
+    assert src.path is not None
+    return (
+        f"restore {_prose_path(expand(src.path))} as a folder: no later sync lists it until a folder is "
+        "back at that name or its path is fixed; keeping a copy, move it aside and put a folder back at that "
+        f'name, or fix path in [[source]] id = "{src.id}" in {_shown(config.config_path)}'
+    )
+
+
 def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[CheckResult]:
     """One local/inbox source: listable, sentinel present, volume UUID readable."""
     base = f"source.{src.id}"
@@ -3146,6 +3158,16 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
             )
         elif isinstance(exc, FileNotFoundError):
             out.append(_bad(f"{base}.listable", f"{shown} does not exist", fix=missing_fix()))
+        elif src.kind is SourceKind.INBOX:
+            # any other inbox source: not a folder, as the walk's alarm and loop's note say it, with its own
+            # remedy, never step 2's (B13 round 47 C3215, ruling 210); the volume row below is unchanged
+            out.append(
+                _bad(
+                    f"{base}.listable",
+                    f"{shown} is not a folder",
+                    fix=other_inbox_not_a_folder_fix(config, src),
+                )
+            )
         else:
             out.append(
                 _bad(
