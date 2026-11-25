@@ -3997,6 +3997,171 @@ every close). The specs cite `006e48a6`'s line numbers, and the kept lessons in 
 47 rehearses v43, with v42's block (`97049c79`) as scenario C's first old copy and a step 2 refused on AGENTSYNC_CONFIG
 among its plays (C3018).
 
+### B13 round 46 landed (2026-11-25)
+
+All five lanes landed, and the prompt is now v43 (`ea3d2d0d`, lane D's commit for C3113 with C3013, C3102 with C3112,
+C3116 and C3018, ruling 205), landed first and alone from `b13/r46-d`; lane D's other items came from its second branch,
+`b13/r46-d2`, built in a second worktree while the v43 land waited for the lock. Notes `lanes/r46-<lane>.md`, lead notes
+`round29/lead-notes.md`. Of the 100 confirmed items, 75 are built on trunk: the lanes held 77 (RA 14, RB 18, B 21, E 12,
+D 12) and the lead 23 (lane L), and the count is the 100 less the 23 lane L items, which went into round 47's kit, brief
+and harvest and the lead's log, not into shipped files, less C3081 with C3057 (lane RB's two, gated, unbuilt), so 100 -
+23 - 2 = 75; an id merged into another counts as built with it (C3033, C3037 and C3110 under C3099, C3097 under C3107,
+for example), and C3051's cli.py docstring is lane B's `576d0a4a`, counted under lane D's item. Round 46's own counts
+stand in both readings: the finders' 0 turns, 40 wrongs and 60 small (100 confirmed, 16 refuted, `wf_5eab2cdc-4d4`), and
+the verifiers' headers, which class C3099 a turn with 27 wrongs and 72 small; the stop rule (no turn and no wrong) is
+not met under either. The lead's `9e62806f` carries rulings 198 to 205, reserves §16.285 to §16.289 and carries the
+plan's "B13 round 46" section, no item; it took one land run, detached, GATE GREEN at 02:07:39Z on 2026-11-25 (rest part
+54:32) and pushed at about 02:07:45Z (ci `45530715488` success on attempt 1). On it the lanes landed 46 commits (`git
+log --oneline 9e62806f..fbbc2d07`), each landed tip's CI read back green on attempt 1 by the lead.
+
+Lane D's v43 landed first, `9e62806f..ea3d2d0d` (1; ci `45540495958` and diagrams `45540495949` success), in one run.
+Lane E followed, `ea3d2d0d..b3833521` (5, its 12 items, `d8af0e6f` to `b3833521`; ci `45550487496` success, no diagrams
+run), in one run rebased onto `ea3d2d0d` with no conflict. Lane B's `b3833521..6f86e455` (12, its 21 items, ruling 198's
+fix for the regression its own C2822 caused, `9196b3b8` and `d533628d`, first; ci `45560413101` success, no diagrams
+run) came after a first run whose log holds only its wait for the land lock (begun at 02:00:33Z). Lane D's `b13/r46-d2`
+landed `6f86e455..15d14875` (6: C3065, C3060, C3050, C3051's dated line, C3052 and C3108; ci `45571511671` and diagrams
+`45571511914` success), its gate green with one test, test_launcher.py's SIGTERM-forwarding test, failed under load and
+passed alone. Lanes RA and RB then landed in one `scripts/ship-land.sh` run from lane RB's `b13/r46-rb`, built on lane
+RA's joint branch `b13/r46-ra-joint`: `15d14875..cb4cc114` (17: lane RA's 8, `ad3f8296` to `8f418c25`, with rulings 198
+and 199's Python halves and shared rows, ruling 200's C3082 and C3114 with C3036, the review's rows, C3024's key,
+C3003's mirror and C3055's kept-inbox fix; then lane RB's 9, `8cae7548` to `cb4cc114`, the last its style fix to lane
+RA's C3082 condition), so neither report's half of rulings 198 and 199 was pushed without the other (ci `45595683040`
+and diagrams `45595682969` success). Three runs of it pushed nothing before: the first, begun at 02:07:13Z, never
+reached its gate (its log holds only its wait for the land lock; the lead's 04:13Z and 05:09Z entries find lane RB's
+land queued on a tip without lane RA's `8f418c25` fix for the three test_setup_report.py tests its `6d5c5c22` rows had
+turned red, then restarted on the rebased tip); land 2 went red at 07:56:20Z in its test_deploy_pack.py part on 3 tests,
+red again alone (C1307's dollar-quote sentences, test_readme_prompt_asks_a_mac_already_set_up_for_no_folder, which
+reserves the phrase C3003's clause first used, and the held-dated-lines test); and land 3 went red at 09:13:16Z on 61
+tests of its rest part (1:08:32): 58 rows of the C2432, C2716 and C2311 tests (lane RB's note puts 56 down to routing
+debug_path through q_word), test_cli.py's one-word-condition lint on lane RA's C3082 wrap and two more. Land 4 went
+green at 10:30:34Z with one test, test_setup_report.py's image-stub test, failed under load and passed alone. Lane RB's
+note counts the two red runs, as the log does. Lane RA's own 3 followed, `cb4cc114..d50351fd` (C3086 with C3029, C3115
+with C3035 and C3053, and C3008's guard row; ci `45613904534` success), in one run. Last came lane D's cross-lane dated
+lines from `b13/r46-d`, `d50351fd..fbbc2d07` (2: ruling 195's line for ruling 201, `3d07f7d7`, and rulings 181, 191 and
+197's for C3003, C3029 and C3086 with the guide's expected-turns row, `fbbc2d07`; ci `45627987270` success, no diagrams
+run), in one run. An earlier run of `3d07f7d7`'s change alone on `15d14875` (tree `632f353b`) was SIGTERMed at
+09:29:22Z, ten minutes after its gate slot was granted, nothing pushed; lane D's note does not mention it. The lead's
+08:48Z, 09:43Z and 12:27Z entries number lane RB's runs from its first red one and count that SIGTERM as lane RB's land
+3, but its tree is `15d14875` with `3d07f7d7`'s two files, and lane D's land log for it
+(`round46/scratch-D/land-195.log`, last written at 09:29:23Z) holds `Terminated: 15`; and the 03:31Z entry's green
+verdict at 03:02:12Z (tree `cc94fa02`) is lane D's v43 land, not lane E's. All five lanes were fired on claude-next at
+01:24Z, and the lead's log records none moving accounts or being succeeded; the lead's own session recycled in place
+once (02:16Z, pane 12).
+
+C3081 with C3057 (C2060's shell half again) is not built: the operator's class C decision `c0777e12a523` was open at
+lane RB's start and before its last land, and still is, so C2060's strict xfail and test_deploy_pack.py's pin of its
+reason stay, and §16.286 says so (`0931dd92`). Lane RA built C3082 and C3114 with C3036 ungated, Python only
+(`cf4678be`): listed rows are keyed by row index with an escaped row's other spellings aliased after the loop, and an
+escaped row is read every way it allows up to 6 escapes (`_LIST_READINGS_CAP`), with install.sh's esc() and LIST_ESC_AWK
+unchanged and the C2873 test's shell twin still a strict xfail; a receipt addendum dated 2026-11-24, attached to
+`c0777e12a523` by the lead's recheck at 01:11:04Z, names what an Allow's port must mirror
+(`round46/c0777e12a523-receipt-C3082.md`). Of the lead's 23 (lane L), every one went into round 47's kit
+(`round47/tools`, kit workflow `wf_7ce6d5ad-00f`, kit-test 0 failures in `round47/scratch-kit/kt4`), not into shipped
+files: C3005 (`kit/run.sh` refuses a status read unless `statusread.sh` set its marker, `mark2.sh` and `warm.sh` passing
+their own), C3031 (a `--wrapper` value with a space refused), C3014 (`crun.sh`'s doctor row), C3021
+(`check-wrapper.sh`'s `cfg=` row), C3022 (`names-all.sh`), C3023 (`final.sh` sweeps sub-homes), C3030 with C3068
+(`fixcheck.sh`'s per-home `kit/extra-<home>` allowance, which `final.sh` reads too) and C3059 (`notes-check.sh`'s Twins
+check) in the kit's scripts and tools; C3006, C3032, C3012, C3015, C3016 with C3027 and C3017 with C3026 in the brief's
+words; C3067 in the RULES every slot receives; C3066 in the harvest's item 5; C3061 and C3062 in `edit.py`'s
+lead-sessions sentence and `recycle-brief.sh` and `recycle-check.sh`; C3063 in three dated corrections appended to the
+lead's log at 01:45(Z) on 2026-11-25 (the hand-typed times, the 93-minute runner wait that was none, and the launch at
+23:26:59Z) and the harvest's item 8; and C3077 beside the Gemini slot in the workflow, `edit-xvendor.py`,
+`operator-items.sh` and the harvest's item 6. None is left undone.
+
+The class B packet `be5e50f1bfaf` (the triage's 11 calls, rulings 198 to 205) has every course on origin/main, each call
+built as drafted: call 1 in `ad3f8296`, `e8c5fe80`, `6d5c5c22` and `8cae7548`, 2 in `8cae7548`, 3 in `cf4678be`, 4 in
+`ae50076a`, 5 in `9a77855f`, 6 in `f37afd85`, 7 in `d93f85f5`, 8 in `25e9f014`, 9 in `99c5d60f` and `410aa9b2`, 10 in
+`6f86e455` and 11 in `9e62806f`. Three details differ from a spec's words, none from a call's course: C3003's clause
+(call 9) reads `the person's own edit of sources.toml, never the agent's`, since the prompt reserves lane RB's first
+wording, `not a step for the agent`, which `99c5d60f`'s message keeps, for a person-owned stop; call 6's q_word covers
+the sites ruling 203 lists and the dry run's `run`, debug_path staying on plain %q as the ruling leaves it, whose
+two-locale registration (C2671, C2716) keeps both spellings older logs hold (routing it through q_word too turned land 3
+red); and C3054 (call 2) leaves git_remote_hosts, the proxy-hosts recorder, on the default docs repo, as its spec allows
+(shellcheck SC2120 with no caller passing one). The packet was still open when this section was written (deadline
+2026-11-26T12:00Z); with every course on origin/main the lead marks it with `cc-decide action`, citing these shas.
+
+Choices that differ from a spec's words, each with its measured reason in the lane's note: C3110's raw `~other` spelling
+is cut three ways, since lane RB changed the shell report in the same run; C3055's own-folder default is one no path
+equals, since the verifier's resolved to the very target; and ruling 200 landed in lane RB's joint run rather than alone
+(lane RA). The registry's awk reads a basic value to its closing quote, escapes honored, not to its last quote; a
+dangling link at the config path reads `(missing)` in the shell report, as the agentsync report reads it, not the spec's
+`(exists)`; and C3024's test needs the tool's python stub (lane RB). C3010's note says `is inside the settle window`,
+not `read by materialise`, which is false for a file named at once; an all-paused sync gives C3004's one heartbeat
+WARNING from `_after`; C3007's alarm checks the inbox kind; and C3041's helper records the tree sha, so no recovery
+resets the tombstone (lane B). The speech summaries carry C3049's, C3100's and C3109's words in one wording; C3109's
+2026-11-23 C2930 line stays, a new one after it; and C3101's §7, §15 and §16.3 lines are pinned in
+`_ROUND_46_E_PARAGRAPH_AMENDS` (lane E). Round 45's last attempts had five past 80, not the verifier's six; and C3116's
+test uses `--config ~contoso/...`, since lane B's C3039 makes a file value's `~name` exit 78 (lane D).
+
+For later lanes and the rehearsal, from each lane note's closing section: the agentsync report fails closed, any raise
+in `_build_redactor` giving `Private only: redaction facts could not be read, so names may show in clear.` and no issue
+link, with no shell twin line; a `~name` value reads `~<user>/<path>` in both reports; and a Mac that reaches step 3
+shows `step 3 asks at most once whether to add a folder (not logged)` in its expected turns, no turn and no change of
+outcome (lane RA). The agentsync report hangs on a FIFO at the config path (an AGENTSYNC_CONFIG naming a fifo), so
+C3019's fifo row runs the shell report only: open, for lane RA or B to judge (lane RB). A sync over a link at the kept
+inbox says `source root is not a folder: ~/agent-context/inbox ...`, never a link target; doctor's listable and volume
+rows say `is not a folder` for a dangling or looping link and `restore ~/agent-context/inbox as a folder` unquoted; a
+dry run over a settling inbox names the withheld files, and a `materialise` of the only settling file prints the
+settle-window note; and a damaged heartbeat.json gets one WARNING (lane B). `_common._decode_text` reads a UTF-32LE text
+file as UTF-16, the prefix confusion C3098 fixed in `_ooxml_family`, not built (outside ruling 202, no item); and a
+hand-built package's cached stub stays until its bytes change (lane E). Round 47 plays a step 2 refused on
+AGENTSYNC_CONFIG, which must write exactly one line under `## Not used`; a failed `--no-folder` run is never told as
+`this Mac syncs no folder`, never asks the folder question again and never starts step 3's sync loop; and an inbox
+linked into a mode-000 folder shows both `inbox state: not read (...)` and step 2's `inbox: not read:` line and never
+says no drop folder (lane D). Every lane note passes the note check (`round47/tools/notes-check.sh 46`, 0 FAIL lines).
+
+| Lane | Landed (lane commits) |
+|---|---|
+| D | `9e62806f..ea3d2d0d` (1, v43), `6f86e455..15d14875` (6, `b13/r46-d2`), `d50351fd..fbbc2d07` (2); 12 items |
+| E | `ea3d2d0d..b3833521` (5); 12 items |
+| B | `b3833521..6f86e455` (12); 21 items |
+| Joint (RA, RB) | `15d14875..cb4cc114` (17) |
+| RB | 9 of the joint run's 17, `8cae7548` to `cb4cc114`; 18 items, 16 built, C3081 with C3057 unbuilt |
+| RA | 8 of the joint run's 17, `ad3f8296` to `8f418c25`, then `cb4cc114..d50351fd` (3); 14 items |
+| L | 23 items, none in shipped files |
+
+Learnings: from the round's launch (`wf_5eab2cdc-4d4`'s Workflow call at 23:26:59Z on 2026-11-24, C3063's correction
+(c); the entry's 23:27Z is that time rounded) to the last lane land (`fbbc2d07`, whose push's ci `45627987270` was
+created at 13:52:17Z on 2026-11-25, its land gate verdict at 13:25:38Z; the basis C2691 sets) took about 14.4 hours (14
+hours 25 minutes), against round 45's 28. Six of the seven lane pushes came 10 to 67 seconds after trunk's previous ci
+run ended, since ship-land waits that run out after its gate (10 to 42 minutes after their green verdicts), so CI paced
+the lands; only the joint run pushed at once (11 s after its gate, trunk's run green since 09:18:27Z). The green land
+gates' rest parts took from 42:55 (`6f86e455`) to 1:13:39 (`15d14875`, one test re-run alone), lane RA's 1:11:44, the
+joint run's 58:03, the lead's 54:32, lane D's last 53:54, v43's 52:05 and lane E's 44:15, each on a gate slot grant of 4
+of 4; the slowest used 19% of the 23,400 s ceiling. gate-verdicts.log holds 19 verdicts from 01:20Z on 2026-11-25 to the
+last land: 11 from land runs, 8 green (one for each landed tip, the lead's included, two of them under the re-run rule,
+`15d14875`'s and `cb4cc114`'s), 2 red (rc=1, lane RB's at 07:56:20Z and 09:13:16Z) and 1 SIGTERMed (rc=143, lane D's at
+09:29:22Z); and 8 `--affected` pre-gates, 2 red (rc=1, 01:31:42Z and 01:32:37Z), 5 SIGTERMed (rc=143) and 1 SIGINTed
+(rc=130, 02:09:07Z), none green; no verdict is a stall or ceiling stop (rc=124; ship-land's exit 5 is any red gate, lane
+RB's two red runs included) or a SIGKILL (rc=137).
+
+CI: round 46's eight pushes (the lead's and seven lane lands) each went green on attempt 1, in ci jobs of 81:55
+(`9e62806f`) to 104:04 (`fbbc2d07`), each job started 3 to 5 seconds after its run's creation but the joint run's, which
+waited 26:27 for a runner (115:31 from the run's creation). The first four ran under the limit of 105 (`9e62806f` 81:55,
+`ea3d2d0d` 88:13, `b3833521` 84:42, `6f86e455` 86:50; the closest 16:47 under, two past the then head of 86), the last
+four under 112, which lane D's `b39a95c1` (C3060) set with CLAUDE.md's head of 92 (`15d14875` 86:09, `cb4cc114` 89:02,
+`d50351fd` 84:44, `fbbc2d07` 104:04). Flagged: lane D's `fbbc2d07`, a docs and test commit, ran 104:04 (pytest's step
+103:20, 9904 passed), 12:04 past CLAUDE.md's 92-minute head and 7:56 under ci.yml's `timeout-minutes` of 112
+(ci.yml:126), inside the 15 minutes at which ci.yml's rule (ci.yml:73-74) raises the limit at the next round, so round
+47's harvest should weigh raising the limit and the head together. No other job came within 15 minutes of its limit.
+
+Round 47: the round 46 workflow (`round46/round46-workflow.js`, copied as `round47/round47-workflow.js`, through
+`round47/tools/edit.py` and `edit-xvendor.py`, codex-only: Codex runs beside Claude, and Gemini only once the operator
+adds the allow rule for `~/.claude/scripts/agy-review.sh`, backlog `8ed9dae0fbc0`) with the harvest list in
+`round47/tools/harvest-lead.txt`, on this section's landed tip passed as its full 40-hex sha, BASE `9e62806f`, ids C3201
+and up, prompt v43 (`ea3d2d0d`, lane D's commit) with v42's block from `97049c79` as scenario C's first old copy and a
+step 2 refused on AGENTSYNC_CONFIG among its plays (C3018), outputs `round47/`. Its kit reserves no CONTRACTS section
+(it reads §16.285 to §16.289 as round 46's lanes), so round 47's lanes take §16.290 on once the lead's round 47 commit
+reserves them. Its harvest lead takes each of the lead's log entries from 2026-11-23 18:28(Z) on as a finding and asks
+first for the privacy residuals of rulings 198 to 200 (measured in both reports and both locales with made-up Contoso
+values), then the lane notes' check (`notes-check.sh 46`) and the class B packet `be5e50f1bfaf`'s 11 calls; then rulings
+198 to 205 in every reader, every ci run on main from `006e48a6` against the head and the limit (`fbbc2d07`'s 104:04
+among them), the lanes' residuals and not-built items, the land gate and C3065's ceiling against round 46's parts, the
+kit, the Gemini half (C3077), the late-start and queued-interrupt tests under ruling 117, and round 46's record (C3063,
+C3061 and C3062, the kit workflow, C2874's no-fetch guard, the worktrees and every row the lead filed). While its slots
+run, the lead reads trunk with `round47/tools/poll.sh` and `trunk.sh`, never a fetch in the operator checkout (C2874).
+The stop rule names Codex and Gemini: a clean round without Gemini goes to the operator before the loop closes.
+
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be
