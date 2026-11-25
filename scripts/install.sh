@@ -1705,15 +1705,26 @@ esac
 # is written again under LC_ALL=C, exported in a subshell (a locale prefix on the builtin does nothing in bash
 # 3.2): under UTF-8, bash 3.2 escapes one continuation byte of U+0085 or U+3000 and leaves the rest raw, so the
 # word was no UTF-8 a copy keeps; in C every byte past ASCII is an octal escape (B13 round 45 ruling 193, C2944).
+# WORD: printf %q's word, its $'..' form written again under LC_ALL=C as above; every other word (a plain one, a
+# `\ ` one, an accent %q keeps raw) byte for byte. Every word this script writes or prints with %q goes through it:
+# install.log's args= and source=, install.out's run line, SELF, a dry run's commands, and every re-run's words
+# (B13 round 46 ruling 203, C3080 with C3089 and C3103: only the folder word was, so a wheel, a launcher, a
+# checkout or a SOURCE holding U+3000 or U+0085 wrote a line that was no UTF-8). Not debug_path: both reports
+# register its UTF-8 and C spellings from its own locale (C2671, C2716), which a C-only word would undo.
+q_word() {
+	local q
+	q="$(printf '%q' "$1")"
+	case "$q" in \$\'*) q="$(
+		export LC_ALL=C
+		printf '%q' "$1"
+	)" ;; esac
+	printf '%s' "$q"
+}
 shown_arg() {
 	local q v="$1"
-	q="$(printf '%q' "$1")"
+	q="$(q_word "$1")"
 	case "$q$1" in
 	\$\'* | *!*)
-		case "$q" in \$\'*) q="$(
-			export LC_ALL=C
-			printf '%q' "$1"
-		)" ;; esac
 		printf '%s' "$q"
 		;;
 	*)
@@ -1728,9 +1739,9 @@ BASE_ARGS=""  # the same without --source-local FOLDER, for a re-run once the fo
 ALL_ARGS=""   # every argument as given, for install.out; --source-local=F and --cwd=D as two words, for their redaction
 for a in "$@"; do
 	case "$a" in
-	--source-local=*) ALL_ARGS="$ALL_ARGS --source-local $(printf '%q' "${a#--source-local=}")" ;;
-	--cwd=*) ALL_ARGS="$ALL_ARGS --cwd $(printf '%q' "${a#--cwd=}")" ;; # its word kept whole beside a $'..' value (C1835)
-	*) ALL_ARGS="$ALL_ARGS $(printf '%q' "$a")" ;;
+	--source-local=*) ALL_ARGS="$ALL_ARGS --source-local $(q_word "${a#--source-local=}")" ;;
+	--cwd=*) ALL_ARGS="$ALL_ARGS --cwd $(q_word "${a#--cwd=}")" ;; # its word kept whole beside a $'..' value (C1835)
+	*) ALL_ARGS="$ALL_ARGS $(q_word "$a")" ;;
 	esac
 done
 
@@ -1745,8 +1756,8 @@ SELF_FILE="$here/$(basename "${BASH_SOURCE[0]}")" # the file itself, which repor
 SELF="$SELF_FILE"
 # shellcheck disable=SC2088 # the ~ is printed, for the reader's shell to expand
 case "$SELF" in
-"$HOME"/*) SELF='~/'"$(printf '%q' "${SELF#"$HOME"/}")" ;;
-*) SELF="$(printf '%q' "$SELF")" ;;
+"$HOME"/*) SELF='~/'"$(q_word "${SELF#"$HOME"/}")" ;;
+*) SELF="$(q_word "$SELF")" ;;
 esac
 
 DRY_RUN=0
@@ -2393,9 +2404,10 @@ tmp_make() {
 
 # Run a command, or only print it in a dry run.
 run() {
+	local a
 	if [ "$DRY_RUN" -eq 1 ]; then
 		printf '[dry-run]'
-		printf ' %q' "$@"
+		for a in "$@"; do printf ' %s' "$(q_word "$a")"; done # valid UTF-8 (B13 round 46 ruling 203)
 		printf '\n'
 		return 0
 	fi
@@ -2444,7 +2456,7 @@ log_start() { # the run's "start" line, once
 	[ "$SIMULATE" -eq 0 ] || sim=" launchd=simulated"
 	log_at "$RUN_AT" "start install.sh compat=$SETUP_PROMPT_COMPAT commit=$COMMIT${DIRTY:+ tree=$DIRTY}" \
 		"kind=$SOURCE_KIND" \
-		"source=$(printf '%q' "${SOURCE:--}")$sim args=${ORIG_ARGS# }"
+		"source=$(q_word "${SOURCE:--}")$sim args=${ORIG_ARGS# }"
 }
 # install.out (see the header): keep its last $OUT_MAX_LINES lines. Only while no tee writes to it (a tee holds
 # the old file open, so its later lines would go to a replaced file).
@@ -11957,7 +11969,7 @@ record_flush() { # ORIG_ARGS, ORIG_SHOWN and BASE_ARGS from RECORDED, in the ord
 		fi
 		case "$r" in
 		f:*)
-			ORIG_ARGS="$ORIG_ARGS --source-local $(printf '%q' "$w")"
+			ORIG_ARGS="$ORIG_ARGS --source-local $(q_word "$w")"
 			ORIG_SHOWN="$ORIG_SHOWN --source-local $(shown_arg "$w")"
 			;;
 		n:*) # --no-folder: a re-run of this run repeats it, a --source-local re-run (BASE_ARGS) never
@@ -11965,9 +11977,9 @@ record_flush() { # ORIG_ARGS, ORIG_SHOWN and BASE_ARGS from RECORDED, in the ord
 			ORIG_SHOWN="$ORIG_SHOWN $w"
 			;;
 		*)
-			ORIG_ARGS="$ORIG_ARGS $(printf '%q' "$w")"
-			ORIG_SHOWN="$ORIG_SHOWN $(printf '%q' "$w")"
-			BASE_ARGS="$BASE_ARGS $(printf '%q' "$w")"
+			ORIG_ARGS="$ORIG_ARGS $(q_word "$w")"
+			ORIG_SHOWN="$ORIG_SHOWN $(q_word "$w")"
+			BASE_ARGS="$BASE_ARGS $(q_word "$w")"
 			;;
 		esac
 	done

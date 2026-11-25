@@ -46261,6 +46261,16 @@ escape; the double-quote and `!` branches are kept, so a readable name such as C
 strict UTF-8, the export word copied as UTF-8 text) and
 `test_cli.py::test_install_shs_shown_arg_writes_a_word_a_copy_keeps_under_utf8_c2944` (U+3000 and U+0085 under
 en_US.UTF-8).
+Amended 2026-11-24, §16.286 C3080, C3089, C3103: only the folder word of a re-run went through that form; q_word, one
+helper before ALL_ARGS that shown_arg calls, writes every `$'..'` word install.sh writes or prints the same way:
+install.log's args= and source=, install.out's run line, SELF (its `~/` kept outside the quote), a dry run's
+commands, and every word of ORIG_SHOWN and BASE_ARGS (a wheel, a positional SOURCE, a `--launcher` bundle); not
+debug_path, whose UTF-8 and C spellings both reports register from its own locale (C2671, C2716).
+A plain or `\ ` word is written byte for byte, and both reports still register the UTF-8 and the C spellings, so an
+older log still cuts. Tests:
+`test_install_oneshot.py::test_every_word_install_sh_writes_is_utf8_and_reads_back_as_its_path_ruling_203`,
+`test_a_spaces_only_path_renders_as_before_ruling_203` and
+`test_report_redaction.py::test_both_reports_cut_a_folder_install_sh_logged_in_the_c_form_ruling_203`.
 
 **The shell says its private-only lines in the agentsync report's order** (C2850). The CloudStorage listing's
 private-only block sat between the hold check and its comment, so the shell said listing, then hold, where

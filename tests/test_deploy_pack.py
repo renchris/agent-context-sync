@@ -5776,7 +5776,11 @@ def test_the_dollar_quote_sentences_name_the_installers_own_commands_c1307() -> 
     # U-C10's record_flush builds it after --cwd is entered, one recorded word "$w" at a time
     assert 'ORIG_SHOWN="$ORIG_SHOWN --source-local $(shown_arg "$w")"' in script
     [body] = re.findall(r"^shown_arg\(\) \{\n(.*?)\n\}", script, flags=re.MULTILINE | re.DOTALL)
-    assert "printf '%q'" in body and "\\$\\'*" in body
+    # B13 round 46 ruling 203 (C3080 with C3089 and C3103): shown_arg takes %q's word from q_word, which every
+    # other %q word install.sh writes goes through too, and keeps its $'..' branch
+    [q] = re.findall(r"^q_word\(\) \{\n(.*?)\n\}", script, flags=re.MULTILINE | re.DOTALL)
+    assert 'q="$(q_word "$1")"' in body and "\\$\\'*" in body
+    assert "printf '%q'" in q and "export LC_ALL=C" in q and "\\$\\'*" in q
 
 
 def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
@@ -9178,6 +9182,34 @@ _ROUND_46_E_PARAGRAPH_AMENDS = (
 """Round 46 lane E's dated lines no one claim holds alone: C3101's at §7's cache sentence, at
 ``ConverterCache.put`` in §15's code block and at §16.3's encrypted-files sentence, sections its paragraph
 names with no item (B13 round 46 C3048 with C3101, ruling 202)."""
+_ROUND_46_RB_PARAGRAPH_AMENDS = (
+    (
+        "16.67",
+        "**The first sync's own wait is named** (G37; dated line at §16.49's step 2).",
+        "§16.286 C3024",
+    ),
+    ("16.69", "**A first sync that printed no counts borrows none** (H29).", "§16.286 C3024"),
+    (
+        "16.281",
+        "**A sources.toml that does not parse makes the shell report private only too**",
+        "§16.286 C3034, C3084",
+    ),
+    (
+        "16.281",
+        "**The shell's TOML readers read a value and count a source as tomllib does**",
+        "§16.286 C3087, C3105",
+    ),
+    (
+        "16.281",
+        "**The person's none is honored at every NEXT that would ask for folders again, never over a failed",
+        "§16.286 C3003",
+    ),
+    ("16.281", "**A shell word a person copies is one a copy keeps**", "§16.286 C3080, C3089, C3103"),
+)
+"""Round 46 lane RB's dated lines: C3024's under §16.67's first-sync wait and §16.69's H29 paragraphs (the
+`lock-busy-unrecorded-holder` note), and under §16.281's paragraphs C3034 with C3084 (the structural check),
+C3087 with C3105 (the stripped kind), C3003 (a bare run's own no-folder NEXT, amending ruling 191) and C3080
+with C3089 and C3103 (q_word)."""
 _ROUND_45_RB_PARAGRAPH_AMENDS = (
     (
         "16.116",

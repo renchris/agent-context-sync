@@ -10254,9 +10254,10 @@ def test_the_add_backs_folder_is_shown_as_install_shs_shown_arg_shows_it(folder:
     from install.sh and run under /bin/bash: the same text, which a shell reads back as the folder."""
     text = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
     m = re.search(r"^shown_arg\(\) \{\n.*?^\}\n", text, re.M | re.S)
-    assert m is not None
+    q = re.search(r"^q_word\(\) \{\n.*?^\}\n", text, re.M | re.S)  # which shown_arg calls (ruling 203)
+    assert m is not None and q is not None
     shown = subprocess.run(
-        ["/bin/bash", "-c", m.group(0) + 'shown_arg "$1"', "bash", folder],
+        ["/bin/bash", "-c", q.group(0) + m.group(0) + 'shown_arg "$1"', "bash", folder],
         capture_output=True,
         text=True,
         check=True,
@@ -10271,16 +10272,22 @@ def test_the_add_backs_folder_is_shown_as_install_shs_shown_arg_shows_it(folder:
         assert back == folder, form
 
 
-@pytest.mark.parametrize("folder", ["/Users/x/Kaigi\u3000Shiryo", "/Users/x/Nel\u0085x"])
-def test_install_shs_shown_arg_writes_a_word_a_copy_keeps_under_utf8_c2944(folder: str) -> None:
+@pytest.mark.parametrize("func", ["shown_arg", "q_word"])
+@pytest.mark.parametrize(
+    "folder", ["/Users/x/Kaigi\u3000Shiryo", "/Users/x/Nel\u0085x", "/Users/x/\u65e5\u672c"]
+)
+def test_install_shs_shown_arg_writes_a_word_a_copy_keeps_under_utf8_c2944(folder: str, func: str) -> None:
     """B13 round 45 ruling 193, C2944: under en_US.UTF-8, bash 3.2's %q escaped one continuation byte of
     U+3000 or U+0085 and left the rest raw, so shown_arg's word was no UTF-8 text and a copy changed it.
-    shown_arg writes its $'..' form under C: ASCII, strict UTF-8, read back by bash as the folder."""
+    shown_arg writes its $'..' form under C: ASCII, strict UTF-8, read back by bash as the folder. B13 round
+    46 ruling 203 (C3080 with C3089 and C3103): q_word, which shown_arg calls, writes every other word
+    install.sh writes or prints with %q the same way, a CJK name too, and both give one word."""
     text = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
     m = re.search(r"^shown_arg\(\) \{\n.*?^\}\n", text, re.M | re.S)
-    assert m is not None
+    q = re.search(r"^q_word\(\) \{\n.*?^\}\n", text, re.M | re.S)
+    assert m is not None and q is not None
     shown = subprocess.run(
-        ["/bin/bash", "-c", m.group(0) + 'shown_arg "$1"', "bash", folder],
+        ["/bin/bash", "-c", q.group(0) + m.group(0) + func + ' "$1"', "bash", folder],
         capture_output=True,
         check=True,
         env={"PATH": "/usr/bin:/bin", "LC_ALL": "en_US.UTF-8", "LANG": "en_US.UTF-8"},

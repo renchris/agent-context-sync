@@ -28002,3 +28002,123 @@ def test_the_line_reader_strips_the_kind_as_config_str_does_c3087_c3105(tmp_path
     )
     assert (cp.returncode, cp.stdout, cp.stderr) == (0, "0\n", ""), cp
     assert [s.kind for s in load_config(config).sources] == [SourceKind.INBOX]
+
+
+# ---- B13 round 46 lane RB: ruling 203, every word install.sh writes or prints is valid UTF-8 ---------------
+
+
+def _install_bytes(env: dict[str, str], *args: str, script: Path = INSTALL_SH) -> tuple[int, bytes, bytes]:
+    """One install.sh run under /bin/bash and en_US.UTF-8, its output as bytes, never decoded on the way."""
+    with subprocess.Popen(
+        [BASH32, str(script), *args],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        stdin=subprocess.DEVNULL,
+        env={**env, "LC_ALL": "en_US.UTF-8", "LANG": "en_US.UTF-8"},
+        start_new_session=True,
+    ) as proc:
+        try:
+            out, err = proc.communicate(timeout=_install_bound(120))
+        except BaseException:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait()
+            raise
+    return proc.returncode, out, err
+
+
+def _rerun_words(line: str, opener: str) -> list[str]:
+    """The words of the re-run command ``line`` names after ``opener``, as /bin/bash reads them back."""
+    tail = line.split(opener, 1)[1].split(" [setup report: ", 1)[0].split(" (one --source-local", 1)[0]
+    cp = _bash_run(
+        [BASH32, "-c", 'eval "set -- $1" || exit 3; printf "%s\\0" "$@"', "_", tail],
+        capture_output=True,
+        env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
+    )
+    assert cp.returncode == 0, cp
+    return cp.stdout.decode("utf-8").split("\0")[:-1]
+
+
+_R203_CHARS = ["　", "日本", "\u0085"]
+
+
+@pytest.mark.parametrize("ch", _R203_CHARS, ids=["U+3000", "nihon", "U+0085"])
+def test_every_word_install_sh_writes_is_utf8_and_reads_back_as_its_path_ruling_203(
+    env: dict[str, str], tmp_path: Path, ch: str
+) -> None:
+    """B13 round 46 ruling 203, C3080 with C3089 and C3103: under en_US.UTF-8, bash 3.2's %q escaped one
+    continuation byte of U+3000, U+0085 or a CJK name and left the rest raw, and only the folder word of a
+    re-run went through the C-locale form: a wheel, a positional SOURCE, a --launcher bundle and the checkout
+    (SELF) wrote words that were no UTF-8 into install.log, install.out and the failed, --no-folder and
+    BASE_ARGS NEXTs. q_word writes every $'..' word under C: each line decodes as strict UTF-8 and bash reads
+    each word back to its path."""
+    checkout = tmp_path / f"Contoso{ch}Checkout" / "scripts"
+    checkout.mkdir(parents=True)
+    script = checkout / "install.sh"
+    shutil.copy2(INSTALL_SH, script)
+    wheel = tmp_path / f"dist{ch}x" / "agentsync-0.1.0-py3-none-any.whl"
+    wheel.parent.mkdir()
+    wheel.write_text("")
+    folder = Path(env["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / f"Kestrel{ch}Ledger"
+    folder.mkdir(parents=True)
+    rc, out, err = _install_bytes(
+        {**env, "STUB_UV_INSTALL_RC": "2"}, str(wheel), "--source-local", str(folder), script=script
+    )
+    assert rc == 1, out + err
+    [failed] = [ln for ln in out.decode("utf-8").splitlines() if ln.startswith("NEXT: ")]
+    assert failed.isascii(), failed
+    assert _rerun_words(failed, "re-run: ") == [str(script), str(wheel), "--source-local", str(folder)]
+    setup = Path(env["HOME"]) / "agent-context" / "setup"
+    for name in ("install.log", "install.out"):
+        (setup / name).read_bytes().decode("utf-8")  # strict: a lone lead byte raises
+    [start] = [ln for ln in install_log(env) if " start install.sh " in ln]
+    assert "\\302\\205" in start or "\\343\\200\\200" in start or "\\346\\227\\245" in start, start
+    # the --no-folder run's NEXT, from BASE_ARGS, its SOURCE a positional word
+    rc, out, err = _install_bytes(env, str(wheel), "--no-folder", script=script)
+    [chosen] = [ln for ln in out.decode("utf-8").splitlines() if ln.startswith("NEXT: ")]
+    assert chosen.isascii(), chosen
+    assert _rerun_words(chosen, "the run is: ")[:2] == [str(script), str(wheel)], chosen
+    # a --launcher bundle in such a folder: the stub has no codesign answer for it, so the run stops on it
+    bundle = tmp_path / f"Contoso{ch}Launch" / "AgentSyncLauncher.app"
+    (bundle / "Contents" / "MacOS").mkdir(parents=True)
+    rc, out, err = _install_bytes(
+        {**env, "AGENTSYNC_INSTALL_DRY_RUN": "1"},
+        str(wheel),
+        "--confirm-install-agent",
+        "--launcher",
+        str(bundle),
+        script=script,
+    )
+    text = (out + err).decode("utf-8")
+    nexts = [ln for ln in text.splitlines() if ln.startswith("NEXT: ")]
+    assert nexts and all(ln.isascii() for ln in nexts), text
+    for ln in nexts:
+        for opener in ("re-run: ", "the run is: ", "the next run is: "):
+            if opener in ln:
+                words = _rerun_words(ln, opener)
+                assert words[0] == str(script), (ln, words)
+                assert str(bundle) in words or "--launcher" not in words, (ln, words)
+    for name in ("install.log", "install.out"):
+        (setup / name).read_bytes().decode("utf-8")
+
+
+def test_a_spaces_only_path_renders_as_before_ruling_203(env: dict[str, str], tmp_path: Path) -> None:
+    """B13 round 46 ruling 203: q_word changes only a word whose %q is $'..': a wheel and a folder with blanks
+    alone keep `\\ ` and the double-quote form byte for byte, so the args= equality tests and the scrub pairs
+    hold."""
+    wheel = tmp_path / "dist x" / "agentsync-0.1.0-py3-none-any.whl"
+    wheel.parent.mkdir()
+    wheel.write_text("")
+    folder = Path(env["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "FY26 Projects"
+    folder.mkdir(parents=True)
+    rc, out, _err = _install_bytes(
+        {**env, "STUB_UV_INSTALL_RC": "2"}, str(wheel), "--source-local", str(folder)
+    )
+    assert rc == 1
+    shown_wheel = str(wheel).replace(" ", "\\ ")
+    [failed] = [ln for ln in out.decode("utf-8").splitlines() if ln.startswith("NEXT: ")]
+    assert failed.startswith(
+        f'NEXT: fix the error above, then re-run: {INSTALL_SH} {shown_wheel} --source-local "{folder}" ['
+    ), failed
+    logged = f"args={shown_wheel} --source-local {str(folder).replace(' ', chr(92) + ' ')}"
+    assert any(ln.endswith(logged) for ln in install_log(env)), install_log(env)

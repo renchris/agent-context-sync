@@ -4374,3 +4374,42 @@ def test_both_reports_read_the_configured_docs_repos_remote_c3054(
         assert not leaks, leaks
     assert python == ["fatal: unable to access 'https://<proxy-1>/<proxy-2>/': 403"], python
     assert (shell, sp) == (python, pp), (shell, python, sp, pp)
+
+
+@pytest.mark.parametrize("ch", ["\u3000", "\u65e5\u672c", "\u0085"], ids=["U+3000", "nihon", "U+0085"])
+def test_both_reports_cut_a_folder_install_sh_logged_in_the_c_form_ruling_203(
+    env: dict[str, str],  # noqa: F811
+    wheel: Path,  # noqa: F811
+    ch: str,
+) -> None:
+    """B13 round 46 ruling 203 (C3080): install.log's args= wrote a --source-local folder holding U+3000, a
+    CJK name or U+0085 with a lone lead byte under UTF-8, which the agentsync report read as U+FFFD and placed
+    as another folder. q_word writes it in the C form, every byte past ASCII an octal escape: both reports
+    read the logged folder back to its name and cut it, under either locale, with one verdict."""
+    folder = _cloud(env) / "OneDrive-Contoso" / f"Kestrel{ch}Ledger"
+    folder.mkdir(parents=True)
+    rc, out, err = _install_bytes(
+        {**env, "STUB_UV_INSTALL_RC": "2"}, str(wheel), "--source-local", str(folder)
+    )
+    assert rc == 1, out + err
+    log = install_log_path(env).read_bytes().decode("utf-8")
+    assert "Kestrel\\" in log, log
+    texts = [report_path(env).read_text(encoding="utf-8")]
+    assert "shell fallback" in out.decode("utf-8") or "Setup report" in texts[0], texts[0][:400]
+    for locale in ("C", "en_US.UTF-8"):
+        dest = Path(env["HOME"]) / f"agentsync-report-{locale}.md"
+        cp = subprocess.run(
+            [sys.executable, "-m", "agentsync", "setup-report", "--out", str(dest)],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=120,
+            env={**env, "LC_ALL": locale, "LANG": locale, "AGENTSYNC_OCR": "0", "AGENTSYNC_TM_EXCLUDE": "0"},
+            stdin=subprocess.DEVNULL,
+        )
+        assert cp.returncode == 0, cp.stdout + cp.stderr
+        texts.append(dest.read_text(encoding="utf-8"))
+    for text in texts:
+        leaks = [ln for ln in text.splitlines() if "Kestrel" in ln or "Ledger" in ln]
+        assert not leaks, leaks
+    assert len({"Private only:" in t for t in texts}) == 1, [t[-600:] for t in texts]
