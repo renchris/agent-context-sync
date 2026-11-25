@@ -4355,14 +4355,15 @@ def test_the_path_legend_says_only_a_relative_argument_is_one(env: dict[str, str
         'bracket, comma or semicolon to the next / but stopping at a quote, a backtick, "):" or ", stored as '
         '", and after a blank from the first word that holds no / or holds =, or that '
         "is an option, a URL, a path of its own or a number like 3/14; a blank right after this home ends "
-        "it, so another home named as this one and a blank keeps what follows); and every word bash or "
-        "doctor's fix wrote in its dollar-quote form ($'...'),"
+        "it, so another home named as this one and a blank keeps what follows); a path written as ~ and "
+        "another account's login, cut whole to ~<user>/<path> (~<user> with no folder after it) as a /Users/ "
+        "path is; and every word bash or doctor's fix wrote in its dollar-quote form ($'...'),"
     ), (
         item
     )  # B13 round 31 ruling 49 (C529): an added source's typed folder named; round 34 C822; round 35 C946;
     # round 36 ruling 112: lane RA's shared limit words, from "(/Volumes/<path> behind a volume" on, and
     # C1123's own inbox, never cut; round 37 ruling 120 (C1285, C1203): the provider folder in any case, and
-    # C1069's stops, in lane RA's words
+    # C1069's stops, in lane RA's words; round 47 ruling 207 (C3224): the ~login path, in lane RA's words
     assert "tab or another control character" in item and "names no CloudStorage folder" not in item, item
 
 

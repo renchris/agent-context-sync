@@ -5726,6 +5726,34 @@ foreign_home_cut() {
 		}
 		return out s
 	}
+	# B13 round 47 ruling 207 (C3224; privacy): a ~login path, another account\047s home written with its login, as
+	# setup_report._other_login_re cuts it, after the /Users/ cuts: a ~ that no letter, digit, `_`, `.`, `-` or ~
+	# precedes (never HEAD~1 or a ~~~ fence), then a login-shaped word or a placeholder an earlier pass made
+	# (`<org-1>`, never `<user>`, which this account\047s login is by now, nor `<path>`). Right after a quote or a
+	# backtick with a `/` and a byte after it, to the same mark\047s next one; else with a `/` and a component, its
+	# parts and the words after a blank as rest() reads a /Users/ path\047s, `~<user>/<path>`; else, at a `/`, a
+	# STOP byte or the end, `~<user>` alone. ~/, ~+ and ~- hold no login.
+	function tilde(s,    out, i, p, r, n, k, b, q, e) {
+		out = ""
+		while ((i = index(s, "~")) > 0) {
+			p = (i > 1) ? substr(s, i - 1, 1) : substr(out, length(out), 1)
+			r = substr(s, i + 1); n = 0
+			if (match(r, /^[A-Za-z_][A-Za-z0-9._-]*/)) n = RLENGTH
+			else if (match(r, /^<[a-z]+(-[0-9]+)?>/) && substr(r, 1, RLENGTH) != "<user>" && substr(r, 1, RLENGTH) != "<path>") n = RLENGTH
+			k = i + 1 + n; b = substr(s, k, 1)
+			if (n && p != "" && index("\"\047`", p) && b == "/" && (q = index(substr(s, k + 1), p)) > 1) {
+				out = out substr(s, 1, i - 1) "~<user>/<path>"; ncut++; s = substr(s, k + q); continue
+			}
+			if (n && p !~ /[A-Za-z0-9_.~-]/) {
+				if (b == "/" && (e = upto(s, k + 1, 1)) > k + 1) {
+					out = out substr(s, 1, i - 1) "~<user>/<path>"; ncut++; s = substr(s, rest(s, e, substr(s, k + 1, e - k - 1))); continue
+				}
+				if (b == "" || b == "/" || index(STOP, b)) { out = out substr(s, 1, i - 1) "~<user>"; ncut++; s = substr(s, k); continue }
+			}
+			out = out substr(s, 1, i); s = substr(s, i + 1)
+		}
+		return out s
+	}
 	BEGIN { STOP = " \t\r\f\v\"\047`()[]{},;" }
 	{
 		recut = (ENVIRON["RECUT"] == "recut")
@@ -5746,7 +5774,7 @@ foreign_home_cut() {
 			if (pre != "" && index("\"\047`", pre) && (q = index(substr(s, h + 1), pre))) { s = substr(s, h + q); from = 1; continue }
 			s = substr(s, rest(s, k, comp)); from = 1
 		}
-		print out s
+		print tilde(out s)
 	}
 	# with CUT_COUNT set, how many cuts this pass made, for report_recut\047s note (B13 round 38 C1406)
 	END { if (ENVIRON["CUT_COUNT"] != "") printf "%d\n", ncut > ENVIRON["CUT_COUNT"] }'
@@ -7938,12 +7966,14 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 		say "  semicolon, a provider folder's name, in any case, running past a bracket, comma or semicolon to the next / but"
 		say "  stopping at a quote, a backtick, \"):\" or \", stored as \", and after a blank from the first word that holds no / or"
 		say "  holds =, or that is an option, a URL, a path of its own or a number like 3/14; a blank right after this home ends"
-		say "  it, so another home named as this one and a blank keeps what follows); and every word bash or doctor's fix"
-		say "  wrote in its dollar-quote form (\$'...'), cut whole, so doctor's fix reads open ~/<path> in Finder once, which"
-		say "  install.log uses for a name with a tab or another control character, a curly apostrophe, an en dash, a"
-		say "  decomposed accent or many precomposed ones, such as É, ß, í or ł, and under the C locale for any accent (any"
+		# a ~login path, foreign_home_cut's too, in lane RA's words (B13 round 47 ruling 207, C3224)
+		say "  it, so another home named as this one and a blank keeps what follows); a path written as ~ and another account's"
+		say "  login, cut whole to ~<user>/<path> (~<user> with no folder after it) as a /Users/ path is; and every word bash or"
+		say "  doctor's fix wrote in its dollar-quote form (\$'...'), cut whole, so doctor's fix reads open ~/<path> in Finder"
+		say "  once, which install.log uses for a name with a tab or another control character, a curly apostrophe, an en"
+		say "  dash, a decomposed accent or many precomposed ones, such as É, ß, í or ł, and under the C locale for any accent"
 		# ruling 138's one divergence, named where the cut is described (B13 round 40, C1801 with C1857)
-		say "  character outside ASCII); one right after --source-local, --source-local= or add-source is cut whole here,"
+		say "  (any character outside ASCII); one right after --source-local, --source-local= or add-source is cut whole here,"
 		# ruling 142's forms, each head's rule for any path (B13 round 41 C2033's shell clauses; every pinned one kept)
 		say "  where the agentsync report shows it decoded in double quotes and cut by its argument's rule. In both reports, a"
 		say "  --source-local word under a kept provider folder reads ~/Library/CloudStorage/<Provider>-<org-N>/<path> unless"
