@@ -7542,11 +7542,12 @@ PRIVATE_ONLY="" # 1 once fallback_redaction says the shell report is for a priva
 # open at end of file (B13 round 46 ruling 199, C3084); else "loaded" (B13 round 45 ruling 188, C2840 with
 # C2915). Given "sources", an interpreter that answers loaded also prints a line "sources", then each [[source]]
 # table tomllib reads as "n TAB id TAB path" (n its place among the tables, in config order), a string id only,
-# a path that is no string printed empty, a record holding a TAB or LF dropped, written as UTF-8 whatever the
-# locale: config_source_records reads it (B13 round 46 ruling 199, C3034 with C3083). The structural check
-# accepts exactly the spellings that reader's awk reads with no interpreter: a bare, "source" or 'source'
-# header, a bare or quoted id or path key, a basic or literal id or path, and no source key at the top level,
-# as an inline array of tables is (C3034, C3056).
+# a path that is no string printed empty, each TAB or LF in a path one space and a record dropped only for an
+# id holding one (B13 round 47 ruling 207, C3243 with C3302: a dropped record left its id in clear), written as
+# UTF-8 whatever the locale: config_source_records reads it (B13 round 46 ruling 199, C3034 with C3083). The
+# structural check accepts exactly the spellings that reader's awk reads with no interpreter: a bare, "source"
+# or 'source' header, a bare or quoted id or path key, a basic or literal id or path, and no source key at the
+# top level, as an inline array of tables is (C3034, C3056).
 config_toml_state() {
 	local py uv w
 	[ -f "$CONFIG" ] || return 0
@@ -7580,8 +7581,8 @@ else:
         for n, t in enumerate(s if isinstance(s, list) else [], 1):
             i = t.get("id") if isinstance(t, dict) else None
             p = t.get("path") if isinstance(t, dict) else None
-            p = p if isinstance(p, str) else ""
-            if isinstance(i, str) and i and not any(c in i + p for c in "\t\n"):
+            p = p.replace("\t", " ").replace("\n", " ") if isinstance(p, str) else ""
+            if isinstance(i, str) and i and not any(c in i for c in "\t\n"):
                 o += str(n) + "\t" + i + "\t" + p + "\n"
     sys.stdout.buffer.write(o.encode("utf-8", "surrogateescape"))' "$CONFIG" ${1:+"$1"} 2>/dev/null)" || w=""
 		case "${w%%$'\n'*}" in unparsed | loaded | unread)

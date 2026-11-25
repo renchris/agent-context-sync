@@ -28007,8 +28007,9 @@ def test_the_id_registry_reads_every_source_spelling_tomllib_reads_c3034_c3083_c
 def test_the_id_registry_reads_tomllib_table_when_an_interpreter_answers_c3083(tmp_path: Path) -> None:
     """B13 round 46 ruling 199, C3083: with an interpreter the registry reads tomllib's table, so an inline
     array of tables (no line the awk reads) is read whole and a `[[source]]` written inside a multi-line
-    string is none; a non-string id, an id or path holding a TAB or LF is dropped; with none the structural
-    check calls the inline array unparsed, as the awk reads no id there."""
+    string is none; a non-string id is dropped, and a path holding a TAB keeps its record, the TAB one space
+    (B13 round 47 ruling 207, C3243 with C3302); with none the structural check calls the inline array
+    unparsed, as the awk reads no id there."""
     body = (
         'source = [{id = "inline-x", path = "~/Wombat Y"}, {id = 7, path = "~/Seven"},'
         ' {id = "tab-id", path = "~/A\\tB"}, {id = "plain-z"}]\n'
@@ -28017,9 +28018,30 @@ def test_the_id_registry_reads_tomllib_table_when_an_interpreter_answers_c3083(t
     assert tomllib.loads(body)["source"][0]["id"] == "inline-x"
     py = sys.executable
     assert _toml_shell(tmp_path, body, "config_source_records", tool_py=py) == (
-        "1\tinline-x\t~/Wombat Y\n4\tplain-z\t\n"
+        "1\tinline-x\t~/Wombat Y\n3\ttab-id\t~/A B\n4\tplain-z\t\n"
     )
     assert _toml_shell(tmp_path, body, 'printf "%s\\n" "$(config_toml_state)"') == "unparsed\n"
+
+
+@pytest.mark.parametrize("escape", ["\\t", "\\n", "\\u0009", "\\u000A"])
+def test_a_source_path_holding_a_tab_or_lf_keeps_its_id_record_c3243_c3302(
+    tmp_path: Path, escape: str
+) -> None:
+    """B13 round 47 ruling 207, C3243 with C3302 (privacy): tomllib reads a path's `\\t` or `\\n` escape as a
+    real TAB or LF, and the records dropped the whole table for it, so its id had no pair and printed in clear
+    in a public shell report, every later <source-N> one off. The record stays, each TAB or LF one space, and
+    a later table keeps its place."""
+    body = (
+        f'[[source]]\nid = "wombat-ledger"\npath = "~/Development/Kestrel{escape}Alder"\n'
+        '[[source]]\nid = "quokka-notes"\npath = "~/Quokka Notes"\n'
+    )
+    assert tomllib.loads(body)["source"][0]["path"] in (
+        "~/Development/Kestrel\tAlder",
+        "~/Development/Kestrel\nAlder",
+    )
+    assert _toml_shell(tmp_path, body, "config_source_records", tool_py=sys.executable) == (
+        "1\twombat-ledger\t~/Development/Kestrel Alder\n2\tquokka-notes\t~/Quokka Notes\n"
+    )
 
 
 @pytest.mark.parametrize(

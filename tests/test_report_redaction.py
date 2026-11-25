@@ -4426,6 +4426,46 @@ def test_both_reports_cut_a_source_id_agentsync_refuses_c3223(
 
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize("python", ["tomllib", "none"])
+@pytest.mark.parametrize("escape", ["\\t", "\\n"])
+def test_both_reports_cut_an_id_whose_path_holds_a_tab_or_lf_c3243_c3302(
+    env: dict[str, str],  # noqa: F811
+    escape: str,
+    python: str,
+    locale: str,
+) -> None:
+    """B13 round 47 ruling 207, C3243 with C3302 (privacy): tomllib reads a source path's `\\t` or `\\n`
+    escape as a real TAB or LF, and the shell's tomllib records dropped that whole table, so with an
+    interpreter the shell printed `Sync of wombat-ledger stopped` in a public report and numbered the next
+    id `<source-1>` where the agentsync report numbers it `<source-2>`. Neither report shows the id, both
+    print the same rows, with or without tomllib, and each reaches the same verdict, public."""
+    if python == "tomllib":
+        _tool_python(env["HOME"])
+    body = (
+        default_config_text()
+        + f'\n[[source]]\nid = "wombat-ledger"\nkind = "local"\npath = "~/Development/Kestrel{escape}Alder"\n'
+        + '\n[[source]]\nid = "quokka-notes"\nkind = "local"\npath = "~/Development/JuniperLedger"\n'
+    )
+    said = ["Sync of wombat-ledger stopped", "Sync of quokka-notes stopped"]
+    texts: list[str] = []
+    shell, python_rows, shell_private, python_private = _both_reports(
+        env,
+        [],
+        said,
+        locale,
+        config=Path(env["HOME"]) / "agent-context" / "sources.toml",
+        config_body=body,
+        texts_out=texts,
+    )
+    for name, text in zip(("shell", "agentsync"), texts, strict=True):
+        leaks = [ln for ln in text.splitlines() if re.search("(?i)wombat|quokka|kestrel|juniper", ln)]
+        assert not leaks, (name, leaks)
+    assert python_rows == ["Sync of <source-1> stopped", "Sync of <source-2> stopped"], python_rows
+    assert not python_private, texts[1]
+    assert shell == python_rows and shell_private == python_private, (shell, python_rows)
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
 @pytest.mark.parametrize("target", ["locked", "documents"])
 def test_both_reports_cut_where_the_inbox_links_outside_agent_context_c3055(
     env: dict[str, str],  # noqa: F811
