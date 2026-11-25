@@ -4269,9 +4269,13 @@ def test_a_value_in_the_file_under_another_accounts_home_is_a_config_error_c3039
         assert "run the command again" not in out + err and "Traceback" not in out + err, err
 
 
-@pytest.mark.parametrize("entry", ["file", "dangling-link", "link-to-file", "self-link", "two-link-loop"])
+_LOOPS = ("self-link", "absolute-self-link", "two-link-loop", "relative-two-link-loop")
+
+
+@pytest.mark.parametrize("through_link", [False, True])
+@pytest.mark.parametrize("entry", ["file", "dangling-link", "link-to-file", *_LOOPS])
 def test_the_inbox_sources_fix_over_a_non_folder_is_the_persons_move_aside_c2809(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, entry: str
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, entry: str, through_link: bool
 ) -> None:
     """B13 round 45 C2809 (ruling 194): over a file, a dangling link or a link to a file at the kept inbox,
     doctor showed the link's target and fixed it with a [[source]] path edit, while step 2 said move it
@@ -4280,9 +4284,16 @@ def test_the_inbox_sources_fix_over_a_non_folder_is_the_persons_move_aside_c2809
     step 2 again``, the person's by PERSONS_FIX_RE. B13 round 46 C3094 with C3009 (ruling 204): a looping link
     (one link to itself, two to each other) read as "Too many levels of symbolic links" with a look-in-Finder
     fix and a dangling link's volume row said "is missing": doctor keys on inbox_state's answer, so each says
-    ``is not a folder`` with the same fix on both rows, and no row says missing, Finder or a mount check."""
+    ``is not a folder`` with the same fix on both rows, and no row says missing, Finder or a mount check.
+    B13 round 47 C3300 (ruling 210): under a home reached through a link (``/tmp`` is ``/private/tmp``),
+    canonical_source_root stopped a loop at a fixed depth, so the stored path and the typed one reached
+    different links of it and every reader fell back to "Too many levels of symbolic links" and the sync's
+    ``source root is a symlink``; it stops at the first repeated link, as posixpath.realpath does."""
     home = tmp_path / "home"
     home.mkdir()
+    if through_link:
+        (tmp_path / "home-link").symlink_to(home)
+        home = tmp_path / "home-link"
     cfg = home / "sources.toml"
     cfg.write_text(f"[agentsync]\ndocs_repo = {toml_string(str(home / 'docs'))}\n", encoding="utf-8")
     monkeypatch.setenv(paths.CONFIG_ENV, str(cfg))
@@ -4298,9 +4309,14 @@ def test_the_inbox_sources_fix_over_a_non_folder_is_the_persons_move_aside_c2809
         folder.symlink_to(home / "contoso-note.txt")
     elif entry == "self-link":
         folder.symlink_to("inbox")
-    else:
+    elif entry == "absolute-self-link":
+        folder.symlink_to(folder)
+    elif entry == "two-link-loop":
         (home / "contoso-loop").symlink_to(folder)
         folder.symlink_to(home / "contoso-loop")
+    else:
+        (home / "contoso-loop").symlink_to("inbox")
+        folder.symlink_to("contoso-loop")
     config = load_config(cfg)
     assert inbox_state(config)[1] == f"not added ({folder} is not a folder)"
     box = next(s for s in config.sources if s.kind is SourceKind.INBOX)
@@ -4317,10 +4333,18 @@ def test_the_inbox_sources_fix_over_a_non_folder_is_the_persons_move_aside_c2809
         assert "contoso-note.txt" not in row.detail + (row.fix or ""), row
         for words in ("is missing", "opens in Finder", "volume is mounted", "Too many levels"):
             assert words not in row.detail + (row.fix or ""), row
-    if entry in ("dangling-link", "self-link", "two-link-loop"):
+    if entry in ("dangling-link", *_LOOPS):
         volume = next(r for r in rows if r.name.endswith(".volume"))
         assert volume.detail == f"volume UUID not checked: {doctor.list_spelling(folder)} is not a folder"
         assert volume.fix == want and not volume.ok and volume.severity is doctor.Severity.ERROR, volume
+    if entry in _LOOPS:  # the walk's alarm and the loop's note read the same check (C3300)
+        report = run_cycle(config, mode=None)
+        [src] = [r for r in report.sources if r.source_id == box.id]
+        alarm = f"source root is not a folder: {cycle_mod._display_path(folder)} is a file"
+        assert src.alarms and src.alarms[0].startswith(alarm), src.alarms
+        step = loop.next_step(config)
+        head = f"the inbox ({box.id}) is not a folder: "
+        assert any(n.startswith(head) and "step 2" in n for n in step.notes), step.notes
 
 
 def test_status_shows_the_policy_and_a_broken_policy_fails(

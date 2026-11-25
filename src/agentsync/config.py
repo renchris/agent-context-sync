@@ -412,7 +412,7 @@ def _str_list(t: Mapping[str, Any], key: str, where: str, default: tuple[str, ..
     return tuple(x for x in v if x.strip())
 
 
-def canonical_source_root(path: Path, _depth: int = 0) -> Path:
+def canonical_source_root(path: Path) -> Path:
     """Resolve the symlinks in ``path`` up to, never inside, ``~/Library/CloudStorage``.
 
     ``~/OneDrive - Contoso`` (the link OneDrive creates) becomes ``~/Library/CloudStorage/OneDrive-Contoso``
@@ -420,24 +420,49 @@ def canonical_source_root(path: Path, _depth: int = 0) -> Path:
     load (an lstat there may need a TCC grant; the launcher's canary runs first). The walk stops at either
     form of :func:`~agentsync.paths.cloud_storage_roots`: under a home reached through a link (``/tmp`` is
     ``/private/tmp``) the first link resolves the home, and the lexical root alone would never match again,
-    so the walk read the links inside the tree and followed one out of it (B13 round 5 F89)."""
+    so the walk read the links inside the tree and followed one out of it (B13 round 5 F89).
+
+    A link already being followed stops the walk, which returns that link with the rest of the path, as
+    ``posixpath.realpath`` does; a link it has resolved before is reused. So a loop gives one answer from
+    every spelling of the path: the walk stopped at a fixed depth, so a home reached through a link spent a
+    level on it and returned another link of the loop than its canonical spelling did, and the readers' path
+    match failed (B13 round 47 C3300, ruling 210). Never ``Path.resolve()``, which raises RuntimeError on a
+    loop on Python 3.11 and 3.12, past every ``except OSError``. A link with no target or none this account
+    can read, or a read that fails, stops the walk there, the rest kept as written."""
     clouds = cloud_storage_roots()
-    parts = path.parts
-    current = Path(parts[0])
-    for n, part in enumerate(parts[1:], start=1):
-        candidate = current / part
-        if any(is_under(current, r) or candidate == r for r in clouds):
-            return Path(candidate, *parts[n + 1 :])
-        try:
-            if candidate.is_symlink() and _depth < 40:
+    # a link followed -> where it led; None while it is being followed (a loop meets it again)
+    seen: dict[Path, Path | None] = {}
+
+    def walk(base: Path, names: tuple[str, ...]) -> tuple[Path, bool]:
+        # ``base`` holds no link; False when the walk stopped and the rest was kept as written
+        for n, name in enumerate(names):
+            candidate = base / name
+            rest = names[n + 1 :]
+            if any(is_under(base, r) or candidate == r for r in clouds):
+                return Path(candidate, *rest), False
+            if candidate in seen:
+                led = seen[candidate]
+                if led is None:
+                    return Path(candidate, *rest), False
+                base = led
+                continue
+            try:
+                if not candidate.is_symlink():
+                    base = candidate
+                    continue
                 target = candidate.readlink()
-                resolved = target if target.is_absolute() else candidate.parent / target
-                rest = Path(os.path.normpath(resolved), *parts[n + 1 :])
-                return canonical_source_root(rest, _depth + 1)
-        except OSError:
-            return Path(candidate, *parts[n + 1 :])
-        current = candidate
-    return current
+            except OSError:
+                return Path(candidate, *rest), False
+            seen[candidate] = None
+            joined = Path(os.path.normpath(target if target.is_absolute() else base / target))
+            led, done = walk(Path(joined.parts[0]), joined.parts[1:])
+            if not done:
+                return Path(led, *rest), False
+            seen[candidate] = led
+            base = led
+        return base, True
+
+    return walk(Path(path.parts[0]), path.parts[1:])[0]
 
 
 def _expand_value(v: str, key: str, where: str) -> Path:

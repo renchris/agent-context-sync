@@ -406,6 +406,76 @@ def test_read_config_bytes_follows_a_link_and_refuses_a_fifo_by_its_descriptor_c
         read_config_bytes(_config_entry(tmp_path / "f", "fifo"))
 
 
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "folder",
+        "file",
+        "link to a folder",
+        "link to a file",
+        "dangling link",
+        "link to itself",
+        "absolute link to itself",
+        "two-link loop",
+        "link through a file",
+        "fifo",
+        "folder this account cannot search",
+        "link into a folder this account cannot search",
+    ],
+)
+def test_canonical_source_root_gives_one_answer_from_every_spelling_c3300(tmp_path: Path, kind: str) -> None:
+    """B13 round 47 C3300 (ruling 210): canonical_source_root stopped a loop at a fixed depth, so from a home
+    reached through a link (``/tmp`` is ``/private/tmp``) it spent a level on that link and returned another
+    link of the loop than from the canonical spelling, and every reader's path match failed. It stops at the
+    first repeated link, as posixpath.realpath does, never Path.resolve() (RuntimeError on 3.11 and 3.12):
+    over every kind of entry, under a timeout, both spellings give realpath's answer and nothing is raised."""
+    home = tmp_path / "home"
+    home.mkdir()
+    (tmp_path / "home-link").symlink_to(home)
+    entry = home / "inbox"
+    locked: Path | None = None
+    if kind == "folder":
+        entry.mkdir()
+    elif kind == "file":
+        entry.write_text("contoso\n", encoding="utf-8")
+    elif kind == "link to a folder":
+        (home / "drop").mkdir()
+        entry.symlink_to(home / "drop")
+    elif kind in ("link to a file", "link through a file"):
+        (home / "note.txt").write_text("x\n", encoding="utf-8")
+        entry.symlink_to(home / "note.txt" / ("sub" if kind == "link through a file" else ""))
+    elif kind == "dangling link":
+        entry.symlink_to(home / "missing")
+    elif kind == "link to itself":
+        entry.symlink_to("inbox")
+    elif kind == "absolute link to itself":
+        entry.symlink_to(tmp_path / "home-link" / "inbox")
+    elif kind == "two-link loop":
+        (home / "loop").symlink_to(tmp_path / "home-link" / "inbox")
+        entry.symlink_to(tmp_path / "home-link" / "loop")
+    elif kind == "fifo":
+        os.mkfifo(entry)
+    elif kind == "folder this account cannot search":
+        entry.mkdir()
+        locked = entry
+    else:
+        (home / "locked" / "sub").mkdir(parents=True)
+        entry.symlink_to(home / "locked" / "sub")
+        locked = home / "locked"
+    if locked is not None:
+        locked.chmod(0)
+    try:
+        if locked is not None and os.access(locked, os.X_OK):
+            pytest.skip("this account searches a mode-0 folder")
+        with _bounded(10):
+            want = Path(os.path.realpath(entry))
+            for typed in (entry, tmp_path / "home-link" / "inbox"):
+                assert canonical_source_root(typed) == want, typed
+    finally:
+        if locked is not None:
+            locked.chmod(0o700)
+
+
 def test_load_config_missing_file_names_add_source(tmp_path: Path) -> None:
     with pytest.raises(ConfigError, match=r"run `~/\.local/bin/agentsync add-source <folder>` to create it"):
         load_config(tmp_path / "nope.toml")

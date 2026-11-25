@@ -47938,6 +47938,21 @@ entry under a timeout: a folder, a file, links to a folder and to a file, a dang
 loop, a link through a file, a FIFO, a folder this account cannot search and a link into one), and the C2814 and
 C3044 tests' folder-put-back cases.
 
+**canonical_source_root stops at the first repeated link** (C3300; ruling 210). It stopped a loop at a fixed depth of
+40, so from a home reached through a link (`/tmp` is `/private/tmp`) the walk spent a level on that link and returned
+another link of the loop than from the canonical spelling: the stored path (load_config canonicalizes it) and the
+readers' `canonical_source_root(<home>/agent-context/inbox)` differed, and an absolute self-link or a two-link loop at
+the kept inbox read `Too many levels of symbolic links` with a look-in-Finder fix in doctor and `source root is a
+symlink` in the sync. The walk now keeps the links it is following and those it has resolved: a link met again while
+it is being followed stops the walk, returning that link with the rest of the path, as `posixpath.realpath` does, and
+a resolved one is reused, so every spelling gives one answer. The cloud stop and the stop on an OSError are
+unchanged, the `_depth` keyword is gone (no caller passed it), and `Path.resolve()` is never used: it raises
+RuntimeError on a loop on Python 3.11 and 3.12, past every `except OSError` (makes worse True). The report's
+`(beside / "inbox").resolve()` and its fallback redactor are lane RA's half. Tests:
+`test_canonical_source_root_gives_one_answer_from_every_spelling_c3300` (twelve kinds of entry, both spellings equal
+to realpath's answer, under a timeout) and the C2809 test's home-through-a-link rows (an absolute self-link and two
+two-link loops: `is not a folder` on the listable and volume rows, the alarm and the kept inbox's note).
+
 ### 16.293 Round 47: the converters: ruling 202's Office twins closed (UTF-32 text, a no-namespace `<Types>`, the container answers before the cache, xlsx's emitter 1.0.7) and one noun per family (2026-11-25, wave B13 round 47 lane E)
 
 Round 47's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 47"; specs `round47/items/C<n>.md`, the
