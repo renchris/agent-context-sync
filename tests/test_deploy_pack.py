@@ -9500,6 +9500,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_45_B_PARAGRAPH_AMENDS,
         *_ROUND_45_RB_PARAGRAPH_AMENDS,
         *_ROUND_46_E_PARAGRAPH_AMENDS,
+        *_ROUND_46_RB_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")

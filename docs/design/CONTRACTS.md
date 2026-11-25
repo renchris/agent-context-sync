@@ -46985,7 +46985,72 @@ copy of each constant. Test: `test_the_loop_line_says_install_shs_own_form_on_st
 
 ### 16.286 Round 46: the installer: the shell halves of rulings 198 and 199, every word it writes valid UTF-8 that reads back as its path, an older build's inbox read, and C2060 waits on the operator (2026-11-24, wave B13 round 46 lane RB)
 
-Reserved for round 46 lane RB of B13.
+Wave B13 round 46 lane RB builds install.sh's halves of the lead's rulings 198, 199, 200, 203 and 204 and the
+installer items of round 46's harvest, review and rehearsal (`docs/plans/bring-back-ocr.md`, "B13 round 46"; each item
+the verifier's corrected fix). A dated line this round writes reads `Amended 2026-11-24, §16.286 C<n>`.
+
+**The shell reads the sources, the docs repo and a `~name` value as the agentsync report does** (C3034 with C3083 and
+C3056, C3084, C3085, C3087 with C3105, C3054, C3055's installer half; rulings 198 and 199; privacy; landed in one run
+with §16.285's halves). The id registry read only a bare `[[source]]` header and a basic `id = "..."`, so a literal id
+or a quoted header printed the id in clear in a report the shell called public. When config_toml_state's interpreter
+answers loaded, it prints the `[[source]]` table tomllib reads (`n TAB id TAB path`, a string id only, a record
+holding a TAB or LF dropped, written as UTF-8) and config_source_records gives it to the registry in place of its awk;
+with no interpreter the awk reads a bare, `"source"` or `'source'` header, a bare or quoted key and a basic or literal
+value, config_path_values reads a literal or quoted-key path and a comment after a basic one, and the structural check
+accepts exactly those spellings, calls a top-level `source` key unparsed (C3034, C3083, C3056) and calls a multi-line
+string or array still open at end of file unparsed (C3084). agentsync_dir_values strips a record-ending CR before
+either rule reads the record, so a CRLF continuation joins as tomllib joins it (C3085). non_inbox_sources strips the
+kind as config._str does (C3087 with C3105; a dated line under C2934's paragraph). The git remotes are read from the
+configured docs repo in place of the default, never beside it, the default where the file does not parse or the value
+names another account's home (C3054). The kept inbox's target, resolved (a link read with readlink where its target
+cannot be searched; an inbox source elsewhere stays a project), is agentsync's own only inside the folder beside the
+docs repo, and that folder only when it is no generic container and not the home; one under CloudStorage is left to
+its cloud parts; any other is no project and is registered through own_folder_values after the own folders and the
+C2430 block (C3055). Each `~name` value (the sources' paths, then docs_repo, state_dir, cache_dir and log_dir where
+the file parses, then pandoc_path) is cut in `_register_refused`'s order: whole to `~<user>/<path>` and its head to
+`~<user>`, each to its path token's end, the name a `<user>` unless it is a report word (a head holding a blank names
+no account and is cut only inside the whole value), and the folder parts after a `Library/CloudStorage/<entry>` prefix
+through own_folder_values; its default stands in, and a `~name` source path is no folder of this Mac (ruling 198).
+Tests: `tests/test_install_oneshot.py`
+(`test_the_id_registry_reads_every_source_spelling_tomllib_reads_c3034_c3083_c3056`,
+`test_the_id_registry_reads_tomllib_table_when_an_interpreter_answers_c3083`,
+`test_the_structural_check_follows_the_widened_reader_c3034_c3084`,
+`test_the_toml_reader_strips_a_record_ending_cr_first_c3085`,
+`test_a_crlf_multi_line_value_reads_its_newline_as_tomllib_does_c3085`,
+`test_the_line_reader_strips_the_kind_as_config_str_does_c3087_c3105`), `tests/test_report_redaction.py`
+(`test_both_reports_read_the_configured_docs_repos_remote_c3054`, and §16.285's shared rows).
+
+**Every word install.sh writes or prints is valid UTF-8 and reads back as its path** (C3080 with C3089 and C3103;
+ruling 203). q_word gives `printf %q`'s word and writes a `$'..'` result again under LC_ALL=C; every word install.sh
+writes with %q goes through it, a plain or `\ ` word byte for byte (a dated line under C2944's paragraph). Tests:
+`test_every_word_install_sh_writes_is_utf8_and_reads_back_as_its_path_ruling_203`,
+`test_a_spaces_only_path_renders_as_before_ruling_203`,
+`test_both_reports_cut_a_folder_install_sh_logged_in_the_c_form_ruling_203` and test_cli's C2944 row.
+
+**A bare run's no-folder NEXT is install.sh's own** (C3003; amends ruling 191, dated line there). A bare run that
+ends 0 on status's rule-2 opener ends on the `--source-local` form, with `; not live: <id> (<state>), ...` naming each
+paused or retired folder as the person's edit of sources.toml; lane RA mirrors it in `_install_sh_said_no_folder`.
+
+**The shell report marks a config path that is not a file `(exists)`** (C3019). Something at the config path that
+is not a file reads `(exists)` with `- loads: no: it is a folder or something else that is not a file` and no table
+count, a path a folder above refuses reads `(not checked: this account cannot reach it: Permission denied)`, and a
+link to nothing stays `(missing)`, each as setup_report._path_reached reads it. Test:
+`test_the_shell_report_marks_a_config_that_is_not_a_file_as_the_agentsync_report_does_c3019`.
+
+**An older build reads a denied inbox as inbox_state does** (C3088; ruling 204). The older-build fallback inlines
+config.inbox_entry with stdlib errno, stat, lstat and stat: a denied entry is `not read (<strerror>)`, never absent
+or not a folder. Test: `test_an_older_build_reads_a_denied_inbox_as_inbox_state_does_c3088`.
+
+**C2060's shell half waits on the operator** (C3081 with C3057; ruling 200). Class C decision c0777e12a523 was
+still open when this lane started and before its last land, so install.sh does not decode an escaped listed row;
+test_report_redaction's strict xfail for C2060 stays with its one-line reason, and test_deploy_pack's pin of it.
+
+**A first sync skipped under a holder that recorded nothing says so** (C3024). install.sh notes
+`lock-busy-unrecorded-holder` when the lock's body named no holder (dated lines under C629's and H29's paragraphs);
+lane RA's report words the key. Test: `test_a_first_sync_skipped_under_a_holder_that_recorded_nothing_says_so_c3024`.
+
+**C3064**: the C2890 test's outcome assert gives a str message (the report's written-by and outcome lines and
+install.sh's `agentsync setup-report failed (...)` line), which pytest prints whole; gate.sh's re-run rule unchanged.
 
 ### 16.287 Round 46: a `~name` config value a configuration error and a refused skill copy a warning, the STUB_RENDER marker held for a page not rendered, and an inbox that is not a folder told as inbox_state tells it (2026-11-24, wave B13 round 46 lane B)
 
