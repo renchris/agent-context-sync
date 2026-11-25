@@ -47540,7 +47540,62 @@ sentences keep the 105 they measured against. Tests:
 
 ### 16.290 Round 47: the report: the kept inbox's link resolved alike and every folder under it cut, a refused id and a refused value's parents cut, an escaped listed row's other readings cut fuzzily, and step 3's question credited only on the route the attempt took (2026-11-25, wave B13 round 47 lane RA)
 
-Reserved for round 47 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 47").
+Wave B13 round 47 lane RA builds the report's halves of the lead's rulings 206, 207, 208, 213 and 214 and the report
+items of round 47's harvest, review and rehearsal (`docs/plans/bring-back-ocr.md`, "B13 round 47"; each item the
+verifier's corrected fix). A dated line this round writes reads `Amended 2026-11-25, §16.290 C<n>`.
+
+**The kept inbox's link is resolved alike and never raises, and every folder under a kept target is cut** (C3210 with
+C3284, C3242 and C3300's report half; ruling 206; privacy; data integrity; lane RB's shell halves, C3245 and C3324, land
+in the same run, §16.291). `_build_redactor` read the kept inbox with `(beside / "inbox").resolve()`, which on Python
+3.11 and 3.12 raises RuntimeError on a link loop, so a looping inbox link sent the report to the fallback redactor,
+private only, its folders and organisation in clear. It reads the target with `_link_target`: the entry's
+`os.path.realpath`, and when the entry is a link whose resolution loops (ELOOP), its first hop's target, that hop's
+folder resolved as every other path is and its last part kept, so a loop's partner outside ~/agent-context (`inbox ->
+~/Locked Contoso/x -> inbox`) is still registered through the own-folder filter (makes worse True for treating a
+loop as no target, which left that partner in clear where the shell cut it); every home and beside `resolve()` in
+`_build_redactor` is `_real`, `os.path.realpath`, which never raises, and `_build_report`'s fallback registers
+`str(Path.home())` and its realpath, longest first, so a home reached through a link never prints `/private~`
+(C3300). A kept target equal to the home or its realpath, or named in `_GENERIC_HOME_DIRS` (`~/Desktop`,
+`~/Documents`), is skipped: it registers nothing and hid every configured project below it, so `Kestrel Plans`
+printed in clear (C3242). A configured folder, or a vanished source's recorded one, strictly below a kept target is
+registered through `_own_folder_values`' filter where a project registers (`_project_place`), never tested against
+the inbox source's resolved path, which lies in the target and would drop it (C3055's locked row); one equal to a
+target, or agentsync's own, is skipped as before. Tests: `tests/test_setup_report.py`
+(`test_a_looping_inbox_link_keeps_the_redactor_and_the_report_public_c3210`,
+`test_the_fallback_redactor_cuts_a_linked_home_by_both_spellings_c3300`,
+`test_a_project_below_the_kept_inbox_target_is_cut_c3242`), `tests/test_report_redaction.py`
+(`test_both_reports_resolve_the_kept_inbox_link_alike_ruling_206`,
+`test_both_reports_read_an_unparsed_config_with_the_default_docs_repo_c3324`).
+
+**A value is registered in every spelling either report can print** (C3285, C3223, C3224, C3247; ruling 207; privacy;
+lane RB's shell halves, C3243 with C3302, C3244, C3246, C3303, C3304 and C3289, land in the same run, §16.291).
+`_register_refused` cut a refused `~contoso/Zephyr Quarry/pandoc` whole, but its parent, quoted alone, read `~<user>
+Quarry`: the head's cut ran to the blank. Each parent prefix, `head + "/" + "/".join(parts[:k])`, is cut whole to
+`~<user>/<path>` too, longest first as `add_cut` sorts, each opening with `~name/` so no bare `~ ` is cut (C3285). A
+refused name of two letters in `_TWO_LETTER_WORDS` is no `user` value, `me` joining both lists, so `~it` no longer
+cuts the word `it` across the report; the head is still cut, anchored on its `~`, and no 3-character floor is set,
+which stopped the report cutting `jd` and `~a` (C3247, makes worse True for that floor or the shell's any-case flag).
+A literal-string id agentsync refuses (`id = 'Contoso Quarry'`, no `SOURCE_ID_RE` match) was dropped by
+`_unloaded_config` and `_kept_scanned_id`, so the report printed `<org-1> Quarry` where the shell numbers every id it
+reads; the `SOURCE_ID_RE` test is dropped and the `_GENERIC_IDS` and `report_words()` filters kept, so it is
+registered in config order and `'Status'` still is not (C3223). And a `~login/` path that sources.toml no longer
+holds printed in clear in both reports, where a `/Users/<login>/` path is cut by its shape: `Redactor._regex` gains
+`_other_login_re` beside `_other_home_re`, after the `add_cut` values, a `~` that no ASCII letter, digit, `_`, `.`,
+`-` or `~` precedes (never `HEAD~1` or the `~~~text` fence), a login-shaped word (`_TILDE_LOGIN`, or a placeholder an
+earlier cut made, never `<user>` or `<path>`) that is not this account's, and a `/` or the path's end; right after a
+quote or a backtick to the closing one, else its components and the words after a blank as `_home_rest` reads them,
+printed `~<user>/<path>` (`~<user>` with no folder after it), uncounted, one clause in the `<path>` legend item; a
+word after an unquoted blank that holds no `/` stays, C946's limit (C3224). Tests: `tests/test_setup_report.py`
+(`test_a_refused_values_parent_is_cut_whole_c3285`), `tests/test_report_redaction.py`
+(`test_both_reports_cut_a_tilde_name_value_beside_a_valid_source_c3099`'s `source leaf`, `pandoc_path` and
+`docs_repo` rows, `test_both_reports_cut_an_unconfigured_tilde_login_path_whole_c3224`,
+`test_both_reports_cut_a_short_tilde_name_head_alike_c3247`, `test_both_reports_cut_a_source_id_agentsync_refuses_c3223`,
+and lane RB's items' rows: `test_both_reports_keep_a_source_whose_path_holds_a_tab_or_newline_c3243`,
+`test_both_reports_cut_a_tilde_name_path_in_a_table_with_no_string_id_c3244`,
+`test_both_reports_call_a_repeated_key_unparsed_and_take_the_first_id_c3246`,
+`test_both_reports_decode_a_basic_string_escape_in_a_refused_head_c3303`,
+`test_both_reports_judge_a_unicode_blank_in_a_refused_head_alike_c3304`,
+`test_both_reports_cut_a_project_folders_fuzzy_spellings_alike_c3289`).
 
 ### 16.291 Round 47: the installer: the shell halves of rulings 206 and 207, a file at the docs repo's path the person's to move aside, paused and retired folders marked in step 1's list, and C2060 waits on the operator (2026-11-25, wave B13 round 47 lane RB)
 

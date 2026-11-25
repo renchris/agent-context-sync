@@ -30204,6 +30204,119 @@ def test_an_inbox_target_is_judged_by_where_it_lies_c3055(case: str) -> None:
     assert not red.private_only
 
 
+@pytest.mark.parametrize("case", ["self", "chain", "outside"])
+def test_a_looping_inbox_link_keeps_the_redactor_and_the_report_public_c3210(
+    fake_mac: dict[str, Path], tmp_path: Path, case: str
+) -> None:
+    """B13 round 47 C3210 with C3284 (ruling 206; makes worse True for treating a loop as no target):
+    `(beside / "inbox").resolve()` raised RuntimeError on a link loop under Python 3.11, so the report fell
+    back to the home-only redactor, private only, its folders and organisation in clear. The kept inbox is
+    read by its realpath, a loop by its first hop's target: the redactor is kept, the report public, and a
+    loop's partner outside ~/agent-context (`~/Documents/Wombat`, a self-link) is cut."""
+    home = Path.home()
+    ac = home / "agent-context"
+    inbox = ac / "inbox"
+    if inbox.is_dir() and not inbox.is_symlink():
+        inbox.rename(tmp_path / "inbox-aside")
+    if case == "self":
+        inbox.symlink_to("inbox")
+    elif case == "chain":
+        (ac / "a").symlink_to("b")
+        (ac / "b").symlink_to("a")
+        inbox.symlink_to("a")
+    else:
+        (home / "Documents").mkdir(exist_ok=True)
+        (home / "Documents" / "Wombat").symlink_to("Wombat")
+        inbox.symlink_to(home / "Documents" / "Wombat")
+    cfg = fake_mac["config"]
+    red = setup_report._build_redactor(setup_report._Run(cfg, setup_report.ReportHooks(), 40.0))
+    assert not red.redactor_failed and red._known(FOLDERS[1]) is not None
+    if case == "outside":
+        assert red.redact("the inbox links to ~/Documents/Wombat") != "the inbox links to ~/Documents/Wombat"
+    rc, text, _secs = report(tmp_path, cfg)
+    assert rc == 0
+    assert "redaction facts could not be read" not in text and "/private~" not in text, text
+    assert setup_report.issue_link(text) is not None, text
+    for raw in (*RAW, "Wombat"):
+        assert raw not in text, (raw, [ln for ln in text.splitlines() if raw in ln])
+
+
+def test_the_fallback_redactor_cuts_a_linked_home_by_both_spellings_c3300(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 47 C3300 (ruling 206): the fallback redactor registered only `str(Path.home())`, so under a
+    home reached through a link (`/tmp/x`, stored `/private/tmp/x`) a line printed `/private~`. It registers
+    the home and its realpath, longest first, as _build_redactor does."""
+    real = tmp_path / "real-home"
+    real.mkdir()
+    link = tmp_path / "linked-home"
+    link.symlink_to(real)
+    monkeypatch.setenv("HOME", str(link))
+
+    def boom(r: object) -> setup_report.Redactor:
+        raise RuntimeError("redaction facts unreadable")
+
+    monkeypatch.setattr(setup_report, "_build_redactor", boom)
+    seen: list[setup_report.Redactor] = []
+    real_identity = setup_report._register_identity
+
+    def spy(red: setup_report.Redactor, r: object) -> list[str]:
+        seen.append(red)
+        return real_identity(red, r)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(setup_report, "_register_identity", spy)
+    setup_report.build_report(link / "agent-context" / "sources.toml")
+    [red] = seen
+    line = f"{os.path.realpath(link)}/agent-context/inbox: Too many levels of symbolic links"
+    assert red.redact(line) == "~/agent-context/inbox: Too many levels of symbolic links", red.redact(line)
+    assert red.redact(f"{link}/agent-context") == "~/agent-context"
+
+
+def test_a_refused_values_parent_is_cut_whole_c3285() -> None:
+    """B13 round 47 C3285 (ruling 207; privacy): the refused value `~contoso/Zephyr Quarry/pandoc` was cut
+    whole, but its parent, quoted alone, read `~<user> Quarry`: the head's cut ran to the blank. Each parent
+    prefix is cut whole too, longest first, a path under it included."""
+    red = setup_report.Redactor()
+    red.add("home", str(Path.home()))
+    setup_report._register_refused(red, ["~contoso/Zephyr Quarry/pandoc"])
+    assert (
+        red.redact("I set ~contoso/Zephyr Quarry in sources.toml") == "I set ~<user>/<path> in sources.toml"
+    )
+    assert red.redact("~contoso/Zephyr Quarry/pandoc is gone") == "~<user>/<path> is gone"
+    assert red.redact("~contoso/Zephyr Quarry/x").startswith("~<user>/<path>")
+
+
+@pytest.mark.parametrize("target", ["desktop", "home", "hub"])
+def test_a_project_below_the_kept_inbox_target_is_cut_c3242(target: str) -> None:
+    """B13 round 47 C3242 (ruling 206; privacy): an inbox linked to the home, a container such as
+    ~/Desktop or a project hub made that folder an inbox target, which skipped every configured folder below
+    it and registered nothing for the container itself, so `Kestrel Plans` printed in clear. A home or
+    container target is skipped and a folder below a kept target is registered through the own-folder
+    filter, never testing the inbox source's resolved path."""
+    home = Path.home()
+    base = {"desktop": home / "Desktop", "home": home, "hub": home / "Kestrel Hub"}[target]
+    plans = base / "Kestrel Plans"
+    plans.mkdir(parents=True)
+    ac = home / "agent-context"
+    ac.mkdir(exist_ok=True)
+    (ac / "inbox").symlink_to(base)
+    cfg = ac / "sources.toml"
+    cfg.write_text(
+        default_config_text()
+        + '\n[[source]]\nid = "inbox"\nkind = "inbox"\npath = "~/agent-context/inbox"\n'
+        + local_source_table("kestrel-plans", plans),
+        encoding="utf-8",
+    )
+    red = setup_report._build_redactor(setup_report._Run(cfg, setup_report.ReportHooks(), 40.0))
+    shown = str(plans).replace(str(home), "~", 1)
+    assert "Kestrel" not in red.redact(f"the sync of {shown} went on"), red.redact(shown)
+    if target != "hub":
+        assert red.redact("Kestrel Plans is mine") != "Kestrel Plans is mine"
+    else:
+        assert red._known("Kestrel Hub") is not None
+    assert not red.private_only
+
+
 def test_the_loop_line_says_install_shs_own_form_on_status_rule_2_next_c3003(
     fake_mac: dict[str, Path],
 ) -> None:

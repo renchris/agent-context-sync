@@ -809,6 +809,25 @@ def _other_home_re(logins: Iterable[str], spaced: Iterable[str] = ()) -> str:
     return rf"{quoted}(?<![A-Za-z0-9_.-]){home}{_home_rest(spaced)}"
 
 
+_TILDE_LOGIN = r"(?:[A-Za-z_][A-Za-z0-9._-]*|<(?!(?:user|path)>)[a-z]+(?:-[0-9]+)?>)"
+"""B13 round 47 C3224 (ruling 207): a login-shaped word after ``~`` (or a placeholder an earlier cut made,
+``<org-1>``, never ``<user>`` or ``<path>``), as install.sh's ``foreign_home_cut`` reads one."""
+
+
+def _other_login_re(logins: Iterable[str], spaced: Iterable[str] = ()) -> str:
+    """B13 round 47 C3224 (ruling 207; privacy): the pattern of a ``~login/`` path, another account's home
+    written with its login, cut whole as :func:`_other_home_re` cuts a ``/Users/`` one, configured or not: a
+    ``~`` that no ASCII letter, digit, ``_``, ``.``, ``-`` or ``~`` precedes (never ``HEAD~1`` or the
+    ``~~~text`` fence), then a login-shaped
+    word that is none of ``logins`` (this account's, left alone as ``/Users/<user>`` is) and a ``/`` or the
+    path's end; right after a quote or a backtick to the closing one, else its components and the words after
+    a blank as :func:`_home_rest` reads them. ``~/``, ``~+`` and ``~-`` hold no login."""
+    login = "".join(f"(?!{re.escape(u)}{_PATH_END})" for u in logins)
+    head = rf"~{login}{_TILDE_LOGIN}"
+    quoted = "".join(rf"(?<={q}){head}/(?:[^{q}\n\\]|\\.)+(?={q})|" for q in ('"', "'", "`"))
+    return rf"{quoted}(?<![A-Za-z0-9_.~-]){head}(?:/{_home_rest(spaced)}|{_PATH_END})"
+
+
 def _home_rest(spaced: Iterable[str] = ()) -> str:
     """The pattern of a path in another home after its /Users/ head: its components, a provider folder's name
     to the next "/", and each later word after a blank that holds a "/" (:data:`_PATH_END`'s comment)."""
@@ -866,7 +885,7 @@ _TWO_LETTER_WORDS = frozenset(
         *("gz", "id", "if", "im", "in", "is", "it", "js", "kt", "lc", "ld", "le", "ls", "mb", "md", "ml"),
         *("mp", "ms", "mv", "my", "nf", "no", "np", "nr", "oe", "of", "ok", "on", "or", "os", "ou", "ps"),
         *("py", "rb", "rc", "rd", "re", "rm", "ro", "rw", "rx", "sh", "sm", "so", "sw", "sz", "ta", "to"),
-        *("tr", "ts", "tz", "up", "us", "uv", "vb", "vn", "wc", "we", "xm", "xz", "ya", "za"),
+        *("tr", "ts", "tz", "up", "us", "uv", "vb", "vn", "wc", "we", "xm", "xz", "ya", "za", "me"),
     }
 )
 """Every two-letter word either report prints, lower-case, in any case (B13 round 26 E72): what a scan of
@@ -1195,7 +1214,10 @@ _LEGEND = {
         'semicolon to the next / but stopping at a quote, a backtick, "):" or ", stored as ", and after a '
         "blank from the first word that holds no / or holds =, or that is an option, a "
         "URL, a path of its own or a number like 3/14; a blank right after this home ends it, so another "
-        "home named as this one and a blank keeps what follows), and every word a shell or doctor's fix "
+        "home named as this one and a blank keeps what follows), "
+        # B13 round 47 C3224 (ruling 207)
+        "and a path written as ~ and another account's login, cut whole to ~<user>/<path> (~<user> with no "
+        "folder after it) as a /Users/ path is, and every word a shell or doctor's fix "
         "wrote in its dollar-quote form, cut whole, so doctor's fix reads open ~/<path> in Finder "
         "once, but one right after --source-local, --source-local= or add-source, shown decoded in double "
         "quotes and cut as its section says, where the shell fallback report cuts it whole; "
@@ -2301,6 +2323,8 @@ class Redactor:
             # after the literals, so this home's own literal wins (B13 round 34 C822)
             spaced = {f for v, _m in self._literals for f in _forms(v) if " " in f or "\t" in f}
             alts.append(f"(?P<otherhome>{_other_home_re(sorted(self._logins), spaced)})")
+            # B13 round 47 C3224 (ruling 207): and a ~login/ path beside it, after the add_cut values
+            alts.append(f"(?P<otherlogin>{_other_login_re(sorted(self._logins), spaced)})")
             self._volume_rest = re.compile(_home_rest(spaced))
             alts.append(f"(?P<tmp>{_TMP_RE})")
             alts.append(f"(?P<hash>{_HASH_RE})")
@@ -2323,6 +2347,8 @@ class Redactor:
         if groups.get("otherhome") is not None:  # uncounted, as every <path> cut is (B13 round 34 C822)
             volume = text[:9].lower() == "/volumes/"  # in any case (B13 round 36 C1018)
             return "/Volumes/<path>" if volume else "/Users/<path>"  # C947
+        if groups.get("otherlogin") is not None:  # uncounted too (B13 round 47 C3224)
+            return "~<user>/<path>" if "/" in text else "~<user>"
         if groups.get("govremote") is not None:
             groups["remote"] = text
         if any(groups.get(k) is not None for k in ("label", "remote", "value")):
@@ -6115,8 +6141,9 @@ def _unloaded_config(r: _Run, red: Redactor) -> _RawConfig | None:
     """sources.toml read with :mod:`tomllib` and no validation when it exists and does not load (B13 round 44
     C2609, ruling 172; privacy): its ids and folders printed in clear in the ``loads: no:`` line, both
     ``Not run:`` lines and the install.out tail, since only a loaded config registered them. An id is kept
-    only when it is a source id (:data:`SOURCE_ID_RE`), none of :data:`_GENERIC_IDS` and none of the report's
-    own words, as the vanished ids are; a path only when it is a non-blank string, a folder only as the loaded
+    only when it is none of :data:`_GENERIC_IDS` and none of the report's own words, as the vanished ids are
+    (B13 round 47 C3223, ruling 207: one agentsync refuses, no :data:`SOURCE_ID_RE` match, is still a value to
+    cut); a path only when it is a non-blank string, a folder only as the loaded
     case reads one. A file that does not parse (or decode) registers nothing and sets
     :attr:`Redactor.config_unparsed`, which makes the report private only; a missing or unreadable one is
     None. The manifest's and the purge queue's ids no source names are not read for it: they need a loaded
@@ -6179,9 +6206,11 @@ def _unloaded_config(r: _Run, red: Redactor) -> _RawConfig | None:
     for raw in data.get("source", []) if isinstance(data.get("source"), list) else []:
         t = table(raw)
         sid = t.get("id")
+        # B13 round 47 C3223 (ruling 207; privacy): an id agentsync refuses is still a value to cut, as the
+        # shell report numbers it: no SOURCE_ID_RE test, the generic and report-word filters kept
         keep = (
             isinstance(sid, str)
-            and SOURCE_ID_RE.match(sid) is not None
+            and sid.strip() != ""
             and sid not in _GENERIC_IDS
             and sid.lower() not in report_words()
         )
@@ -6223,11 +6252,13 @@ _SOURCE_PATH_LINE_RE = re.compile(
 
 
 def _kept_scanned_id(sid: str | None) -> bool:
-    """Whether a line-scanned id is kept, as :func:`_unloaded_config` keeps a parsed one: a source id
-    (:data:`SOURCE_ID_RE`), none of :data:`_GENERIC_IDS` and none of the report's own words."""
+    """Whether a line-scanned id is kept, as :func:`_unloaded_config` keeps a parsed one: a non-blank id, none
+    of :data:`_GENERIC_IDS` and none of the report's own words. B13 round 47 C3223 (ruling 207; privacy): an
+    id agentsync refuses (``'Contoso Quarry'``, no :data:`SOURCE_ID_RE` match) is still a value to cut, as
+    the shell report numbers every id it reads."""
     return (
         sid is not None
-        and SOURCE_ID_RE.match(sid) is not None
+        and sid.strip() != ""
         and sid not in _GENERIC_IDS
         and sid.lower() not in report_words()
     )
@@ -6344,16 +6375,27 @@ def _register_refused(red: Redactor, refused: Sequence[str]) -> None:
     words, registered as a ``user`` value (a head holding a blank names no account and is not cut alone), and
     the folder parts after the head, after a ``Library/CloudStorage/<entry>`` prefix, through
     :func:`_own_folder_values`'s filter as this home's own would be, so the report stays public. A raise had
-    dropped the whole redactor (C3099)."""
+    dropped the whole redactor (C3099).
+
+    B13 round 47 C3285 (ruling 207; privacy): each parent prefix of the value too (``~contoso/Zephyr Quarry``
+    of ``~contoso/Zephyr Quarry/pandoc``), cut whole to ``~<user>/<path>``, longest first as add_cut sorts
+    them, so a quote of the parent never reads ``~<user> Quarry``: the head's cut ran to the blank. C3247: a
+    two-letter name in :data:`_TWO_LETTER_WORDS` (``~it``, ``~me``) is no ``user`` value, as install.sh's
+    ``two_letter_word`` skips it; the head is still cut, anchored on its ``~``."""
     home = Path.home()
     for raw in refused:
         head, _sep, rest = raw.partition("/")
         rest = rest.strip("/")
         red.add_cut(raw, "~<user>/<path>" if rest else "~<user>")
+        parts = [p for p in rest.split("/") if p]
+        for k in range(len(parts) - 1, 0, -1):  # each opens with `~name/`: never a bare `~ ` cut
+            red.add_cut(head + "/" + "/".join(parts[:k]), "~<user>/<path>")
         name = head[1:]
         if name and not any(c.isspace() for c in name):  # `~ /x` names no account: its `~ ` would cut a word
             red.add_cut(head, "~<user>")
-            if name.lower() not in report_words():
+            if name.lower() not in report_words() and not (
+                len(name) == 2 and name.lower() in _TWO_LETTER_WORDS
+            ):
                 red.add("user", name)
         # under Library/CloudStorage/<entry>, the folders after the entry: CloudStorage itself is no folder
         cloud = re.match(r"Library/CloudStorage/[^/]+/?", rest)
@@ -6448,11 +6490,51 @@ def _register_name_tail(red: Redactor, tail_words: Sequence[str]) -> None:
             red.add("name", word.capitalize() if word.isupper() else None)
 
 
+def _real(path: Path) -> Path:
+    """``path`` resolved as :func:`os.path.realpath` resolves it, never raising (B13 round 47 C3210 with
+    C3284, ruling 206): on Python 3.11 and 3.12 :meth:`Path.resolve` raises RuntimeError on a link loop, which
+    dropped the whole redactor for the fallback's (private only, the folders in clear)."""
+    return Path(os.path.realpath(path))
+
+
+def _link_target(entry: Path) -> Path:
+    """Where ``entry`` leads, as both reports read the kept inbox's link (B13 round 47 C3210 with C3284,
+    ruling 206; makes worse True for treating a loop as no target): its realpath, and when the entry is a link
+    whose resolution loops (ELOOP), its first hop's target, that hop's folder resolved as every other path is
+    and its last part kept, so a loop's partner outside ~/agent-context (``inbox -> ~/Locked Contoso/x ->
+    inbox``) is still registered through the own-folder filter, as install.sh's ``resolved`` reads it. Never
+    raises."""
+    try:
+        entry.stat()
+    except OSError as exc:
+        if exc.errno == errno.ELOOP and entry.is_symlink():
+            try:
+                hop = entry.readlink()
+            except OSError:
+                return _real(entry)
+            hop = hop if hop.is_absolute() else entry.parent / hop
+            if hop.name in ("", ".", ".."):
+                return _real(hop)
+            return _real(hop.parent) / hop.name
+    return _real(entry)
+
+
+def _project_place(path: Path, own: Collection[Path], targets: Sequence[Path]) -> bool | None:
+    """Where a configured folder (or a vanished source's recorded one) sits for redaction (B13 round 47
+    C3242, ruling 206; privacy): None when it is agentsync's own or one of the kept inbox's ``targets``
+    itself, never a project; True when it lies strictly below a target, registered through
+    :func:`_own_folder_values`' filter; False for a project. Tested as written only, never against the inbox
+    source's resolved path, which lies in a target and would drop it (the C3055 locked row)."""
+    if any(path.is_relative_to(o) for o in own) or path in targets:
+        return None
+    return any(path.is_relative_to(t) for t in targets)
+
+
 def _build_redactor(r: _Run) -> Redactor:
     """Register everything this Mac's report could name (see the module docstring)."""
     red = Redactor()
     home = Path.home()
-    for h in sorted({str(home), str(home.resolve())}, key=len, reverse=True):
+    for h in sorted({str(home), str(_real(home))}, key=len, reverse=True):
         red.add("home", h)
     with contextlib.suppress(Exception):  # after the home: a sandbox HOME inside $TMPDIR stays "~"
         tmpdir = os.environ.get("TMPDIR", "").strip() or tempfile.gettempdir()
@@ -6494,6 +6576,7 @@ def _build_redactor(r: _Run) -> Redactor:
     cfg: Config | _RawConfig | None = r.config if r.config is not None else _unloaded_config(r, red)
     own: set[Path] = set()
     inbox_targets: list[Path] = []  # the kept inbox's targets outside ~/agent-context (C3055, below)
+    below_targets: set[Path] = set()  # configured folders strictly below one of them (C3242, below)
     if cfg is not None:
         # agentsync's own, never a project: the inbox it keeps beside the docs repo, and every folder beside
         # the docs repo (~/agent-context). Not the latter when a hand-set docs_repo sits straight in a
@@ -6508,20 +6591,25 @@ def _build_redactor(r: _Run) -> Redactor:
         # ~/Locked Contoso/inner is cut where doctor's FAIL names it
         # ~/agent-context only: beside a docs repo in a container (~/Documents) or at the home, a target there
         # is the person's own folder, never agentsync's (the guard on own |= beside below)
-        generic = beside.name.casefold() in _GENERIC_HOME_DIRS or beside in (home, home.resolve())
-        insides = set() if generic else {beside, beside.resolve()}
+        generic = beside.name.casefold() in _GENERIC_HOME_DIRS or beside in (home, _real(home))
+        insides = set() if generic else {beside, _real(beside)}
         # the kept inbox only: an inbox-kind source elsewhere is the person's project folder (B13 round 19 W6)
-        candidates = [(beside / "inbox").resolve()]
+        # B13 round 47 C3210 with C3284 (ruling 206): its realpath, a loop's first hop, never a raise
+        candidates = [_link_target(beside / "inbox")]
         for kept in candidates:
             if _cloud_parts(kept) is not None:  # registered by its parts, as a cloud source or listed folder
+                continue
+            # B13 round 47 C3242 (ruling 206; privacy): never the home or a container such as ~/Desktop, which
+            # registers nothing and so hid every configured project folder below it
+            if kept in (home, _real(home)) or kept.name.casefold() in _GENERIC_HOME_DIRS:
                 continue
             if any(kept.is_relative_to(b) for b in insides):
                 own.add(kept)
             elif kept not in inbox_targets:
                 inbox_targets.append(kept)
         if beside.name.casefold() not in _GENERIC_HOME_DIRS:
-            own |= {beside, beside.resolve()}
-        own -= {home, home.resolve()}
+            own |= {beside, _real(beside)}
+        own -= {home, _real(home)}
         for src in cfg.sources:
             parts = _cloud_parts(src.path) if src.path is not None else None
             if parts is not None:
@@ -6532,10 +6620,13 @@ def _build_redactor(r: _Run) -> Redactor:
                 elif org:
                     orgs.append(org)
                     heads.add(parts[0].partition("-")[0])
-            elif src.path is not None and not any(
-                expand(src.path).is_relative_to(o) for o in [*own, *inbox_targets]
+            elif (
+                src.path is not None
+                and (below := _project_place(expand(src.path), own, inbox_targets)) is not None
             ):
                 project_paths.append(expand(src.path))
+                if below:
+                    below_targets.add(expand(src.path))
         tenant = cfg.graph.tenant
         if tenant and "." in tenant:
             orgs.append(tenant.split(".", 1)[0])
@@ -6626,7 +6717,9 @@ def _build_redactor(r: _Run) -> Redactor:
     )
     own_value: dict[Path, str] = {}  # a project folder -> the value its whole path is registered as
     for path in project_paths:
-        values = _project_values(path)
+        # B13 round 47 C3242 (ruling 206): one below the kept inbox's target through the own-folder filter, so
+        # `inbox`, a container or an own word is never cut alone and the project's own folder is
+        values = _own_folder_values(path, Path("/")) if path in below_targets else _project_values(path)
         if values:  # none for ~/Documents, ~/Development or the home folder itself (_GENERIC_HOME_DIRS)
             own_value[path] = values[0]
         for value in values:
@@ -6685,7 +6778,9 @@ def _build_redactor(r: _Run) -> Redactor:
     # id left it half-redacted (``<prefix>-<folder-N>-mail``, field report 2026-10-06).
     cloud_ids = {sid for sid, _provider, _comps in cloud_sources}
     for src in cfg.sources if cfg is not None else ():
-        if not src.id:  # an unloaded config's id that is no source id (C2609): never registered
+        # an unloaded config's generic, report-word or blank id (C2609): never registered; one agentsync
+        # refuses is, in config order (B13 round 47 C3223, ruling 207)
+        if not src.id:
             continue
         folder = expand(src.path) if src.path is not None and src.id not in _GENERIC_IDS else None
         mirror = own_value.get(folder) if folder is not None else None  # a Graph source has no path
@@ -6722,8 +6817,9 @@ def _build_redactor(r: _Run) -> Redactor:
                     for c in comps[1:] if shared else comps:
                         red.add("folder", c, fuzzy=True)
                         _alias_escaped(red, c)
-                elif not any(root.is_relative_to(o) for o in [*own, *inbox_targets]):
-                    for value in _project_values(root):
+                elif (below := _project_place(root, own, inbox_targets)) is not None:
+                    # B13 round 47 C3242 (ruling 206): below the kept inbox's target, the own-folder filter
+                    for value in _own_folder_values(root, Path("/")) if below else _project_values(root):
                         red.add("folder", value, ignore_case=True)
                         _alias_escaped(red, value)
     # Then every hold scope no source registered: ``hold`` takes any id-shaped scope, one set before its
@@ -20755,7 +20851,10 @@ def _build_report(
         # with no issue link, this Mac's identity still cut; a raise here had sent a public report with the
         # login, name, serial, host, organisations and folders in clear
         red = Redactor()
-        red.add("home", str(Path.home()))
+        # B13 round 47 C3300 (ruling 206): the home and its realpath, longest first, as _build_redactor
+        # registers them, so a home reached through a link never prints `/private~`
+        for h in sorted({str(Path.home()), os.path.realpath(Path.home())}, key=len, reverse=True):
+            red.add("home", h)
         red.redactor_failed = True
         with contextlib.suppress(Exception):
             _register_name_tail(red, _register_identity(red, r))
