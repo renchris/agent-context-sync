@@ -221,6 +221,24 @@ def test_run_git_raises_git_error_with_argv_and_stderr(repo: Path) -> None:
     assert proc.returncode != 0
 
 
+def test_run_git_raw_keeps_a_lone_cr_that_text_mode_turns_into_lf_c3310(repo: Path) -> None:
+    """B13 round 47 C3310 (ruling 209): run_git reads git's output in text mode, which turns a lone CR into
+    LF, so a trailer ``invalid<CR>750`` read as two lines. run_git_raw returns the bytes git wrote, under a
+    caller's deadline too (deadline.run's own spawn), and a failure is the same GitError with its stderr."""
+    gitops.run_git(repo, "commit", "-q", "--allow-empty", "-m", "by hand\n\nAgentsync-Run: invalid\r750")
+    fmt = "--format=%(trailers:key=Agentsync-Run,valueonly,unfold)"
+    assert gitops.run_git(repo, "log", "-1", fmt).stdout.startswith("invalid\n750")
+    raw = gitops.run_git_raw(repo, "log", "-1", fmt)
+    assert isinstance(raw, bytes) and raw.startswith(b"invalid\r750\n"), raw
+    ctx = contextvars.copy_context()
+    ctx.run(deadline.RUN_DEADLINE.set, time.monotonic() + 60.0)
+    assert ctx.run(gitops.run_git_raw, repo, "log", "-1", fmt) == raw
+    with pytest.raises(GitError) as info:
+        gitops.run_git_raw(repo, "rev-parse", "--verify", "no-such-ref")
+    assert info.value.argv == ["rev-parse", "--verify", "no-such-ref"]
+    assert isinstance(info.value.stderr, str) and "fatal" in info.value.stderr
+
+
 def test_run_git_ignores_inherited_git_dir(
     repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

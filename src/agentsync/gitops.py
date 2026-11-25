@@ -26,6 +26,7 @@ from collections import Counter
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from agentsync import fsutil
 from agentsync.errors import GitError, PublishError
@@ -245,27 +246,41 @@ def _run(
     input_text: str | None = None,
     timeout: float = _GIT_TIMEOUT_S,
 ) -> subprocess.CompletedProcess[str]:
+    text: subprocess.CompletedProcess[str] = _spawn(
+        repo,
+        args,
+        check=check,
+        timeout=timeout,
+        input=input_text,
+        stdin=None if input_text is not None else subprocess.DEVNULL,
+        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
+    )
+    return text
+
+
+def _spawn(
+    repo: Path, args: Sequence[str], *, check: bool, timeout: float, **io: Any
+) -> subprocess.CompletedProcess[Any]:
+    """The one git spawn :func:`_run` (text) and :func:`run_git_raw` (bytes) share: the argv with
+    ``_SAFE_ARGS``, the fixed env, the caller's deadline and the GitError arms; ``io`` says how output is
+    read."""
     argv = [str(git_executable()), *_SAFE_ARGS, "-C", str(repo), *args]
     try:
         # a caller's deadline (the setup report's) ends it by then, in this process's group (C955)
-        proc = deadline.run(
-            argv,
-            input=input_text,
-            stdin=None if input_text is not None else subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="surrogateescape",
-            env=_env(),
-            timeout=timeout,
-            check=False,
-        )
+        proc = deadline.run(argv, capture_output=True, env=_env(), timeout=timeout, check=False, **io)
     except subprocess.TimeoutExpired:
         raise GitError(list(args), 124, f"timed out after {timeout:.0f}s") from None
     except OSError as exc:
         raise GitError(list(args), 127, str(exc)) from None
     if check and proc.returncode != 0:
-        raise GitError(list(args), proc.returncode, proc.stderr)
+        err = proc.stderr
+        raise GitError(
+            list(args),
+            proc.returncode,
+            err.decode("utf-8", "surrogateescape") if isinstance(err, bytes) else err,
+        )
     return proc
 
 
@@ -273,6 +288,14 @@ def run_git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedP
     """Run ``git <safe -c overrides> -C repo *args`` with the fixed env; raises GitError on non-zero exit when
     ``check``."""
     return _run(repo, args, check=check)
+
+
+def run_git_raw(repo: Path, *args: str) -> bytes:
+    """:func:`run_git`'s stdout as the bytes git wrote, with no newline translation: text mode turns a lone CR
+    into LF, so a trailer ``invalid<CR>750`` read as two lines and its ``750`` as a run (B13 round 47 C3310,
+    ruling 209). Raises GitError on a non-zero exit."""
+    out: bytes = _spawn(repo, args, check=True, timeout=_GIT_TIMEOUT_S, stdin=subprocess.DEVNULL).stdout
+    return out
 
 
 def _config_get(repo: Path, key: str, *, local: bool) -> str | None:

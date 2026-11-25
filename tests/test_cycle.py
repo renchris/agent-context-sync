@@ -6004,7 +6004,8 @@ def test_every_run_reader_reads_a_trailer_as_git_does_c2920(
     # a run line in a body paragraph that is not the trailer block is no run, at HEAD as in history
     assert readers("curated\n\nAgentsync-Run: 7\n\nmore words after it") == (None, base, base)
     # a value read whole and unfolded: no token of it is a run (C3090)
-    for value in ("invalid 750", "7 500", "7\n 500"):
+    # and read from git's bytes: text mode turned a lone CR into LF, so ``invalid<CR>750`` gave 750 (C3310)
+    for value in ("invalid 750", "7 500", "7\n 500", "invalid\r750", "7\r500"):
         assert readers(f"by hand\n\nAgentsync-Run: {value}") == (None, base, base), value
     # a squashed message: git reads the last paragraph's trailer, at HEAD too
     assert readers("squash\n\nAgentsync-Run: 5\n\nsecond\n\nAgentsync-Run: 6")[:2] == (6, 6)
@@ -6024,6 +6025,20 @@ def test_every_run_reader_reads_a_trailer_as_git_does_c2920(
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(cfg))
     run_n = base + 40
     assert readers(f"sync: contoso\n\nAgentsync-Run: {run_n}\nAgentsync-Version: 1") == (run_n, run_n, run_n)
+    # a CRLF-ended message kept verbatim still reads: git trims the CR at a value's end itself (C3310)
+    crlf = base + 60
+    gitops.run_git(
+        repo,
+        "commit",
+        "-q",
+        "--allow-empty",
+        "--cleanup=verbatim",
+        "-m",
+        f"by hand\r\n\r\nAgentsync-Run: {crlf}\r\n",
+    )
+    assert "\r" in gitops.run_git_raw(repo, "log", "-1", "--format=%B").decode()
+    high = cycle_mod._highest_recorded_run(config)
+    assert (cycle_mod._head_run_id(repo), cycle_mod._newest_run_trailer(repo), high) == (crlf, crlf, crlf)
 
 
 @pytest.mark.parametrize("where", ["state", "index", "heading"])

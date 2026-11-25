@@ -46539,6 +46539,8 @@ Amended 2026-11-24, §16.287 C3042, C3090, C3091: the extraction is `%(trailers:
 each LF-ended value read whole; `_newest_run_trailer` returns the newest valid value past newer commits that hold
 none, behind a case-blind prefilter; and STATE.md's `run:` line, CHANGELOG.md's index line and a month heading go
 through `_run_value` too (publish's index by an equal check).
+Amended 2026-11-25, §16.292 C3310: the three readers take git's extraction as bytes (`gitops.run_git_raw`), decoded
+with surrogateescape and no newline translation, so a lone CR inside a value stays and `invalid<CR>750` is no run.
 
 **A lost first-open race on `run_changes.unit_removed` is no failure** (C2852). The column is added on open by
 an unlocked check and an ALTER, so of two first opens of a pre-upgrade manifest that both saw it missing, the
@@ -47275,6 +47277,9 @@ and spacing as git's key match, and returns the first commit's largest valid val
 page: the hint and the history read no more than the last run, a dry run and a sync go on, the next run follows),
 the C2920 test's `invalid 750`, `7 500`, folded and lowercase `agentsync-run:9` rows and its newest-valid answers,
 and the C2677 test's newest valid `3` past a superscript.
+Amended 2026-11-25, §16.292 C3310: `_run_values` reads git's bytes, not run_git's text, whose newline translation
+turned a lone CR into an LF that split `invalid<CR>750` and `7<CR>500` into two values; a CR left in a value fails
+`_run_value`, and a CRLF-ended trailer still reads because git trims that CR itself.
 
 **A sync says a corrupt heartbeat once** (C3004; amends §16.155 Y43 and §16.167 A84). Over a heartbeat.json holding
 damaged JSON a sync logged `heartbeat unreadable: ...` from the cycle's own `source_statuses` read and `heartbeat
@@ -47756,6 +47761,17 @@ spellings in repr so the blank shows, never picking one; only a value carrying a
 sentinel, a path relative to the source root, keeps `_str`. Tests: `test_a_stored_path_keeps_the_blank_its_writer_wrote_c3333`,
 `test_a_stored_path_absent_whose_stripped_spelling_exists_names_both_c3333` and
 `test_add_source_on_a_folder_ending_in_a_blank_syncs_that_folder_not_its_sibling_c3333`.
+
+**Git's trailers read as bytes** (C3310; ruling 209; data integrity; amends §16.282 C2920 and §16.287 C3042).
+`gitops._run` reads git's output in text mode, whose newline translation turns a lone CR into LF, so a hand-made
+commit whose `Agentsync-Run` value was `invalid<CR>750` read as the run 750 in `_head_run_id`, `_newest_run_trailer`
+and `_highest_recorded_run`, past C3090's whole-value rule: recovery could take a hand-made HEAD for a pending run's
+commit and the run numbers could jump. `gitops.run_git_raw(repo, *args) -> bytes` shares `_run`'s one spawn
+(`_spawn`: the `_SAFE_ARGS` argv, the fixed env, the caller's deadline and the GitError arms) with no text mode, and
+the three readers decode it with surrogateescape; `_run_values` still splits on a literal LF and drops only blanks
+and tabs, so `invalid<CR>750` and `7<CR>500` are no run while a CRLF-ended trailer reads, git trimming its CR. Every
+other run_git caller keeps text mode. Tests: the C2920 test's `invalid<CR>750`, `7<CR>500` and verbatim CRLF rows, and
+`test_run_git_raw_keeps_a_lone_cr_that_text_mode_turns_into_lf_c3310`.
 
 ### 16.293 Round 47: the converters: ruling 202's Office twins closed (UTF-32 text, a no-namespace `<Types>`, the container answers before the cache, xlsx's emitter 1.0.7) and one noun per family (2026-11-25, wave B13 round 47 lane E)
 

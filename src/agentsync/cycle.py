@@ -1086,6 +1086,13 @@ def _same_stub(outs: Sequence[OutputRow], row: ItemRow, result: ConversionResult
     return status if same else None
 
 
+def _git_log_text(repo: Path, *args: str) -> str:
+    """git's trailer output for the run readers, decoded from its bytes with no newline translation: text
+    mode turned a lone CR into LF, so ``invalid<CR>750`` read as the run 750 (B13 round 47 C3310, ruling
+    209). A CR left in a value fails :func:`_run_value`; git trims the CR of a CRLF-ended trailer itself."""
+    return gitops.run_git_raw(repo, *args).decode("utf-8", "surrogateescape")
+
+
 def _head_run_id(repo: Path) -> int | None:
     """The ``Agentsync-Run`` trailer of HEAD's commit message (None if HEAD is not an agentsync commit), read
     as the history readers read it: git's trailer extraction, so a line in a body paragraph that is not the
@@ -1094,7 +1101,7 @@ def _head_run_id(repo: Path) -> int | None:
     try:
         if gitops.head_sha(repo) is None:
             return None
-        out = gitops.run_git(repo, "log", "-1", _RUN_TRAILER_FORMAT, "HEAD").stdout
+        out = _git_log_text(repo, "log", "-1", _RUN_TRAILER_FORMAT, "HEAD")
     except AgentSyncError:
         return None
     return max(_run_values(out), default=None)
@@ -1111,7 +1118,7 @@ def _highest_recorded_run(config: Config) -> int:
     high = _state_md_run(config)
     try:
         if gitops.head_sha(repo) is not None:
-            out = gitops.run_git(repo, "log", _RUN_TRAILER_FORMAT).stdout
+            out = _git_log_text(repo, "log", _RUN_TRAILER_FORMAT)
             high = max([high, *_run_values(out)])
     except AgentSyncError:
         pass
@@ -1181,7 +1188,7 @@ def _newest_run_trailer(repo: Path) -> int:
             return 0
         skip = 0
         while True:
-            out = gitops.run_git(
+            out = _git_log_text(
                 repo,
                 "log",
                 f"-n{_NEWEST_RUN_BATCH}",
@@ -1190,7 +1197,7 @@ def _newest_run_trailer(repo: Path) -> int:
                 "-E",
                 "--grep=^agentsync-run[[:space:]]*:",
                 _RUN_TRAILER_FORMAT + "%x00",
-            ).stdout
+            )
             chunks = out.split("\x00")[:-1]  # one per commit, each ended by its NUL
             for chunk in chunks:
                 if runs := _run_values(chunk):
