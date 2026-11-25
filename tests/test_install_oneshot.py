@@ -28269,6 +28269,19 @@ def test_both_held_folder_readers_read_as_the_loader_does_c3003(tmp_path: Path, 
     assert cp.stdout == setup_report.NOT_LIVE_CLAUSE.format(folders=_C3003_HELD)
 
 
+def test_the_no_folder_swaps_comment_names_c3003s_rewrite_above_it_c3282() -> None:
+    """B13 round 47 C3282 with C3309: the comment over the --no-folder swap said a bare run keeps status's
+    rule-2 NEXT, which C3003's rewrite above it reversed. It names that rewrite, which is above it."""
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    swap = text.index('\tif [ "$NO_FOLDER" -eq 1 ] && [ "$EXIT_RC" -eq 0 ]; then\n')
+    lines = text[:swap].splitlines()
+    block = list(itertools.takewhile(lambda ln: ln.startswith("\t# "), reversed(lines)))
+    comment = " ".join(ln.removeprefix("\t# ") for ln in reversed(block))
+    assert "keeps status's rule-2 NEXT" not in comment, comment
+    assert "a bare run, with no --no-folder, keeps the NEXT the C3003 rewrite above left" in comment, comment
+    assert text.rindex('"no folder is synced yet: ask the operator"*)', 0, swap) > 0
+
+
 # ---- B13 round 47 lane RB: C3206, step 2's own `nothing to draft yet` NEXT ---------------------------------
 
 _C3206_DRAFT = (

@@ -14787,9 +14787,11 @@ else # the loop's NEXT, after the background-sync result when it was asked for
 	fi
 	# --no-folder honored at every NEXT that would ask for folders again, whatever HAVE_SOURCES counts: status's
 	# rule 2 over an inbox-only config whose skill is current, or one whose folders are all paused or retired, and
-	# the first-run words, each turn the person's choice; a bare run keeps status's rule-2 NEXT (C2316, C2700),
-	# and a [FAIL], held-listing, chmod, sign-in or any other NEXT passes through (B13 round 45 ruling 191, C2910
-	# with C2945, C2931, C2838 and C2860)
+	# the first-run words, each turn the person's choice; a bare run, with no --no-folder, keeps the NEXT the
+	# C3003 rewrite above left: install.sh's own --source-local form, its opener and the held-folder clause (C2316
+	# and C2700, amended by B13 round 46 C3003; B13 round 47 C3282 with C3309), and a [FAIL], held-listing,
+	# chmod, sign-in or any other NEXT passes through (B13 round 45 ruling 191, C2910 with C2945, C2931, C2838
+	# and C2860)
 	if [ "$NO_FOLDER" -eq 1 ] && [ "$EXIT_RC" -eq 0 ]; then
 		case "$next" in
 		"no folder is synced yet"* | "no folder to sync yet"*) next="$NO_FOLDER_CHOSEN_NEXT" ;;
