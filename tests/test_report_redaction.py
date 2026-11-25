@@ -9,6 +9,7 @@ import re
 import shlex
 import subprocess
 import sys
+import time
 import tomllib
 import unicodedata
 from pathlib import Path
@@ -3138,6 +3139,8 @@ def test_both_reports_register_no_inbox_beside_a_docs_repo_under_the_root_c2430(
         ["Alder29\x1eBirch29", "Alder30\x7fBirch30"],
         ["Alder31\tBirch31", "Q3\x08Plans"],
         ["Alder32\x1eBirch32", "Alder33\nBirch33"],
+        # B13 round 46 C3114 with C3036: a name's own backslash before t or three octal digits
+        ["Wombat\\tQuokka\x7f", "Wombat\\177Quokka\x7f", "Q3\\101\\tPlans"],
     ],
 )
 def test_the_agentsync_report_cuts_a_folder_step_1_listed_but_not_configured_c2873(
@@ -3169,8 +3172,10 @@ def test_a_listed_escaped_name_is_decoded_under_one_number_and_the_old_form_left
         "Alder29\nBirch29",
         "Alder29\x1eBirch29",
     ]
-    assert setup_report.listed_name_decodings("Q3\\010Plans\\tx\\ry") == ["Q3\x08Plans\tx\ry"]
-    assert setup_report.listed_name_decodings("Caf\\303\\251") == ["Caf\u00e9"]
+    # B13 round 46 C3114 with C3036: the all-decoded reading first, then the ones that keep some escapes
+    q3 = setup_report.listed_name_decodings("Q3\\010Plans\\tx\\ry")
+    assert q3[0] == "Q3\x08Plans\tx\ry" and "Q3\x08Plans\\tx\ry" in q3 and "Q3\\010Plans\\tx\\ry" not in q3
+    assert setup_report.listed_name_decodings("Caf\\303\\251")[0] == "Caf\u00e9"
     assert setup_report.listed_name_decodings("Alder30?Birch30") == []  # the old form: a known limit
     assert setup_report.listed_name_decodings("Plain Folder") == []
     home = "/Users/dana"
@@ -3193,16 +3198,82 @@ def test_a_listed_escaped_name_is_decoded_under_one_number_and_the_old_form_left
     red = setup_report.Redactor()
     red.add("home", home)
     entries = [(p, d, n) for p, d, n, _e in rows]
-    decoded = {n: setup_report.listed_name_decodings(n) for _p, _d, n, e in rows if e}
+    decoded = {i: setup_report.listed_name_decodings(n) for i, (_p, _d, n, e) in enumerate(rows) if e}
     setup_report._add_listed(red, entries, decoded=decoded)
     one = red._known("Alder29\nBirch29")
     assert one is not None and red._known("Alder29\x1eBirch29") == one == red._known("Alder29\\nBirch29")
     assert red._known("Wombat\\nLedger") not in (None, one) and red._known("Wombat\nLedger") is None
 
 
+@pytest.mark.parametrize("plain_first", [True, False])
+def test_a_plain_row_keeps_its_literal_name_beside_an_escaped_row_spelled_alike_c3082(
+    plain_first: bool,
+) -> None:
+    """B13 round 46 C3082 (ruling 200; privacy): `decoded` was keyed by name, so a plain row whose folder is
+    literally named `Project\\177Ledger` was decoded for another provider's escaped row printed the same way,
+    and an escaped row listed first aliased that spelling exactly, so the plain folder's fuzzy forms were
+    never registered. Each row is decoded by its own flag and the escaped spellings are aliased last: the
+    literal and the decoded name take two placeholders, and every spelling of each is cut, in both orders."""
+    home = "/Users/dana"
+    cs = f"{home}/Library/CloudStorage"
+    plain = f"{cs}/OneDrive-Contoso/Project\\177Ledger\n"
+    escaped = f"{setup_report._LIST_MARKS[0]}{cs}/OneDrive-Fabrikam/Project\\177Ledger\n"
+    text = "# run=r1 2026-11-24T00:00:00Z install.sh --list-folders\n" + (
+        plain + escaped if plain_first else escaped + plain
+    )
+    _found, rows = setup_report.listed_folder_rows(text, home)
+    red = setup_report.Redactor()
+    red.add("home", home)
+    setup_report._add_listed(
+        red,
+        [(p, d, n) for p, d, n, _e in rows],
+        decoded={i: setup_report.listed_name_decodings(n) for i, (_p, _d, n, e) in enumerate(rows) if e},
+    )
+    literal, decoded = red._known("Project\\177Ledger"), red._known("Project\x7fLedger")
+    assert literal is not None and decoded is not None and literal != decoded, (literal, decoded)
+    for spelling in ("project-177-ledger", "Project 177 Ledger", "Project177Ledger", "Project\x7fLedger"):
+        assert red.redact(f"saw {spelling} there") != f"saw {spelling} there", spelling
+    numbers = [red._known(n) for n in ("Project\\177Ledger", "Project\x7fLedger")]
+    assert numbers == (["<folder-1>", "<folder-2>"] if plain_first else ["<folder-2>", "<folder-1>"]), numbers
+
+
+def test_an_escaped_name_is_read_every_way_it_allows_within_the_cap_c3114_c3036() -> None:
+    """B13 round 46 C3114 with C3036 (ruling 200; privacy; makes worse True for an unbounded reading):
+    LIST_ESC_AWK writes a name's own backslash as itself, so `\\101` or `\\t` in a row may be the name's own
+    characters. The readings that keep some escapes as written follow the all-decoded one, both readings of
+    `\\n`, each once and never the written spelling; under one number in `_add_listed`; past the cap of 6
+    only the single-kept readings are added, and a long name answers at once."""
+    assert setup_report.listed_name_decodings("Q3\\101\\tPlans") == [
+        "Q3A\tPlans",
+        "Q3\\101\tPlans",
+        "Q3A\\tPlans",
+    ]
+    both = setup_report.listed_name_decodings("Wombat\\nQuokka\\177")
+    assert both[:2] == ["Wombat\nQuokka\x7f", "Wombat\x1eQuokka\x7f"] and "Wombat\\nQuokka\x7f" in both
+    red = setup_report.Redactor()
+    setup_report._add_listed(
+        red,
+        [("OneDrive-Contoso", 2, "Q3\\101\\tPlans")],
+        decoded={0: setup_report.listed_name_decodings("Q3\\101\\tPlans")},
+    )
+    assert (
+        red._known("Q3\\101\tPlans") == red._known("Q3\\101\\tPlans") == red._known("Q3A\tPlans") is not None
+    )
+    long = "Kestrel\\t" * 85
+    t0 = time.monotonic()
+    readings = setup_report.listed_name_decodings(long)
+    assert time.monotonic() - t0 < 1.0 and len(readings) == 86, len(readings)
+    assert readings[0] == "Kestrel\t" * 85 and long not in readings
+
+
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
 @pytest.mark.parametrize(
-    "names", [["Alder29\x1eBirch29", "Alder30\x7fBirch30"], ["Alder31\tBirch31", "Q3\x08Plans"]]
+    "names",
+    [
+        ["Alder29\x1eBirch29", "Alder30\x7fBirch30"],
+        ["Alder31\tBirch31", "Q3\x08Plans"],
+        ["Wombat\\tQuokka\x7f", "Wombat\\177Quokka\x7f", "Q3\\101\\tPlans"],  # B13 round 46 C3114
+    ],
 )
 @pytest.mark.xfail(
     _R142_SHELL,

@@ -46046,6 +46046,10 @@ half alone, its reason naming the live packet, `C2060 unbuilt: install.sh's deco
 decision c0777e12a523`, on one line (C2882), as test_deploy_pack.py's caveat pin reads it; lane RB's port, only on
 the operator's Allow, builds on this commit. Test:
 `test_a_listed_escaped_name_is_decoded_under_one_number_and_the_old_form_left_c2873`.
+Amended 2026-11-24, §16.285 C3082, C3114: `decoded` is keyed by the row's index, never its name, and an escaped
+row's spellings are aliased after every row is registered (C3082); `listed_name_decodings` gives the all-decoded
+reading first, then each reading that keeps some escapes as written, at most 6 escapes read every way (C3114 with
+C3036).
 
 **The new holder note reads as words, the old one too** (C2829, the report half; install.sh's token and the
 paragraph amending H33 and K35 are lane RB's, §16.281). install.sh writes `waited-for-another-sync` for every
@@ -46904,6 +46908,24 @@ paragraph). Tests: `tests/test_report_redaction.py` (`test_an_unparsed_config_pa
 `test_both_reports_cut_where_the_inbox_links_outside_agent_context_c3055`,
 `test_a_logged_flag_word_inside_an_escaped_operand_is_no_flag_c3104`,
 `test_both_reports_read_the_folder_after_a_launcher_named_like_the_flag_c3104`).
+
+**An escaped listed row is read row by row and in every reading it allows** (C3082, C3114 with C3036; ruling 200;
+privacy; Python only and ungated, C2060's shell half still gated on operator decision c0777e12a523; amends §16.280
+C2873). `_add_listed` keyed the decodings by name, so a plain row whose folder is literally named
+`Project\177Ledger` was decoded for another provider's escaped row printed the same way, and an escaped row listed
+first aliased that spelling exactly, so the plain folder's fuzzy forms (`project-177-ledger`) were never registered:
+`decoded` is keyed by the row's index, every row's name is registered in row order (install.sh's), and an escaped
+row's own spellings and its other readings are aliased after the loop (C3082). LIST_ESC_AWK writes a name's own
+backslash as itself, so `\t` or `\177` in an escaped row may be the name's own characters: `listed_name_decodings`
+returns the all-decoded reading first, both readings of `\n`, then each reading that keeps some escapes as written,
+fewest kept first, deduplicated and without the written spelling, all of them up to `_LIST_READINGS_CAP` (6) escapes
+and past it only the readings that keep one, its docstring naming the limit (C3114 with C3036, makes worse True for
+reading every subset, 2^86 readings for 85 `\t`s, a report that hangs, and for escaping a backslash in LIST_ESC_AWK,
+which would change every escaped row's shell spelling, reach into C2060's gated half and leave old rows ambiguous;
+LIST_ESC_AWK and `esc()` stay as they are). The C2873 test and its strict-xfail shell twin take `Wombat\tQuokka`
+with a DEL, `Wombat\177Quokka` with a DEL and `Q3\101\tPlans`. Tests: `tests/test_report_redaction.py`
+(`test_a_plain_row_keeps_its_literal_name_beside_an_escaped_row_spelled_alike_c3082`,
+`test_an_escaped_name_is_read_every_way_it_allows_within_the_cap_c3114_c3036`).
 
 ### 16.286 Round 46: the installer: the shell halves of rulings 198 and 199, every word it writes valid UTF-8 that reads back as its path, an older build's inbox read, and C2060 waits on the operator (2026-11-24, wave B13 round 46 lane RB)
 

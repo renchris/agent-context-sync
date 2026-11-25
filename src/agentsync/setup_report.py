@@ -4635,24 +4635,48 @@ _LIST_ESCAPE_RE = re.compile(r"\\([0-3][0-7]{2}|[tnr])")
 (install.sh's line-break stand-in), which a name holding a newline reads as too."""
 
 
+_LIST_READINGS_CAP = 6
+"""The most escapes :func:`listed_name_decodings` reads every way (B13 round 46 C3114 with C3036): 2^6
+readings, twice for ``\\n``."""
+
+
 def listed_name_decodings(name: str) -> list[str]:
     """The names step 1's escaped spelling ``name`` stands for (B13 round 45 C2873 with C2882, ruling 190;
     privacy: C2060's Python twin): each ``\\ooo`` the byte it names, ``\\t`` a TAB, ``\\r`` a CR, the bytes
     read back as UTF-8 as install.out is read (``errors="replace"``), and ``\\n`` both as a newline and as
     0x1E, the twin pair install.sh writes alike, newline first. Empty when ``name`` holds no escape. The old
-    ``?`` spelling (``escq``, rounds 36 to 39) loses its bytes and is never decoded."""
-    if _LIST_ESCAPE_RE.search(name) is None:
+    ``?`` spelling (``escq``, rounds 36 to 39) loses its bytes and is never decoded.
+
+    B13 round 46 C3114 with C3036 (ruling 200; privacy; makes worse True for an unbounded reading or a new
+    LIST_ESC_AWK escape): LIST_ESC_AWK writes a name's own backslash as itself, so ``\\t`` or ``\\177`` in a
+    row may be the name's own characters (``Wombat\\tQuokka`` with a DEL is written ``Wombat\\tQuokka\\177``):
+    the all-decoded reading first, both readings of ``\\n``, then each reading that keeps some of the escapes
+    as written, fewest kept first, deduplicated and without ``name`` itself. Known limit: past
+    :data:`_LIST_READINGS_CAP` escapes, only the readings that keep one escape as written are added (the
+    reading that keeps all of them is ``name``), so a name holding more of its own backslashes than that may
+    stay in clear, where reading every subset would take 2^k readings (a report that hangs)."""
+    found = list(_LIST_ESCAPE_RE.finditer(name))
+    if not found:
         return []
+    k = len(found)
+    if k <= _LIST_READINGS_CAP:
+        kept_sets = [set(c) for r in range(k + 1) for c in itertools.combinations(range(k), r)]
+    else:
+        kept_sets = [set(), *({i} for i in range(k)), set(range(k))]
     out = []
-    for newline in (b"\n", b"\x1e"):
-        raw, pos = bytearray(), 0
-        for m in _LIST_ESCAPE_RE.finditer(name):
-            raw += name[pos : m.start()].encode("utf-8", "replace")
-            code = m.group(1)
-            raw += {"t": b"\t", "r": b"\r", "n": newline}.get(code) or bytes([int(code, 8)])
-            pos = m.end()
-        raw += name[pos:].encode("utf-8", "replace")
-        out.append(raw.decode("utf-8", errors="replace"))
+    for kept in kept_sets:
+        for newline in (b"\n", b"\x1e"):
+            raw, pos = bytearray(), 0
+            for i, m in enumerate(found):
+                raw += name[pos : m.start()].encode("utf-8", "replace")
+                code = m.group(1)
+                if i in kept:
+                    raw += m.group(0).encode("utf-8")
+                else:
+                    raw += {"t": b"\t", "r": b"\r", "n": newline}.get(code) or bytes([int(code, 8)])
+                pos = m.end()
+            raw += name[pos:].encode("utf-8", "replace")
+            out.append(raw.decode("utf-8", errors="replace"))
     return [c for c in dict.fromkeys(out) if c != name]
 
 
@@ -6540,10 +6564,14 @@ def _build_redactor(r: _Run) -> Redactor:
     _add_listed(red, listed)
     # B13 round 45 C2873 (ruling 190; privacy): an escaped row's name as the bytes it stands for, its escaped
     # spelling an alias of that one number
+    # B13 round 46 C3082 (ruling 200): keyed by row, so a plain row's name is never decoded for an escaped
+    # row's spelling of the same text
     _add_listed(
         red,
         [(provider, depth, name) for provider, depth, name, _escaped in printed],
-        decoded={name: listed_name_decodings(name) for _prov, _depth, name, escaped in printed if escaped},
+        decoded={
+            n: listed_name_decodings(name) for n, (_p, _d, name, escaped) in enumerate(printed) if escaped
+        },
     )
     own_value: dict[Path, str] = {}  # a project folder -> the value its whole path is registered as
     for path in project_paths:
@@ -20428,7 +20456,7 @@ def _local_work_line() -> str | None:
 
 
 def _add_listed(
-    red: Redactor, entries: Iterable[tuple[str, int, str]], *, decoded: Mapping[str, list[str]] | None = None
+    red: Redactor, entries: Iterable[tuple[str, int, str]], *, decoded: Mapping[int, list[str]] | None = None
 ) -> None:
     """Register the folders a CloudStorage listing or step 1's list gave: a SharedLibraries entry at depth 2
     is a library, any other a folder; a generic folder name or one of the agent's words is left out, and
@@ -20440,9 +20468,17 @@ def _add_listed(
     the first, is registered in its place, as a folder on disk is, and the escaped spelling and the other
     decoding are aliases of its one number, each with every spelling :func:`_alias_escaped` gives: step 1's
     escaped spelling alone was registered, so a listed folder gone from disk printed its TOML, safe_text and
-    split words in clear."""
-    for provider, depth, written in entries:
-        names = (decoded or {}).get(written) or []
+    split words in clear.
+
+    B13 round 46 C3082 (ruling 200; privacy): ``decoded`` is keyed by the entry's index, so only a flagged row
+    is decoded: keyed by name, a plain row whose folder is literally named as another provider's escaped row
+    is printed was decoded too. Every name is registered in row order, as install.sh numbers them, and the
+    escaped spellings are aliased only after the loop, so a plain row registers its literal name fuzzy
+    (``project-177-ledger``) even when an escaped row with that spelling came first."""
+    # (an escaped row's name, "") or (its escaped spelling or other decoding, that name)
+    late: list[tuple[str, str]] = []
+    for n, (provider, depth, written) in enumerate(entries):
+        names = (decoded or {}).get(n) or []
         name = next((c for c in names if red._known(c) is not None), names[0]) if names else written
         if name in _GENERIC_FOLDERS or _agent_words(name):
             if name.casefold() not in red.configured_names:
@@ -20451,12 +20487,18 @@ def _add_listed(
         shared = provider.startswith("OneDrive-SharedLibraries-")
         fresh = red._known(name) is None
         red.add("library" if shared and depth == 2 else "folder", name, fuzzy=True)
-        _alias_escaped(red, name)  # its list, $'...' and safe_text spellings too (ruling 126)
-        for other in dict.fromkeys(c for c in (written, *names) if c != name):
-            _alias_escaped(red, other, of=name)
+        if (
+            names
+        ):  # an escaped row: its list spelling is the one a plain row may have (C3082), so after the loop
+            late.append((name, ""))
+        else:
+            _alias_escaped(red, name)  # its list, $'...' and safe_text spellings too (ruling 126)
+        late += [(other, name) for other in dict.fromkeys(c for c in (written, *names) if c != name)]
         placeholder = red._known(name)
         if fresh and placeholder is not None and name.casefold() not in red.configured_names:
             red.listed_only.add(placeholder)  # B13 round 39 C1656 with C1601
+    for other, name in late:
+        _alias_escaped(red, other, of=name or None)
 
 
 _LATE_LISTING_S = 0.5  # how long build_report waits, at most, for a listing that missed _LISTING_S
