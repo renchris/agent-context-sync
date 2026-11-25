@@ -4413,3 +4413,43 @@ def test_both_reports_cut_a_folder_install_sh_logged_in_the_c_form_ruling_203(
         leaks = [ln for ln in text.splitlines() if "Kestrel" in ln or "Ledger" in ln]
         assert not leaks, leaks
     assert len({"Private only:" in t for t in texts}) == 1, [t[-600:] for t in texts]
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize("name", ["Kestrel Vault", "Kestrel\x01Vault"])
+def test_both_reports_cut_a_folder_doctor_writes_unquoted_in_prose_c3008(
+    env: dict[str, str],  # noqa: F811
+    name: str,
+    locale: str,
+) -> None:
+    """B13 round 46 C3008 (lane B's doctor._prose_path; this row is lane RA's): doctor's prose now writes a
+    folder unquoted (`search access to ~/Kestrel Vault, a folder above ~/Kestrel Vault/drop`) unless
+    arm_local._LIST_ESCAPED_RE matches, then the `$'..'` form, where it wrote `~/'Kestrel Vault'`; command
+    words keep the quote. Both reports still cut the folder in each form, a blank and a control character
+    among them, print the same rows and reach one verdict."""
+    home = Path(env["HOME"])
+    drop = home / name / "drop"
+    drop.mkdir(parents=True)
+    body = default_config_text() + local_source_table("vault-drop", drop)
+    escaped = arm_local._LIST_ESCAPED_RE.search(name) is not None
+    prose = "~/$'Kestrel\\001Vault'" if escaped else "~/" + name  # never a raw control character
+    quoted = prose if escaped else "~/'" + name + "'"  # a command word keeps its quote
+    said = [
+        f"the person gives this account search access to {prose}, a folder above {prose}/drop that refuses "
+        f"it one, then run the same command again; chmod u+rwx {quoted} gives it",
+        f"if {prose}/drop is meant to be empty, set state = paused",
+    ]
+    texts: list[str] = []
+    shell, python, shell_private, python_private = _both_reports(
+        env,
+        [],
+        said,
+        locale,
+        config=home / "agent-context" / "sources.toml",
+        config_body=body,
+        texts_out=texts,
+    )
+    for report, rows in (("shell", shell), ("agentsync", python)):
+        leaks = [ln for ln in rows if "Kestrel" in ln or "Vault" in ln]
+        assert not leaks, (report, leaks)
+    assert shell == python and shell_private == python_private, (shell, python)

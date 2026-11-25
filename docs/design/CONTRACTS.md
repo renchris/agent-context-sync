@@ -47011,6 +47011,13 @@ gets the Failed one, which C2803 changed: both name `STOPPED_FORM_OPTION` (C3035
 once). Tests: `tests/test_setup_report.py` (`test_a_config_named_with_a_trailing_exists_is_never_an_earlier_runs_c3115`,
 `test_the_outcome_docstrings_name_the_forms_stopped_option_c3035_c3053`).
 
+**Both reports cut a folder doctor writes unquoted in prose** (C3008's row; lane B's `doctor._prose_path`,
+§16.287). Doctor's prose now writes a folder unquoted unless `arm_local._LIST_ESCAPED_RE` matches, then in the
+`$'..'` form, while command words keep their quote: a row quoting the parent fix and the empty-folder fix for a
+folder named with a blank and one with a control character checks that both reports still cut each form, print
+the same rows and reach one verdict, under C and en_US.UTF-8. Test: `tests/test_report_redaction.py`
+(`test_both_reports_cut_a_folder_doctor_writes_unquoted_in_prose_c3008`).
+
 ### 16.286 Round 46: the installer: the shell halves of rulings 198 and 199, every word it writes valid UTF-8 that reads back as its path, an older build's inbox read, and C2060 waits on the operator (2026-11-24, wave B13 round 46 lane RB)
 
 Wave B13 round 46 lane RB builds install.sh's halves of the lead's rulings 198, 199, 200, 203 and 204 and the
