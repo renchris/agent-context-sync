@@ -13324,6 +13324,57 @@ def test_the_repeat_conversions_row_quotes_the_columns_and_the_re_screen_note() 
         assert said in source and said in row, said
 
 
+def test_the_guide_names_both_private_only_causes_and_the_user_cut_c3281_c3293_c3250() -> None:
+    """B13 round 47 C3281 with C3293 and C3250: section 2 named three Private-only causes, but the agentsync
+    report prints two more, the unparsed sources.toml line (round 44 C2609; the shell report too) and the
+    failed redactor's (round 46 C3099; the agentsync report's alone), and the `<user>` row never named round
+    46's `~<user>` cut of a refused `~name` value. The guide quotes both lines from their source literals,
+    gives the redactor's line to the agentsync report alone, names the cut in the row and says the cut is
+    uncounted, as ``add_cut`` is."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    source = inspect.getsource(setup_report)
+    joined = re.sub(r'"\s*\n\s*"', "", source)
+    [unparsed] = re.findall(
+        r'"(Private only: sources\.toml does not load and is not readable as TOML[^"]*)"', joined
+    )
+    [failed] = re.findall(r'word\.append\("(Private only: redaction facts could not be read[^"]*)"\)', joined)
+    installer = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    assert f'say "{unparsed}"' in installer and "redaction facts" not in installer
+    page = " ".join(_page("docs/deploy/setup-feedback.md").split())
+    assert (
+        "Both reports are Private only, too, when sources.toml exists, does not load and cannot be read as"
+        " TOML, since the report then cannot register its source ids and folders as it does from a parsed"
+        " file (B13 round 44 C2609, ruling 172; the shell report since round 45 ruling 188): its `[[source]]`"
+        " ids and paths are still scanned line by line and cut, best effort, and the Redaction section says"
+        f" `{unparsed}`"
+    ) in page
+    assert (
+        "The agentsync report alone is Private only when its redaction facts could not be gathered (B13 round"
+        " 46 C3099, ruling 198): it then still cuts the home folder and this Mac's login, name, serial and"
+        " host, the patterns (email, GUID, hex) still apply, no issue link ends the report, and the Redaction"
+        f" section says `{failed}` The shell fallback report has no such line."
+    ) in page
+    assert "red.redactor_failed = True" in source and "red.config_unparsed" in source
+    # the `~<user>` cut, both reports: whole, its head, the name; uncounted as add_cut is
+    refused = inspect.getsource(setup_report._register_refused)
+    assert 'red.add_cut(raw, "~<user>/<path>" if rest else "~<user>")' in refused
+    assert 'red.add_cut(head, "~<user>")' in refused and 'red.add("user", name)' in refused
+    assert 'add_pair "$v" "~<user>${rest:+/<path>}" c' in installer
+    assert "uncounted" in (setup_report.Redactor.add_cut.__doc__ or "")
+    assert (
+        "a sources.toml value naming another account's home (`~name` or `~name/<folder>`, which agentsync"
+        " refuses) is cut whole to `~<user>/<path>` (`~<user>` when nothing follows the name), its `~name`"
+        " head to `~<user>`, and the name to `<user>` unless it is a word the report prints"
+    ) in page
+    assert (
+        "nor a refused `~name` value cut to `~<user>/<path>` or `~<user>` (its name, cut to `<user>`, is"
+        " counted as any `<user>` is; B13 round 47 C3281)"
+    ) in page
+    counted = page[page.index("the unnumbered ones (") : page.index("as often as a value was replaced")]
+    assert "~<user>" not in counted
+
+
 def test_the_guide_names_step_1s_folder_list_as_a_redaction_source() -> None:
     """B13 round 9 K69: since round 8 J69 both reports register the folders step 1's `--list-folders` runs
     printed into install.out (the agentsync report after its CloudStorage listing, the shell report after

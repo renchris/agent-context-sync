@@ -47551,6 +47551,18 @@ with round 44's C2669 (8171f2056), whose diff is the one commit `git log -S'then
 install.out'` names for the guide. Both sentences keep their words, as C3051 and C3052 did, and each takes a dated
 line. Test: `tests/test_deploy_pack.py::test_every_dated_line_from_round_11_on_is_held_by_a_test`.
 
+**The guide names both reports' unparsed-config cause, the agentsync report's failed-redactor cause and the `~<user>`
+cut** (C3281 with C3293 and C3250; `docs/deploy/setup-feedback.md`). Section 2 named three Private-only causes (a
+report word, the unfinished CloudStorage listing, a one-word hold value), while the agentsync report prints two more:
+`red.config_unparsed`'s `Private only: sources.toml does not load and is not readable as TOML, ...` (round 44 C2609,
+also the shell report's `say` since round 45) and `red.redactor_failed`'s `Private only: redaction facts could not be
+read, ...` (round 46 C3099), which install.sh never prints. The `<user>` row named only the login and full name, not
+round 46's cut of a refused `~name` value (`_register_refused`, install.sh's flag-`c` `add_pair`). The section now
+gives both causes, the second the agentsync report's alone, each line quoted from its source literal; the row names
+the cut whole, its head and the name; and the count paragraph says the `~<user>` cut is uncounted, as every `add_cut`
+is, the name it registers counted as any `<user>`, so `~<user>` stays out of the unnumbered placeholders' list. Test:
+`tests/test_deploy_pack.py::test_the_guide_names_both_private_only_causes_and_the_user_cut_c3281_c3293_c3250`.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units
