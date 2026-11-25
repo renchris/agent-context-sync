@@ -4715,11 +4715,12 @@ def test_the_v42_prompt_reads_a_config_path_and_an_unread_inbox_state_as_setup_g
 def test_the_v43_prompt_tells_a_none_only_from_how_the_no_folder_run_ended_c3102_c3112() -> None:
     """B13 round 46 C3102 with C3112 (ruling 205): v42's step 2 said "Its NEXT: line then says I chose no
     folder" and its step 1 none branches told this Mac syncs no folder before reading the run, while
-    install.sh checks a dry run, a status timeout and every blocking status note first, each ending exit 1 on
-    its own NEXT, and sets NO_FOLDER_CHOSEN_NEXT only after them. v43 tells the none only on exit 0 and that
-    NEXT, hands any other result to step 2's rules (a re-run keeps --no-folder, the question is not asked
-    again) and never starts step 3's sync loop after a none; step 1's branches run the command as step 2
-    says."""
+    install.sh checks a dry run first (exit 0 on its own NEXT), then a status timeout and every blocking
+    status note (each exit 1 on its own NEXT), and sets NO_FOLDER_CHOSEN_NEXT only after them (B13 round
+    47 C3276: the dry run ends 0, not 1, and the prompt still never reads it as a none, since that needs
+    exit 0 and a NEXT saying the person chose no folder). v43 tells the none only on exit 0 and that NEXT,
+    hands any other result to step 2's rules (a re-run keeps --no-folder, the question is not asked again)
+    and never starts step 3's sync loop after a none; step 1's branches run the command as step 2 says."""
     script = SCRIPTS[0].read_text(encoding="utf-8")
     steps = _prompt_steps()
     step1, step2 = " ".join(steps[1].split()), " ".join(steps[2].split())
@@ -4732,6 +4733,11 @@ def test_the_v43_prompt_tells_a_none_only_from_how_the_no_folder_run_ended_c3102
     assert "says I chose no folder" in NO_FOLDER_TOLD and chosen == "the person chose no folder"
     uses = [m.start() for m in re.finditer(r'next="\$NO_FOLDER_CHOSEN_NEXT"', script)]
     timeout = script.index('elif [ "$DOCTOR_TIMEOUT" -eq 1 ]; then\n\tEXIT_RC=1\n')
+    # the dry run comes first and sets no EXIT_RC, so it ends 0 on its own NEXT (B13 round 47 C3276)
+    dry = script.index(
+        'if [ "$DRY_RUN" -eq 1 ]; then\n\tnext="re-run without AGENTSYNC_INSTALL_DRY_RUN=1 to apply the'
+    )
+    assert dry < timeout and "EXIT_RC=" not in script[dry:timeout], script[dry:timeout]
     assert len(uses) == 3 and all(at > timeout for at in uses), uses
     # the status timeout and the six blocking-note branches each exit 1 before the chosen none's branch
     first = script[timeout : uses[0]]

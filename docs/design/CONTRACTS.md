@@ -47062,6 +47062,11 @@ writes with %q goes through it, a plain or `\ ` word byte for byte (a dated line
 `test_every_word_install_sh_writes_is_utf8_and_reads_back_as_its_path_ruling_203`,
 `test_a_spaces_only_path_renders_as_before_ruling_203`,
 `test_both_reports_cut_a_folder_install_sh_logged_in_the_c_form_ruling_203` and test_cli's C2944 row.
+**Amended 2026-11-25, §16.294 C3277:** every word install.sh writes with %q goes through q_word but debug_path's:
+under `--debug`, debug_path's `debug:` words (`debug: cwd ...`) keep `printf %q` in the run's own locale, so a
+non-ASCII path's word there can be bytes that are not UTF-8 (a raw 0xe3 before `\200\200`), as the C2944 dated line
+and the q_word comment already say; both reports register that word's UTF-8 and C spellings from its own locale
+(C2671, C2716), so routing it through q_word would undo them. The words above are kept.
 
 **A bare run's no-folder NEXT is install.sh's own** (C3003; amends ruling 191, dated line there). A bare run that
 ends 0 on status's rule-2 opener ends on the `--source-local` form, with `; not live: <id> (<state>), ...` naming each
@@ -47375,6 +47380,12 @@ C's first old copy, a step 2 refused on AGENTSYNC_CONFIG among its plays. Tests:
 `test_the_v43_not_used_rule_covers_a_step2_refused_before_agentsync_ran_c3018`,
 `test_prompt_routes_changes_to_the_source_not_the_checkout`,
 `test_the_prompt_text_changes_only_with_its_version`, `test_readme_prompt_compat_matches_the_installer`.
+**Amended 2026-11-25, §16.294 C3276:** install.sh's dry run ends exit 0, not 1: its branch, the chain's first (`if [
+"$DRY_RUN" -eq 1 ]`), sets only its own NEXT, `re-run without AGENTSYNC_INSTALL_DRY_RUN=1 to apply the steps above`,
+and leaves EXIT_RC at 0; the status timeout and the six blocking status-note branches after it each end exit 1 on
+their own NEXT, and `NO_FOLDER_CHOSEN_NEXT` is set only after all of them. The prompt still never reads a dry run as
+a none, because it tells the none only from an exit 0 whose NEXT: line says the person chose no folder. EXIT_RC is
+untouched; the words above are kept.
 
 **The gate's ceiling names a part stopped at the old ceiling as a censored lower bound** (C3065; `scripts/gate.sh`,
 `tests/test_gate_journal.py`; amends §16.284 C2876). C2876 raised `GATE_CEILING_S` to 23400 s on round 44's slowest
@@ -47497,6 +47508,21 @@ same constant. The README's Install prose says the run ends on the loop's NEXT o
 form. The folders part is quoted as `<folders>`, so lane RB's round 47 `<id> (<state>) at <path>` items (C3332) leave
 both guides true. Tests: `tests/test_deploy_pack.py::test_the_deploy_guide_names_the_no_folder_re_runs_own_next_c2661`
 and `::test_the_guides_loop_line_rules_name_the_rule_2_next_and_not_live_clause_c3271`.
+
+**A dry run ends exit 0** (C3276; amends §16.289 C3102). §16.289 said install.sh's dry run, like the status timeout
+and the blocking notes, ends exit 1 on its own NEXT, but the dry-run branch sets no EXIT_RC, so it ends 0 (reproduced
+from a git archive under `env -i`: rc 0 on `NEXT: re-run without AGENTSYNC_INSTALL_DRY_RUN=1 to apply the steps
+above`). §16.289 takes a dated line, the C3102 test's docstring says so, and the test pins the dry run's branch before
+the timeout's with no `EXIT_RC=` between them. Setting EXIT_RC=1 there to make the old words true would log a
+successful preview as a step 2 failure, so the script is unchanged. Test:
+`tests/test_deploy_pack.py::test_the_v43_prompt_tells_a_none_only_from_how_the_no_folder_run_ended_c3102_c3112`.
+
+**q_word covers every %q word but debug_path's** (C3277; amends §16.286 C3080). §16.286's bold item said every %q word
+install.sh writes goes through q_word and is valid UTF-8, while debug_path keeps the run's own locale on purpose, as
+the q_word comment and the C2944 dated line say (C2671, C2716): under `/bin/bash` 3.2 with `LC_ALL=en_US.UTF-8`, its
+word for `/tmp/Contoso<U+3000>x` holds a raw 0xe3 that a strict UTF-8 decode refuses. A dated line names that one
+exception, the old words kept; install.sh is unchanged, since routing debug_path through q_word would undo the UTF-8
+spelling both reports register. Test: `tests/test_deploy_pack.py::test_every_dated_line_from_round_11_on_is_held_by_a_test`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
