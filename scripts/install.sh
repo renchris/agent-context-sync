@@ -3250,16 +3250,23 @@ agentsync_dir_values() {
 			}
 		}' "$CONFIG" 2>/dev/null || true
 }
+# The whitespace Python's str.isspace() names, as an ERE over its UTF-8 bytes, read under LC_ALL=C so no locale
+# decides it: the one set py_strip and py_has_space match (B13 round 47 ruling 207, C3304)
+PY_SPACE_ERE=$'([\t\n\v\f\r\034\035\036\037 ]|\302[\205\240]|\341\232\200|\342\200[\200-\212]|\342\200[\250\251\257]|\342\201\237|\343\200\200)'
 # VALUE: as Python's str.strip() reads it, the whitespace str.isspace() names trimmed from both ends, matched on
 # its UTF-8 bytes under LC_ALL=C so no locale decides it (B13 round 44 ruling 171, C2698)
 py_strip() {
-	V="$1" LC_ALL=C awk 'BEGIN {
+	V="$1" W="$PY_SPACE_ERE" LC_ALL=C awk 'BEGIN {
 		v = ENVIRON["V"]
-		w = "([\t\n\v\f\r\034\035\036\037 ]|\302[\205\240]|\341\232\200|\342\200[\200-\212]|\342\200[\250\251\257]|\342\201\237|\343\200\200)"
+		w = ENVIRON["W"]
 		while (match(v, "^" w)) v = substr(v, RLENGTH + 1)
 		while (match(v, w "$")) v = substr(v, 1, RSTART - 1)
 		printf "%s", v
 	}'
+}
+# Whether VALUE holds a character Python's str.isspace() names, anywhere in it, as py_strip reads one
+py_has_space() {
+	V="$1" W="$PY_SPACE_ERE" LC_ALL=C awk 'BEGIN { exit !match(ENVIRON["V"], ENVIRON["W"]) }'
 }
 # Each legal or records hold's reason and owner as agentsync reads them, as setup_report._hold_values gives them
 # (B13 round 24 B51, the shell twin of round 23 A8): [governance] hold_reason and hold_owner of the config, in
@@ -4405,11 +4412,11 @@ redaction_pairs() {
 		while [ "${rest%/}" != "$rest" ]; do rest="${rest%/}"; done
 		add_pair "$v" "~<user>${rest:+/<path>}" c
 		# a head holding a blank names no account: cut only inside the whole value, never alone (lane RA's review)
-		case "${head#\~}" in *[[:space:]]*) ;; *)
+		# (C3304: a blank as Python's isspace names it, under any locale)
+		py_has_space "${head#\~}" || {
 			add_pair "$head" "~<user>" c
 			report_word "$(recase lower "${head#\~}")" || add_pair "${head#\~}" "<user>" w
-			;;
-		esac
+		}
 		# under Library/CloudStorage/<entry>, the folders after the entry: CloudStorage itself is no folder
 		case "$rest" in Library/CloudStorage/*/*) x="${rest#Library/CloudStorage/}" && rest="${x#*/}" ;; Library/CloudStorage/*) rest="" ;; esac
 		[ -z "$rest" ] || own_folder_values "$HOME/$rest" /

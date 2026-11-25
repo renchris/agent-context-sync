@@ -4831,7 +4831,12 @@ def test_both_reports_judge_a_unicode_blank_in_a_refused_head_alike_c3304(
         + local_source_table("juniper", juniper)
     )
     shown = "~ali" + chr(int(ch[2:], 16)) + "ce"
-    said = [f"I set {shown}/x in sources.toml", "the sync of Juniper Notes went on"]
+    # the head and its name alone, which only a shell that judged the blank by its locale cut (lane RB)
+    said = [
+        f"I set {shown}/x in sources.toml",
+        "the sync of Juniper Notes went on",
+        f"{shown} and {shown[1:]} alone",
+    ]
     texts: list[str] = []
     shell, python_rows, shell_private, python_private = _both_reports(
         env,

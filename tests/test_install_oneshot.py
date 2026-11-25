@@ -24363,8 +24363,10 @@ def test_the_shell_report_redacts_the_mdm_host_as_mdmhost(tmp_path: Path, login:
 
 SHELL_HELPER_FNS = re.compile(
     r"(?ms)^(?:generic_folder|generic_home_dir|agent_words_name|id_key|listed_folder_lines"
-    r"|config_path_values|agentsync_dir_values|py_strip|cloud_listing|cloud_listed"
+    r"|config_path_values|agentsync_dir_values|py_strip|py_has_space|cloud_listing|cloud_listed"
     r"|config_toml_state|config_source_records)\(\) \{\n.*?^\}$|"
+    # B13 round 47 ruling 207 (C3304): the blank set py_strip and py_has_space share
+    + r"^PY_SPACE_ERE=\$'[^\n]*'$|"
     # B13 round 44: the [convert]/[agentsync] values' strip (C2698) and the CloudStorage listing (C2669); B13
     # round 46 ruling 199 (C3034 with C3083): the source table the id registry reads
     + r"^CLOUD_ORDER_AWK='.*?'$|"
