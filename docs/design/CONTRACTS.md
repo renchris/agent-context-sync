@@ -46983,6 +46983,24 @@ never the agent's`): `_install_sh_said_no_folder` gives the same words for a lat
 recorded no none, keyed on the NEXT's text whatever the config counts, never over a doctor FAIL, from the one
 copy of each constant. Test: `test_the_loop_line_says_install_shs_own_form_on_status_rule_2_next_c3003`.
 
+**An older --no-folder run that ended 0 over a failed status is failed, and step 3's folder question is named**
+(C3086, C3029; ruling 205, the report's halves, with no prompt words; lane D's v43 commit carries the dated lines
+beside rulings 181 and 197). An older install.sh ended a `--no-folder` run 0 whose status step reported [FAIL] lines,
+exited with no [FAIL] line or was stopped at its time limit (C2909); ruling 192 kept it from the person's choice, but
+it fell through to the rc 0 branch and was scored `worked with help` or `fully one command`. `compute_outcome` scores
+a `chose_no_folder` run that ended 0 and is no `completed_none` as failed at the install step, in its own record's
+words (`_no_folder_failure_words`): its failed step and that step's rc or signal, else `its status step reported
+[FAIL] lines (rc N)`, `its status step exited N with no [FAIL] line` or `its status step was stopped at its time
+limit (rc 143)`, then `an older install.sh ended such a run 0, and that is no success` (C3086). Step 3 asks at most
+once whether to add a folder after a `nothing to draft yet` NEXT, a question the prompt asks: once an attempt of a
+prompt from v7 on reached step 3 (`_reached_step_3`: a friction line at step 3 or later, or an install run of the
+attempt that ended 0), `_expected_turns_line` adds `step 3 asks at most once whether to add a folder (not logged)`;
+it is no turn beyond the unavoidable ones and never changes the outcome (C3029, makes worse True for logging the
+answer as a question line, which counted a question the prompt asks as a turn, demoted `fully one command` and
+needed a prompt bump; the prompt and the friction log are untouched). Tests: `tests/test_setup_report.py`
+(`test_a_none_is_scored_only_for_a_no_folder_run_that_ended_clean_c2947`'s rows,
+`test_the_expected_turns_name_step_3s_at_most_folder_question_c3029`).
+
 ### 16.286 Round 46: the installer: the shell halves of rulings 198 and 199, every word it writes valid UTF-8 that reads back as its path, an older build's inbox read, and C2060 waits on the operator (2026-11-24, wave B13 round 46 lane RB)
 
 Wave B13 round 46 lane RB builds install.sh's halves of the lead's rulings 198, 199, 200, 203 and 204 and the

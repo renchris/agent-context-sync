@@ -4112,6 +4112,11 @@ def compute_outcome(
     # a failed, killed or unended one is scored by its failure, signal or no-end words, never as the choice
     if last is not None and last.chose_no_folder and last.completed_none:
         return Outcome("stopped", FOLDER_QUESTION_STEP, (NO_FOLDER_CHOSEN,), version, NO_FOLDER_CHOSEN)
+    # B13 round 46 C3086 (ruling 205): an older install.sh ended a --no-folder run 0 whose status failed or
+    # timed out (C2909), which fell through to the rc 0 branch below and was scored "worked with help" or
+    # "fully one command": failed at the install step, in its own record's words
+    if last is not None and last.chose_no_folder and last.rc == 0:
+        return Outcome("failed", layout.install_step, (_no_folder_failure_words(last),), version)
     if (
         last is not None
         and last.no_folder_first_run
@@ -4350,6 +4355,32 @@ def _status_fail_words(run: InstallRun) -> str:
     ):  # it printed no [FAIL] line: a traceback, a config or lock error (round 14 Q50)
         return f": its status step exited {rc} with no [FAIL] line"
     return f": its status step reported [FAIL] lines (rc {rc})"
+
+
+def _no_folder_failure_words(run: InstallRun) -> str:
+    """Why a ``--no-folder`` run that ended 0 is no completed none (:attr:`InstallRun.completed_none`), from
+    its own record (B13 round 46 C3086, ruling 205): its failed step and that step's rc (or signal), else its
+    status step's note, ``reported [FAIL] lines (rc N)``, ``exited N with no [FAIL] line`` or ``was stopped
+    at its time limit (rc 143)``; then that an older install.sh ended such a run 0 and that is no success.
+    Never :func:`_status_fail_words`, which says nothing for a run that ended 0."""
+    failing = run.failed_step()
+    status = run.step("status") or run.step("doctor") or {}
+    if failing is not None:
+        rc = failing[1].get("rc", "")
+        words = _step_rc_words(failing[1]) if rc else ""
+        said = f", {words}" if words.startswith(("stopped by ", "stopped at its limit")) else f" with rc {rc}"
+        cause = f"its {failing[0]} step failed{said if rc else ' with no rc logged'}"
+    else:
+        rc, note = status.get("rc", "") or "not logged", status.get("note", "")
+        cause = {
+            "fail-lines": f"its status step reported [FAIL] lines (rc {rc})",
+            "status-error": f"its status step exited {rc} with no [FAIL] line",
+            "timeout": f"its status step was stopped at its time limit (rc {rc})",
+        }.get(note, f"its status step logged {note or 'no note'} (rc {rc})")
+    return (
+        f"install.sh exit 0 on a --no-folder run, but {cause}: an older install.sh ended such a run 0, "
+        "and that is no success"
+    )
 
 
 def home_path() -> str:
@@ -14731,6 +14762,7 @@ def _expected_turns_line(
     sign_in: FrictionEvent | None = None,
     sign_in_name: str = "the OneDrive sign-in",
     stop_list: dict[str, str] | None = None,
+    reached_step_3: bool = False,
 ) -> str:
     """The turns fully one command allows, on their own line: the folder question and the Allow clicks. On a
     Mac that already synced ``synced`` folders (:func:`synced_before`) the folder question is not one of
@@ -14748,7 +14780,13 @@ def _expected_turns_line(
     (B13 round 12 N31), in its list's words (``stop_list``, :func:`_stopping_list`): the app it found signed
     out and how many of the folders are missing (B13 round 13 O1, O42; no bracket inside the line's own, O31).
     With ``signed_in`` (:func:`_signed_in_on_request`) the sign-in step 1 asked for, ``sign_in_name``, is one
-    of the turns: ``sign_in`` is its click line, if one was logged (B13 round 12 N5)."""
+    of the turns: ``sign_in`` is its click line, if one was logged (B13 round 12 N5).
+
+    B13 round 46 C3029 (ruling 205; makes worse True for logging the answer): with ``reached_step_3``, an
+    attempt of a prompt from v7 on that reached step 3 (:func:`_reached_step_3`), the line names step 3's
+    at-most question, ``step 3 asks at most once whether to add a folder (not logged)``: like step 1's
+    add-one question on a synced Mac, the prompt asks it, so it is no turn beyond the unavoidable ones and
+    never changes the outcome, where the line said no folder question at all."""
     layout = att.layout
     # a list that stopped again after the sign-in step 1 asked for: that sign-in is the one turn
     none = (
@@ -14826,6 +14864,8 @@ def _expected_turns_line(
         if signed_in:
             said = f"F{sign_in.line}" if sign_in is not None else "not logged"
             parts.append(f"{sign_in_name} step {step} asked for ({said})")
+        if reached_step_3:  # B13 round 46 C3029
+            parts.append(f"step {layout.report_step} asks at most once whether to add a folder (not logged)")
         if no_clicks is not None:
             parts.append(f"Allow clicks: none possible ({no_clicks})")
         else:
@@ -14841,6 +14881,17 @@ def _expected_turns_line(
     else:
         parts.append("Allow clicks: none logged")
     return "- expected turns: " + " · ".join(parts)
+
+
+def _reached_step_3(att: Attempt, runs: Sequence[InstallRun]) -> bool:
+    """Whether an attempt of a prompt from v7 on (step 3 the sync loop and report) reached step 3: a friction
+    line logged at that step or later, or an install run of the attempt that ended 0, after which the prompt
+    goes on to step 3 (B13 round 46 C3029)."""
+    layout = att.layout
+    if layout.version < 7 or layout.report_step != 3:
+        return False
+    logged = any(e.step is not None and e.step >= layout.report_step for e in att.events)
+    return logged or any(run.rc == 0 for run in install_runs_only(runs))
 
 
 def _ids(events: Sequence[FrictionEvent]) -> str:
@@ -19204,6 +19255,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
                 sign_in=sign_in,
                 sign_in_name=sign_in_name,
                 stop_list=_stopping_list(runs),
+                reached_step_3=_reached_step_3(att, runs),
             )
         )
         why_unread = unread_why(runs)

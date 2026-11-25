@@ -168,6 +168,7 @@ def section(text: str, title: str) -> str:
 _REAL_FULL_NAME = setup_report._full_name  # the fake_mac fixture replaces it
 
 RAW = (ORG, ORG.lower(), *FOLDERS, LIBRARY, LOGIN, FULL_NAME, "Jane", EMAIL, GUID, SERIAL, HOST)
+STEP_3_ASKS = "step 3 asks at most once whether to add a folder (not logged)"  # B13 round 46 C3029
 
 
 @pytest.fixture
@@ -10616,7 +10617,8 @@ def test_a_mac_already_set_up_has_no_folder_question_and_says_what_it_kept(
         "not observable)"
     ), "nobody had to be asked: the unlogged folder question is not counted"
     assert _line(summary, "- expected turns: ") == (
-        f"- expected turns: {NOT_ASKED.format('2 folders')} · the announced Allow click (step 1; not logged)"
+        f"- expected turns: {NOT_ASKED.format('2 folders')} · {STEP_3_ASKS} · the announced Allow click "
+        "(step 1; not logged)"
     )
     assert _line(summary, "- folders: ") == (
         "- folders: kept the 2 already synced (none added) · 0 named with --source-local (install.log)"
@@ -13393,8 +13395,8 @@ def test_v7_announces_one_allow_click_in_step_1(
     _text, summary = summary_of(fake_mac)
     assert "1 click beyond the announced Allow click (not logged)" in summary
     assert (
-        "- expected turns: the folder question (step 1; not logged as a question) · the announced Allow "
-        "click (step 1; not logged)" in summary
+        "- expected turns: the folder question (step 1; not logged as a question) · "
+        f"{STEP_3_ASKS} · the announced Allow click (step 1; not logged)" in summary
     )
     assert "steps 1 and 2" not in summary
 
@@ -14499,18 +14501,28 @@ def test_a_none_is_read_from_args_as_a_shell_word_c2933(args: str, chose: bool) 
         ),
         (_no_folder_run("2026-11-23T10:00:00Z", "--no-folder", 143), None),
         (_no_folder_run("2026-11-23T10:00:00Z", "--no-folder", None), None),
-        # an older install.sh ended a --no-folder run over a config it created 0 with status [FAIL] (C2909)
+        # an older install.sh ended a --no-folder run over a config it created 0 with status [FAIL] (C2909):
+        # failed at the install step in its own record's words (B13 round 46 C3086)
         (
             _no_folder_run(
                 "2026-11-23T10:00:00Z", "--no-folder", 0, status="seconds=6 rc=1 result=done note=fail-lines"
             ),
-            None,
+            ("failed", 2),
         ),
         (
             _no_folder_run(
                 "2026-11-23T10:00:00Z", "--no-folder", 0, status="seconds=10 rc=143 result=done note=timeout"
             ),
-            None,
+            ("failed", 2),
+        ),
+        (
+            _no_folder_run(
+                "2026-11-23T10:00:00Z",
+                "--no-folder",
+                0,
+                status="seconds=6 rc=1 result=done note=status-error",
+            ),
+            ("failed", 2),
         ),
         # a folder named with the flag's words is no none
         (_no_folder_run("2026-11-23T10:00:00Z", "--source-local /w/Project\\ --no-folder", 0), None),
@@ -14529,6 +14541,18 @@ def test_a_none_is_scored_only_for_a_no_folder_run_that_ended_clean_c2947(
     assert setup_report.NO_FOLDER_CHOSEN not in " ".join((*outcome.why, outcome.note)), outcome
     if want is not None:
         assert (outcome.kind, outcome.step) == want, outcome
+    if "end rc=0" in logged and "args=--no-folder" in logged:
+        # B13 round 46 C3086: the status step's own words, never "worked with help" or "fully one command"
+        why = " ".join(outcome.why)
+        note = re.search(r"note=(fail-lines|status-error|timeout)", logged)
+        if note is not None:
+            words = {
+                "fail-lines": "its status step reported [FAIL] lines (rc 1)",
+                "status-error": "its status step exited 1 with no [FAIL] line",
+                "timeout": "its status step was stopped at its time limit (rc 143)",
+            }[note.group(1)]
+            assert words in why and "that is no success" in why, why
+            assert outcome.kind not in ("worked with help", "fully one command"), outcome
 
 
 def test_the_outcome_of_a_status_fail_stop_names_the_status_step(tmp_path: Path) -> None:
@@ -26791,7 +26815,9 @@ def test_the_sign_in_step_1_asked_for_is_no_extra_click(
         assert "I signed in to OneDrive" in got.split("Items that were not one command", 1)[1], got
         got = summary(21, synced=synced, logged=False)
         assert got.strip().splitlines()[0].startswith("- **outcome: fully one command**"), (synced, got)
-        assert "(not logged)" not in _line(got, "- expected turns: ").split("Allow click")[0], got
+        # step 3's at-most folder question is not logged either (B13 round 46 C3029); no sign-in is named
+        turns = _line(got, "- expected turns: ").replace(f" · {STEP_3_ASKS}", "")
+        assert "(not logged)" not in turns.split("Allow click")[0], got
     # B13 round 13 O43: a step 1 click logged before the failed list ran is not its sign-in
     early = "2026-09-29T09:58:02Z | step 1 | click | clicked a dialog | -\n"
     got = summary(20, early, logged=False)
@@ -30127,7 +30153,8 @@ def test_a_tilde_name_value_is_cut_and_the_redactor_kept_c3099(
     [loads] = [ln for ln in text.splitlines() if ln.startswith("- loads: no:")]
     assert "~<user>/<path>" in loads, loads
     body = "\n".join(ln for ln in text.splitlines() if not ln.startswith("Placeholders used: "))
-    for raw in (*RAW, "kestrel", "Kestrel", "Zephyr", "Quarry"):
+    # the source's id too: lane B's C3039 error names the table by it (`[[source]] #3 (id='extra-notes')`)
+    for raw in (*RAW, "kestrel", "Kestrel", "Zephyr", "Quarry", "extra-notes"):
         assert raw not in body, (raw, [ln for ln in body.splitlines() if raw in ln])
     assert "Private only:" not in text and setup_report.issue_link(text) is not None, text
     red = setup_report._build_redactor(setup_report._Run(cfg, setup_report.ReportHooks(), 40.0))
@@ -30223,3 +30250,30 @@ def test_the_loop_line_says_install_shs_own_form_on_status_rule_2_next_c3003(
     for logged, fail in ((ok.replace("end rc=0", "end rc=1"), False), (ok, True)):
         line = loop(inbox + paused, logged, fail)
         assert "add-source" in line and "not live:" not in line, (logged, fail, line)
+
+
+@pytest.mark.parametrize("mac", ["synced", "new"])
+def test_the_expected_turns_name_step_3s_at_most_folder_question_c3029(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mac: str
+) -> None:
+    """B13 round 46 C3029 (ruling 205; makes worse True for logging the answer): step 3 asks at most once
+    whether to add a folder after a `nothing to draft yet` NEXT, a question the prompt asks, yet the expected
+    turns said no folder question on a synced Mac and only step 1's on a new one. Once the attempt reached
+    step 3 the line names it, not logged, and the human turns and the outcome stay as they were; an attempt
+    whose install run failed and that logged nothing at step 3 does not name it."""
+    config = "skipped note=exists kept=2 added=0" if mac == "synced" else "done note=created kept=0 added=2"
+    listed = " synced=2" if mac == "synced" else " synced=0"
+    log = set_up_log(fake_mac, ("", config), listed=listed)
+    write_friction(fake_mac, V11_HAPPY)
+    monkeypatch.setattr(setup_report, "home_path", lambda: "/Users/jdoe")
+    rc, text, _ = report(tmp_path, fake_mac["config"])
+    summary = section(text, "Summary")
+    line = _line(summary, "- expected turns: ")
+    assert rc == 0 and f" · {STEP_3_ASKS} · " in line, line
+    assert "step 3" not in _line(summary, "- human turns: ")
+    outcome = summary.strip().splitlines()[0]
+    log.write_text(log.read_text(encoding="utf-8").replace(" end rc=0", " end rc=1"), encoding="utf-8")
+    rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert STEP_3_ASKS not in _line(section(text, "Summary"), "- expected turns: ")
+    if mac == "synced":
+        assert outcome.startswith("- **outcome: fully one command**"), outcome
