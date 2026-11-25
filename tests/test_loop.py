@@ -3548,6 +3548,44 @@ def test_the_inbox_heartbeat_warn_points_at_the_listable_row_when_not_a_folder_c
         assert "sync -v" not in row.fix and "(" not in row.fix, row
 
 
+def test_live_inbox_bounds_its_canonical_walk_too_c3311(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 47 C3311 (the review's find): live_inbox bounded inbox_entry but ran canonical_source_root
+    first, whose lstat of the link's target a privacy prompt may hold as well, so the guide still held the
+    sync. Both reads run together under the listings' time limit; past it no inbox is named."""
+    root = tmp_path / "Contoso Gamma"
+    (root / "Gamma Empty").mkdir(parents=True)
+    config = _synced(tmp_path, root)
+    config, box = ensure_inbox(config.config_path)
+    assert box is not None
+    kept = config.docs_repo.parent / "inbox"
+    kept.rename(tmp_path / "inbox-moved")
+    (tmp_path / "contoso-held").mkdir()
+    kept.symlink_to(tmp_path / "contoso-held")
+    config = load_config(config.config_path)
+    assert config_module.live_inbox(config) == kept  # a link to a real folder, named as typed (C3217)
+    real = os.stat
+    release = threading.Event()
+
+    def held(path: Any, *args: Any, **kwargs: Any) -> os.stat_result:
+        if os.fspath(path).endswith("contoso-held"):  # the target's lstat and stat, held by a prompt
+            release.wait(20)
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(arm_local, "LISTING_TIMEOUT_S", 1.0)
+    monkeypatch.setattr(os, "stat", held)
+    try:
+        with _bounded(60):
+            began = time.monotonic()
+            assert config_module.live_inbox(config) is None
+            took = time.monotonic() - began
+    finally:
+        release.set()
+        monkeypatch.setattr(os, "stat", real)
+    assert took < 10, took  # never the held stat's 20 s
+
+
 def test_an_empty_draft_over_an_empty_mirror_is_rule_4_beside_topic_pages_c2707(tmp_path: Path) -> None:
     """B13 round 44 C2707 (ruling 181): with a hand-written topic page, an empty draft over a mirror with no
     converted page skipped rule 4 (``not pages``) and reached rule 5, which pointed at WAITING ON YOU lines

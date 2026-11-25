@@ -1031,9 +1031,9 @@ def live_inbox(config: Config) -> Path | list[tuple[Path, str]] | None:
     names what inbox_state calls ``not added (<folder> is not a folder)``; a link to a real folder is still
     the kept folder (B13 round 45 C2807 with C2937, ruling 194), returned as typed, as inbox_state names it,
     never the link's target (round 47 C3217; every caller only shows it). That read is bounded by the
-    listings' time limit, since a link's target may sit where a privacy prompt holds a stat: past it the
-    entry counts as one it cannot read, so the guide names no kept inbox rather than holding the sync (B13
-    round 47 C3311)."""
+    listings' time limit, canonical_source_root's walk with it, since a link's target may sit where a privacy
+    prompt holds a stat: past it the guide names no inbox rather than holding the sync (B13 round 47
+    C3311)."""
     inboxes = sorted(
         (
             (s.path, s.id)
@@ -1043,8 +1043,11 @@ def live_inbox(config: Config) -> Path | list[tuple[Path, str]] | None:
         key=lambda pair: pair[1],
     )
     folder = expand(config.docs_repo).parent / "inbox"
-    kept = canonical_source_root(folder)
-    entry = bounded_inbox_read(lambda: inbox_entry(folder)) or f"{INBOX_ENTRY_UNREAD}timed out"
+    # the canonical path's lstat walk and the entry's stat together, each able to wait on a privacy prompt
+    got = bounded_inbox_read(lambda: (canonical_source_root(folder), inbox_entry(folder)))
+    if got is None:  # past the limit: no inbox named, never a held sync (B13 round 47 C3311)
+        return None
+    kept, entry = got
     if entry not in (INBOX_ENTRY_ABSENT, INBOX_ENTRY_FOLDER):
         inboxes = [(path, sid) for path, sid in inboxes if not same_folder(path, kept)]
     elif any(same_folder(path, kept) for path, _ in inboxes):

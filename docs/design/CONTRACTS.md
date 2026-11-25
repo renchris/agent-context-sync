@@ -48024,7 +48024,8 @@ hold, and `config.live_inbox` did the same for the guide on every sync. The cycl
 with `listing_timeout_s`; past it the scan is held with the root read's own words (`reading the root did not return
 within <n>s`). `live_inbox` bounds its read the same way, and past it names no kept inbox; so do `inbox_state` (past
 it `not read (timed out)`) and loop's `_inbox_root_not_a_folder` (past it no not-a-folder note), through one helper,
-`config.bounded_inbox_read`, so the CLI sync's NEXT holds no command either. A link through a file
+`config.bounded_inbox_read`, so the CLI sync's NEXT holds no command either; `live_inbox` runs canonical_source_root's
+walk inside the same bound, since its lstat of the link's target may wait too. A link through a file
 failed the root's lstat with ENOTDIR, which set no `root_notdir`, so loop's note promised that a later sync lists it:
 that branch sets `root_notdir` when the probe names the inbox, so the kept inbox's restore note follows. A link into a
 folder this account cannot search read `source root unreadable: <the link's target>: Permission denied`; the probe's
@@ -48034,7 +48035,8 @@ the inbox as typed, the error as `strerror`, the command built from `AGENTSYNC_B
 read (...)` and doctor's listable row and its fix); a local source keeps `source root unreadable`. Tests:
 `test_the_walk_names_every_kept_inbox_entry_as_typed_c3312_c3211` (eleven kinds of entry, under a timeout) and
 `test_the_kept_inbox_probe_is_bounded_and_run_only_by_a_failed_root_read_c3311` (`sync` and `sync --dry-run` held,
-live_inbox bounded, a root that reads runs no probe), and the C3007 test's link-through-a-file, two-link-loop and fifo
+live_inbox bounded, a root that reads runs no probe, the CLI sync), `test_live_inbox_bounds_its_canonical_walk_too_c3311`,
+and the C3007 test's link-through-a-file, two-link-loop and fifo
 rows (the full alarm and the kept inbox's full note, never `was not fully listed`).
 
 **A second inbox source that is not a folder reads `not a folder`, with its own remedy** (C3215; ruling 210; amends
