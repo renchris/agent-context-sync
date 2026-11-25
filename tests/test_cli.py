@@ -9783,6 +9783,32 @@ def test_source_statuses_warns_a_refused_heartbeat_only_for_a_caller_that_record
     assert loud == [logging.WARNING] and said == [logging.DEBUG], (loud, said)
 
 
+@pytest.mark.parametrize("state", ["paused", "retired"])
+def test_the_sources_line_marks_a_paused_or_retired_source_c3002(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], state: str
+) -> None:
+    """B13 round 46 C3002: step 2's ``sources:`` line named a paused or retired folder bare, beside a NEXT
+    saying no folder is synced yet. A source that is not live carries its state; live ids stay bare."""
+    home = tmp_path / "home"
+    folder = home / "Project Alpha"
+    folder.mkdir(parents=True)
+    extra = 'state = "retired"\nretired_reason = "moved to the archive"\n' if state == "retired" else ""
+    table = local_source_table("project-alpha", folder) + (extra or 'state = "paused"\n')
+    cfg = home / "sources.toml"
+    cfg.write_text(
+        f"[agentsync]\ndocs_repo = {toml_string(str(home / 'docs'))}\n"
+        + inbox_source_table("inbox", home / "inbox")
+        + table,
+        encoding="utf-8",
+    )
+    monkeypatch.setenv(paths.CONFIG_ENV, str(cfg))
+    assert load_config(cfg).source("project-alpha").state.value == state
+    capsys.readouterr()
+    assert cli.main(["init"]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert out.rstrip("\n").splitlines()[-1] == f"sources: inbox, project-alpha ({state})", out
+
+
 def test_a_sync_over_a_corrupt_heartbeat_warns_of_it_once_c3004(
     initialised: Config, caplog: pytest.LogCaptureFixture
 ) -> None:

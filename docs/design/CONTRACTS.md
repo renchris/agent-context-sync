@@ -19859,6 +19859,8 @@ Amended 2026-10-16, §16.101 N13: the names follow a colon and the pointer a `; 
 Amended 2026-10-17, §16.115 Q59 (by §16.107 O17): under install.sh (`AGENTSYNC_NO_NEXT_HINT=1`) the line ends
 before the pointer (`sources: no folder yet besides the inbox`), since the installer's NEXT line names its own
 re-run with `--source-local`; a bare run keeps it.
+Amended 2026-11-24, §16.287 C3002: with a folder source configured the line names every source, a paused or retired
+one with its state (`sources: inbox, project-alpha (paused)`), live ids bare.
 
 **A config that does not load is the person's to fix** (M23 and M39, one defect). The config step ended through
 `fail()`, whose NEXT `fix the error above, then re-run: install.sh` the prompt's step 2 rule ("do what NEXT: says only
@@ -46961,6 +46963,14 @@ WARNING, `heartbeat <path> is corrupt (...); the next sync of a live source rewr
 stderr passthrough is untouched: keeping a sync's warnings off its output would hide the lines its NEXT points to (the
 first sync's error, the configuration error, the lock holder's line) and a foreground sync's only copy (makes worse
 True). Test: `test_a_sync_over_a_corrupt_heartbeat_warns_of_it_once_c3004` (a live sync and an all-paused one).
+
+**Step 2's sources line marks a paused or retired source** (C3002; amends §16.93 M13). `_ensure_setup` printed
+`sources: inbox, project-alpha` for a config whose only folder was paused or retired, beside a NEXT saying no folder
+is synced yet. Each source that is not live carries its state, `sources: inbox, project-alpha (paused)` or
+`(retired)`; live ids stay bare, so the `sources: <ids>` pins and install.sh's `^sources: ` filter hold. A paused- or
+retired-only config is not routed to `no folder yet besides the inbox`, which would deny a configured folder and, on
+a bare run, point at add-source where the remedy is the person's state edit. Test:
+`test_the_sources_line_marks_a_paused_or_retired_source_c3002`.
 
 ### 16.288 Round 46: the converters: a kept Office answer read again only from the bytes and the fetch that were read, the container answers and the family parse corrected, and speech's CA words (2026-11-24, wave B13 round 46 lane E)
 

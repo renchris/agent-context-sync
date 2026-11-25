@@ -1618,7 +1618,10 @@ def _ensure_setup(config: Config) -> int:
     for line in governance.ensure_time_machine_exclusions(config):
         _out(f"time machine: {line}")
     if any(s.kind is not SourceKind.INBOX for s in config.sources):
-        _out(f"sources: {', '.join(s.id for s in config.sources)}")
+        # a paused or retired source carries its state, so a NEXT that says no folder is synced yet never
+        # reads against a bare id; live ids stay bare (B13 round 46 C3002)
+        shown = (s.id if s.is_live else f"{s.id} ({s.state.value})" for s in config.sources)
+        _out(f"sources: {', '.join(shown)}")
     elif config.sources:  # an inbox is not a source to sync (KISS K05): point at the one verb that adds one
         # a Mac may hold hand-added inbox sources too: they are counted and named (B13 round 11 M13), after a
         # colon, so the line has no two brackets side by side (round 12 N13)
