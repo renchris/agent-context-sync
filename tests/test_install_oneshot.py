@@ -28259,3 +28259,62 @@ def test_both_held_folder_readers_read_as_the_loader_does_c3003(tmp_path: Path, 
     assert cp.stdout == f"; not live: {_C3003_HELD}{_HELD_TAIL}"
     # the report's own copy of the clause, which lane RA's _install_sh_said_no_folder mirror prints (C3003)
     assert cp.stdout == setup_report.NOT_LIVE_CLAUSE.format(folders=_C3003_HELD)
+
+
+# ---- B13 round 46 lane RB: ruling 204, C3088 --------------------------------------------------------------
+
+
+@pytest.mark.parametrize("build", ["current", "older"])
+@pytest.mark.parametrize("case", ["denied parent", "link into a locked folder"])
+def test_an_older_build_reads_a_denied_inbox_as_inbox_state_does_c3088(
+    env: dict[str, str], build: str, case: str
+) -> None:
+    """B13 round 46 ruling 204, C3088: the older-build fallback read the kept inbox with os.path.lexists and
+    Path.is_dir, so a parent this account cannot search read as no entry and a link into a locked folder as
+    `not checked (PermissionError)`. It inlines config.inbox_entry (stdlib only): both builds print
+    `inbox state: not read (Permission denied)`, inbox_state's words."""
+    home = Path(env["HOME"])
+    ctx = home / "agent-context"
+    inbox = ctx / "inbox"
+    (ctx / "docs").mkdir(parents=True)
+    locked = home / "Locked Contoso"
+    if case == "denied parent":
+        inbox.mkdir()
+        denied = ctx
+    else:
+        (locked / "inner").mkdir(parents=True)
+        inbox.symlink_to(locked / "inner")
+        denied = locked
+    cfg = home / "sources.toml"
+    cfg.write_text(
+        f'[agentsync]\ndocs_repo = "{ctx / "docs"}"\n{inbox_source_table("inbox", inbox)}', encoding="utf-8"
+    )
+    py = (
+        _tool_python(env)
+        if build == "current"
+        else _tool_python_without(env, "agentsync.config", "inbox_state")
+    )
+    script = "\n".join(
+        [
+            "set -uo pipefail",
+            "say() { printf '%s\\n' \"$*\"; }",
+            "list_name() { printf '%s\\n' \"$1\"; }",
+            'with_timeout() { shift; "$@"; }',
+            _shell_function("config_folder_lines"),
+            "config_folder_lines",
+        ]
+    )
+    denied.chmod(0)
+    try:
+        want = inbox_state(load_config(cfg))[1]
+        cp = _bash_run(
+            [BASH32, "-c", script],
+            capture_output=True,
+            text=True,
+            env={**env, "DRY_RUN": "0", "TOOL_PY": str(py), "CONFIG": str(cfg)},
+        )
+    finally:
+        denied.chmod(0o755)
+    assert want == "not read (Permission denied)", want
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert cp.stdout.splitlines()[2:] == [f"inbox state: {want}"], cp.stdout + cp.stderr

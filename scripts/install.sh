@@ -12980,9 +12980,27 @@ except ImportError:  # an installed build older than B13 round 43: the same word
     def inbox_state(config):
         from agentsync.config import canonical_source_root
 
+        import errno, stat
+
         folder = expand(config.docs_repo).parent / "inbox"
-        if os.path.lexists(folder) and not folder.is_dir():
-            return folder, f"not added ({folder} is not a folder)"
+        # config.inbox_entry, inline (stdlib only, as that build has none): one lstat and, for a link, a stat;
+        # a denied entry is not read, never absent or not a folder (B13 round 46 ruling 204, C3088)
+        try:
+            st = os.lstat(folder)
+        except OSError as exc:
+            if exc.errno not in (errno.ENOENT, errno.ENOTDIR):
+                return folder, f"not read ({exc.strerror or type(exc).__name__})"
+            st = None
+        if st is not None and not stat.S_ISDIR(st.st_mode):
+            if not stat.S_ISLNK(st.st_mode):
+                return folder, f"not added ({folder} is not a folder)"
+            try:
+                if not stat.S_ISDIR(os.stat(folder).st_mode):
+                    return folder, f"not added ({folder} is not a folder)"
+            except OSError as exc:
+                if exc.errno in (errno.ENOENT, errno.ENOTDIR, errno.ELOOP):
+                    return folder, f"not added ({folder} is not a folder)"
+                return folder, f"not read ({exc.strerror or type(exc).__name__})"
         kept = canonical_source_root(folder)
         try:  # the collision key first, as config.inbox_state matches: a firmlink spelling is no match
             from agentsync.paths import same_folder
