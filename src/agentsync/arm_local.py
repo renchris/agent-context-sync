@@ -1282,11 +1282,14 @@ class LocalArm:
 
     def _not_a_folder_alarm(self) -> str:
         """The root branches' alarm for the source on the kept inbox whose entry is not a folder
-        (:attr:`shown_root`): the folder as typed, inbox_state's kinds, and the walk's safety words (B13
-        round 46 C3007, ruling 204)."""
+        (:attr:`shown_root`): the folder as typed, and the walk's safety words (B13 round 46 C3007, ruling
+        204). ``a file or a link that does not lead to a folder`` covers every entry config.inbox_entry reads
+        as not a folder, a looping link and a link through a file too (B13 round 47 C3213), and the pointer
+        names the line that gives the remedy, loop's note, which status prints as well (C3258, ruling 210)."""
         return (
-            f"source root is not a folder: {self.shown_root} is a file, a link to a file or a dangling link "
-            "(walk skipped; nothing is deleted; inbox state says what to do)"
+            f"source root is not a folder: {self.shown_root} is a file or a link that does not lead to a "
+            "folder (walk skipped; nothing is deleted; the note that begins the inbox "
+            f"({self.source_id}) is not a folder says what to do, and `{AGENTSYNC_BIN} status` prints it too)"
         )
 
     def _incomplete(self, alarm: str) -> ScanResult:

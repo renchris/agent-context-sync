@@ -1828,17 +1828,18 @@ def next_step(
         )
     for sid, (shown_root, on_kept) in sorted(inbox_not_a_folder.items()):
         # step 2 recreates the kept inbox alone: any other inbox source is put back or pointed at a folder by
-        # the person (B13 round 46 C3044, ruling 204); either way a note, never a wait
+        # the person (B13 round 46 C3044, ruling 204); either way a note, never a wait. Each remedy carries
+        # its own "until": moving another source's file aside lists nothing (B13 round 47 C3261, ruling 210).
         remedy = (
-            "keeping a copy, move it aside, then run step 2 again"
+            "until it is moved aside: keeping a copy, move it aside, then run step 2 again"
             if on_kept
-            else "keeping a copy, move it aside and put a folder back at that name, or fix path in "
-            f'[[source]] id = "{sid}" in {_shown(config.config_path)}'
+            else "until a folder is back at that name or its path is fixed: keeping a copy, move it aside "
+            f'and put a folder back at that name, or fix path in [[source]] id = "{sid}" in '
+            f"{_shown(config.config_path)}"
         )
         notes.append(
-            f"the inbox ({sid}) is not a folder: {shown_root} is a file, a link to a file or a dangling "
-            f"link, and no later sync lists it until it is moved aside: {remedy}; it does not block the next "
-            "step"
+            f"the inbox ({sid}) is not a folder: {shown_root} is a file or a link that does not lead to a "
+            f"folder, and no later sync lists it {remedy}; it does not block the next step"
         )
     if inbox_partial:
         notes.append(

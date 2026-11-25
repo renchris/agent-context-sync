@@ -46470,6 +46470,10 @@ note ends `keeping a copy, move it aside and put a folder back at that name, or 
 Amended 2026-11-25, §16.292 C3260, C3212: the kept entry is read by `config.kept_inbox_not_a_folder`, and a stored
 finding is checked against the entry as it is now: a folder back at that name before the next sync gives no note and
 no missing-root wait.
+Amended 2026-11-25, §16.292 C3213, C3258, C3261: the note and the alarm read `is a file or a link that does not lead
+to a folder` (a looping link and a link through a file too), the alarm's pointer names the note, and another inbox
+source's note says `until a folder is back at that name or its path is fixed`; the kept inbox's note keeps `until it
+is moved aside`.
 
 **Every home renders its stubs and tombstones again once, and the marker waits for every page** (C2851 with C2917,
 C2918; ruling 195, amending ruling 183). `publish.STUB_RENDER` is 8: a home that ran 7 before C2647's loop stored meta
@@ -47243,6 +47247,10 @@ a dangling link, a link to a file and a self-link: the alarm, the warning and ST
 Amended 2026-11-25, §16.292 C3260, C3212: `config.kept_inbox_not_a_folder` is the one test, which doctor's rows and
 loop's missing-root arm call too (doctor's own copy is gone); loop's not-a-folder arm keeps its path match and checks
 the entry as it is now, so a folder back at that name gives no note.
+Amended 2026-11-25, §16.292 C3213, C3258, C3261: the alarm reads
+``source root is not a folder: <folder> is a file or a link that does not lead to a folder (walk skipped; nothing is deleted; the note that begins the inbox (<id>) is not a folder says what to do, and `~/.local/bin/agentsync status` prints it too)``,
+one phrase for every entry that is not a folder, and a pointer to the line that gives the remedy, never `inbox state
+says what to do` (that line holds none).
 
 **Another inbox source that is not a folder gets its own remedy, never step 2's** (C3044; ruling 204; amends §16.282
 C2814). C2814's note told every inbox source whose root is not a folder to `run step 2 again`, which recreates only
@@ -47252,6 +47260,10 @@ source's reads `the inbox (<id>) is not a folder: <path> is a file, a link to a 
 sync lists it until it is moved aside: keeping a copy, move it aside and put a folder back at that name, or fix path
 in [[source]] id = "<id>" in <config>; it does not block the next step`, still a note, never a wait. Test:
 `test_another_inbox_that_is_not_a_folder_gets_its_own_remedy_never_step_2_c3044`; the C2814 test is unchanged.
+Amended 2026-11-25, §16.292 C3213, C3258, C3261: that note reads `the inbox (<id>) is not a folder: <path> is a
+file or a link that does not lead to a folder, and no later sync lists it until a folder is back at that name or its
+path is fixed: keeping a copy, move it aside and put a folder back at that name, or fix path in [[source]] id =
+"<id>" in <config>; it does not block the next step`, its own `until`, since moving the file aside lists nothing.
 
 **A folder named in prose is unquoted** (C3008; ruling 204; amends §16.247 C1401 and §16.282 C2809). `_shell_path`'s
 one-shell-word form, `~/'<rest>'`, read like a typo where a fix names a folder in a sentence (`restore
@@ -47952,6 +47964,22 @@ RuntimeError on a loop on Python 3.11 and 3.12, past every `except OSError` (mak
 `test_canonical_source_root_gives_one_answer_from_every_spelling_c3300` (twelve kinds of entry, both spellings equal
 to realpath's answer, under a timeout) and the C2809 test's home-through-a-link rows (an absolute self-link and two
 two-link loops: `is not a folder` on the listable and volume rows, the alarm and the kept inbox's note).
+
+**One phrase for an inbox that is not a folder, an alarm that points at its remedy, and each note's own `until`**
+(C3213 with C3258 and C3261; ruling 210; amends §16.282 C2814, §16.287 C3007 and §16.287 C3044). The alarm and the
+note listed `a file, a link to a file or a dangling link`, so a looping link (which config.inbox_entry reads as not a
+folder too) and a link through a file got a dangling link's words. Both now read `a file or a link that does not lead
+to a folder`, which never covers a link to a real folder (that reads live, C2869) or an entry this account cannot
+read (`not read`). The alarm's pointer, `inbox state says what to do`, named a line that holds no remedy (`not added
+(<folder> is not a folder)`); `LocalArm._not_a_folder_alarm` now reads
+``source root is not a folder: <folder> is a file or a link that does not lead to a folder (walk skipped; nothing is deleted; the note that begins the inbox (<id>) is not a folder says what to do, and `~/.local/bin/agentsync status` prints it too)``,
+the command built from `AGENTSYNC_BIN` as the empty-folder alarm's twin builds it. The note's `until it is moved
+aside` sat in the prefix both remedies share, yet moving another inbox source's file aside lists nothing (its root
+is then absent); each remedy carries its own clause: the kept inbox's `until it is moved aside: keeping a copy, move
+it aside, then run step 2 again`, any other's `until a folder is back at that name or its path is fixed: keeping a
+copy, move it aside and put a folder back at that name, or fix path in [[source]] id = "<id>" in <config>`. The
+READMEs', the prompt's and the lane notes' copies of the phrase are lanes D's and the lead's. Tests: the C2814 test
+(a self-link row added), the C3044 test and the C3007 test (the alarm in full, its self-link row included).
 
 ### 16.293 Round 47: the converters: ruling 202's Office twins closed (UTF-32 text, a no-namespace `<Types>`, the container answers before the cache, xlsx's emitter 1.0.7) and one noun per family (2026-11-25, wave B13 round 47 lane E)
 

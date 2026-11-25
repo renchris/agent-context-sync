@@ -2898,7 +2898,7 @@ def test_nothing_to_draft_never_names_a_kept_inbox_that_is_not_a_folder_c2937(
     assert ("inbox (" in step.step) is second, step
 
 
-@pytest.mark.parametrize("entry", ["file", "dangling-link", "link-to-file"])
+@pytest.mark.parametrize("entry", ["file", "dangling-link", "link-to-file", "self-link"])
 def test_an_inbox_that_is_not_a_folder_is_a_note_naming_it_as_typed_c2814(tmp_path: Path, entry: str) -> None:
     """B13 round 45 C2814 (ruling 194): a file (or a link that is not a folder) at the kept inbox's name gave
     the sync's ``was not fully listed: a later sync lists a file that was still being written`` note, which
@@ -2917,15 +2917,17 @@ def test_an_inbox_that_is_not_a_folder_is_a_note_naming_it_as_typed_c2814(tmp_pa
         kept.write_text("contoso note\n", encoding="utf-8")
     elif entry == "dangling-link":
         kept.symlink_to(kept.parent / "contoso-missing")
+    elif entry == "self-link":
+        kept.symlink_to("inbox")
     else:
         (kept.parent / "contoso-note.txt").write_text("x\n", encoding="utf-8")
         kept.symlink_to(kept.parent / "contoso-note.txt")
     config = load_config(config.config_path)
     assert run_cycle(config, mode=None).exit_code == 0
     step = loop.next_step(config)
-    note = (
-        f"the inbox ({box.id}) is not a folder: {loop._shown(kept)} is a file, a link to a file or a "
-        "dangling link, and no later sync lists it until it is moved aside: keeping a copy, move it aside, "
+    note = (  # one phrase for every entry that is not a folder, a loop included (B13 round 47 C3213)
+        f"the inbox ({box.id}) is not a folder: {loop._shown(kept)} is a file or a link that does not lead "
+        "to a folder, and no later sync lists it until it is moved aside: keeping a copy, move it aside, "
         "then run step 2 again; it does not block the next step"
     )
     assert note in step.notes, step.notes
@@ -2963,11 +2965,11 @@ def test_another_inbox_that_is_not_a_folder_gets_its_own_remedy_never_step_2_c30
     drop.write_text("contoso note\n", encoding="utf-8")
     assert run_cycle(config, mode=None).exit_code == 0
     step = loop.next_step(config)
-    note = (
-        f"the inbox (zz-drop) is not a folder: {publish._display_path(drop)} is a file, a link to a file or "
-        "a dangling link, and no later sync lists it until it is moved aside: keeping a copy, move it aside "
-        'and put a folder back at that name, or fix path in [[source]] id = "zz-drop" in '
-        f"{loop._shown(cfg)}; it does not block the next step"
+    note = (  # its own "until": moving the file aside lists nothing (B13 round 47 C3261, ruling 210)
+        f"the inbox (zz-drop) is not a folder: {publish._display_path(drop)} is a file or a link that does "
+        "not lead to a folder, and no later sync lists it until a folder is back at that name or its path is "
+        "fixed: keeping a copy, move it aside and put a folder back at that name, or fix path in [[source]] "
+        f'id = "zz-drop" in {loop._shown(cfg)}; it does not block the next step'
     )
     assert note in step.notes, step.notes
     assert not any("step 2" in n for n in step.notes if n.startswith("the inbox (zz-drop)")), step.notes
@@ -3116,9 +3118,10 @@ def test_the_walks_alarm_names_the_kept_inbox_as_typed_never_a_links_target_c300
     with caplog.at_level(logging.WARNING, logger="agentsync"):
         report = run_cycle(config, mode=None)
     assert report.exit_code == 0
-    alarm = (
-        f"source root is not a folder: {publish._display_path(kept)} is a file, a link to a file or a "
-        "dangling link (walk skipped; nothing is deleted; inbox state says what to do)"
+    alarm = (  # one phrase, a self-link included, and a pointer to the line with the remedy (C3213, C3258)
+        f"source root is not a folder: {publish._display_path(kept)} is a file or a link that does not lead "
+        f"to a folder (walk skipped; nothing is deleted; the note that begins the inbox ({box.id}) is not a "
+        f"folder says what to do, and `{BIN} status` prints it too)"
     )
     [src] = [r for r in report.sources if r.source_id == box.id]
     assert src.alarms == (alarm,), src.alarms

@@ -918,10 +918,11 @@ def inbox_entry(folder: Path) -> str:
 
 def kept_inbox_not_a_folder(config: Config, src: SourceConfig) -> Path | None:
     """The kept inbox folder as typed (``inbox`` beside the docs repo, never resolved) when ``src`` is the
-    inbox-kind source on it and :func:`inbox_entry` reads that entry as not a folder (a file, a link to one, a
-    dangling or looping link), else None: the one test of that state (B13 round 47 C3260, ruling 210), which
-    the cycle reads before a walk so the walk's alarm names the folder as typed, never the link's target (B13
-    round 46 C3007, ruling 204), doctor reads for the listable and volume rows, and loop's missing-root arm
+    inbox-kind source on it and :func:`inbox_entry` reads that entry as not a folder (a file or a link that
+    does not lead to a folder: a link to a file, a dangling or looping link, one through a file), else None:
+    the one test of that state (B13 round 47 C3260, ruling 210), which the cycle reads before a walk so the
+    walk's alarm names the folder as typed, never the link's target (B13 round 46 C3007, ruling 204), doctor
+    reads for the listable and volume rows, and loop's missing-root arm
     reads (``loop._inbox_root_not_a_folder``; its not-a-folder arm checks the live entry alone, since a
     folder put back is no finding here). The source is matched by its stored path, compared with
     canonical_source_root of that folder; a local source at that path keeps its own root words, as doctor and
@@ -950,7 +951,7 @@ def inbox_state(config: Config) -> tuple[Path, str]:
     162): ``(folder, words)``, the folder ``inbox`` beside the docs repo as typed (``expand``, never resolved)
     and the words status's ``inbox state:`` line and the setup report's ``inbox:`` line print.
 
-    An entry on that name that is not a folder (a file, a link to one, a dangling link) reads
+    An entry on that name that is not a folder (a file or a link that does not lead to a folder) reads
     ``not added (<folder> is not a folder)`` whatever sources.toml lists: it is what ensure_inbox's mkdir
     stops on.  Otherwise the sources are matched against the form ensure_inbox stores
     (:func:`canonical_source_root`) by identity (:func:`paths.same_folder`): an inbox source there reads its
@@ -990,8 +991,8 @@ def live_inbox(config: Config) -> Path | list[tuple[Path, str]] | None:
     live inbox source's path, else every live inbox source as ``(path, id)`` sorted by id, since no one of
     them is the inbox, else None.
 
-    The kept entry is read once (:func:`inbox_entry`): when it is not a folder (a file, a link to one, a
-    dangling or looping link) or cannot be read, every candidate same_folder with it is dropped from both
+    The kept entry is read once (:func:`inbox_entry`): when it is not a folder (a file or a link that does
+    not lead to a folder) or cannot be read, every candidate same_folder with it is dropped from both
     branches, since its stored path was canonicalized into that file or that link's target, so neither guide
     names what inbox_state calls ``not added (<folder> is not a folder)``; a link to a real folder is still
     the kept folder (B13 round 45 C2807 with C2937, ruling 194)."""
