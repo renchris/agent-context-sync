@@ -121,6 +121,29 @@ SYNC_AGAIN = "sync again: "
 """How the note of an unfinished re-read starts while another sync reads more of it (:func:`_reread_notes`).
 The README's setup prompt runs ``sync --materialise-budget 0`` again while a ``note:`` line starts with it,
 before its report."""
+LINT_FINDINGS_BELOW = "under ## Lint findings"
+"""Where STATE.md's land-gate step points: its findings follow ``## Next`` (:func:`land_gate_step`)."""
+
+
+def land_gate_step(findings: Sequence[LintFinding], *, where: str = "above") -> str | None:
+    """The step of a sync whose commit the land gate blocked, None when no finding is blocking: the count,
+    where the BLOCKING lines are (``above`` on a sync's screen, :data:`LINT_FINDINGS_BELOW` in STATE.md), the
+    first one's page and fix, then the sync. ``sync`` prints it in place of the loop's NEXT and STATE.md's
+    ``## Next`` takes it as rule 1's fix, one text for both (B13 round 47 C3227, ruling 212: a blocked sync
+    read ``commit none (no content change)`` and then the loop's step, a baseline question, as if it had
+    landed)."""
+    blocking = [f for f in findings if f.blocking]
+    if not blocking:
+        return None
+    first = blocking[0]
+    fix = first.message.removesuffix(", then sync again")
+    count = plural(len(blocking), "blocking finding")
+    return (
+        f"the land gate blocked this sync's commit ({count}, the BLOCKING lines {where}): {first.path}: "
+        f"{fix}; then run `{BIN} sync`"
+    )
+
+
 ROWS_PER_SESSION = 10
 """Rule 9's session bound: curate at most this many queue rows, then sync and end the session."""
 AFTER_BASELINE_PAGES = 20

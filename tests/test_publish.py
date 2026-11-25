@@ -2226,11 +2226,12 @@ def test_state_md_next_is_the_blocking_finding_that_held_the_commit(env: Env) ->
     skill.write_skill(env.repo)  # under the isolated HOME: rule 1's skill check passes
     finding = LintFinding("SYMLINK", "topics/a/x.md", "a symlink", blocking=True)
     env.pub.write_state(report(findings=(finding,)), [status("src")])
+    # B13 round 47 C3227, ruling 212: the sync's NEXT words, the BLOCKING lines under ## Lint findings
     want = loop.next_step(
         env.config,
         fixes=[
-            "1 blocking finding held this run's commit (## Lint findings below): fix every ERROR, then "
-            "run `~/.local/bin/agentsync sync`"
+            "the land gate blocked this sync's commit (1 blocking finding, the BLOCKING lines under ## Lint "
+            "findings): topics/a/x.md: a symlink; then run `~/.local/bin/agentsync sync`"
         ],
     )
     assert want.rule == 1
@@ -2239,8 +2240,8 @@ def test_state_md_next_is_the_blocking_finding_that_held_the_commit(env: Env) ->
     other = dataclasses.replace(finding, path="topics/a/y.md")
     env.pub.write_state(report(findings=(finding, other)), [status("src")])
     assert _state_next_block(env.text("_sync/STATE.md"))[0] == (
-        "NEXT: 2 blocking findings held this run's commit (## Lint findings below): fix every ERROR, then "
-        "run `~/.local/bin/agentsync sync`"
+        "NEXT: the land gate blocked this sync's commit (2 blocking findings, the BLOCKING lines under ## "
+        "Lint findings): topics/a/x.md: a symlink; then run `~/.local/bin/agentsync sync`"
     )
     env.pub.write_state(report(findings=(dataclasses.replace(finding, blocking=False),)), [status("src")])
     assert _state_next_block(env.text("_sync/STATE.md")) == loop.next_step(env.config).lines()

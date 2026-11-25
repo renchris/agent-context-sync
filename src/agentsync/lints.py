@@ -6,6 +6,7 @@ quotes the matched secret or token (it names the rule and the line).
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import logging
@@ -256,13 +257,31 @@ def _checkout_advice(repo: Path, path: str) -> str:
     return f"(umask 077 && git -C {doctor._shell_path(repo)} checkout -- {doctor._quoted(path)})"
 
 
+def _unreadable_page(repo: Path, path: str, exc: OSError) -> str:
+    """A page the land gate cannot read, worded by its errno: a permission error is the chmod that gives
+    the read bit back, the person's or the agent's step; any other names its error (B13 round 47 C3227,
+    ruling 212: it said ``unreadable file``, no cause and no fix). Never a mode it did not read: an ACL or a
+    file flag refuses the same way as mode 000."""
+    if exc.errno in (errno.EACCES, errno.EPERM):
+        from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module
+
+        return (
+            "the page cannot be read (permission denied): agentsync wrote it; restore its read bit with "
+            f"`chmod 600 {doctor._shell_path(repo / path)}` (the person's or the agent's step; the content "
+            "is untouched), then sync again"
+        )
+    return f"the page cannot be read ({exc.strerror or exc}), then sync again"
+
+
 def _lint_one_page(repo: Path, path: str) -> list[LintFinding]:
     full = repo / path
     if full.is_symlink() or not full.is_file():
         return []
-    text = _read_text(full)
-    if text is None:
-        return [LintFinding("FRONTMATTER", path, "unreadable file")]
+    try:
+        text = full.read_bytes().decode("utf-8", errors="replace")
+    except OSError as exc:
+        log.warning("cannot read %s: %s", full, exc.strerror)
+        return [LintFinding("FRONTMATTER", path, _unreadable_page(repo, path, exc))]
     try:
         data, body = parse_frontmatter(text)
     except FrontmatterError as exc:

@@ -458,6 +458,46 @@ def test_sync_twice_status_curate(initialised: Config, capsys: pytest.CaptureFix
     assert git(repo, "rev-list", "--count", "HEAD").strip() == "1"
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+def test_a_page_the_land_gate_cannot_read_names_its_chmod_and_the_sync_says_it_was_blocked_c3227(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 47 C3227, ruling 212: a mode-000 page read ``unreadable file``, the run line ``commit none
+    (no content change)`` and the NEXT the loop's baseline step, as if the sync had landed. The finding names
+    the chmod, the run line the block, and the NEXT the block and that fix, in STATE.md's ``## Next`` too,
+    the same words but where the BLOCKING lines are; after the chmod the next sync commits."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
+    repo, page = initialised.docs_repo, _a_mirror_page(initialised)
+    rel = page.relative_to(repo).as_posix()
+    page.write_text(page.read_text(encoding="utf-8") + "\n", encoding="utf-8")  # dirty, so the gate lints it
+    page.chmod(0)
+    capsys.readouterr()
+    try:
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    finally:
+        page.chmod(0o600)
+    out = capsys.readouterr().out.splitlines()
+    run_line = next(x for x in out if x.startswith("run "))
+    assert " · commit none (blocked by the land gate) · " in run_line, run_line
+    fix = (
+        "the page cannot be read (permission denied): agentsync wrote it; restore its read bit with "
+        f"`chmod 600 {doctor._shell_path(page)}` (the person's or the agent's step; the content is untouched)"
+    )
+    assert f"  BLOCKING FRONTMATTER {rel}: {fix}, then sync again" in out, out
+    [next_line] = [x for x in out if x.startswith(loop.NEXT_PREFIX)]
+    assert next_line == (
+        "NEXT: the land gate blocked this sync's commit (1 blocking finding, the BLOCKING lines above): "
+        f"{rel}: {fix}; then run `~/.local/bin/agentsync sync`"
+    )
+    state = (repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
+    assert next_line.replace("lines above", "lines under ## Lint findings") in state.splitlines()
+    assert state.index("## Next") < state.index("## Lint findings")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert re.search(r" · commit [0-9a-f]{12} · ", capsys.readouterr().out)
+    assert git(repo, "rev-list", "--count", "HEAD").strip() == "2"
+
+
 def test_a_commit_with_no_mirror_change_says_what_its_zero_counts(capsys: pytest.CaptureFixture[str]) -> None:
     """``N change(s)`` counts the mirror pages sources changed. A commit beside 0 holds other docs-repo files
     (a baseline flip in INDEX.md, the agent's _eval drafts), and the header says so; with no commit it reads

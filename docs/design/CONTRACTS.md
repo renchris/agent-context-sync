@@ -708,6 +708,10 @@ already carries `SOURCE-MISSING` is not repeated.
     Amended 2026-10-14, §16.77 J33: in STATE.md a wait that names where its folders are says `the alarm line
     under ## <id> below names ...`, not `<docs repo>/_sync/STATE.md keeps ...` (`next_lines(in_state=True)`), and
     the block ends with one fixed legend line whenever it holds a WAITING ON YOU line.
+    Amended 2026-11-25, §16.292 C3227: the blocking finding's step is `loop.land_gate_step`'s, the words `sync`
+    prints in place of the loop's NEXT, `the land gate blocked this sync's commit (N blocking finding(s), the
+    BLOCKING lines under ## Lint findings): <the first one's page>: <its fix>; then run ...`, not `held this
+    run's commit ... fix every ERROR`.
 
 ## 15. Module reference (generated from the stubs)
 
@@ -47784,6 +47788,24 @@ pages a sync already writes, still no change and no commit. Tests: `test_hand_ed
 `test_the_lints_checkout_command_puts_a_hand_edited_page_back_owner_only_c3226` (the printed command under umask
 022, then docs_repo.permissions OK) and
 `test_a_page_republished_with_unchanged_bytes_is_made_owner_only_and_is_no_change_c3226`.
+
+**A blocked sync says it was blocked, and an unreadable page names its chmod** (C3227; ruling 212; amends item 13
+of §14). A page the land gate could not read was `unreadable file`, the run line `commit none (no content change)`,
+and the NEXT the loop's own step, a baseline question, since the loop's rules never see the gate. The finding is
+now worded by errno (`lints._unreadable_page`): EACCES or EPERM reads `the page cannot be read (permission denied):
+agentsync wrote it; restore its read bit with` `` `chmod 600 <docs>/<page>` `` `(the person's or the agent's step;
+the content is untouched), then sync again`, the path written as doctor writes one in a fix; any other errno `the
+page cannot be read (<strerror>), then sync again`; never a mode it did not read. `loop.land_gate_step(findings,
+where=)` is one step for both readers: `the land gate blocked this sync's commit (N blocking finding(s), the
+BLOCKING lines <where>): <the first one's page>: <its fix, less a closing ", then sync again">; then run`
+`` `~/.local/bin/agentsync sync` ``. `_cmd_sync` prints it as the one NEXT, `where` `above`, right after the
+heartbeat-refused stop and in place of the loop's NEXT, with the loop's WAITING ON YOU lines kept; STATE.md's
+`## Next` takes it as rule 1's fix with `where` `under ## Lint findings` (`loop.LINT_FINDINGS_BELOW`), since its
+findings follow. With a blocking finding and no commit the run line reads `commit none (blocked by the land gate)`.
+`sync --json` is unchanged (`outcome: blocked`). Tests:
+`test_a_page_the_land_gate_cannot_read_names_its_chmod_and_the_sync_says_it_was_blocked_c3227` (a mode-000 page
+through one sync, STATE.md's copy, then chmod 600 and a commit) and
+`test_state_md_next_is_the_blocking_finding_that_held_the_commit`.
 
 ### 16.293 Round 47: the converters: ruling 202's Office twins closed (UTF-32 text, a no-namespace `<Types>`, the container answers before the cache, xlsx's emitter 1.0.7) and one noun per family (2026-11-25, wave B13 round 47 lane E)
 

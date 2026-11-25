@@ -9701,6 +9701,11 @@ _ROUND_46_RB_PARAGRAPH_AMENDS = (
 `lock-busy-unrecorded-holder` note), and under §16.281's paragraphs C3034 with C3084 (the structural check),
 C3087 with C3105 (the stripped kind), C3003 (a bare run's own no-folder NEXT, amending ruling 191) and C3080
 with C3089 and C3103 (q_word)."""
+_ROUND_47_B_PARAGRAPH_AMENDS = (
+    ("14", "**STATE.md and INDEX.md name the next step (2026-10-05, KISS K08b).**", "§16.292 C3227"),
+)
+"""Round 47 lane B's dated lines: C3227's at §14's item 13, STATE.md's blocking-finding step, now
+``loop.land_gate_step``'s words (B13 round 47 C3227, ruling 212)."""
 _ROUND_45_RB_PARAGRAPH_AMENDS = (
     (
         "16.116",
@@ -9994,6 +9999,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_46_RB_PARAGRAPH_AMENDS,
         *_ROUND_47_E_PARAGRAPH_AMENDS,
         *_ROUND_47_RB_PARAGRAPH_AMENDS,
+        *_ROUND_47_B_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")

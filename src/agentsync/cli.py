@@ -1111,7 +1111,12 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     never in W (round 10 L50). With ``run_budget`` (``sync --materialise-budget``) the
     per-file "exceeds the per-cycle budget" alarms are
     one count per source: at 0 every changed online-only file would otherwise get one."""
-    commit = report.commit_sha[:12] if report.commit_sha else "none (no content change)"
+    if report.commit_sha:
+        commit = report.commit_sha[:12]
+    elif any(f.blocking for f in report.lint_findings):  # never "no content change" (B13 round 47 C3227)
+        commit = "none (blocked by the land gate)"
+    else:
+        commit = "none (no content change)"
     counted = plural(len(report.changes), "change")  # a known count needs no "(s)" (B13 round 16 T32, T36)
     if report.commit_sha and not report.changes:
         counted += " (no source changed a mirror page; the commit holds other docs-repo files)"
@@ -1841,7 +1846,16 @@ def _cmd_sync(args: argparse.Namespace) -> int:
         _sync_document(config, report)
         clio.error_doc(clio.Reason.state_refused, said)
         return report.exit_code or EXIT_FAILED
-    if hints and not clio.json_mode():
+    blocked = None if report.commit_sha else loop.land_gate_step(report.lint_findings)
+    if hints and not clio.json_mode() and blocked is not None:
+        # the land gate held the commit: that is the step, never the loop's, whose rules never see the gate
+        # and named a baseline question as if the sync had landed; its WAITING ON YOU lines stay (B13 round 47
+        # C3227, ruling 212)
+        _out(loop.NEXT_PREFIX + blocked)
+        for line in loop.next_lines(config, fixes=_unavailable_steps(config, report)):
+            if line.startswith(loop.WAIT_PREFIX):
+                _out(line)
+    elif hints and not clio.json_mode():
         for line in loop.next_lines(config, fixes=_unavailable_steps(config, report)):
             _out(line)
     _sync_document(config, report)

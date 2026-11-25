@@ -2532,22 +2532,16 @@ class Publisher:
 
         It opens with ``## Next``: :func:`loop.next_lines` (KISS K08b), worked out from disk after this
         cycle's commit and checkpoint, the lines ``sync`` prints after a cycle except two: a blocking lint
-        finding, which held this run's commit, is the step (the loop's rules never see the land gate), and
-        past rule 8 the step sends the agent to ``curate`` instead of counting the queue, a walk of every
+        finding, which held this run's commit, is the step (the loop's rules never see the land gate), worded
+        by :func:`loop.land_gate_step` as the sync's NEXT is, the BLOCKING lines under ``## Lint findings``,
+        and past rule 8 the step sends the agent to ``curate`` instead of counting the queue, a walk of every
         uncited mirror page that every LaunchAgent poll would otherwise pay. A wait points at its source's
         ``## <id>`` section, not at this file, and :data:`_STATE_WAIT_LEGEND` follows the waits only when an
         alarm here names that line (B13 round 9 K42)."""
         from agentsync import loop  # noqa: PLC0415 - loop imports cycle, which imports this module
 
-        blocking = sum(1 for f in report.lint_findings if f.blocking)
-        fixes = (
-            [
-                f"{plural(blocking, 'blocking finding')} held this run's commit (## Lint findings below): "
-                f"fix every ERROR, then run `{skill.AGENTSYNC_BIN} sync`"
-            ]
-            if blocking
-            else []
-        )
+        blocked = loop.land_gate_step(report.lint_findings, where=loop.LINT_FINDINGS_BELOW)
+        fixes = [blocked] if blocked else []
         next_lines = loop.next_lines(self._config, fixes=fixes, count_queue=False, in_state=True) or [
             f"(the next step could not be worked out: run `{skill.AGENTSYNC_BIN} status`)"
         ]
