@@ -14770,6 +14770,21 @@ else # the loop's NEXT, after the background-sync result when it was asked for
 			;;
 		esac
 	fi
+	# a run that ends 0 on status's rule-4 `nothing to draft yet` NEXT, which names add-source as the way to add a
+	# folder, names this script's --source-local run in its place: setup adds folders through step 2, whose
+	# `added source` lines the Finish counts. Its opener and its other words are kept, so the prompt's step 3
+	# rule still reads it; never under --no-folder, the person's none; loop.py's words unchanged, since after
+	# setup add-source is the way (B13 round 47 C3206, makes worse True for changing loop.py). Split at the
+	# words, not a pattern substitution, so no character of the path is read as a pattern or as `&`.
+	# shellcheck disable=SC2016 # the backticks are text: loop.py's words
+	DRAFT_ADD_FROM='(`~/.local/bin/agentsync add-source "<folder>"`)'
+	if [ "$EXIT_RC" -eq 0 ] && [ "$NO_FOLDER" -eq 0 ]; then
+		case "$next" in
+		"nothing to draft yet: "*"$DRAFT_ADD_FROM"*)
+			next="${next%%"$DRAFT_ADD_FROM"*}($SELF$BASE_ARGS --source-local \"<folder>\", one --source-local per folder)${next#*"$DRAFT_ADD_FROM"}"
+			;;
+		esac
+	fi
 	# --no-folder honored at every NEXT that would ask for folders again, whatever HAVE_SOURCES counts: status's
 	# rule 2 over an inbox-only config whose skill is current, or one whose folders are all paused or retired, and
 	# the first-run words, each turn the person's choice; a bare run keeps status's rule-2 NEXT (C2316, C2700),

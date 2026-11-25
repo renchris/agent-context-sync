@@ -28269,6 +28269,73 @@ def test_both_held_folder_readers_read_as_the_loader_does_c3003(tmp_path: Path, 
     assert cp.stdout == setup_report.NOT_LIVE_CLAUSE.format(folders=_C3003_HELD)
 
 
+# ---- B13 round 47 lane RB: C3206, step 2's own `nothing to draft yet` NEXT ---------------------------------
+
+_C3206_DRAFT = (
+    "nothing to draft yet: the synced folders hold no converted document yet (no file, only empty "
+    "subfolders, or files not read); adding a folder that holds documents "
+    '(`~/.local/bin/agentsync add-source "<folder>"`) or putting files in a synced folder is the operator\'s '
+    "choice, not a step for the agent: show them this line; session done"
+)
+
+
+def _c3206_config(env: dict[str, str], wheel: Path) -> Path:
+    """A config with one live local folder, after a first run made the inbox-only one."""
+    assert install_sh(env, str(wheel)).returncode == 2, "a first run makes an inbox-only config"
+    cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8")
+        + '\n[[source]]\nid = "live-one"\nkind = "local"\npath = "~/Live One"\n',
+        encoding="utf-8",
+    )
+    return cfg
+
+
+@pytest.mark.parametrize("no_folder", [False, True])
+def test_step_2s_nothing_to_draft_next_names_its_source_local_run_c3206(
+    env: dict[str, str], wheel: Path, no_folder: bool
+) -> None:
+    """B13 round 47 C3206 (makes worse True for changing loop.py): step 2 over a folder that holds no document
+    ended on status's rule-4 `nothing to draft yet` NEXT, which names `agentsync add-source` as the way to add
+    a folder, while setup adds folders through step 2's --source-local and its Finish counts only step 2's
+    `added source` lines. A bare run that ends 0 names its own --source-local run there, every other word
+    kept; --no-folder, the person's none, leaves the line alone; loop.py still prints add-source."""
+    _c3206_config(env, wheel)
+    # the stub prints loop.py's own words, unchanged, for a config whose folder is live and holds nothing
+    real = Path(env["HOME"]) / "loop-sources.toml"
+    live = '\n[[source]]\nid = "live-one"\nkind = "local"\npath = "~/Live One"\n'
+    real.write_text(default_config_text() + live, encoding="utf-8")
+    assert cli.loop._nothing_to_draft(load_config(real), online=0) == _C3206_DRAFT
+    stub = {**env, "STUB_STATUS_OUT": f"NEXT: {_C3206_DRAFT}", "STUB_STATUS_RC": "0"}
+    cp = install_sh(stub, str(wheel), *(["--no-folder"] if no_folder else []))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    tail = f" [setup report: {report_path(env)}]"
+    if no_folder:
+        assert last_line(cp) == f"NEXT: {_C3206_DRAFT}{tail}" and one_next(cp), cp.stdout
+        return
+    assert last_line(cp) == (
+        "NEXT: nothing to draft yet: the synced folders hold no converted document yet (no file, only empty "
+        f"subfolders, or files not read); adding a folder that holds documents ({INSTALL_SH} {wheel} "
+        '--source-local "<folder>", one --source-local per folder) or putting files in a synced folder is '
+        f"the operator's choice, not a step for the agent: show them this line; session done{tail}"
+    ), last_line(cp)
+    assert one_next(cp) and "add-source" not in cp.stdout + cp.stderr, cp.stdout
+
+
+def test_a_failed_step_2_never_names_the_source_local_run_for_nothing_to_draft_c3206(
+    env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 47 C3206: the rewrite is under EXIT_RC 0 alone. A closing status with a [FAIL] line beside
+    its `nothing to draft yet` NEXT stops the run (exit 1), and its NEXT is the [FAIL] line's, never the
+    --source-local form (loop_next replaces every NEXT a non-zero exit keeps, measured at 42ca57e03)."""
+    _c3206_config(env, wheel)
+    out = f"[FAIL] stub.check — made up (fix: run the stub fix)\nNEXT: {_C3206_DRAFT}"
+    cp = install_sh({**env, "STUB_STATUS_OUT": out, "STUB_STATUS_RC": "1"}, str(wheel))
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert last_line(cp).startswith("NEXT: fix the [FAIL] lines above (each names its fix)"), last_line(cp)
+    assert "one --source-local per folder)" not in cp.stdout + cp.stderr, cp.stdout
+
+
 # ---- B13 round 46 lane RB: ruling 204, C3088 --------------------------------------------------------------
 
 
