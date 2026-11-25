@@ -47481,6 +47481,23 @@ splits the step instead of raising the limit again. Older sentences keep the 112
 `tests/test_deploy_pack.py::test_claude_md_gives_cis_time_and_its_limit` and
 `::test_the_recording_tests_limit_names_cis_own_limit`.
 
+**The guides name C3003's bare-run NEXT and its `not live:` clause** (C3270 with C3327, C3271; ruling 213;
+`docs/deploy/README.md`, `docs/deploy/setup-feedback.md`, `README.md`). The deploy guide said a re-run whose skill is
+already current prints status's own no-folder line unchanged, but since round 46 C3003 install.sh's branch after
+loop_next matches status's rule-2 opener `no folder is synced yet: ask the operator` on any run that ends EXIT_RC 0,
+whatever HAVE_SOURCES counts, and ends on its own `--source-local` form with held_sources_clause's `; not live: ...`
+clause for each paused or retired folder (an inbox-only config with a current skill, or one whose folders are all
+paused or retired). The guide now names both cases, the C2401 skill-missing one and the C3003 one, held by a test to
+both of install.sh's case patterns and to the clause's printf literal; the `--no-folder` sentence after it, which turns
+either line into the person's choice, stands. Setup-feedback.md section 2's Loop-line rules gave `NO_FOLDER_NEXT` only
+on the skill-missing NEXT, while `_install_sh_said_no_folder` also gives it, followed by `setup_report.NOT_LIVE_CLAUSE`,
+on status's rule-2 NEXT from a latest install run that ended 0 and recorded no none; the rule names that case, its
+words held to `_RULE2_OPENER` and the constant's own tail, and the "Three more changes" count holds because it is the
+same constant. The README's Install prose says the run ends on the loop's NEXT or install.sh's own `--source-local`
+form. The folders part is quoted as `<folders>`, so lane RB's round 47 `<id> (<state>) at <path>` items (C3332) leave
+both guides true. Tests: `tests/test_deploy_pack.py::test_the_deploy_guide_names_the_no_folder_re_runs_own_next_c2661`
+and `::test_the_guides_loop_line_rules_name_the_rule_2_next_and_not_live_clause_c3271`.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units

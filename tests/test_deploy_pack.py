@@ -918,6 +918,27 @@ def test_rulings_181_191_and_197_take_round_46s_dated_lines_c3003_c3029_c3086() 
     assert "older install.sh ended such a run 0, and that is no success` (B13 round 46 C3086" in page
 
 
+def test_the_guides_loop_line_rules_name_the_rule_2_next_and_not_live_clause_c3271() -> None:
+    """B13 round 47 C3271 (ruling 213): section 2's Loop-line rules gave ``NO_FOLDER_NEXT`` only on the
+    skill-missing NEXT, but since round 46 C3003 ``_install_sh_said_no_folder`` also gives it, with
+    ``NOT_LIVE_CLAUSE`` for each folder that is not live, on status's rule-2 NEXT from a latest install run
+    that ended 0, whatever the config counts. The guide names that case, its words held to the report's own
+    opener and the clause's own tail."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    head, tail = setup_report.NOT_LIVE_CLAUSE.split("{folders}")
+    opener = setup_report._RULE2_OPENER.removeprefix("NEXT: ")
+    assert head == "; not live: " and opener == "no folder is synced yet: ask the operator"
+    page = " ".join(_feedback_page().split())
+    assert (
+        "and, from a latest install run that ended 0 and recorded no none, on status's rule-2 NEXT"
+        f" (`{opener} ...`) whatever the config counts, `NO_FOLDER_NEXT` followed by"
+        f" `setup_report.NOT_LIVE_CLAUSE` (`{head}<folders>{tail}`, naming each paused or retired folder)"
+        " when the config holds a paused or retired folder (B13 round 46 C3003, amending ruling 191), the one"
+        " install.sh closed on"
+    ) in page
+
+
 def test_ruling_166_keeps_its_words_and_a_dated_line_records_call_5s_decline_c2673() -> None:
     """B13 round 44 C2673: ruling 166 still described C2470's v2 pass as built, and §16.273 said C2470 is not
     built "by the lead's ruling" with no record of it. As C2069 did for ruling 138, the ruling keeps its
@@ -1198,7 +1219,12 @@ def test_the_deploy_guide_names_the_no_folder_re_runs_own_next_c2661() -> None:
     """B13 round 44 C2661: docs/deploy/README.md said install.sh always ends on the same NEXT status prints,
     but since round 43 C2401 a re-run over a config with no source but the inbox, where status names the
     missing skill, ends exit 0 on install.sh's own `no folder is synced yet: list them with ...` line. The
-    guide names that exception and its condition, held to install.sh's own case pattern and literal."""
+    guide names that exception and its condition, held to install.sh's own case pattern and literal.
+    B13 round 47 C3270 with C3327 (ruling 213): the guide said status's own no-folder line is printed
+    unchanged when the skill is current, but since round 46 C3003 any run that ends 0 on status's rule-2
+    line (`no folder is synced yet: ask the operator ...`) ends on the same install.sh form, keyed on the
+    NEXT text alone, with held_sources_clause's `; not live: ...` clause for each paused or retired folder.
+    The guide names that case too, held to the C3003 branch's case pattern and the clause's own words."""
     script = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
     [(pattern, words)] = re.findall(
         r'if \[ "\$HAVE_SOURCES" -eq 0 \] && \[ "\$EXIT_RC" -eq 0 \]; then\n\s*case "\$next" in\n'
@@ -1206,14 +1232,32 @@ def test_the_deploy_guide_names_the_no_folder_re_runs_own_next_c2661() -> None:
         script,
     )
     assert pattern == "the agentsync-docs skill is missing or out of date"
+    [(rule_2, words_2)] = re.findall(
+        r'if \[ "\$EXIT_RC" -eq 0 \]; then\n\s*case "\$next" in\n'
+        r'\s*"([^"]+)"\*\)\n\s*next="(no folder is synced yet: list them with) \$SELF --list-folders,'
+        r'[^\n]*\$\(held_sources_clause "\$CONFIG"\)"\n',
+        script,
+    )
+    assert rule_2 == "no folder is synced yet: ask the operator" and words_2 == words
+    [clause_tail] = re.findall(
+        r"printf '; not live: %s(: setting a folder to live is the person%ss own edit of sources\.toml,"
+        r" never the agent%ss)'",
+        script,
+    )
+    clause_tail = clause_tail.replace("%s", "'")
     guide = " ".join((DEPLOY / "README.md").read_text(encoding="utf-8").split())
     assert (
-        "the same line `~/.local/bin/agentsync status` prints, except on a re-run over a config that holds no"
-        " source but the inbox (a paused or retired folder still counts as one), where status names the"
-        f" missing agentsync-docs skill: install.sh then ends, exit 0, on its own `{words} install.sh"
-        " --list-folders, ...` line in place of status's (B13 round 43 C2401; with the skill already current,"
-        " status's own no-folder line is printed unchanged)."
+        "the same line `~/.local/bin/agentsync status` prints, except where no folder is synced yet. On a"
+        " re-run over a config that holds no source but the inbox (a paused or retired folder still counts"
+        " as one), where status names the missing agentsync-docs skill, install.sh ends, exit 0, on its own"
+        f" `{words} install.sh --list-folders, ...` line in place of status's (B13 round 43 C2401). It does"
+        " the same on any run that ends 0 on status's other no-folder line,"
+        f" `{rule_2} ...`, which status prints when the skill is current and no folder is live (an"
+        " inbox-only config, or one whose folders are all paused or retired), and that line then ends"
+        f" `; not live: <folders>{clause_tail}`, naming each paused or retired folder, when sources.toml"
+        " holds one (B13 round 46 C3003)."
     ) in guide
+    assert "status's own no-folder line is printed unchanged" not in guide
 
 
 def test_the_guides_install_log_row_names_inbox_not_added_and_no_report_reads_it_c2663() -> None:

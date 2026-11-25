@@ -52,10 +52,14 @@ git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context
 The script is safe to re-run and never prompts. It installs uv and agentsync, writes `sources.toml` with one live
 `kind = "local"` source per folder (on a re-run it adds only folders not yet there, through `agentsync add-source`),
 runs `agentsync status` and a first sync, and ends with one `NEXT:` line: the loop's next step, the same line
-`~/.local/bin/agentsync status` prints, except on a re-run over a config that holds no source but the inbox (a paused
-or retired folder still counts as one), where status names the missing agentsync-docs skill: install.sh then ends,
-exit 0, on its own `no folder is synced yet: list them with install.sh --list-folders, ...` line in place of status's
-(B13 round 43 C2401; with the skill already current, status's own no-folder line is printed unchanged). It exits 2 when it created `sources.toml` and has no folder to sync (its
+`~/.local/bin/agentsync status` prints, except where no folder is synced yet. On a re-run over a config that holds no
+source but the inbox (a paused or retired folder still counts as one), where status names the missing agentsync-docs
+skill, install.sh ends, exit 0, on its own `no folder is synced yet: list them with install.sh --list-folders, ...`
+line in place of status's (B13 round 43 C2401). It does the same on any run that ends 0 on status's other no-folder
+line, `no folder is synced yet: ask the operator ...`, which status prints when the skill is current and no folder is
+live (an inbox-only config, or one whose folders are all paused or retired), and that line then ends `; not live:
+<folders>: setting a folder to live is the person's own edit of sources.toml, never the agent's`, naming each paused or
+retired folder, when sources.toml holds one (B13 round 46 C3003). It exits 2 when it created `sources.toml` and has no folder to sync (its
 `NEXT:` names `--list-folders`) and 1 on a `[FAIL]` line. When the person chose no folder, `install.sh --no-folder` (it
 takes no `--source-local` and no `--confirm-install-agent`) exits 0 instead, and its `NEXT:`, on a new config and on a
 re-run over one with no live folder alike, reads `the person chose no folder, so this Mac syncs none of their folders:
