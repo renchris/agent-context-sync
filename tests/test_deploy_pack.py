@@ -939,6 +939,32 @@ def test_the_guides_loop_line_rules_name_the_rule_2_next_and_not_live_clause_c32
     ) in page
 
 
+def test_the_c3004_dated_lines_are_in_date_order_and_name_the_all_paused_warning_c3278() -> None:
+    """B13 round 47 C3278: both C3004 dated lines said write_heartbeat's warning is a sync's one line for a
+    corrupt heartbeat, but when no source writes one (every one paused, retired or unselected) the pass's own
+    read in ``cycle._after`` logs it; and Y43's C3004 line read ahead of the 2026-11-03 C832 line. Each
+    paragraph's dated lines run in date order, the C3004 words kept, and a round 47 line quotes the cycle's
+    own warning."""
+    from agentsync import cycle  # noqa: PLC0415
+
+    words = "is corrupt (%s); the next sync of a live source rewrites it"
+    assert words in inspect.getsource(cycle)
+    told = words.replace("%s", "...")
+    for heading in ("**Y43: a lock or heartbeat", "**A1, A34, A84: a heartbeat this account"):
+        para = " ".join(_contracts_section(heading, "\n\n").split())
+        dates = re.findall(r"Amended (\d{4}-\d\d-\d\d), §16\.\d+ C\d+", para)
+        assert dates == sorted(dates) and dates[-2:] == ["2026-11-24", "2026-11-25"], dates
+        c3004 = para.index("Amended 2026-11-24, §16.287 C3004:")
+        c3278 = para.index("Amended 2026-11-25, §16.294 C3278:")
+        assert c3004 < c3278 and told in para[c3278:], para[c3278:]
+        assert "(every one paused, retired or unselected)" in para[c3278:]
+    y43 = " ".join(_contracts_section("**Y43: a lock or heartbeat", "\n\n").split())
+    assert (
+        "Amended 2026-11-24, §16.287 C3004: the cycle's own read (`refused_said=True`) of a corrupt heartbeat"
+        " logs at DEBUG too, so write_heartbeat's rewrite warning is the sync's one line for it."
+    ) in y43
+
+
 def test_ruling_166_keeps_its_words_and_a_dated_line_records_call_5s_decline_c2673() -> None:
     """B13 round 44 C2673: ruling 166 still described C2470's v2 pass as built, and §16.273 said C2470 is not
     built "by the lead's ruling" with no record of it. As C2069 did for ruling 138, the ruling keeps its

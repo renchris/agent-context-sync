@@ -27477,11 +27477,15 @@ folder and state_dir.files' set, else the lock, heartbeat, governance.hold or go
 else nothing. Status's read of the heartbeat logs at DEBUG (`cycle.source_statuses(quiet=True)`). `state_dir.files`
 is not widened to every entry (the verifier's). Test:
 `test_cli.py::test_a_lock_or_heartbeat_this_account_cannot_open_names_its_own_fix` (this account's and another's).
-Amended 2026-11-24, §16.287 C3004: the cycle's own read (`refused_said=True`) of a corrupt heartbeat logs at DEBUG
-too, so write_heartbeat's rewrite warning is the sync's one line for it. Amended
-2026-11-03, §16.227 C832: a path in governance/ while that folder refuses this account a look inside
+Amended 2026-11-03, §16.227 C832: a path in governance/ while that folder refuses this account a look inside
 (`doctor.governance_refuser`) points at the governance.hold [FAIL] line, the folder's one FAIL, and the line names
 `agentsync's governance folder`, never holds.json or purge-queue.json, which need not exist.
+Amended 2026-11-24, §16.287 C3004: the cycle's own read (`refused_said=True`) of a corrupt heartbeat logs at DEBUG
+too, so write_heartbeat's rewrite warning is the sync's one line for it.
+Amended 2026-11-25, §16.294 C3278: when no source writes the heartbeat (every one paused, retired or unselected), no
+write_heartbeat runs, and the pass's own read in `_after` is the sync's one line for a corrupt one: `heartbeat <path>
+is corrupt (...); the next sync of a live source rewrites it`, as §16.287's C3004 paragraph says. The C3004 line above
+is kept and now follows the 2026-11-03 line it had read ahead of.
 
 **Y44: a config hold shows over a state folder status cannot open (`agentsync.governance`, `agentsync.cli`; amends
 §16.149 X73).** With the state folder shut, status printed only governance.hold's not-checked line and hid a legal
@@ -29155,6 +29159,8 @@ corrupt heartbeat (doctor's WARN, rewritten by the next pass) and a full disk ke
 `test_cli.py::test_a_heartbeat_this_account_cannot_open_is_said_once_and_an_interactive_sync_exits_1`.
 Amended 2026-11-24, §16.287 C3004: a corrupt heartbeat keeps one warning, write_heartbeat's `is corrupt ...; rewriting
 it`; the cycle's own read of it is DEBUG, as its read of a refused one is.
+Amended 2026-11-25, §16.294 C3278: or, when no source writes one (every one paused, retired or unselected), the pass's
+own read's `heartbeat <path> is corrupt (...); the next sync of a live source rewrites it`, its one WARNING.
 
 **A9: a foreground sync that stops on a state file records it beside the setup log (`agentsync.cli`; the report's
 half is lane RA's, §16.164).** A step-3 sync stop the agent's chmod fixed left no trace, so the report said "fully
@@ -47523,6 +47529,15 @@ the q_word comment and the C2944 dated line say (C2671, C2716): under `/bin/bash
 word for `/tmp/Contoso<U+3000>x` holds a raw 0xe3 that a strict UTF-8 decode refuses. A dated line names that one
 exception, the old words kept; install.sh is unchanged, since routing debug_path through q_word would undo the UTF-8
 spelling both reports register. Test: `tests/test_deploy_pack.py::test_every_dated_line_from_round_11_on_is_held_by_a_test`.
+
+**The C3004 dated lines name the all-paused sync's own warning, in date order** (C3278; amends §16.155 Y43 and
+§16.167 A84). Both C3004 dated lines said write_heartbeat's warning is a sync's one line for a corrupt heartbeat, but
+when no source writes one, `cycle._after`'s own read (`self.heartbeat_refused is None and not attempted`) logs that
+pass's one WARNING, `heartbeat <path> is corrupt (...); the next sync of a live source rewrites it`, as §16.287 and
+test_cli's all-paused half say. Each paragraph takes a dated line for that case, the C3004 words kept; Y43's C3004 line
+moves after the 2026-11-03 C832 line it had read ahead of, since bb92e1b01 took over C832's leading `Amended`. Tests:
+`tests/test_deploy_pack.py::test_every_dated_line_from_round_11_on_is_held_by_a_test` and
+`::test_the_c3004_dated_lines_are_in_date_order_and_name_the_all_paused_warning_c3278`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
