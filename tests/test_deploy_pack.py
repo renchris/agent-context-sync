@@ -918,6 +918,33 @@ def test_rulings_181_191_and_197_take_round_46s_dated_lines_c3003_c3029_c3086() 
     assert "older install.sh ended such a run 0, and that is no success` (B13 round 46 C3086" in page
 
 
+def test_rulings_130_and_194_take_ruling_204s_dated_lines_c3255() -> None:
+    """B13 round 47 C3255: ruling 130 still said the empty-folder fix names the root through _shell_path and
+    ruling 194 that a sync's not-a-folder note gives step 2's remedy, while round 46's C3008 names it in prose
+    through doctor._prose_path and C3044 keeps step 2's remedy for the kept inbox. Each ruling keeps its words
+    and a dated line right after its last sentence says what ruling 204 changed, held to the code it names."""
+    from agentsync import loop  # noqa: PLC0415
+    from agentsync.ops import doctor  # noqa: PLC0415
+
+    assert "_prose_path" in inspect.getsource(loop.empty_folder_fix)
+    assert "C3008" in (doctor._prose_path.__doc__ or "")
+    lanes = _page("docs/lanes/COMMON.md")
+    words130 = "the constant first; §C1205's line moves in lane B's commit."
+    line130 = (
+        "(2026-11-25) Ruling 204 amends this one: since round 46's C3008 the fix names `<root>` in prose"
+        " through doctor._prose_path, unquoted `~/<rest>`"
+    )
+    words194 = "and name both unread forms in new sentences after the pinned list (C2869, C2865; lane D)."
+    line194 = (
+        "(2026-11-25) Ruling 204 amends this one: since round 46's C3044 step 2's remedy in a sync's"
+        " not-a-folder note is the kept inbox's alone"
+    )
+    assert lanes.index(words130) + len(words130) + 1 == lanes.index(line130) < lanes.index("(131) A pointer")
+    assert lanes.index(words194) + len(words194) + 1 == lanes.index(line194) < lanes.index("(195) Every home")
+    assert lanes.index("(130) An empty source folder") < lanes.index(words130)
+    assert lanes.index("(194) Every reader tells") < lanes.index(words194)
+
+
 def test_the_guides_loop_line_rules_name_the_rule_2_next_and_not_live_clause_c3271() -> None:
     """B13 round 47 C3271 (ruling 213): section 2's Loop-line rules gave ``NO_FOLDER_NEXT`` only on the
     skill-missing NEXT, but since round 46 C3003 ``_install_sh_said_no_folder`` also gives it, with

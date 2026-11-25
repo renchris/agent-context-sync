@@ -47563,6 +47563,14 @@ the cut whole, its head and the name; and the count paragraph says the `~<user>`
 is, the name it registers counted as any `<user>`, so `~<user>` stays out of the unnumbered placeholders' list. Test:
 `tests/test_deploy_pack.py::test_the_guide_names_both_private_only_causes_and_the_user_cut_c3281_c3293_c3250`.
 
+**Rulings 130 and 194 take dated lines for ruling 204's C3008 and C3044** (C3255; `docs/lanes/COMMON.md`). Ruling 130
+still said the empty-folder fix names the root as one shell word through _shell_path, and ruling 194 that a sync's
+not-a-folder note gives step 2's remedy, while round 46's C3008 names `<root>` in prose through doctor._prose_path and
+C3044 gives step 2's remedy to the kept inbox's source alone; CONTRACTS had the dated lines, COMMON.md's rulings none.
+Each ruling keeps its words and takes a `(2026-11-25) Ruling 204 amends this one:` line right after its last sentence,
+as rulings 181, 191, 195 and 197 did (ruling 186), dated with this commit's round, not round 46's. Test:
+`tests/test_deploy_pack.py::test_rulings_130_and_194_take_ruling_204s_dated_lines_c3255`.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units

@@ -1370,6 +1370,9 @@ live non-inbox source whose detail ends in the empty-folder words doctor exports
 empty folder chosen as a source: pause it or fill it`, keyed on the check and that detail, never the fix, so
 unexpected is 0 (C1408's listing key not taken: the report follows what doctor printed, J52). Lane B sends lane RA
 the constant first; §C1205's line moves in lane B's commit.
+(2026-11-25) Ruling 204 amends this one: since round 46's C3008 the fix names `<root>` in prose through
+doctor._prose_path, unquoted `~/<rest>` (the `$'...'` word only for a name holding a control character), never through
+_shell_path, whose quoted word command words keep (CONTRACTS §16.287 C3008's dated line; round 47 C3255).
 (131) A pointer names a line only where that line is, extending C1243 with C1258 (lanes RB and RA; C1438 with C1426,
 and C1437). install.sh's loop_next turns status's `the source.<sid>.listable [warn] line below` back into
 loop.EMPTY_ROOT_GRANT_STATUS on WAITING lines, through one LC_ALL=C sed whose two strings a test holds to
@@ -2351,6 +2354,10 @@ read live state (C2948 with C2868 and C2935, makes worse True for an explicit li
 line, never a guess from the disk (C2810, makes worse True; lane RB). README:61 and docs/deploy/README.md say "a file, a
 link to a file or a dangling link" and name both unread forms in new sentences after the pinned list (C2869, C2865; lane
 D).
+(2026-11-25) Ruling 204 amends this one: since round 46's C3044 step 2's remedy in a sync's not-a-folder note is the
+kept inbox's alone, any other inbox source's note telling the person to put a folder back at that name or fix its path,
+still a note and never a wait, and C3008 writes the folder in doctor's `restore <folder> as a folder` fix in prose
+(CONTRACTS §16.287 C3044's and C3008's dated lines; round 47 C3255).
 (195) Every home renders its stubs again once for rulings 182's and 183's fixes, and the marker moves only after every
 page rendered, amending ruling 183 (lane B; C2851 with C2917, C2918). publish.STUB_RENDER goes to 8, its docstring's 8
 clause naming the waiting recording stub and every tombstone (C2646, C2613) and its 7 clause losing "with no bump"
