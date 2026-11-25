@@ -4427,6 +4427,55 @@ def test_both_reports_cut_a_source_id_agentsync_refuses_c3223(
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
 @pytest.mark.parametrize("python", ["tomllib", "none"])
+@pytest.mark.parametrize("parsed", ["loaded", "unparsed"])
+@pytest.mark.parametrize("id_line", ["no id", "id = 7"])
+def test_both_reports_cut_a_tilde_name_path_of_a_source_with_no_string_id_c3244(
+    env: dict[str, str],  # noqa: F811
+    id_line: str,
+    parsed: str,
+    python: str,
+    locale: str,
+) -> None:
+    """B13 round 47 ruling 207, C3244 (privacy): the shell's refused-path loop read only tables with a string
+    id, so a `~contoso/Zephyr Quarry` path in a table with no id, or `id = 7`, printed in clear in a public
+    shell report while the agentsync report cut it. Both cut it, with or without tomllib, loaded or not: no
+    `contoso`, `Zephyr` or `Quarry`, the same rows, one verdict, and the later source keeps its number."""
+    if python == "tomllib":
+        _tool_python(env["HOME"])
+    home = Path(env["HOME"])
+    juniper = _cloud(env) / "OneDrive-Contoso" / "Juniper Notes"
+    juniper.mkdir(parents=True)
+    raw = "~contoso/Zephyr Quarry"
+    extra = "" if id_line == "no id" else f"{id_line}\n"
+    body = (
+        default_config_text()
+        + local_source_table("juniper", juniper)
+        + f'\n[[source]]\n{extra}kind = "local"\npath = {toml_string(raw)}\n'
+        + '\n[[source]]\nid = "quokka-ledger"\nkind = "local"\npath = "~/Development/QuokkaNotes"\n'
+        + ("this line is no TOML\n" if parsed == "unparsed" else "")
+    )
+    said = [f"I set {raw} in sources.toml", f"{raw} names another home", "Sync of quokka-ledger stopped"]
+    texts: list[str] = []
+    shell, python_rows, shell_private, python_private = _both_reports(
+        env,
+        [],
+        said,
+        locale,
+        config=home / "agent-context" / "sources.toml",
+        config_body=body,
+        texts_out=texts,
+    )
+    for name, text in zip(("shell", "agentsync"), texts, strict=True):
+        leaks = [ln for ln in text.splitlines() if re.search("(?i)contoso|zephyr|quarry|quokka", ln)]
+        assert not leaks, (name, leaks)
+    assert python_rows[0] == "I set ~<user>/<path> in sources.toml", python_rows
+    assert python_rows[2] == "Sync of <source-2> stopped", python_rows
+    assert python_private == (parsed == "unparsed"), texts[1]
+    assert shell == python_rows and shell_private == python_private, (shell, python_rows)
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize("python", ["tomllib", "none"])
 @pytest.mark.parametrize("escape", ["\\t", "\\n"])
 def test_both_reports_cut_an_id_whose_path_holds_a_tab_or_lf_c3243_c3302(
     env: dict[str, str],  # noqa: F811

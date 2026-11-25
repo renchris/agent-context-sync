@@ -4420,7 +4420,8 @@ redaction_pairs() {
 	for x in ${inbox_targets[@]+"${inbox_targets[@]}"}; do own_folder_values "$x" /; done
 	[ "${cts%%$'\n'*}" != unparsed ] || own_dirs_values
 	# Each config value paths.expand refuses (a ~name head: another account's home), stripped as written, in
-	# setup_report._register_refused's order: the [[source]] paths, then (where the file parses) docs_repo,
+	# setup_report._register_refused's order: the [[source]] paths, whatever each table's id (B13 round 47 ruling
+	# 207, C3244: config_source_records' paths mode), then (where the file parses) docs_repo,
 	# state_dir, cache_dir and log_dir, then [convert] pandoc_path. Each cut whole to ~<user>/<path> (or ~<user>),
 	# its head to ~<user>, both to their path token's end (flag c, as add_cut), the name after ~ a <user> unless
 	# it is a report word, and the folder parts after the head through own_folder_values, so a container or an
@@ -4460,7 +4461,7 @@ redaction_pairs() {
 		case "$rest" in Library/CloudStorage/*/*) x="${rest#Library/CloudStorage/}" && rest="${x#*/}" ;; Library/CloudStorage/*) rest="" ;; esac
 		[ -z "$rest" ] || own_folder_values "$HOME/$rest" /
 	done < <(
-		while IFS=$'\t' read -r i v f; do py_strip "$f" && echo; done < <(config_source_records "$cts")
+		while IFS= read -r f; do py_strip "$f" && echo; done < <(config_source_records "$cts" paths)
 		[ "${cts%%$'\n'*}" = unparsed ] || printf '%s\n' "$ref_docs" "$ref_state" "$ref_cache" "$ref_logs"
 		while IFS=$'\t' read -r k v; do py_strip "$v" && echo; done < <(agentsync_dir_values convert pandoc_path)
 	)
@@ -7537,13 +7538,15 @@ PRIVATE_ONLY="" # 1 once fallback_redaction says the shell report is for a priva
 # with_timeout, the verdict a fixed word it prints and its stderr never read. Only where no interpreter answers
 # does the shape the awk readers need decide, never a blanket private only: "unparsed" for a `[` line that is not
 # a whole header of bare keys, a source table's id or path line those readers do not read as a basic or literal
-# string, or a
+# string (an id that is a number or boolean aside, which tomllib reads and both reports drop: B13 round 47 ruling
+# 207, C3244), or a
 # line outside every multi-line value that is no key, header or comment, or a multi-line string or array still
 # open at end of file (B13 round 46 ruling 199, C3084); else "loaded" (B13 round 45 ruling 188, C2840 with
 # C2915). Given "sources", an interpreter that answers loaded also prints a line "sources", then each [[source]]
 # table tomllib reads as "n TAB id TAB path" (n its place among the tables, in config order), a string id only,
 # a path that is no string printed empty, each TAB or LF in a path one space and a record dropped only for an
-# id holding one (B13 round 47 ruling 207, C3243 with C3302: a dropped record left its id in clear), written as
+# id holding one (B13 round 47 ruling 207, C3243 with C3302: a dropped record left its id in clear), then a line
+# "paths" and each table's path that is a non-blank string, whatever its id, one a line (C3244), written as
 # UTF-8 whatever the locale: config_source_records reads it (B13 round 46 ruling 199, C3034 with C3083). The
 # structural check accepts exactly the spellings that reader's awk reads with no interpreter: a bare, "source"
 # or 'source' header, a bare or quoted id or path key, a basic or literal id or path, and no source key at the
@@ -7578,12 +7581,16 @@ else:
     if sys.argv[2:] == ["sources"]:
         o += "sources\n"
         s = d.get("source")
+        ps = "paths\n"
         for n, t in enumerate(s if isinstance(s, list) else [], 1):
             i = t.get("id") if isinstance(t, dict) else None
             p = t.get("path") if isinstance(t, dict) else None
             p = p.replace("\t", " ").replace("\n", " ") if isinstance(p, str) else ""
             if isinstance(i, str) and i and not any(c in i for c in "\t\n"):
                 o += str(n) + "\t" + i + "\t" + p + "\n"
+            if p.strip():
+                ps += p + "\n"
+        o += ps
     sys.stdout.buffer.write(o.encode("utf-8", "surrogateescape"))' "$CONFIG" ${1:+"$1"} 2>/dev/null)" || w=""
 		case "${w%%$'\n'*}" in unparsed | loaded | unread)
 			printf '%s' "$w"
@@ -7609,6 +7616,8 @@ else:
 		!hdr && s ~ /^(source|"source"|\047source\047)[ \t]*[.=]/ { bad = 1; next } # sources the id reader never reads
 		src && s ~ /^["\047]?(id|path)["\047]?[ \t]*=/ {
 			if (s ~ /^(id|"id"|\047id\047)[ \t]*=[ \t]*("[^"\\]*"|\047[^\047]*\047)[ \t]*(#.*)?$/) next
+			# a number or boolean id, which tomllib reads and both reports drop as no string (C3244)
+			if (s ~ /^(id|"id"|\047id\047)[ \t]*=[ \t]*([+-]?[0-9][0-9_]*([.][0-9_]+)?([eE][+-]?[0-9_]+)?|true|false)[ \t]*(#.*)?$/) next
 			if (s ~ /^(path|"path"|\047path\047)[ \t]*=[ \t]*("([^"\\]|\\.)*"|\047[^\047]*\047)[ \t]*(#.*)?$/) next
 			bad = 1; next
 		}
@@ -7626,8 +7635,13 @@ else:
 # is read as the agentsync report reads it (B13 round 46 ruling 199, C3034 with C3083); else an awk over the
 # lines, which reads a bare, "source" or 'source' header and a bare or quoted id or path key, a basic value as
 # written to its closing quote and a literal one raw (C3056), a comment after either, the spellings
-# config_toml_state's structural check accepts. Its one argument, when given, is config_toml_state's sources
-# output, which the caller has read already.
+# config_toml_state's structural check accepts. Its first argument, when given, is config_toml_state's sources
+# output, which the caller has read already. Given a second word paths, the path of every [[source]] table that
+# holds one, whatever its id (none, a number, one no source id), one a line and nothing else, as
+# setup_report._unloaded_config and _scanned_sources keep a path-only table: the refused-path loop alone reads it,
+# so the ~name path of an id-less table is cut in both reports (B13 round 47 ruling 207, C3244; makes worse True
+# for id-less records, whose empty id field an IFS=TAB read collapses, taking the path for the id and shifting
+# every later <source-N>). The id records and their two id loops are unchanged.
 config_source_records() {
 	local t
 	[ -f "$CONFIG" ] || return 0
@@ -7635,12 +7649,22 @@ config_source_records() {
 	case "$t" in
 	loaded$'\n'sources | loaded$'\n'sources$'\n'*)
 		t="${t#loaded$'\n'sources}"
-		[ -z "$t" ] || printf '%s\n' "${t#$'\n'}"
+		# the id records, then a line "paths" and the paths (a record starts with its number, never "paths")
+		if [ "${2-}" = paths ]; then
+			case "$t" in *$'\n'paths$'\n'*) printf '%s\n' "${t#*$'\n'paths$'\n'}" ;; esac
+		else
+			t="${t%%$'\n'paths*}"
+			[ -z "$t" ] || printf '%s\n' "${t#$'\n'}"
+		fi
 		return 0
 		;;
 	esac
-	LC_ALL=C awk '
-		function flush() { if (inside && id != "") print n "\t" id "\t" path; id = ""; path = "" }
+	M="${2-}" LC_ALL=C awk '
+		function flush() {
+			if (inside && ENVIRON["M"] == "paths") { if (path != "") print path }
+			else if (inside && id != "") print n "\t" id "\t" path
+			id = ""; path = ""
+		}
 		function val(line,    v, q) { # the basic (as written) or literal value of a key line
 			v = line; sub(/^[^=]*=[[:space:]]*/, "", v); q = substr(v, 1, 1)
 			if (q == "\047") { v = substr(v, 2); sub(/\047.*$/, "", v); return v }

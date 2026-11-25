@@ -28044,6 +28044,29 @@ def test_a_source_path_holding_a_tab_or_lf_keeps_its_id_record_c3243_c3302(
     )
 
 
+@pytest.mark.parametrize("tool_py", ["tomllib", "none"])
+def test_the_paths_mode_reads_every_source_path_whatever_its_id_c3244(tmp_path: Path, tool_py: str) -> None:
+    """B13 round 47 ruling 207, C3244 (privacy): the refused-path loop read the id records, which hold only a
+    table with a string id, so the `~contoso` path of a table with no id, or `id = 7`, printed in clear. A
+    paths mode gives every table's path, whatever its id, and nothing else; the id records are unchanged, the
+    later id still the fourth table, with an interpreter or none."""
+    body = (
+        '[[source]]\nid = "juniper-notes"\npath = "~/Juniper Notes"\n'
+        '[[source]]\npath = "~contoso/Zephyr Quarry"\n'
+        '[[source]]\nid = 7\npath = "~contoso/Kestrel Alder"\n'
+        '[[source]]\nid = "quokka-ledger"\npath = "~/Quokka Ledger"\n'
+        '[[source]]\nid = "wombat-empty"\n'
+    )
+    py = sys.executable if tool_py == "tomllib" else ""
+    records = 'config_source_records "$(config_toml_state sources)"'
+    assert _toml_shell(tmp_path, body, records, tool_py=py) == (
+        "1\tjuniper-notes\t~/Juniper Notes\n4\tquokka-ledger\t~/Quokka Ledger\n5\twombat-empty\t\n"
+    )
+    assert _toml_shell(tmp_path, body, records + " paths", tool_py=py) == (
+        "~/Juniper Notes\n~contoso/Zephyr Quarry\n~contoso/Kestrel Alder\n~/Quokka Ledger\n"
+    )
+
+
 @pytest.mark.parametrize(
     ("body", "want"),
     [
@@ -28058,6 +28081,11 @@ def test_a_source_path_holding_a_tab_or_lf_keeps_its_id_record_c3243_c3302(
         ('[agentsync]\nprincipal = ["a",\nfoo = 1\n', "unparsed"),
         ('[agentsync]\nnote = """\n[[source]]\nid = "plans"\npath = "~/Contoso Plans"\n', "unparsed"),
         ('[agentsync]\nprincipal = [\n "x",\n]\nnote = """\na ] [\n"""\n', "loaded"),
+        ('[[source]]\nid = 7\npath = "~/Contoso Plans"\n', "loaded"),  # C3244: no string id, dropped alike
+        ("[[source]]\nid = -1.5e3 # a number\npath = '~/Contoso Plans'\n", "loaded"),
+        ('[[source]]\nid = true\npath = "~/Contoso Plans"\n', "loaded"),
+        ('[[source]]\nid = 7 8\npath = "~/Contoso Plans"\n', "unparsed"),
+        ('[[source]]\nid = """plans"""\npath = "~/Contoso Plans"\n', "unparsed"),
     ],
 )
 def test_the_structural_check_follows_the_widened_reader_c3034_c3084(
