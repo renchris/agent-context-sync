@@ -35,6 +35,8 @@ from xml.etree import ElementTree as ET
 from agentsync.config import ConvertConfig
 from agentsync.convert._common import (
     _FULL_TEXT_SIDECAR,
+    _UTF16_BOMS,
+    _UTF32_BOMS,
     _cap_body,
     _check_odf_container,
     _check_ooxml_container,
@@ -65,7 +67,9 @@ from agentsync.skill import INSTALL_SH
 
 log = logging.getLogger(__name__)
 
-_EMITTER_VERSION = "1.0.3"  # B13 round 43 C2450, C2451 a cut fence always closes
+_EMITTER_VERSION = "1.0.4"
+"""B13 round 47 (with C3321, ruling 215): a marked UTF-16 or UTF-32 HTML file decodes whole, so the same bytes
+miss the garbled page an older build cached.  1.0.3: round 43 C2450, C2451 (a cut fence always closes)."""
 _TIMEOUT_S = 300.0
 _VERSION_RE = re.compile(r"^pandoc(?:\.exe)?\s+(\S+)", re.MULTILINE)
 _META_CHARSET_RE = re.compile(rb"<meta[^>]+charset\s*=\s*[\"']?\s*([A-Za-z0-9_.:-]+)", re.IGNORECASE)
@@ -359,8 +363,15 @@ def resolved_pandoc(pandoc_path: Path | None) -> tuple[Path, str]:
 
 
 def _decode_html(data: bytes) -> str:
-    """Decode HTML bytes: BOM/UTF-8 first, then a declared ``<meta charset>``, then cp1252/latin-1."""
-    if not data.startswith((b"\xef\xbb\xbf", b"\xff\xfe", b"\xfe\xff")):
+    """Decode HTML bytes: BOM/UTF-8 first, then a declared ``<meta charset>``, then cp1252/latin-1.
+
+    A UTF-32 or UTF-16 mark goes to ``_decode_text`` whole: the NUL bytes were dropped before it, which took
+    every other byte out of UTF-16 text and UTF-32's mark with it, so a marked UTF-16 or UTF-32 page became
+    CJK garbage published as an OK page (B13 round 47, the twin of C3321's mark order).  Every other input is
+    read as before."""
+    if data.startswith((*_UTF32_BOMS, *_UTF16_BOMS)):
+        return _decode_text(data)
+    if not data.startswith(b"\xef\xbb\xbf"):
         try:
             return unicodedata.normalize("NFC", data.decode("utf-8"))
         except UnicodeDecodeError:

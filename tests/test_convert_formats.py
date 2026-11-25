@@ -140,7 +140,7 @@ def test_pandoc_uses_bundled_binary_by_absolute_path(monkeypatch: pytest.MonkeyP
     path = runner.path()
     assert path.is_absolute() and path == resolved_pandoc(None)[0]
     assert "pypandoc" in path.parts and path.parent.name == "files"
-    assert re.fullmatch(r"1\.0\.3\+pandoc-\d+(\.\d+)+", PandocConverter(CFG).version())
+    assert re.fullmatch(r"1\.0\.4\+pandoc-\d+(\.\d+)+", PandocConverter(CFG).version())
 
 
 def test_docx_fixture_headings_table_text(fixture_files: dict[str, Path]) -> None:

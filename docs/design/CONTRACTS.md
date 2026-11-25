@@ -40056,6 +40056,8 @@ say `a .vsdx that is not a ZIP, or an Office package of another family`. Tests:
 `test_convert_family.py::test_an_office_package_of_another_family_named_vsdx_is_one_stub_of_its_type_c1033`
 (`.vsdx` and `.vsdm`) and
 `test_convert_family.py::test_a_zip_that_is_no_office_package_named_vsdx_stays_a_failed_conversion_c1033`.
+Amended 2026-11-25, §16.293 C3230: `_check_ooxml_family` takes no noun now; `_vsdx_pages` runs
+`_check_ooxml_family(src, "visio")`, the expected noun `a Visio drawing` from `_EXPECTED_NOUN`.
 
 **The end_helpers test pins the helper's own wait, and a red run leaves no helper** (C1036; tests). C961's
 `test_ocr.py::test_end_helpers_kills_a_running_helper_and_leaves_it_in_its_callers_group_c961` kept the helper's
@@ -45847,6 +45849,8 @@ hand-built package's stub cached under the older rule stays until its bytes chan
 Amended 2026-11-25, §16.293 C3230: the expected side takes its family's own noun now, so this stub reads `not-ooxml:
 a Word document, not a PowerPoint deck (not the type its name says)`; one cached under the older words keeps them
 until it is read again, and `FAMILY_MISMATCH_RE` matches both.
+Amended 2026-11-25, §16.293 C3264: under a `<Types>` with no namespace its direct children in the content-types
+namespace are read too, so "in none when it has none" now reads "in none or the content-types namespace".
 
 **The .potx retype reads the parse, a literal replace only for a part it cannot read** (C2722 with C2709, makes worse
 True for a parse-only rule; ruling 185; `agentsync.convert.pptx`; amends §16.221 C781 and §16.273 C2517).
@@ -46675,6 +46679,8 @@ Amended 2026-11-24, §16.288 C3098: the parse runs before any decode, so a UTF-3
 character a UTF-16 decode refuses; only a part that does not parse is decoded, UTF-32 marks before UTF-16's.
 Amended 2026-11-25, §16.293 C3266: the decode of a part that does not parse tells no UTF-32 mark of its own any
 more; that early return changed no UTF-32 answer, and a UTF-16 part opening U+0000 is read as its twins are.
+Amended 2026-11-25, §16.293 C3264: under a `<Types>` with no namespace its direct children in the content-types
+namespace are read too, so "in none when it has none" now reads "in none or the content-types namespace".
 
 **The seed's summaries say a CA the shell sets for curl stays curl's** (C2930; `agentsync.convert.speech`; amends
 §16.54 Q52). `_CURL_FLAGS`', `_seed`'s and `_curl_env`'s one-line summaries said the seed's curl "trusts and
@@ -46732,7 +46738,8 @@ Amended 2026-11-25, §16.293 C3230: the expected side takes its family's own nou
 a Word document, not a PowerPoint deck (not the type its name says)`; one cached under the older words keeps them
 until it is read again, and `FAMILY_MISMATCH_RE` matches both.
 Amended 2026-11-25, §16.293 C3231: a row the walk queued this pass (a file touched or readable again) is not read by
-this pass; it waits one sync, the token unset until it is read, as `_reread_family_stubs` says.
+this pass; it waits for the first sync whose walk does not queue it, the token unset until it is read, as
+`_reread_family_stubs` says.
 
 **A source's own banner line never stands for the leading one** (C2929; ruling 196; `agentsync.policy`).
 `has_banner` took the banner anywhere in a body's first eight lines and `with_banner` returned such a body
@@ -47544,19 +47551,30 @@ verifier's corrected fix built, as the lead's rulings 206 to 216 settle it). A d
 `agentsync.convert._common`, `agentsync.convert.text`; amends §16.216 C670). `_decode_text` told only UTF-8's and
 UTF-16's byte order marks, and UTF-32LE's `FF FE 00 00` opens with UTF-16LE's, so a UTF-32LE text file read as UTF-16
 failed as `binary content (NUL characters)` (or `invalid UTF-16 text` past U+FFFF), and a UTF-32BE one, whose
-`00 00 FE FF` is no UTF-16 mark, as `binary content (NUL bytes)`: every caller (the text, Markdown, eml, msg, Teams and
-vtt converters) failed a valid file, retried and then settled. `_UTF32_BOMS`, the two marks as literal bytes, is told
+`00 00 FE FF` is no UTF-16 mark, as `binary content (NUL bytes)`. The text, Markdown and Teams converters failed a
+valid file (never cached), while eml and msg caught the error and took the lenient fallback's garbage, a cached OK
+page, and vtt gave the `not-vtt` stub, cached too. `_UTF32_BOMS`, the two marks as literal bytes, is told
 after UTF-8's mark and before UTF-16's and decodes `utf-32`; a body of a bad length or code point raises
 `ConversionError` (`invalid UTF-32 text: <reason>`), never `UnicodeDecodeError`, since a bare decode let that escape
 every caller and turned a UTF-16LE part whose first character is U+0000 (`FF FE 00 00 41 00 42 00`), which eml's
 lenient fallback reads, into a failed message (C3268, makes worse True for a bare decode). The NUL-character check
-after the decode stays, and UTF-32 with no mark stays binary. Only inputs that failed before change, so no emitter
-version or option moves (`decode` stays `bom,utf-8,cp1252,latin-1`); the text converter's summary and §15's copy say
-`UTF-8/UTF-32/UTF-16 BOM first`. Tests:
+after the decode stays, and UTF-32 with no mark stays binary. Only marked UTF-32 inputs change. The text converter's
+`decode` option stays `bom,utf-8,cp1252,latin-1`, since its old answer was a failure, never cached, and its summary
+and §15's copy say `UTF-8/UTF-32/UTF-16 BOM first`; but the cached eml, msg and vtt answers would be served to the
+same bytes, so eml's `_EMITTER_VERSION` moves to 1.1.4 (msg-olefile's and msg-mime's versions carry it, so `.msg`
+moves with it, msg's own version and `_REREAD_BELOW` unmoved) and vtt's to 1.0.5: a new conversion misses the older
+entry, and no published page is read again. Its twin in pandoc's HTML path (the review's finding, built with it):
+`_decode_html` dropped every NUL byte before `_decode_text`, which took every other byte out of UTF-16 text and
+UTF-32's mark with it, so a marked UTF-16 or UTF-32 `.html` became CJK garbage published as an OK page (since
+11fd30ea3); a UTF-32 or UTF-16 mark now goes to `_decode_text` whole, every other input read as before, and pandoc's
+`_EMITTER_VERSION` moves to 1.0.4 so the cached garbage is not served to the same bytes (a `.docx` converted again
+misses the cache once too). Tests:
 `test_convert_family.py::test_a_utf32_text_file_is_decoded_before_utf16s_mark_c3321` (UTF-32LE and BE with a character
 past U+FFFF, through `convert_file` too; a truncated, a surrogate and an out-of-range body; a NUL inside; UTF-16 and an
 unmarked UTF-32 file as before) and
-`test_convert_family.py::test_a_utf16_part_opening_u0000_still_takes_emls_lenient_fallback_c3268`.
+`test_convert_family.py::test_a_utf16_part_opening_u0000_still_takes_emls_lenient_fallback_c3268` and
+`test_convert_family.py::test_a_marked_file_misses_the_answer_an_older_build_cached_c3321` (eml, vtt and HTML: the
+older build's cached answer, served at its version, missed at the new one, which holds the text; every HTML mark).
 
 **The family check's fallback drops C3098's UTF-32 return, which changed no UTF-32 answer** (C3266; ruling 215;
 `agentsync.convert._common`; amends §16.283 C2854 and §16.288 C3098). C3098 moved the parse before the decode, which
@@ -47571,7 +47589,7 @@ of that shape lost its `not the type its name says` stub to python-pptx's failed
 (UTF-32LE and BE parts that do not parse are None; the UTF-16 part opening U+0000 is `word`).
 
 **A no-namespace `<Types>`' content-types-namespace children are read** (C3264 with C3267; ruling 215;
-`agentsync.convert._common`; amends §16.288 C3047). C3047 read `<Types>`' direct children in its own namespace, or in
+`agentsync.convert._common`; amends §16.288 C3047, §16.278 C2708 and §16.283 C2854). C3047 read `<Types>`' direct children in its own namespace, or in
 none when it has none, so a hand-built Word package named `.xlsx` whose `<Types xmlns:ct="...content-types">` holds
 `ct:Default` and `ct:Override` gave no family and went to openpyxl as C2854's failed conversion (`openpyxl cannot
 read the workbook: OSError: File contains no valid workbook part`), retried every cycle, where the build before C3047
@@ -47632,7 +47650,7 @@ same encrypted-PDF bytes under `.docx`: no get, no put; under `.pdf`: one each).
 
 **Each Office family takes one noun on both sides of a stub** (C3230; ruling 215; `agentsync.convert._common`,
 `agentsync.convert.pptx`, `agentsync.convert.xlsx`; amends §16.196 I39, §16.278 C2708, §16.283 C2925 and §16.288
-C3096). `_check_ooxml_family` named the found family by `_FAMILY_NOUN` (`a Word document`, `an Excel workbook`,
+C3096, and §16.238 C1033). `_check_ooxml_family` named the found family by `_FAMILY_NOUN` (`a Word document`, `an Excel workbook`,
 `a PowerPoint deck`) and the expected one by each converter's own words, so a Word package named `.potx` read `not a
 deck` while a deck named `.vsdx` read `a PowerPoint deck, not a Visio drawing`, and a workbook was `a workbook` or `an
 Excel workbook` by side. The check takes the expected noun from `_EXPECTED_NOUN`, `_FAMILY_NOUN` with Visio's `a
@@ -47676,8 +47694,9 @@ asserts it wins: both mutants fail it. No source changes. Test:
 amends §16.283 C2925; docs only). `_reread_family_stubs` skips every row in the walk's queue (`skip = queued |
 withheld`, the queue taken before it runs), and a row touched with its H1 unchanged settles there as touched, not
 changed, keeping its older-key stub, so an older-rule stub whose file was touched, or became readable again, before
-the first upgraded sync is read one sync later; the token stays unset until then, so nothing is lost. The docstring
-said only "not in the queue"; it names the wait now. The code stays: a family pass that read queued rows would also
+the first upgraded sync is read on the first sync whose walk does not queue it (the next, unless the file is touched
+again before it); the token stays unset until then, so nothing is lost. The docstring said only "not in the queue";
+it names the wait now. The code stays: a family pass that read queued rows would also
 read rows the queue deferred (the byte budget, the file cap, a failed fetch) outside the queue's H1 path, which no
 one measured. Test: `test_convert_family.py::test_a_family_stub_the_walk_queued_waits_one_sync_for_its_reread_c3231`
 (an older-rule stub touched before the upgraded sync: no read, the token unset; the next sync reads it, a page, the

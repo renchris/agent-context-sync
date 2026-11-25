@@ -5978,8 +5978,9 @@ class _Cycle:
         the new key (``convert.effective_options_hash``'s ``family_parse``), so the older answer is not
         served from the cache and a new page is stored.  Modeled on :meth:`_reread_zero_byte_stubs`: only a
         row listed this pass, not dataless, in scope, not in the queue (a row the walk queued this pass,
-        such as a file touched or readable again, waits for the next cycle, and the token stays unset until
-        it is read: one sync later, never lost, B13 round 47 C3231) and not withheld as settling is read,
+        such as a file touched or readable again, waits for the first cycle whose walk does not queue it,
+        and the token stays unset until it is read: never lost, B13 round 47 C3231) and not withheld as
+        settling is read,
         from this Mac and never downloaded (a fetch with a budget of no bytes; a dataless row holds the
         token unset until it is read), as a re-read (a conversion that gives the stub it has moves
         only its key), with each row read marked whatever the answer; a row whose converter cannot run, or
@@ -8296,9 +8297,10 @@ at offset 0 (:func:`_container_moved`), ``encrypted-pdf`` among them when the sc
 def _container_moved(row: ItemRow, fetched: FetchResult) -> bool:
     """True when the staged bytes of an Office name are a ZIP at offset 0 and ``row`` is a stub the
     container alone gave (its reason one of :data:`_CONTAINER_REASONS`, ``encrypted-pdf`` included: B13
-    round 46 C3046), or are not one and ``row`` stands for a page (present, no reason) or is a
-    family-mismatch stub (``convert._common.FAMILY_MISMATCH_RE``, never the not-a-ZIP ``NOT_OOXML_REASON``),
-    which was made from bytes that passed the container screen (B13 round 45 C2924, ruling 196; round 46
+    round 46 C3046), or are not one and ``row`` stands for a page (present, no reason), is such a container
+    stub whose bytes now sniff to another container answer (B13 round 47 C3316), or is a family-mismatch
+    stub (``convert._common.FAMILY_MISMATCH_RE``, never the not-a-ZIP ``NOT_OOXML_REASON``), which was made
+    from bytes that passed the container screen (B13 round 45 C2924, ruling 196; round 46
     C3096, ruling 202).  Any other row (a label refusal, an inbox duplicate, a failed conversion) says
     nothing of the container, so it moves nothing: calling those container stubs read every touch of them as
     a first read.  A family-mismatch stub converted on non-ZIP bytes becomes ``NOT_OOXML_REASON``, which

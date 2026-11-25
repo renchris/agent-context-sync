@@ -3155,14 +3155,14 @@ def test_a_deck_and_a_word_document_are_read_like_a_pdf_and_an_rtf_file_is_as_it
         return fm, body.rstrip()
 
     fm, body = published("minutes.docx")
-    assert fm["converter"].startswith("pandoc-gfm@1.0.3+pandoc-") and "+ocr-paper-vision-" in fm["converter"]
+    assert fm["converter"].startswith("pandoc-gfm@1.0.4+pandoc-") and "+ocr-paper-vision-" in fm["converter"]
     assert fm["summary"] == "Word document; text of 1 picture read by on-device OCR; headings: Minutes"
     assert body.endswith("read by on-device OCR (Apple Vision):]\n\nOrders by month")
     fm, body = published("review.pptx")
     assert fm["converter"].startswith("pptx-python-pptx@1.0.4+") and "+ocr-paper-vision-" in fm["converter"]
     assert body.endswith("read by on-device OCR (Apple Vision):]\nUnits by region")
     rtf, rtf_body = published("minutes.rtf")
-    assert rtf["converter"].startswith("pandoc-gfm@1.0.3+pandoc-") and "ocr" not in rtf["converter"]
+    assert rtf["converter"].startswith("pandoc-gfm@1.0.4+pandoc-") and "ocr" not in rtf["converter"]
     assert "Orders by month" not in rtf_body
     staging = sample_config.state_paths.staging.resolve()
     runs = calls(engine.helper)
@@ -6293,7 +6293,7 @@ def test_a_transcript_mirrored_as_plain_text_is_read_again_once_as_turns(
     assert again.sources[0].converted == 0, "the same bytes are no new conversion"
     assert [c.path for c in again.changes] == [slug.mirror_rel_path(SID, vtt)]
     fm, body = _mirror_page(sample_config, vtt)
-    assert fm["converter"].startswith("vtt-turns@1.0.4+")
+    assert fm["converter"].startswith("vtt-turns@1.0.5+")
     assert "\n[00:00:07] SAID Sam Roe: Thanks, I will check them.\n" in body
     assert _mirror_page(sample_config, "projects/sample.txt")[0]["converter"].startswith("text-plain@")
     assert _reread_record(sample_config) == (True, [])

@@ -2723,6 +2723,77 @@ def test_a_utf32_text_file_is_decoded_before_utf16s_mark_c3321(tmp_path: Path, c
         common_mod._decode_text("Hi".encode(codec))  # unmarked UTF-32 stays binary, as before
 
 
+def _marked_case(case: str) -> tuple[str, bytes, str]:
+    """A file name, its bytes with a UTF-32LE (or, for HTML, UTF-16LE) mark, and the text its page holds."""
+    import base64  # noqa: PLC0415
+
+    if case == "eml":
+        body = base64.b64encode("Contoso marked body\n".encode("utf-32")).decode("ascii")
+        raw = (
+            "From: a@contoso.com\r\nTo: b@contoso.com\r\nSubject: Contoso marked\r\nMIME-Version: 1.0\r\n"
+            f"Content-Type: text/plain\r\nContent-Transfer-Encoding: base64\r\n\r\n{body}\r\n"
+        )
+        return "Contoso marked.eml", raw.encode("ascii"), "Contoso marked body"
+    if case == "vtt":
+        cues = "WEBVTT\n\n00:00.000 --> 00:01.000\n<v Ana>Contoso marked cue\n"
+        return "Contoso marked.vtt", cues.encode("utf-32"), "Contoso marked cue"
+    page = "<html><body><p>Contoso marked page</p></body></html>"
+    return "Contoso marked.html", page.encode("utf-16"), "Contoso marked page"
+
+
+@pytest.mark.parametrize("case", ["eml", "vtt", "html"])
+def test_a_marked_file_misses_the_answer_an_older_build_cached_c3321(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    """B13 round 47 C3321 (ruling 215, its review): before the UTF-32 branch, eml and msg took the lenient
+    fallback's garbage for a marked UTF-32 part and vtt gave the ``not-vtt`` stub, each cached, and pandoc's
+    HTML decode dropped every NUL byte first, so a marked UTF-16 or UTF-32 page was CJK garbage, cached too.
+    Only a new key stops the cache serving those answers to the same bytes: eml's emitter is 1.1.4 (msg's
+    versions carry it), vtt's 1.0.5 and pandoc's 1.0.4, and the HTML decode reads a UTF-32 or UTF-16 mark
+    whole. An entry the older build stored is missed, and the page holds the text."""
+    from agentsync.convert import eml as eml_mod  # noqa: PLC0415
+    from agentsync.convert import pandoc as pandoc_mod  # noqa: PLC0415
+
+    name, data, said = _marked_case(case)
+    src = tmp_path / ("staged" + Path(name).suffix)
+    src.write_bytes(data)
+    digest = hashlib.sha256(data).hexdigest()
+    reg, cache = Registry.default(ConvertConfig()), ConverterCache(tmp_path / "cache")
+
+    def converted():  # type: ignore[no-untyped-def]
+        return convert_file(
+            src, name=name, content_sha256=digest, canonical_sha256=digest, registry=reg, cache=cache
+        )
+
+    def old_decode_text(raw: bytes) -> str:
+        if raw.startswith(common_mod._UTF32_BOMS):
+            raise ConversionError("binary content (NUL characters)")
+        return common_mod._decode_text(raw)
+
+    with monkeypatch.context() as older:
+        if case == "html":
+            older.setattr(pandoc_mod, "_EMITTER_VERSION", "1.0.3")
+            older.setattr(
+                pandoc_mod, "_decode_html", lambda raw: common_mod._decode_text(raw.replace(b"\0", b""))
+            )
+        else:
+            mod = eml_mod if case == "eml" else vtt_mod
+            older.setattr(mod, "_EMITTER_VERSION", "1.1.3" if case == "eml" else "1.0.4")
+            older.setattr(mod, "_decode_text", old_decode_text)
+        stale = converted()
+        assert said not in "".join(u.body for u in stale.units), "the older build's answer holds no text"
+        assert converted().from_cache, "the older build serves its own entry"
+    result = converted()
+    assert not result.from_cache, "the new key misses the older build's entry"
+    assert result.status is ConversionStatus.OK, result.reason
+    assert said in result.units[0].body
+    if case == "html":  # every mark, both orders, decodes whole
+        page = "<html><body><p>Contoso marked page</p></body></html>"
+        for codec in ("utf-16-le", "utf-16-be", "utf-32-le", "utf-32-be"):
+            mark = {"utf-16-le": b"\xff\xfe", "utf-16-be": b"\xfe\xff", **_UTF32_MARKS}[codec]
+            assert pandoc_mod._decode_html(mark + page.encode(codec)) == page, codec
+
+
 def test_a_utf16_part_opening_u0000_still_takes_emls_lenient_fallback_c3268(tmp_path: Path) -> None:
     """B13 round 47 C3268 (ruling 215, makes worse True for a bare decode): a UTF-16LE part whose first
     character is U+0000 opens ``FF FE 00 00``, UTF-32LE's mark, and ``FF FE 00 00 41 00 42 00`` is no UTF-32
@@ -3026,7 +3097,8 @@ def test_a_family_stub_the_walk_queued_waits_one_sync_for_its_reread_c3231(
     older-rule stub whose file was touched (or became readable again) before the first upgraded sync is
     settled by the work queue as touched, not changed, and read by the family pass only on the next sync. The
     wait is by design and documented in ``_reread_family_stubs``: the token stays unset until the row is
-    read, so nothing is lost, and the read comes one sync later."""
+    read, so nothing is lost, and the read comes on the first sync whose walk does not queue the row (here
+    the next; a file touched before every sync waits as long as that goes on)."""
     config, src = make_env(tmp_path)
     with monkeypatch.context() as old:
         _older_family_rule(old)
@@ -3047,7 +3119,7 @@ def test_a_family_stub_the_walk_queued_waits_one_sync_for_its_reread_c3231(
         assert m.get_meta(cycle_mod._FAMILY_PARSE_META + "src") == "done"
     doc = " ".join((cycle_mod._Cycle._reread_family_stubs.__doc__ or "").split())
     assert "(a row the walk queued this pass, such as a file touched or readable again, waits for" in doc
-    assert "the token stays unset until it is read: one sync later, never lost, B13 round 47 C3231)" in doc
+    assert "waits for the first cycle whose walk does not queue it, and the token stays unset until it" in doc
 
 
 def test_a_touched_office_stub_the_container_did_not_give_is_no_container_move_c2924(

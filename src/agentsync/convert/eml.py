@@ -28,7 +28,10 @@ from agentsync.model import RenderedUnit, UnitKind
 from agentsync.policy import ZERO_BYTES_REASON
 from agentsync.text import plural
 
-_EMITTER_VERSION = "1.1.3"  # B13 round 43 C2450, C2451 a cut fence always closes
+_EMITTER_VERSION = "1.1.4"
+"""B13 round 47 C3321 (ruling 215): a UTF-32 part with its mark decodes, where it took the lenient fallback's
+garbage, a cached OK page, so the same bytes miss it; msg's versions carry this one, so .msg moves with it,
+and no page is read again.  1.1.3: round 43 C2450, C2451 (a cut fence always closes)."""
 _HEADERS: tuple[str, ...] = ("From", "To", "Cc", "Date", "Subject", "Message-ID", "In-Reply-To", "References")
 _SMIME_ENCRYPTED = frozenset({"application/pkcs7-mime", "application/x-pkcs7-mime"})
 # codecs.lookup() names of the labels Windows mail clients put on cp1252 bytes.
