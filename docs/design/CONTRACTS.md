@@ -380,6 +380,10 @@ Amended 2026-11-24, §16.288 C3101: with §16.283 C2924 and §16.248 C1466, an O
 0) and any zero-byte file are never cached; such a stub stays settled by the cycle's decision (`_container_moved`),
 not the cache's. An encrypted PDF and a converter's own UNREADABLE answer, a family-mismatch stub among them, are
 cached.
+Amended 2026-11-25, §16.293 C3262: said once by name and bytes, an `OOXML_SUFFIXES` name whose bytes are not a ZIP
+at offset 0 gets its container answer (`encrypted-office`, `encrypted-pdf`, `not-ooxml` or `empty-output`) before the
+cache, never stored; an encrypted PDF under a name outside `OOXML_SUFFIXES` (a `.pdf`) and a converter's own
+UNREADABLE answer, a family-mismatch stub among them, are cached.
 
 ## 8. Classifier (design §4.3)
 
@@ -4029,6 +4033,9 @@ class NetworkConfig:
   Encrypted Office/PDF files stay `UNREADABLE` stubs (cached, no retry storm).
   Amended 2026-11-24, §16.288 C3101: an encrypted PDF is cached; `encrypted-office` under an Office name whose
   bytes are not a ZIP at offset 0 is given before the cache and never stored, the stub settled by the cycle.
+  Amended 2026-11-25, §16.293 C3262: an encrypted PDF under a name outside `OOXML_SUFFIXES` is cached;
+  `encrypted-office` or `encrypted-pdf` (and `not-ooxml` or `empty-output`) under an Office name whose bytes are not
+  a ZIP at offset 0 is given before the cache and never stored, the stub settled by the cycle.
 - **Step 7, purge queue (C15 req 38).** Each confirmed upstream deletion (explicit tombstone, or absent past the
   breaker) calls `governance.enqueue_purge(state_dir, PurgeSelector(source_id, stable_id),
   PurgeReason.UPSTREAM_DELETED)` when `[governance] purge_on_upstream_delete` (default true). The history
@@ -46605,6 +46612,9 @@ Amended 2026-11-24, §16.288 C3096: on non-ZIP bytes a family-mismatch stub (`FA
 Amended 2026-11-25, §16.293 C3316: on non-ZIP bytes a container stub moves too when `policy.container_reason` of
 what the bytes sniff to now differs from its reason (a junk preamble made an encrypted PDF's, or the reverse); once
 converted the two agree, so it moves nothing after.
+Amended 2026-11-25, §16.293 C3329: "converted once to `NOT_OOXML_REASON`" is the ordinary preamble's answer; a PDF
+header with `/Encrypt` in the first 1024 bytes gives `encrypted-pdf`, and under an active label rule a label refusal
+can come first. None of these moves anything on the same bytes, so nothing loops.
 
 **A helper's time-out fix builds it again only if it still does not answer** (C2817; `agentsync.ops.doctor`; amends
 §16.233 C915 and §16.243 C1227). Every helper's build goes through `ocr._build`, which runs `open_` (a `--version`
@@ -47293,6 +47303,9 @@ moves nothing on non-ZIP bytes, so nothing loops, and taking the junk away again
 stub. Tests: `test_convert_family.py::test_a_family_mismatch_stub_whose_bytes_gain_a_preamble_is_converted_once_c3096`
 (the stub, junk put before it, `NOT_OOXML_REASON` after one try, no try on the next sync, the stub back once the junk
 goes) and the C2924 no-move test's family-mismatch rows.
+Amended 2026-11-25, §16.293 C3329: `NOT_OOXML_REASON` is the ordinary preamble's answer: a PDF header with
+`/Encrypt` in the first 1024 bytes gives `encrypted-pdf`, and under an active label rule a label refusal can come
+first; none of these moves anything on the same bytes, so nothing loops.
 
 **The family check reads only `<Types>`' own Override and Default children** (C3047; ruling 202;
 `agentsync.convert._common`; amends §16.278 C2708 and §16.283 C2854). `_ooxml_family` read every Override and
@@ -47339,6 +47352,9 @@ family-mismatch stub among them, are cached. `_check_ooxml_family`'s "cached, ne
 are false. Dated lines at §7's cache sentence, §15's `ConverterCache.put` and §16.3's encrypted-files sentence, each
 pinned in `test_deploy_pack.py`. Test:
 `test_convert_family.py::test_the_docs_say_an_office_container_rejection_is_never_cached_c3048_c3101`.
+Amended 2026-11-25, §16.293 C3262: §7's and §16.3's C3101 lines and policy.py's bullet left `encrypted-pdf` out of
+an Office name's uncached answers and called an encrypted PDF cached with no name; each says the rule by name and
+bytes now, the C3101 lines kept as written.
 
 **The seed's CA summaries name the folder git's replaces** (C3049 with C3100 and C3109, one defect; ruling 202;
 `agentsync.convert.speech`; amends §16.54 Q52 and §16.283 C2930). C2930's summaries listed `SSL_CERT_DIR` among the
@@ -47569,6 +47585,28 @@ Tests: `test_convert_family.py::test_a_container_stub_whose_preamble_changes_con
 PDF, junk and PDF, junk, PDF: each converted once to the fresh answer, a quiet sync after each converting nothing) and
 the C2924 no-move test's rows (an encrypted-pdf row on junk moves; on an encrypted PDF's preamble it does not, and a
 `not-ooxml` row there does).
+
+**The cache rule is said once, by name and bytes** (C3262, C3275, C3320 and C3329, one defect, with C3265; ruling 215;
+`agentsync.policy`, `agentsync.convert.registry`, `agentsync.cycle`; amends §16.283 C2924, §16.288 C3096 and
+§16.288 C3048; dated lines at §7 and §16.3; docs only). `screen_file` sniffs an encrypted PDF before its Office branch,
+so an `OOXML_SUFFIXES` name whose bytes are no ZIP at offset 0 and hold a PDF header with `/Encrypt` gets
+`encrypted-pdf` from `_container_screen` before the cache and is never stored, while the same bytes under `.pdf` are
+cached; but policy.py's encryption bullet, §7's and §16.3's C3101 lines said "an encrypted PDF is cached" with no
+name and left `encrypted-pdf` out of the Office name's uncached answers, registry.py's "another name" was ambiguous,
+and C3096's "converted once to `NOT_OOXML_REASON`" held only for an ordinary preamble. Each says once, keyed on the
+name and the bytes, not the answer: under an `OOXML_SUFFIXES` name whose bytes are no ZIP at offset 0 the container
+answer (`encrypted-office`, `encrypted-pdf`, `not-ooxml` or `empty-output`) is given before the cache and never
+stored, while an encrypted PDF or an encrypted container under a name outside `OOXML_SUFFIXES` (a `.pdf`) is cached;
+C3096's lines name `encrypted-pdf` and a label refusal beside `NOT_OOXML_REASON`. New dated lines carry it, the
+2026-11-24 C3101 lines kept as written. `_Cycle._run_tally`'s `converted_unreadable` said such a stub is "cached
+and kept, not tried again until the bytes change", which is false three ways: a container rejection and a zero-byte
+file are never stored, `_container_moved` converts a container stub again under the same H1, and the family and
+zero-byte re-reads read a stub once more with no byte change; it says so now (C3265). §15's `ConverterCache.put`
+and cache.py were already right. Tests:
+`test_convert_family.py::test_the_docs_say_an_office_container_rejection_is_never_cached_c3048_c3101` (the new
+phrases, the old ones gone, the tally's words) and
+`test_convert_family.py::test_an_encrypted_pdf_is_cached_only_under_a_name_outside_the_office_suffixes_c3320` (the
+same encrypted-PDF bytes under `.docx`: no get, no put; under `.pdf`: one each).
 
 ### 16.294 Round 47: the prompt goes to v44 (a run read to its exit, an error keyed on its exit code, a paused or retired folder never offered again), CI's head and limit, dated lines, and the guides (2026-11-25, wave B13 round 47 lane D)
 

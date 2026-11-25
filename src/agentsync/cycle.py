@@ -4327,8 +4327,13 @@ class _Cycle:
         queued for it and did not read, which a later sync of their source reads (``_path_outcomes``, B13
         round 30 C362);
         ``converted_unreadable``: of those, conversions whose
-        result is an UNREADABLE stub (encrypted, not the type its name says, no text: cached and kept, not
-        tried again until the bytes change), never in ``converted_failed`` (§16.45 R2); ``converted_seen``:
+        result is an UNREADABLE stub (encrypted, not the type its name says, no text).  An Office name's
+        container rejection (bytes not a ZIP at offset 0: ``convert._container_screen``, B13 round 45 C2924)
+        and a zero-byte file (C1466) are never stored, and the cycle decides when to convert them again
+        (``_container_moved``, C3046, C3096); any other UNREADABLE result is cached and not converted again
+        under the same action key, except that ``_reread_family_stubs`` reads a family-mismatch stub once
+        more (C2925) and ``_reread_zero_byte_stubs`` an older build's zero-byte mismatch once (C2219; B13
+        round 47 C3265).  Never in ``converted_failed`` (§16.45 R2); ``converted_seen``:
         of those, files whose own pages were made from the same bytes by an earlier run
         (``_converted_before``; a copy of a file is not one); ``converted_again``: of those, when the bytes
         were last converted in the run just before.  ``rescreened``: of the converted (not of the

@@ -9340,6 +9340,13 @@ _ROUND_46_E_PARAGRAPH_AMENDS = (
 """Round 46 lane E's dated lines no one claim holds alone: C3101's at §7's cache sentence, at
 ``ConverterCache.put`` in §15's code block and at §16.3's encrypted-files sentence, sections its paragraph
 names with no item (B13 round 46 C3048 with C3101, ruling 202)."""
+_ROUND_47_E_PARAGRAPH_AMENDS = (
+    ("7", "The cache is write-once under `Config.cache_dir`", "§16.293 C3262"),
+    ("16.3", "Encrypted Office/PDF files stay `UNREADABLE` stubs", "§16.293 C3262"),
+)
+"""Round 47 lane E's dated lines no one claim holds alone: C3262's at §7's cache sentence and at §16.3's
+encrypted-files sentence, the rule said once by name and bytes beside the C3101 lines kept as written (B13
+round 47 C3262 with C3275, C3320 and C3329, ruling 215)."""
 _ROUND_46_RB_PARAGRAPH_AMENDS = (
     (
         "16.67",
@@ -9659,6 +9666,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_45_RB_PARAGRAPH_AMENDS,
         *_ROUND_46_E_PARAGRAPH_AMENDS,
         *_ROUND_46_RB_PARAGRAPH_AMENDS,
+        *_ROUND_47_E_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")

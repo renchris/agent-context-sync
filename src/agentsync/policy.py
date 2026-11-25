@@ -14,9 +14,12 @@ Implements C15 §4 / §9 items 23-27 and the 2026-09-29 audit's injection findin
   ``D0CF11E0A1B11AE1``)
   holding an ``EncryptedPackage`` stream (password, IRM/RMS or label encryption) is ``encrypted-office``; a
   PDF whose trailer names ``/Encrypt`` is ``encrypted-pdf``.  Both become UNREADABLE stubs, settled (no retry
-  storm): an encrypted PDF is cached, while ``encrypted-office`` under an Office name, whose bytes are no ZIP,
-  is given before the cache and never stored (``convert._container_screen``, B13 round 45 C2924; round 46
-  C3101), and the cycle decides when such a stub is converted again.
+  storm).  The cache keys on the name and the bytes, not the answer: under a name ending in one of
+  :data:`OOXML_SUFFIXES` whose bytes are no ZIP at offset 0, the container answer (``encrypted-office``,
+  ``encrypted-pdf``, ``not-ooxml`` or ``empty-output``) is given before the cache and never stored
+  (``convert._container_screen``, B13 round 45 C2924; round 46 C3046, C3101; round 47 C3262), and the cycle
+  decides when such a stub is converted again, while an encrypted PDF or an encrypted container under a name
+  outside :data:`OOXML_SUFFIXES` (a ``.pdf``) is cached.
 * **Untrusted-content boundary**: every mirror page body carries :data:`UNTRUSTED_BANNER`; source names that
   agent tools auto-load as instructions (``CLAUDE.md``, ``AGENTS.md``, ``.cursorrules``, ``.claude/``…) are
   mirrored under a neutralised name (:func:`neutralise_rel_path`) so no agent ever loads them as memory.

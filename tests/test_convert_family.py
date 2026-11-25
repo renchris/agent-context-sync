@@ -2730,17 +2730,65 @@ def test_the_docs_say_an_office_container_rejection_is_never_cached_c3048_c3101(
         "gives this guard's answer before the cache (``_container_screen``) and never stores it"
         in registry_doc
     )
-    assert "(an encrypted PDF, an encrypted container under another name) is cached" in registry_doc
+    assert "(an encrypted PDF, an encrypted container under another name) is cached" not in registry_doc
+    assert (
+        "(an encrypted PDF or an encrypted container under a name outside ``policy.OOXML_SUFFIXES``, a "
+        "``.pdf`` among them) is cached" in registry_doc
+    )
+    assert "whichever container answer it is (``encrypted-office``, ``encrypted-pdf``," in registry_doc
     assert "never reads or writes the cache (C1466)" in registry_doc
     policy_doc = flat(policy_mod.__doc__)
     assert "(cached, settled: no retry storm)" not in policy_doc
-    assert "an encrypted PDF is cached, while ``encrypted-office`` under an Office name" in policy_doc
-    assert "is given before the cache and never stored" in policy_doc
+    # B13 round 47 C3262 with C3275, C3320 and C3329: the rule keyed once on the name and the bytes, with
+    # encrypted-pdf among an Office name's answers and the cached PDF under a name outside the suffixes
+    assert "an encrypted PDF is cached, while ``encrypted-office`` under an Office name" not in policy_doc
+    assert (
+        "under a name ending in one of :data:`OOXML_SUFFIXES` whose bytes are no ZIP at offset 0, the "
+        "container answer (``encrypted-office``, ``encrypted-pdf``, ``not-ooxml`` or ``empty-output``) is "
+        "given before the cache and never stored" in policy_doc
+    )
+    assert (
+        "an encrypted PDF or an encrypted container under a name outside :data:`OOXML_SUFFIXES` (a ``.pdf``) "
+        "is cached" in policy_doc
+    )
+    tally = flat(cycle_mod._Cycle._run_tally.__doc__)  # B13 round 47 C3265: converted_unreadable's words
+    assert "cached and kept" not in tally and "until the bytes change" not in tally
+    assert "An Office name's container rejection (bytes not a ZIP at offset 0:" in tally
+    assert "any other UNREADABLE result is cached and not converted again under the same action key" in tally
     family_doc = flat(common_mod._check_ooxml_family.__doc__)
     assert "cached, never retried" not in family_doc
     assert "except the one re-read ``cycle._Cycle._reread_family_stubs`` gives" in family_doc
     put_doc = flat(cache_mod.ConverterCache.put.__doc__)
     assert "never calls this for an Office name's container rejection" in put_doc
+
+
+@pytest.mark.parametrize(("name", "calls"), [("Contoso plan.docx", []), ("Contoso plan.pdf", ["get", "put"])])
+def test_an_encrypted_pdf_is_cached_only_under_a_name_outside_the_office_suffixes_c3320(
+    tmp_path: Path, name: str, calls: list[str]
+) -> None:
+    """B13 round 47 C3320 with C3262, C3275 and C3329 (ruling 215): the docs said an encrypted PDF is cached,
+    but under an ``OOXML_SUFFIXES`` name whose bytes are no ZIP at offset 0 ``convert_file`` gives the
+    container answer, ``encrypted-pdf`` among them, before the cache and never stores it. At the cache's
+    boundary: the same encrypted-PDF bytes under ``.docx`` read and write nothing, under ``.pdf`` one get and
+    one put, and both are the ``encrypted-pdf`` stub."""
+    cache = ConverterCache(tmp_path / "cache")
+    seen: list[str] = []
+    real_get, real_put = cache.get, cache.put
+    cache.get = lambda key: seen.append("get") or real_get(key)  # type: ignore[method-assign]
+    cache.put = lambda result: seen.append("put") or real_put(result)  # type: ignore[method-assign]
+    src = tmp_path / "staged"
+    src.write_bytes(_ENCRYPTED_PDF_PREAMBLE + b"trailer << /Encrypt 1 0 R >>\n%%EOF\n")
+    digest = hashlib.sha256(src.read_bytes()).hexdigest()
+    result = convert_file(
+        src,
+        name=name,
+        content_sha256=digest,
+        canonical_sha256=digest,
+        registry=Registry.default(ConvertConfig()),
+        cache=cache,
+    )
+    assert (result.status, result.reason) == (ConversionStatus.UNREADABLE, ENCRYPTED_PDF_REASON)
+    assert seen == calls, seen
 
 
 def _decoy_potx(path: Path) -> Path:

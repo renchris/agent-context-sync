@@ -7,8 +7,10 @@ Office name that is not a ZIP -> ``not-ooxml`` are raised as UnreadableSourceErr
 UNREADABLE stub, settled and never retried. Under an Office name (``policy.OOXML_SUFFIXES``) whose bytes are
 not a ZIP at offset 0, ``convert_file`` gives this guard's answer before the cache (``_container_screen``)
 and never stores it (B13 round 45 C2924): the cycle's ``_container_moved``, not the cache, decides when such a
-stub is converted again. Any other answer (an encrypted PDF, an encrypted container under another name) is
-cached (B13 round 46 C3048 with C3101). Zero bytes under an Office name are ``empty-output`` instead, after
+stub is converted again, whichever container answer it is (``encrypted-office``, ``encrypted-pdf``,
+``not-ooxml`` or ``empty-output``). Any other answer (an encrypted PDF or an encrypted container under a name
+outside ``policy.OOXML_SUFFIXES``, a ``.pdf`` among them) is cached (B13 round 46 C3048 with C3101; round 47
+C3320). Zero bytes under an Office name are ``empty-output`` instead, after
 the label decision, since no bytes have no type to disagree with the name (B13 round 35 C930), and a file of
 zero bytes never reads or writes the cache (C1466). An excluded or missing sensitivity label
 (``refused: …``) is raised the same way here only as a backstop: ``convert_file`` screens labels first, before
