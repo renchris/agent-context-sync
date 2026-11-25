@@ -155,10 +155,12 @@ from agentsync.config import (
     SOURCE_ID_RE,
     Config,
     ConvertConfig,
+    SourceConfig,
     inbox_state,
     load_config,
     toml_string,
 )
+from agentsync.errors import ConfigError
 from agentsync.materialise import file_provider_marker
 from agentsync.model import SourceKind
 from agentsync.ops.lock import LockInfo, SingleWriterLock, Stage
@@ -6034,6 +6036,10 @@ class _RawConfig:
     cache_dir: Path
     log_dir: Path
     graph: _RawGraph
+    # B13 round 46 C3099 with C3033, C3037 and C3110 (ruling 198; privacy): each value expand() refused (a
+    # ``~name`` path), stripped as written, in reading order: the sources' paths, then docs_repo, state_dir,
+    # cache_dir and log_dir; :func:`_register_refused` cuts them
+    refused: tuple[str, ...] = ()
 
 
 def _unloaded_config(r: _Run, red: Redactor) -> _RawConfig | None:
@@ -6049,26 +6055,42 @@ def _unloaded_config(r: _Run, red: Redactor) -> _RawConfig | None:
 
     B13 round 45 C2815 (ruling 188; makes worse True for cutting none): a file that does not parse registered
     no id, so a listed folder word was cut inside one (``source.gamma-bridge-<folder-4>.listable``). Its
-    ``[[source]]`` tables' ``id`` lines are line-scanned (:func:`_scanned_source_ids`), kept through the same
+    ``[[source]]`` tables' ``id`` lines are line-scanned (:func:`_scanned_sources`), kept through the same
     three filters and registered as source values, so each is cut whole to ``<source-N>``; the private-only
-    line stays, as the scan is best effort and no path is read."""
+    line stays, as the scan is best effort. B13 round 46 C3056 (ruling 199; privacy): each table's ``path``
+    is read beside its id (:func:`_scanned_sources`) and registered as the loaded case registers it, so the
+    path the shell report cuts is cut here too. B13 round 46 C3099 with C3033, C3037 and C3110 (ruling 198):
+    a ``~name`` value ``expand`` refuses skips that field alone (a folder its default, a source path None)
+    and is kept in :attr:`_RawConfig.refused` for :func:`_register_refused`."""
     if r.config is not None or r.config_missing:
         return None
+    refused: list[str] = []
+
+    def safe(written: str) -> Path | None:
+        # B13 round 46 C3099 with C3033, C3037 and C3110 (ruling 198): a ~name value paths.expand refuses is
+        # skipped, this field alone, and kept to be cut, never dropping the redactor built so far
+        try:
+            return expand(written)
+        except ConfigError:
+            refused.append(written)
+            return None
+
     try:
         data = tomllib.loads(expand(r.config_path).read_text(encoding="utf-8"))
     except (tomllib.TOMLDecodeError, UnicodeDecodeError, ValueError):
         red.config_unparsed = True
         try:
-            scanned = _scanned_source_ids(expand(r.config_path).read_text(encoding="utf-8", errors="replace"))
+            scanned = _scanned_sources(expand(r.config_path).read_text(encoding="utf-8", errors="replace"))
         except OSError:
             return None
         return _RawConfig(
-            tuple(_RawSource(sid, None, None) for sid in scanned),
+            tuple(_RawSource(sid, safe(path) if path is not None else None, None) for sid, path in scanned),
             default_docs_repo(),
             default_state_dir(),
             default_cache_dir(),
             default_log_dir(),
             _RawGraph(""),
+            tuple(refused),
         )
     except OSError:
         return None
@@ -6081,7 +6103,7 @@ def _unloaded_config(r: _Run, red: Redactor) -> _RawConfig | None:
 
     def folder(value: object, default: Path) -> Path:
         written = text(value)
-        return expand(written) if written is not None else default
+        return (safe(written) or default) if written is not None else default
 
     top = table(data.get("agentsync"))
     sources = []
@@ -6099,18 +6121,23 @@ def _unloaded_config(r: _Run, red: Redactor) -> _RawConfig | None:
         sources.append(
             _RawSource(
                 sid if keep and isinstance(sid, str) else "",
-                expand(path) if path is not None else None,
+                safe(path) if path is not None else None,
                 site if isinstance(site, str) else None,
             )
         )
     tenant = table(data.get("graph")).get("tenant")
+    docs_repo = folder(top.get("docs_repo"), default_docs_repo())
+    state_dir = folder(top.get("state_dir"), default_state_dir())
+    cache_dir = folder(top.get("cache_dir"), default_cache_dir())
+    log_dir = folder(top.get("log_dir"), default_log_dir())
     return _RawConfig(
         tuple(sources),
-        folder(top.get("docs_repo"), default_docs_repo()),
-        folder(top.get("state_dir"), default_state_dir()),
-        folder(top.get("cache_dir"), default_cache_dir()),
-        folder(top.get("log_dir"), default_log_dir()),
+        docs_repo,
+        state_dir,
+        cache_dir,
+        log_dir,
         _RawGraph(tenant.strip() if isinstance(tenant, str) else ""),
+        tuple(refused),
     )
 
 
@@ -6118,44 +6145,76 @@ _SOURCE_HEADER_LINE_RE = re.compile(
     r"""^[ \t]*\[\[[ \t]*(?:source|"source"|'source')[ \t]*\]\][ \t]*(?:#.*)?$"""
 )
 _TABLE_HEADER_LINE_RE = re.compile(r"^[ \t]*\[")
-_SOURCE_ID_LINE_RE = re.compile(r"""^[ \t]*id[ \t]*=[ \t]*(?:"([^"\\\n]*)"|'([^'\n]*)')[ \t]*(?:#.*)?$""")
+_SOURCE_ID_LINE_RE = re.compile(
+    r"""^[ \t]*(?:id|"id"|'id')[ \t]*=[ \t]*(?:"([^"\\\n]*)"|'([^'\n]*)')[ \t]*(?:#.*)?$"""
+)
+_SOURCE_PATH_LINE_RE = re.compile(
+    r"""^[ \t]*(?:path|"path"|'path')[ \t]*=[ \t]*(?:"((?:[^"\\\n]|\\.)*)"|'([^'\n]*)')[ \t]*(?:#.*)?$"""
+)
 
 
-def _scanned_source_ids(text: str) -> list[str]:
-    """The ``id`` values a sources.toml that does not parse writes as one basic or literal string under a
-    ``[[source]]`` header (its key bare or quoted, as TOML reads ``[[ "source" ]]``), line by line (B13
-    round 45 C2815, ruling 188), each kept only as :func:`_unloaded_config` keeps a parsed id: a source id
-    (:data:`SOURCE_ID_RE`), none of :data:`_GENERIC_IDS` and none of the report's own words. An unclosed
-    string matches nothing."""
-    out: list[str] = []
-    in_source = False
+def _kept_scanned_id(sid: str | None) -> bool:
+    """Whether a line-scanned id is kept, as :func:`_unloaded_config` keeps a parsed one: a source id
+    (:data:`SOURCE_ID_RE`), none of :data:`_GENERIC_IDS` and none of the report's own words."""
+    return (
+        sid is not None
+        and SOURCE_ID_RE.match(sid) is not None
+        and sid not in _GENERIC_IDS
+        and sid.lower() not in report_words()
+    )
+
+
+def _scanned_sources(text: str) -> list[tuple[str, str | None]]:
+    """Each ``[[source]]`` table of a sources.toml that does not parse, line by line, as its kept ``id``
+    (empty when it is none, :func:`_kept_scanned_id`) paired with its ``path`` (B13 round 46 C3056, ruling
+    199; privacy): a basic string read as TOML unescapes it, a literal one raw, the key bare or quoted, the
+    header ``[[source]]``, ``[[ "source" ]]`` or ``[[ 'source' ]]`` (B13 round 45 C2815, ruling 188). The
+    path, stripped, goes through the loaded case's registration, so the agentsync report cuts the folder the
+    shell report's config_path_values reads, as both number it alike; a table with neither is skipped and an
+    unclosed string matches nothing. The first ``id`` and the first ``path`` of a table count."""
+    out: list[tuple[str, str | None]] = []
+    table: list[str | None] | None = None  # [id, path] of the [[source]] table being read
+
+    def close() -> None:
+        if table is not None and (table[0] or table[1]):
+            out.append((table[0] or "", table[1]))
+
     for line in text.split("\n"):
         if _SOURCE_HEADER_LINE_RE.match(line):
-            in_source = True
+            close()
+            table = [None, None]
             continue
         if _TABLE_HEADER_LINE_RE.match(line):
-            in_source = False
+            close()
+            table = None
             continue
-        m = _SOURCE_ID_LINE_RE.match(line) if in_source else None
-        sid = (m.group(1) if m.group(1) is not None else m.group(2)) if m is not None else None
-        if (
-            sid is not None
-            and SOURCE_ID_RE.match(sid) is not None
-            and sid not in _GENERIC_IDS
-            and sid.lower() not in report_words()
-        ):
-            out.append(sid)
-    return list(dict.fromkeys(out))
+        if table is None:
+            continue
+        m = _SOURCE_ID_LINE_RE.match(line)
+        if m is not None and table[0] is None:
+            sid = m.group(1) if m.group(1) is not None else m.group(2)
+            table[0] = sid if _kept_scanned_id(sid) else ""
+            continue
+        m = _SOURCE_PATH_LINE_RE.match(line)
+        if m is not None and table[1] is None:
+            path: str | None = m.group(2)
+            if m.group(1) is not None:
+                try:  # TOML's own reading of the basic string, its escapes included
+                    path = tomllib.loads(f'v = "{m.group(1)}"')["v"]
+                except (tomllib.TOMLDecodeError, KeyError):
+                    path = None
+            table[1] = path.strip() if isinstance(path, str) and path.strip() else ""
+    close()
+    return [(sid, path or None) for sid, path in out if sid or path]
 
 
-_LOGGED_SOURCE_LOCAL_RE = re.compile(
-    r"(?:^|[ \t])--source-local[ \t]+(\$'(?:[^'\\]|\\.)*'|(?:\\.|[^ \t\n\\])+)"
-)
-r"""A ``--source-local`` word on install.log's start line, written with ``printf %q`` (B13 round 44 C2668).
-B13 round 45 C2939 with C2912 (ruling 189; privacy): a bare word ends only where bash's ``read -a`` ends it,
-at a space, tab or newline, never at a Unicode space such as the NBSP a UTF-8 run's ``%q`` writes raw
-(``\s`` cut ``Kestrel<NBSP>Quarry/Zephyr\ Plans`` to ``Kestrel`` and printed the rest), and never through
-shlex, which misreads a ``$'..'`` word."""
+_LOGGED_WORD_RE = re.compile(r"(?:\\.|[^ \t\n\\])+")
+r"""One word of install.log's start-line args as bash's ``read -a`` (no ``-r``) splits them (B13 round 44
+C2668): a backslash escapes the next character, only an unescaped space, tab or newline ends a word, and
+quotes are not special. B13 round 45 C2939 with C2912 (ruling 189; privacy): never at a Unicode space such as
+the NBSP a UTF-8 run's ``%q`` writes raw, and never through shlex, which misreads a ``$'..'`` word."""
+_LOGGED_DOLLAR_RE = re.compile(r"--source-local \$'(?:[^'\\]|\\.)*'")
+"""A ``--source-local $'..'`` pair, install.sh's ``grep -oE`` pattern for the words ``read -a`` splits."""
 
 
 def _logged_cloud_folders(log: Path) -> list[tuple[list[str], bool]]:
@@ -6173,13 +6232,18 @@ def _logged_cloud_folders(log: Path) -> list[tuple[list[str], bool]]:
     cs = cloud_storage_root()
     out: list[tuple[list[str], bool]] = []
     starts = (fields.get("start", {}).get("args", "") for _run, fields, _lines in _install_runs(log))
-    words = [
-        m.group(1)
-        for a in sorted({a for a in starts if "--source-local" in a})
-        for m in _LOGGED_SOURCE_LOCAL_RE.finditer(a)
-    ]
-    dollar = {w.replace("\\'", "'"): w for w in words if w.startswith("$'")}
-    for logged in [*(w for w in words if not w.startswith("$'")), *(dollar[k] for k in sorted(dollar))]:
+    lines = sorted({a for a in starts if "--source-local" in a})
+    # B13 round 46 C3104 (ruling 199; privacy): split as bash's read -a splits, then the word after each
+    # --source-local token, as install.sh's take loop reads it: an unanchored match also began inside an
+    # escaped operand (`~/Project\ --source-local`) and took the real flag for its operand, so the real
+    # folder went unread; the $'..' words by install.sh's own grep pattern
+    words: list[str] = []
+    for a in lines:
+        toks = _LOGGED_WORD_RE.findall(a)
+        words += [w for t, w in itertools.pairwise(toks) if t == "--source-local" and not w.startswith("$'")]
+    found = [m.group(0).removeprefix("--source-local ") for a in lines for m in _LOGGED_DOLLAR_RE.finditer(a)]
+    dollar = {w.replace("\\'", "'"): w for w in found}
+    for logged in [*words, *(dollar[k] for k in sorted(dollar))]:
         word = _shell_unquote(logged)
         if word == "~" or word.startswith("~/"):
             placed = home / word[2:]
@@ -6201,6 +6265,28 @@ def _logged_cloud_folders(log: Path) -> list[tuple[list[str], bool]]:
         library = provider.startswith("OneDrive-SharedLibraries-") and placed.is_dir()
         out.append((comps, library))
     return out
+
+
+def _register_refused(red: Redactor, refused: Sequence[str]) -> None:
+    """Cut each sources.toml value ``paths.expand`` refused (a ``~name`` path: another account's home, B13
+    round 45 C2822), stripped as written (B13 round 46 C3099 with C3033, C3037 and C3110, ruling 198;
+    privacy): whole with :meth:`Redactor.add_cut` as ``~<user>/<path>`` (``~<user>`` with no folder after
+    the head), its ``~name`` head cut to ``~<user>`` the same way and, unless it is one of the report's own
+    words, registered as a ``user`` value, and the folder parts after the head through
+    :func:`_own_folder_values`'s filter as this home's own would be, so the report stays public. A raise had
+    dropped the whole redactor (C3099)."""
+    home = Path.home()
+    for raw in refused:
+        head, _sep, rest = raw.partition("/")
+        rest = rest.strip("/")
+        red.add_cut(raw, "~<user>/<path>" if rest else "~<user>")
+        red.add_cut(head, "~<user>")
+        name = head[1:]
+        if name and name.lower() not in report_words():
+            red.add("user", name)
+        for value in _own_folder_values(home / rest, Path("/")) if rest else []:
+            red.add("folder", value, ignore_case=True)
+            _alias_escaped(red, value)
 
 
 def _register_identity(red: Redactor, r: _Run) -> list[str]:
@@ -6332,12 +6418,32 @@ def _build_redactor(r: _Run) -> Redactor:
     # unvalidated and sent through the loaded case's own registration, its exclusions kept; one that does not
     # parse makes the report private only
     cfg: Config | _RawConfig | None = r.config if r.config is not None else _unloaded_config(r, red)
+    own: set[Path] = set()
+    inbox_targets: list[Path] = []  # the kept inbox's targets outside ~/agent-context (C3055, below)
     if cfg is not None:
         # agentsync's own, never a project: the inbox it keeps beside the docs repo, and every folder beside
         # the docs repo (~/agent-context). Not the latter when a hand-set docs_repo sits straight in a
         # container such as ~/Documents: the person's own projects live there too.
         beside = expand(cfg.docs_repo).parent
-        own = {beside / "inbox", (beside / "inbox").resolve()}
+        own = {beside / "inbox"}
+        # B13 round 46 C3055 (ruling 199; privacy; makes worse True for registering every source's resolved
+        # path): the kept inbox's resolved target is agentsync's own only inside ~/agent-context (or where a
+        # linked home resolves it); a target outside it, typed or the inbox source's stored path, is
+        # registered through _own_folder_values after the own folders (below), never as a project, so the
+        # bare `inbox` of a link to ~/Documents/inbox is never registered, and a link into
+        # ~/Locked Contoso/inner is cut where doctor's FAIL names it
+        insides = {beside, beside.resolve()}
+        candidates = [(beside / "inbox").resolve()]
+        candidates += [
+            expand(src.path)
+            for src in cfg.sources
+            if isinstance(src, SourceConfig) and src.kind is SourceKind.INBOX and src.path is not None
+        ]
+        for kept in candidates:
+            if any(kept.is_relative_to(b) for b in insides):
+                own.add(kept)
+            elif kept not in inbox_targets:
+                inbox_targets.append(kept)
         if beside.name.casefold() not in _GENERIC_HOME_DIRS:
             own |= {beside, beside.resolve()}
         own -= {home, home.resolve()}
@@ -6351,7 +6457,9 @@ def _build_redactor(r: _Run) -> Redactor:
                 elif org:
                     orgs.append(org)
                     heads.add(parts[0].partition("-")[0])
-            elif src.path is not None and not any(expand(src.path).is_relative_to(o) for o in own):
+            elif src.path is not None and not any(
+                expand(src.path).is_relative_to(o) for o in [*own, *inbox_targets]
+            ):
                 project_paths.append(expand(src.path))
         tenant = cfg.graph.tenant
         if tenant and "." in tenant:
@@ -6475,6 +6583,25 @@ def _build_redactor(r: _Run) -> Redactor:
             for value in _own_folder_values(inbox, expand(default_docs_repo()).parent / "inbox"):
                 red.add("folder", value, ignore_case=True)
                 _alias_escaped(red, value)
+        # B13 round 46 C3055 (ruling 199; privacy): then where the kept inbox resolves outside
+        # ~/agent-context, by the same filter, so a container, an own word or `inbox` is never cut alone
+        for kept in inbox_targets:  # never the default: that resolves to the target itself
+            for value in _own_folder_values(kept, Path("/")):
+                red.add("folder", value, ignore_case=True)
+                _alias_escaped(red, value)
+    # B13 round 46 C3099 with C3033, C3037 and C3110 (ruling 198; privacy): then every ~name value of a
+    # sources.toml that does not load, each field skipped alone, and its pandoc_path, cut three ways
+    raw_pandoc = _raw_pandoc_path(r.config_path)
+    pandoc: Path | None = None
+    refused = list(cfg.refused) if isinstance(cfg, _RawConfig) else []
+    if r.config is not None:
+        pandoc = r.config.convert.pandoc_path
+    elif raw_pandoc:
+        try:
+            pandoc = expand(raw_pandoc.strip())
+        except ConfigError:
+            refused.append(raw_pandoc.strip())
+    _register_refused(red, refused)
     # Every configured id: an inbox or project source has one too, and a folder word inside an unregistered
     # id left it half-redacted (``<prefix>-<folder-N>-mail``, field report 2026-10-06).
     cloud_ids = {sid for sid, _provider, _comps in cloud_sources}
@@ -6516,7 +6643,7 @@ def _build_redactor(r: _Run) -> Redactor:
                     for c in comps[1:] if shared else comps:
                         red.add("folder", c, fuzzy=True)
                         _alias_escaped(red, c)
-                elif not any(root.is_relative_to(o) for o in own):
+                elif not any(root.is_relative_to(o) for o in [*own, *inbox_targets]):
                     for value in _project_values(root):
                         red.add("folder", value, ignore_case=True)
                         _alias_escaped(red, value)
@@ -6613,11 +6740,7 @@ def _build_redactor(r: _Run) -> Redactor:
     _add_config_cut(red, r.config_path)
     # B13 round 45 C2839 (ruling 188; privacy): a config that does not load still cuts its pandoc path, read
     # raw, stripped then expanded as config's _str and expand read it, as the shell report reads it either way
-    raw_pandoc = _raw_pandoc_path(r.config_path)
-    if r.config is not None:
-        pandoc = r.config.convert.pandoc_path
-    else:
-        pandoc = expand(raw_pandoc.strip()) if raw_pandoc else None
+    # (read above, where a ~name value is cut: C3099)
     if pandoc is not None:
         _add_pandoc_cut(red, pandoc, raw=raw_pandoc)
     return red

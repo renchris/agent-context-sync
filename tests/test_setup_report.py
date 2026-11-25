@@ -29592,7 +29592,7 @@ def test_an_unparsed_config_cuts_its_source_ids_whole_c2815(tmp_path: Path) -> N
     assert len(tail) == 2, tail
     assert all(re.search(r"source\.<source-\d+>\.listable", ln) for ln in tail), tail
     assert not re.search("(?i)gamma-bridge|<folder-\\d+>-|-<folder-|meetings", "\n".join(tail)), tail
-    assert setup_report._scanned_source_ids(cfg.read_text(encoding="utf-8")) == [
+    assert [sid for sid, _path in setup_report._scanned_sources(cfg.read_text(encoding="utf-8")) if sid] == [
         "gamma-bridge-meetings",
         "gamma-bridge-mail",
         "gamma-alder",
@@ -30089,3 +30089,39 @@ def test_a_redactor_that_raises_leaves_the_report_private_only_c3099(
     assert setup_report.ISSUE_LINK_LABEL not in printed and setup_report.ISSUE_URL not in printed, printed
     for raw in (LOGIN, FULL_NAME, SERIAL, HOST):
         assert raw not in text, (raw, [ln for ln in text.splitlines() if raw in ln])
+
+
+_TILDE_FIELDS = {
+    "source path": (
+        "",
+        '\n[[source]]\nid = "extra-notes"\nkind = "local"\npath = "  ~kestrel/Zephyr Quarry  "\n',
+    ),
+    "pandoc_path": ("", '\n[convert]\npandoc_path = "~kestrel/Zephyr Quarry/pandoc"\n'),
+    "docs_repo": ('[agentsync]\ndocs_repo = "~kestrel/Zephyr Quarry/docs"\n', ""),
+    "state_dir": ('[agentsync]\nstate_dir = "~kestrel/Zephyr Quarry/state"\n', ""),
+}
+"""B13 round 46 ruling 198: one ~name value per field, beside fake_mac's two valid sources."""
+
+
+@pytest.mark.parametrize("field", list(_TILDE_FIELDS))
+def test_a_tilde_name_value_is_cut_and_the_redactor_kept_c3099(
+    fake_mac: dict[str, Path], tmp_path: Path, field: str
+) -> None:
+    """B13 round 46 C3099 with C3033, C3037 and C3110 (ruling 198; privacy): a `~name` value in sources.toml
+    (C2822's refusal) raised inside _unloaded_config's folder() and source path and C2839's pandoc branch,
+    so the whole redactor was dropped and the report went out public with the login, name, serial, host,
+    organisation and folders in clear. Each field is skipped alone and cut: the value whole, its `~name` head
+    and its folder parts; the valid sources keep their placeholders and the report stays public."""
+    cfg = fake_mac["config"]
+    head, tail = _TILDE_FIELDS[field]
+    cfg.write_text(head + cfg.read_text(encoding="utf-8") + tail, encoding="utf-8")
+    rc, text, _secs = report(tmp_path, cfg)
+    assert rc == 0
+    [loads] = [ln for ln in text.splitlines() if ln.startswith("- loads: no:")]
+    assert "~<user>/<path>" in loads, loads
+    body = "\n".join(ln for ln in text.splitlines() if not ln.startswith("Placeholders used: "))
+    for raw in (*RAW, "kestrel", "Kestrel", "Zephyr", "Quarry"):
+        assert raw not in body, (raw, [ln for ln in body.splitlines() if raw in ln])
+    assert "Private only:" not in text and setup_report.issue_link(text) is not None, text
+    red = setup_report._build_redactor(setup_report._Run(cfg, setup_report.ReportHooks(), 40.0))
+    assert not red.redactor_failed and red._known(FOLDERS[1]) is not None and red._known("Zephyr Quarry")

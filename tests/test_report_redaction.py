@@ -4040,3 +4040,197 @@ def test_both_reports_cut_every_debug_head_on_a_line_c2029(
     assert shell == python, [(a, b) for a, b in zip(shell, python, strict=True) if a != b]
     assert shell[1] == "debug: config ~/Projects/<path> | debug: config ~/Projects/<path>", shell[1]
     assert shell[5] == "debug: config ~/<path> | debug: cwd ~/Projects/<path>", shell[5]  # C2063: always
+
+
+# B13 round 46 rulings 198 and 199 (privacy; data integrity): lane RA's Python halves and the rows both
+# reports share, which lane RB's shell halves turn green in one joint land.
+
+
+def test_a_logged_flag_word_inside_an_escaped_operand_is_no_flag_c3104(tmp_path: Path) -> None:
+    """B13 round 46 C3104 (ruling 199; privacy): an unanchored match began at the escaped space inside
+    `~/Project\\ --source-local`, took the real `--source-local` for its operand and never read RealFolder,
+    which bash's `read -a` finds. The args split as read -a splits them, then the word after each flag token;
+    a `$'..'` word after such an operand is read by install.sh's grep pattern."""
+    log = tmp_path / "install.log"
+    start = "2026-11-24T10:00:00Z run=20261124T100000Z-1"
+    cs = "~/Library/CloudStorage/OneDrive-Contoso"
+    for word, want in (
+        (f"{cs}/RealFolder", [(["RealFolder"], False)]),
+        (f"$'{cs}/Wombat\\'s Plans'", [(["Wombat's Plans"], False)]),
+    ):
+        log.write_text(
+            f"{start} start install.sh compat=42 args=--launcher ~/Project\\ --source-local --source-local "
+            f"{word}\n{start} end rc=0\n",
+            encoding="utf-8",
+        )
+        assert setup_report._logged_cloud_folders(log) == want, word
+
+
+def test_an_unparsed_config_pairs_each_id_with_its_path_c3056() -> None:
+    """B13 round 46 C3056 (ruling 199; privacy): the scan of a sources.toml that does not parse read ids
+    only, so `~/Development/KestrelAlder/notes` printed in clear under every header. Each [[source]] table's
+    id is paired with its path, the key bare or quoted, a basic value read as TOML reads it and a literal one
+    raw; an id that is no kept source id leaves the path, and a table with neither is skipped."""
+    text = (
+        '[[source]]\nid = "kestrel-alder"\npath = "~/Development/Kestrel\\u0041lder/notes"\n'
+        "[[ 'source' ]]\n\"id\" = 'kestrel-birch'\n'path' = '~/Development/Kestrel\\Birch'  # raw\n"
+        '[[ "source" ]]\nid = "setup"\npath = "~/Development/KestrelCedar"\n'
+        '[[source]]\nkind = "local"\n[convert]\npath = "~/Development/Nowhere"\nid = = \n'
+    )
+    assert setup_report._scanned_sources(text) == [
+        ("kestrel-alder", "~/Development/KestrelAlder/notes"),
+        ("kestrel-birch", "~/Development/Kestrel\\Birch"),
+        ("", "~/Development/KestrelCedar"),
+    ]
+
+
+_R199_HEADERS = {"bare": "[[source]]", "basic": '[[ "source" ]]', "literal": "[['source']]"}
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize("python", ["tomllib", "none"])
+@pytest.mark.parametrize("parsed", ["loaded", "unparsed"])
+@pytest.mark.parametrize("quote", ['"', "'"])
+@pytest.mark.parametrize("header", list(_R199_HEADERS))
+def test_both_reports_cut_a_source_under_every_header_and_quote_c3056(
+    env: dict[str, str],  # noqa: F811
+    header: str,
+    quote: str,
+    parsed: str,
+    python: str,
+    locale: str,
+) -> None:
+    """B13 round 46 C3056 with C3034 and C3083 (ruling 199; privacy): under a quoted header or a literal id
+    the shell printed `Sync of kestrel-alder stopped` and the literal path in clear, in a report public when
+    the file loads, and the agentsync report printed the path of a file that does not parse. Both read every
+    header spelling and both quotes, loaded or not, with or without tomllib: neither shows the id or a part
+    of the path, both print the same rows and each reaches the same verdict."""
+    if python == "tomllib":
+        _tool_python(env["HOME"])
+    (Path(env["HOME"]) / "Development" / "KestrelAlder" / "notes").mkdir(parents=True)
+    q = quote
+    body = (
+        default_config_text()
+        + f'\n{_R199_HEADERS[header]}\nid = {q}kestrel-alder{q}\nkind = "local"\n'
+        + f"path = {q}~/Development/KestrelAlder/notes{q}\n"
+        + ("this line is no TOML\n" if parsed == "unparsed" else "")
+    )
+    said = ["Sync of kestrel-alder stopped; folder ~/Development/KestrelAlder/notes was skipped."]
+    texts: list[str] = []
+    shell, python_rows, shell_private, python_private = _both_reports(
+        env,
+        [],
+        said,
+        locale,
+        config=Path(env["HOME"]) / "agent-context" / "sources.toml",
+        config_body=body,
+        texts_out=texts,
+    )
+    for name, text in zip(("shell", "agentsync"), texts, strict=True):
+        leaks = [ln for ln in text.splitlines() if "kestrel" in ln.casefold()]
+        assert not leaks, (name, leaks)
+    assert python_private == (parsed == "unparsed"), texts[1]
+    assert shell == python_rows and shell_private == python_private, (shell, python_rows)
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize("field", ["source path", "pandoc_path", "docs_repo"])
+def test_both_reports_cut_a_tilde_name_value_beside_a_valid_source_c3099(
+    env: dict[str, str],  # noqa: F811
+    field: str,
+    locale: str,
+) -> None:
+    """B13 round 46 C3099 with C3033, C3037 and C3110 (ruling 198; privacy): a `~contoso` value in
+    sources.toml raised inside the agentsync report's redactor, which then cut only the home and went out
+    public with every folder in clear. Each report cuts the value whole, its head and its folder parts,
+    beside a valid source that keeps its own placeholder: no `contoso`, `Zephyr` or `Quarry`, the same rows
+    and one verdict, public."""
+    home = Path(env["HOME"])
+    juniper = _cloud(env) / "OneDrive-Contoso" / "Juniper Notes"
+    juniper.mkdir(parents=True)
+    raw = {
+        "source path": "~contoso/Zephyr Quarry",
+        "pandoc_path": "~contoso/Zephyr Quarry/pandoc",
+        "docs_repo": "~contoso/Zephyr Quarry/docs",
+    }[field]
+    top = f"[agentsync]\ndocs_repo = {toml_string(raw)}\n" if field == "docs_repo" else ""
+    extra = {
+        "source path": f'\n[[source]]\nid = "extra-notes"\nkind = "local"\npath = {toml_string(raw)}\n',
+        "pandoc_path": f"\n[convert]\npandoc_path = {toml_string(raw)}\n",
+        "docs_repo": "",
+    }[field]
+    body = top + default_config_text() + local_source_table("juniper", juniper) + extra
+    said = [f"I set {raw} in sources.toml", "the sync of Juniper Notes went on", f"{raw} names another home"]
+    texts: list[str] = []
+    shell, python, shell_private, python_private = _both_reports(
+        env,
+        [],
+        said,
+        locale,
+        config=home / "agent-context" / "sources.toml",
+        config_body=body,
+        texts_out=texts,
+    )
+    for name, text in zip(("shell", "agentsync"), texts, strict=True):
+        leaks = [ln for ln in text.splitlines() if re.search("(?i)contoso|zephyr|quarry", ln)]
+        assert not leaks, (name, leaks)
+    assert python[0] == "I set ~<user>/<path> in sources.toml" and re.fullmatch(
+        r"the sync of <folder-\d+> went on", python[1]
+    ), python
+    assert not python_private, texts[1]
+    assert shell == python and shell_private == python_private, (shell, python)
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize("target", ["locked", "documents"])
+def test_both_reports_cut_where_the_inbox_links_outside_agent_context_c3055(
+    env: dict[str, str],  # noqa: F811
+    target: str,
+    locale: str,
+) -> None:
+    """B13 round 46 C3055 (ruling 199; privacy; makes worse True for registering every source's resolved
+    path): the agentsync report took the inbox link's resolved target for agentsync's own, so doctor's FAIL
+    on a link into ~/Locked Contoso/inner, a folder at mode 000, printed it in clear in a public report. The
+    target outside ~/agent-context is registered through the own-folder filter after the own folders: the
+    locked one is cut and the report stays public, and a link to ~/Documents/inbox registers no `inbox`, so
+    the report's own `inbox` words stay and it stays public."""
+    home = Path(env["HOME"])
+    inner = home / ("Locked Contoso/inner" if target == "locked" else "Documents/inbox")
+    inner.mkdir(parents=True)
+    (home / "agent-context").mkdir(exist_ok=True)
+    (home / "agent-context" / "inbox").symlink_to(inner)
+    juniper = _cloud(env) / "OneDrive-Fabrikam" / "Juniper Notes"
+    juniper.mkdir(parents=True)
+    body = (
+        default_config_text()
+        + local_source_table("juniper", juniper)
+        + '\n[[source]]\nid = "inbox"\nkind = "inbox"\npath = "~/agent-context/inbox"\n'
+    )
+    shown = "~/Locked Contoso/inner" if target == "locked" else "~/Documents/inbox"
+    said = [f"the inbox links to {shown}", "the inbox is a link"]
+    texts: list[str] = []
+    if target == "locked":
+        inner.parent.chmod(0)
+    try:
+        shell, python, shell_private, python_private = _both_reports(
+            env,
+            [],
+            said,
+            locale,
+            config=home / "agent-context" / "sources.toml",
+            config_body=body,
+            texts_out=texts,
+        )
+    finally:
+        inner.parent.chmod(0o755)
+    for name, text in zip(("shell", "agentsync"), texts, strict=True):
+        leaks = [ln for ln in text.splitlines() if "Locked" in ln]
+        assert not leaks, (name, leaks)
+    if target == "locked":
+        assert re.fullmatch(
+            r"the inbox links to ~/<folder-\d+>(/inner)?|the inbox links to <folder-\d+>", python[0]
+        )
+    else:
+        assert python == said, python
+    assert not python_private, texts[1]
+    assert shell == python and shell_private == python_private, (shell, python)

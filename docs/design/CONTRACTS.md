@@ -46010,6 +46010,9 @@ line-scanned (`_scanned_source_ids`), kept through `SOURCE_ID_RE`, `_GENERIC_IDS
 registered as source values, so each is cut whole to `<source-N>`; the private-only line stays, as the scan is best
 effort and no path is read (C2815, makes worse True for the finder's "or none", which left the listing's folder word
 uncut inside an id and put `Meetings` in clear).
+Amended 2026-11-24, §16.285 C3056: the scan now reads each table's `path` beside its `id` (`_scanned_sources`, which
+replaces `_scanned_source_ids`), a basic string as TOML reads it and a literal one raw, the key bare or quoted, and
+registers it as the loaded case registers a path, so the folder the shell report cuts is cut in this one too.
 
 **A logged word ends where bash ends it and is numbered in install.sh's order** (C2939 with C2912; ruling 189;
 privacy; amends §16.275 C2668). `_LOGGED_SOURCE_LOCAL_RE`'s bare word ended at `\s`, which matches the NBSP a UTF-8
@@ -46020,6 +46023,10 @@ Plans` printed in clear where the shell numbered them; it ends only at a space, 
 reads the `$'..'` words in a second loop, so two runs' folders took opposite numbers: it takes the start lines' args
 once each, sorted by code point, their bare words first, then the `$'..'` words once each, sorted by their sed form
 (`\'` read as `'`). Both reports print one line under C and en_US.UTF-8.
+Amended 2026-11-24, §16.285 C3104: the args are split as bash's `read -a` splits them (`_LOGGED_WORD_RE`, which
+replaces `_LOGGED_SOURCE_LOCAL_RE`) and the word after each `--source-local` token is read, so a flag spelled inside
+an escaped operand (`~/Project\ --source-local`) is no flag; the `$'..'` words are found by install.sh's own grep
+pattern (`_LOGGED_DOLLAR_RE`).
 
 **A listed name step 1 escaped is decoded in the agentsync report** (C2873 with C2882; ruling 190; privacy: C2060's
 Python twin, built ungated by the lead's call 1; amends §16.261 C2060). `_add_listed` registered step 1's escaped
@@ -46856,7 +46863,46 @@ install.log's `step=agentsync` note for any recorded lock holder is `waited-for-
 
 ### 16.285 Round 46: the report: a refused config spelling cut per field and a redactor that failed kept private, both reports reading sources, the docs repo and the inbox alike, and an escaped listed row read in every reading it allows (2026-11-24, wave B13 round 46 lane RA)
 
-Reserved for round 46 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 46").
+Wave B13 round 46 lane RA builds the report's halves of the lead's rulings 198, 199, 200 and 205 and the report
+items of round 46's harvest, review and rehearsal (`docs/plans/bring-back-ocr.md`, "B13 round 46"; each item the
+verifier's corrected fix). A dated line this round writes reads `Amended 2026-11-24, §16.285 C<n>`.
+
+**A refused config spelling is cut per field, and a redactor that failed is private only** (C3099 with C3033, C3037
+and C3110; ruling 198; privacy). Ruling 193's `~name` refusal in `paths.expand` raised inside the report's raw
+readers of a sources.toml that does not load (`_unloaded_config`'s `folder()` and `[[source]]` path, and C2839's
+pandoc branch), so `_build_redactor` raised and `_build_report` fell back to a redactor that cut the home only and
+went out public with the login, full name, serial, host, organisations and folders in clear. Each reader catches
+`ConfigError` around `expand()` and goes on (a folder its default, a source path None, pandoc None), keeping the
+stripped value in `_RawConfig.refused`; `_register_refused` cuts each one after the own folders, the inbox blocks
+and before the source ids, in reading order (the sources' paths, docs_repo, state_dir, cache_dir, log_dir, then
+pandoc_path): whole with `add_cut` as `~<user>/<path>` (`~<user>` with no folder after the head), its `~name` head
+to `~<user>`, the name registered as a `user` value unless it is one of the report's own words, and the folder
+parts after the head through `_own_folder_values`' filter, so the report stays public. `_build_report`'s fallback
+sets the new `Redactor.redactor_failed`, which `private_only` reads, with its own line (`Private only: redaction
+facts could not be read, so names may show in clear.`), and registers this Mac's identity through
+`_register_identity`, the helper `_build_redactor` opens with (with `_register_name_tail` for the bracketed words);
+the shell report has no such fallback, so the line has no shell twin. Lane RB's `redaction_pairs` registers a
+`~name` value the same three ways (§16.286). Tests: `tests/test_setup_report.py`
+(`test_a_redactor_that_raises_leaves_the_report_private_only_c3099`,
+`test_a_tilde_name_value_is_cut_and_the_redactor_kept_c3099`), `tests/test_report_redaction.py`
+(`test_both_reports_cut_a_tilde_name_value_beside_a_valid_source_c3099`).
+
+**Both reports read the sources, the docs repo and the inbox alike** (C3056, C3055, C3104; ruling 199; privacy; the
+report's halves, lane RB's shell halves landed in the same run; amends §16.280 C2815 and C2939). A sources.toml that does not parse paired no path
+with its id, so `~/Development/KestrelAlder/notes` printed in clear under every header: `_scanned_sources` pairs each
+`[[source]]` table's id with its path (a dated line under §16.280 C2815's paragraph). The kept inbox's resolved target
+was agentsync's own wherever it lay, so doctor's FAIL on a link into `~/Locked Contoso/inner` printed it in a public
+report: the target is own only inside `~/agent-context`; one outside it, typed or the inbox source's stored path, is
+registered through `_own_folder_values` after the own folders and the C2430 block, in `_build_redactor` and for
+`_unconfigured_roots`, never as a project (C3055, makes worse True for registering every source's resolved path
+through `_project_values`, which registered the bare `inbox` of a link to `~/Documents/inbox`, made the report
+private only and cut every `inbox` word). `_logged_cloud_folders` split install.log's args with an unanchored regex
+that began inside `~/Project\ --source-local` and took the real flag for its operand: the args split as `read -a`
+splits them and the `$'..'` words come from install.sh's grep pattern (C3104; a dated line under C2939's
+paragraph). Tests: `tests/test_report_redaction.py` (`test_an_unparsed_config_pairs_each_id_with_its_path_c3056`,
+`test_both_reports_cut_a_source_under_every_header_and_quote_c3056`,
+`test_both_reports_cut_where_the_inbox_links_outside_agent_context_c3055`,
+`test_a_logged_flag_word_inside_an_escaped_operand_is_no_flag_c3104`).
 
 ### 16.286 Round 46: the installer: the shell halves of rulings 198 and 199, every word it writes valid UTF-8 that reads back as its path, an older build's inbox read, and C2060 waits on the operator (2026-11-24, wave B13 round 46 lane RB)
 
