@@ -27,6 +27,7 @@ from typing import Any
 import pytest
 
 from agentsync import arm_local, cli, governance, loop, materialise, publish, setup_report, skill
+from agentsync import config as config_module
 from agentsync import cycle as cycle_module
 from agentsync.arm_local import exclude_globs
 from agentsync.config import (
@@ -3219,6 +3220,120 @@ def test_the_walks_alarm_names_the_kept_inbox_as_typed_never_a_links_target_c300
         on = config.source(box.id)
         assert kept_inbox_not_a_folder(config, on) == kept
         assert kept_inbox_not_a_folder(config, dataclasses.replace(on, kind=SourceKind.LOCAL)) is None
+
+
+@pytest.mark.parametrize("entry", sorted(_ENTRY_KINDS))
+def test_the_walk_names_every_kept_inbox_entry_as_typed_c3312_c3211(
+    tmp_path: Path, entry: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """B13 round 47 C3312 and C3211 (ruling 210): a link through a file failed the root's lstat with ENOTDIR,
+    which set no root_notdir, so NEXT promised that a later sync lists it; and a link into a folder this
+    account cannot search read ``source root unreadable: <the link's target>``. Over every kind of entry
+    at the kept inbox the walk returns, a not-a-folder entry gives the not-a-folder alarm and loop's restore
+    note, an unread one ``source root is not read: <inbox as typed>: Permission denied``, and none names a
+    target."""
+    root = tmp_path / "Contoso Gamma"
+    (root / "Gamma Empty").mkdir(parents=True)
+    config = _synced(tmp_path, root)
+    config, box = ensure_inbox(config.config_path)
+    assert box is not None and run_cycle(config, mode=None).exit_code == 0
+    kept = config.docs_repo.parent / "inbox"
+    kept.rename(tmp_path / "inbox-moved")  # moved aside, never removed
+    locked = _put_entry(kept, entry)
+    try:
+        if locked and os.access(locked[0], os.X_OK):
+            pytest.skip("this account searches a mode-0 folder")
+        with _bounded(60), caplog.at_level(logging.WARNING, logger="agentsync"):
+            config = load_config(config.config_path)
+            report = run_cycle(config, mode=None)
+            step = loop.next_step(config)
+        state = (config.docs_repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
+    finally:
+        for folder in locked:
+            folder.chmod(0o700)
+    assert report.exit_code == 0
+    [src] = [r for r in report.sources if r.source_id == box.id]
+    typed = publish._display_path(kept)
+    kind = _ENTRY_KINDS[entry]
+    if kind == INBOX_ENTRY_NOT_A_FOLDER:
+        assert src.alarms == (
+            f"source root is not a folder: {typed} is a file or a link that does not lead to a folder "
+            f"(walk skipped; nothing is deleted; the note that begins the inbox ({box.id}) is not a folder "
+            f"says what to do, and `{BIN} status` prints it too)",
+        ), src.alarms
+        assert any(
+            n.startswith(f"the inbox ({box.id}) is not a folder: ")
+            and n.endswith("move it aside, then run step 2 again; it does not block the next step")
+            for n in step.notes
+        ), step.notes
+        assert not any("a later sync lists" in n for n in step.notes), step.notes
+    elif kind == INBOX_ENTRY_UNREAD:
+        alarm = (
+            f"source root is not read: {typed}: Permission denied (walk skipped; nothing is deleted; "
+            f"`{BIN} status` says what to do)"
+        )
+        assert src.alarms == (alarm,), src.alarms
+        assert alarm in state and f"{box.id}: {alarm}" in caplog.text, caplog.text
+        for text in (state, caplog.text):  # the link's target is never named, nor the home spelled out
+            assert "contoso-locked" not in text and str(Path.home()) not in text, text
+    else:  # a folder, a link to one, or a folder it cannot search: no not-a-folder or unread words
+        assert not any("is not a folder" in a or "is not read" in a for a in src.alarms), src.alarms
+    for text in (*src.alarms, *step.notes):
+        assert "contoso-" not in text, text
+
+
+def test_the_kept_inbox_probe_is_bounded_and_run_only_by_a_failed_root_read_c3311(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 47 C3311: the cycle read the kept inbox's entry before every inbox walk, following a link
+    with no time limit (a stat a privacy prompt may hold), and live_inbox did the same for the guide on every
+    sync. The probe runs only in a root branch that fails, bounded like the root's own reads, so a held stat
+    holds the walk with their words, and live_inbox's read is bounded too: ``sync`` and ``sync --dry-run``
+    both return."""
+    root = tmp_path / "Contoso Gamma"
+    (root / "Gamma Empty").mkdir(parents=True)
+    config = _synced(tmp_path, root)
+    config, box = ensure_inbox(config.config_path)
+    assert box is not None and run_cycle(config, mode=None).exit_code == 0
+    kept = config.docs_repo.parent / "inbox"
+    kept.rename(tmp_path / "inbox-moved")
+    (tmp_path / "contoso-note.txt").write_text("x\n", encoding="utf-8")
+    kept.symlink_to(tmp_path / "contoso-note.txt")
+    config = load_config(config.config_path)
+    real = config_module.inbox_entry
+    calls: list[Path] = []
+    release = threading.Event()
+
+    def held(folder: Path) -> str:
+        calls.append(folder)
+        release.wait(20)  # a stat held by a privacy prompt; released at the end, never left running
+        return real(folder)
+
+    monkeypatch.setattr(arm_local, "LISTING_TIMEOUT_S", 1.0)
+    monkeypatch.setattr(config_module, "inbox_entry", held)
+    try:
+        with _bounded(30):
+            began = time.monotonic()
+            assert config_module.live_inbox(config) is None  # names no kept inbox
+            assert time.monotonic() - began < 10  # bounded: never the held stat's 20 s
+            for mode in (CycleMode.DRY_RUN, None):
+                calls.clear()
+                report = run_cycle(config, mode=mode)
+                [src] = [r for r in report.sources if r.source_id == box.id]
+                assert any("reading the root did not return within 1s" in a for a in src.alarms), src.alarms
+                assert calls, mode
+            monkeypatch.setattr(config_module, "inbox_entry", real)
+            (kept.parent / "contoso-drop").mkdir()
+            kept.unlink()
+            kept.symlink_to(kept.parent / "contoso-drop")
+            config = load_config(config.config_path)
+            monkeypatch.setattr(config_module, "inbox_entry", held)
+            calls.clear()
+            monkeypatch.setattr(cycle_module, "kept_inbox_entry", lambda *_: pytest.fail("probe ran"))
+            report = run_cycle(config, mode=CycleMode.DRY_RUN)  # a root that reads: the probe never runs
+            assert all(not r.alarms for r in report.sources if r.source_id == box.id), report.sources
+    finally:
+        release.set()
 
 
 def test_an_empty_draft_over_an_empty_mirror_is_rule_4_beside_topic_pages_c2707(tmp_path: Path) -> None:

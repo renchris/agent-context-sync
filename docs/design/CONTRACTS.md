@@ -47257,6 +47257,9 @@ Amended 2026-11-25, §16.292 C3213, C3258, C3261: the alarm reads
 ``source root is not a folder: <folder> is a file or a link that does not lead to a folder (walk skipped; nothing is deleted; the note that begins the inbox (<id>) is not a folder says what to do, and `~/.local/bin/agentsync status` prints it too)``,
 one phrase for every entry that is not a folder, and a pointer to the line that gives the remedy, never `inbox state
 says what to do` (that line holds none).
+Amended 2026-11-25, §16.292 C3311, C3312, C3211: the cycle no longer reads the entry before the walk; it sets
+`LocalArm.root_probe`, which only a failed root branch runs, bounded by `listing_timeout_s`; a root read that fails
+through the link (ENOTDIR or ELOOP) sets `root_notdir`; an entry it cannot read reads `source root is not read`.
 
 **Another inbox source that is not a folder gets its own remedy, never step 2's** (C3044; ruling 204; amends §16.282
 C2814). C2814's note told every inbox source whose root is not a folder to `run step 2 again`, which recreates only
@@ -47998,6 +48001,25 @@ other inbox source's gone folder stays doctor's FAIL. No reader parses the word 
 guides were grepped; the report reads only `baseline`). Test:
 `test_status_line_says_a_kept_inbox_that_is_not_a_folder_never_missing_c3257` (eleven kinds of entry and an absent
 folder, under a timeout).
+
+**The kept inbox's probe runs only when the root read fails, bounded; a link through a file is not a folder; an entry
+it cannot read is named as typed** (C3311 with C3312 and C3211; ruling 210; amends §16.287 C3007). The cycle read
+`config.kept_inbox_not_a_folder` before every inbox walk, following a link with an unbounded stat a privacy prompt may
+hold, and `config.live_inbox` did the same for the guide on every sync. The cycle now hands the arm a callable,
+`LocalArm.root_probe` (`cycle._kept_inbox_shown`, over `config.kept_inbox_entry`, the one read
+`kept_inbox_not_a_folder` is built on), run only by the four root branches that name it, under `call_with_timeout`
+with `listing_timeout_s`; past it the scan is held with the root read's own words (`reading the root did not return
+within <n>s`). `live_inbox` bounds its read the same way, and past it names no kept inbox. A link through a file
+failed the root's lstat with ENOTDIR, which set no `root_notdir`, so loop's note promised that a later sync lists it:
+that branch sets `root_notdir` when the probe names the inbox, so the kept inbox's restore note follows. A link into a
+folder this account cannot search read `source root unreadable: <the link's target>: Permission denied`; the probe's
+second answer, kept apart so the not-a-folder words never fire on it, gives
+``source root is not read: ~/agent-context/inbox: Permission denied (walk skipped; nothing is deleted; `~/.local/bin/agentsync status` says what to do)``,
+the inbox as typed, the error as `strerror`, the command built from `AGENTSYNC_BIN` (status prints `inbox state: not
+read (...)` and doctor's listable row and its fix); a local source keeps `source root unreadable`. Tests:
+`test_the_walk_names_every_kept_inbox_entry_as_typed_c3312_c3211` (eleven kinds of entry, under a timeout) and
+`test_the_kept_inbox_probe_is_bounded_and_run_only_by_a_failed_root_read_c3311` (`sync` and `sync --dry-run` held,
+live_inbox bounded, a root that reads runs no probe).
 
 ### 16.293 Round 47: the converters: ruling 202's Office twins closed (UTF-32 text, a no-namespace `<Types>`, the container answers before the cache, xlsx's emitter 1.0.7) and one noun per family (2026-11-25, wave B13 round 47 lane E)
 

@@ -927,15 +927,23 @@ def kept_inbox_not_a_folder(config: Config, src: SourceConfig) -> Path | None:
     folder put back is no finding here). The source is matched by its stored path, compared with
     canonical_source_root of that folder; a local source at that path keeps its own root words, as doctor and
     the loop give it."""
+    on = kept_inbox_entry(config, src)
+    return on[0] if on is not None and on[1] == INBOX_ENTRY_NOT_A_FOLDER else None
+
+
+def kept_inbox_entry(config: Config, src: SourceConfig) -> tuple[Path, str] | None:
+    """``(typed, entry)`` when ``src`` is the inbox-kind source on the kept inbox (its stored path compared
+    with canonical_source_root of the folder as typed), ``entry`` being :func:`inbox_entry`'s one read of it;
+    else None, a local source at that path included (it keeps its own root words). The state test is
+    :func:`kept_inbox_not_a_folder`, built on this; the walk's probe reads the unread entry from it apart
+    (B13 round 47 C3211) and doctor the typed path of a link to a real folder (C3217), so neither is a second
+    test of "not a folder"."""
     if src.kind is not SourceKind.INBOX or src.path is None:  # a local source keeps its own root words
         return None
     typed = expand(config.docs_repo).parent / "inbox"
     try:
-        if (
-            expand(src.path) == canonical_source_root(typed)
-            and inbox_entry(typed) == INBOX_ENTRY_NOT_A_FOLDER
-        ):
-            return typed
+        if expand(src.path) == canonical_source_root(typed):
+            return typed, inbox_entry(typed)
     except OSError:
         return None
     return None
@@ -995,7 +1003,12 @@ def live_inbox(config: Config) -> Path | list[tuple[Path, str]] | None:
     not lead to a folder) or cannot be read, every candidate same_folder with it is dropped from both
     branches, since its stored path was canonicalized into that file or that link's target, so neither guide
     names what inbox_state calls ``not added (<folder> is not a folder)``; a link to a real folder is still
-    the kept folder (B13 round 45 C2807 with C2937, ruling 194)."""
+    the kept folder (B13 round 45 C2807 with C2937, ruling 194). That read is bounded by the listings' time
+    limit, since a link's target may sit where a privacy prompt holds a stat: past it the entry counts as one
+    it cannot read, so the guide names no kept inbox rather than holding the sync (B13 round 47 C3311)."""
+    # arm_local imports this module, so the bound is imported here; its limit is read at call time
+    from agentsync import arm_local  # noqa: PLC0415 - arm_local imports config: a module-level import cycles
+
     inboxes = sorted(
         (
             (s.path, s.id)
@@ -1006,7 +1019,13 @@ def live_inbox(config: Config) -> Path | list[tuple[Path, str]] | None:
     )
     folder = expand(config.docs_repo).parent / "inbox"
     kept = canonical_source_root(folder)
-    if inbox_entry(folder) not in (INBOX_ENTRY_ABSENT, INBOX_ENTRY_FOLDER):
+    try:
+        entry = arm_local.call_with_timeout(
+            lambda: inbox_entry(folder), arm_local.LISTING_TIMEOUT_S, name="agentsync-inbox"
+        )
+    except arm_local.CallTimedOutError:
+        entry = f"{INBOX_ENTRY_UNREAD}timed out"
+    if entry not in (INBOX_ENTRY_ABSENT, INBOX_ENTRY_FOLDER):
         inboxes = [(path, sid) for path, sid in inboxes if not same_folder(path, kept)]
     elif any(same_folder(path, kept) for path, _ in inboxes):
         return kept

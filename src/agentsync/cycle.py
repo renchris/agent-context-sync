@@ -73,13 +73,15 @@ from agentsync.classifier import (
 )
 from agentsync.classifier import classify_pass as _classify_pass
 from agentsync.config import (
+    INBOX_ENTRY_NOT_A_FOLDER,
+    INBOX_ENTRY_UNREAD,
     RETIRE_ADVICE,
     BreakerConfig,
     Config,
     SourceConfig,
     canonical_source_root,
     derive_source_id,
-    kept_inbox_not_a_folder,
+    kept_inbox_entry,
 )
 from agentsync.convert import (
     CONVERSION_FAILED,
@@ -704,6 +706,21 @@ def _parse_iso(value: str | None) -> datetime | None:
     except ValueError:
         return None
     return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+
+
+def _kept_inbox_shown(config: Config, src: SourceConfig) -> tuple[str | None, str | None]:
+    """``LocalArm.root_probe`` for ``src``: ``(shown, unread)``, the kept inbox as typed (``~/...``) in the
+    first slot when ``src`` is the inbox-kind source on it and its entry is not a folder
+    (config.kept_inbox_not_a_folder's test), in the second when that entry cannot be read, else None in both;
+    apart, so the not-a-folder words never fire on a link this account cannot follow (B13 round 47 C3211)."""
+    on = kept_inbox_entry(config, src)
+    if on is None:
+        return None, None
+    typed, entry = on
+    shown = _display_path(typed)
+    if entry == INBOX_ENTRY_NOT_A_FOLDER:
+        return shown, None
+    return None, shown if entry.startswith(INBOX_ENTRY_UNREAD) else None
 
 
 def _withheld_lines(
@@ -4766,10 +4783,10 @@ class _Cycle:
         else:
             if isinstance(arm, LocalArm):
                 arm.known_h0 = index
-                # the source on the kept inbox whose entry is not a folder: the walk's alarm names the folder
-                # as typed, never the link's target (B13 round 46 C3007, ruling 204)
-                typed = kept_inbox_not_a_folder(self.config, src)
-                arm.shown_root = _display_path(typed) if typed is not None else None
+                # the source on the kept inbox whose entry is not a folder, or cannot be read: the walk's
+                # alarm names the folder as typed, never the link's target (B13 round 46 C3007, ruling 204),
+                # read only by a root branch that fails and bounded there (round 47 C3311, C3211)
+                arm.root_probe = functools.partial(_kept_inbox_shown, self.config, src)
             try:
                 scan = arm.scan(current, full=full)
             finally:

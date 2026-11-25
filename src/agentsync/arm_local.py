@@ -1259,10 +1259,12 @@ class LocalArm:
         self.last_stats: WalkStats | None = None  # stats of the most recent scan (for STATE.md / reports)
         self.root_missing = False  # the most recent scan found no root (ENOENT), before or during the walk
         self.root_notdir = False  # ... found a root that is not a folder (a file or a link; C2814)
-        # the kept inbox as typed (``~/agent-context/inbox``), set by the cycle before a scan when this source
-        # sits on it and its entry is not a folder: the root branches' alarm names it, never the link's
-        # target, as every other reader does (B13 round 46 C3007, ruling 204)
-        self.shown_root: str | None = None
+        # what the root branches name, set by the cycle before a scan and run only when the root read fails:
+        # ``(shown, unread)``, the kept inbox as typed (``~/agent-context/inbox``) when this source sits on it
+        # and its entry is not a folder, or when that entry cannot be read, so the alarm names it, never the
+        # link's target, as every other reader does (B13 round 46 C3007, ruling 204). Lazy and bounded by
+        # ``listing_timeout_s``: following a link may wait on a privacy prompt (round 47 C3311, C3211)
+        self.root_probe: Callable[[], tuple[str | None, str | None]] | None = None
         # stable_id -> stored H0 of this source (``Manifest.observation_index``), set by the cycle before a
         # scan: files whose lstat tuple still matches skip the per-file getattrlist (see ``walk``).
         self.known_h0: Mapping[str, _KnownStat] | None = None
@@ -1280,14 +1282,15 @@ class LocalArm:
             self._volume = volume_uuid(self.root)
         return self._volume
 
-    def _not_a_folder_alarm(self) -> str:
+    def _not_a_folder_alarm(self, shown: str) -> str:
         """The root branches' alarm for the source on the kept inbox whose entry is not a folder
-        (:attr:`shown_root`): the folder as typed, and the walk's safety words (B13 round 46 C3007, ruling
-        204). ``a file or a link that does not lead to a folder`` covers every entry config.inbox_entry reads
-        as not a folder, a looping link and a link through a file too (B13 round 47 C3213), and the pointer
-        names the line that gives the remedy, loop's note, which status prints as well (C3258, ruling 210)."""
+        (``shown``, from :attr:`root_probe`): the folder as typed, and the walk's safety words (B13 round 46
+        C3007, ruling 204). ``a file or a link that does not lead to a folder`` covers every entry
+        config.inbox_entry reads as not a folder, a looping link and a link through a file too (B13 round 47
+        C3213), and the pointer names the line that gives the remedy, loop's note, which status prints as well
+        (C3258, ruling 210)."""
         return (
-            f"source root is not a folder: {self.shown_root} is a file or a link that does not lead to a "
+            f"source root is not a folder: {shown} is a file or a link that does not lead to a "
             "folder (walk skipped; nothing is deleted; the note that begins the inbox "
             f"({self.source_id}) is not a folder says what to do, and `{AGENTSYNC_BIN} status` prints it too)"
         )
@@ -1302,6 +1305,16 @@ class LocalArm:
             enumeration_complete=False,
             alarms=(alarm,),
         )
+
+    def _probe_root(self) -> tuple[str | None, str | None] | ScanResult:
+        """:attr:`root_probe`'s answer, run only by a root branch that names it, bounded as the root's own
+        reads are; past the limit the scan is held with their words (B13 round 47 C3311)."""
+        if self.root_probe is None:
+            return None, None
+        try:
+            return call_with_timeout(self.root_probe, self.listing_timeout_s, name="agentsync-root")
+        except CallTimedOutError:
+            return self._held(f"reading the root did not return within {self.listing_timeout_s:.0f}s")
 
     def _held(self, what: str) -> ScanResult:
         """A read past ``listing_timeout_s``. Recorded like EPERM: the source is unknown this pass, never
@@ -1477,22 +1490,36 @@ class LocalArm:
             return self._held(f"reading the root did not return within {self.listing_timeout_s:.0f}s")
         except FileNotFoundError:
             self.root_missing = True
-            if self.shown_root is not None:
-                return self._incomplete(self._not_a_folder_alarm())
+            if isinstance(shown := self._probe_root(), ScanResult):
+                return shown
+            if shown[0] is not None:
+                return self._incomplete(self._not_a_folder_alarm(shown[0]))
             return self._incomplete(f"source root missing: {self.root} (walk skipped; nothing is deleted)")
         except OSError as exc:
-            if self.shown_root is not None:
-                return self._incomplete(self._not_a_folder_alarm())
+            if isinstance(shown := self._probe_root(), ScanResult):
+                return shown
+            if shown[0] is not None:  # ENOTDIR or ELOOP through the kept inbox's link (round 47 C3312)
+                self.root_notdir = True
+                return self._incomplete(self._not_a_folder_alarm(shown[0]))
+            if shown[1] is not None:  # the kept inbox's entry cannot be read: named as typed (C3211)
+                return self._incomplete(
+                    f"source root is not read: {shown[1]}: {exc.strerror} (walk skipped; nothing is deleted; "
+                    f"`{AGENTSYNC_BIN} status` says what to do)"
+                )
             return self._incomplete(f"source root unreadable: {self.root}: {exc.strerror}")
         if stat.S_ISLNK(root_st.st_mode):
             self.root_notdir = True
-            if self.shown_root is not None:
-                return self._incomplete(self._not_a_folder_alarm())
+            if isinstance(shown := self._probe_root(), ScanResult):
+                return shown
+            if shown[0] is not None:
+                return self._incomplete(self._not_a_folder_alarm(shown[0]))
             return self._incomplete(f"source root is a symlink: {self.root}; configure the canonical path")
         if not stat.S_ISDIR(root_st.st_mode):
             self.root_notdir = True
-            if self.shown_root is not None:
-                return self._incomplete(self._not_a_folder_alarm())
+            if isinstance(shown := self._probe_root(), ScanResult):
+                return shown
+            if shown[0] is not None:
+                return self._incomplete(self._not_a_folder_alarm(shown[0]))
             return self._incomplete(f"source root is not a directory: {self.root}")
         if not isinstance(volume, str):
             return self._incomplete(f"volume UUID unavailable for {self.root}: {volume}")
