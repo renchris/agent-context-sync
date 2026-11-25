@@ -6524,8 +6524,10 @@ def _project_place(path: Path, own: Collection[Path], targets: Sequence[Path]) -
     C3242, ruling 206; privacy): None when it is agentsync's own or one of the kept inbox's ``targets``
     itself, never a project; True when it lies strictly below a target, registered through
     :func:`_own_folder_values`' filter; False for a project. Tested as written only, never against the inbox
-    source's resolved path, which lies in a target and would drop it (the C3055 locked row)."""
-    if any(path.is_relative_to(o) for o in own) or path in targets:
+    source's resolved path, which lies in a target and would drop it (the C3055 locked row). A path whose
+    realpath is a target is the inbox source itself, as sources.toml's loader stored it (a link of the
+    loop, ``~/Kestrel Alias/x`` of ``inbox -> ~/Kestrel Alias/x``), which the shell reads as written."""
+    if any(path.is_relative_to(o) for o in own) or path in targets or _real(path) in targets:
         return None
     return any(path.is_relative_to(t) for t in targets)
 
