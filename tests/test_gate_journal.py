@@ -520,6 +520,27 @@ def test_the_ceiling_is_about_twice_the_slowest_part_and_each_record_keeps_its_d
     assert summary and set(last) == {r["nodeid"] for r in tests}
 
 
+def test_the_ceiling_comment_names_a_part_stopped_at_the_old_ceiling_a_censored_lower_bound_c3065() -> None:
+    """B13 round 46 C3065: round 45's lead run 1 had a rest part stopped at the old 13,200 s ceiling (rc=124),
+    so its length is only known to be at least that, and 23400 is at most 1.77x it, not "about twice" it.
+    The ceiling stays 23400 (twice the slowest part that ran to its end); gate.sh's comment records the
+    stopped part as a censored lower bound and the rule for the next raise, never on one censored run
+    alone."""
+    script = (Path(__file__).parents[1] / "scripts" / "gate.sh").read_text(encoding="utf-8")
+    assert set(re.findall(r"\$\{GATE_CEILING_S:-(\d+)\}", script)) == {"23400"}
+    comment = " ".join(ln.lstrip("# ") for ln in script.splitlines() if ln.startswith("#"))
+    for words in (
+        "B13 round 45's lead run 1 had a rest part (8,930 tests, a gate slot grant of 2) stopped at the old"
+        " 13,200 s ceiling (rc=124, 2026-11-23T22:59:55Z): its length is a censored lower bound, at least"
+        " 13,200 s and not known, so 23400 is at most 1.77x it and twice the slowest part that ran to its"
+        " end.",
+        "Raise the ceiling to about twice any part that runs to its end past 11,700 s, or above twice a"
+        " censored lower bound only if one recurs, never on one censored run alone (B13 round 46 C3065).",
+    ):
+        assert words in comment, words
+    assert round(23400 / 13200, 2) == 1.77 and 2 * 11_700 == 23400
+
+
 SKIPPED_TEARDOWN = """
 import pytest
 from runs import ran

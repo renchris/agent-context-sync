@@ -46670,6 +46670,10 @@ writes only 1.14x headroom before a stop with no verdict after holding the land 
 still stops a hang; the plan's 13,200 mention is the lead's. Test: `tests/test_gate_journal.py`
 `::test_the_ceiling_is_about_twice_the_slowest_part_and_each_record_keeps_its_duration_c2273` (its literal and assert
 moved, its name kept).
+Amended 2026-11-24, §16.289 C3065: round 45's lead run 1 had a rest part (8,930 tests, a grant of 2) stopped at the
+old 13,200 s ceiling (rc=124, 2026-11-23T22:59:55Z), so its length is a censored lower bound, at least 13,200 s and not
+known; 23400 is at most 1.77x it and twice the slowest part that ran to its end, and is raised only on a completed part
+past 11,700 s or a censored one that recurs.
 
 **CI's time is the time of round 44's jobs, the head is 86 and the limit 105** (C2878; `CLAUDE.md`, `docs/lanes/COMMON.md`,
 ci.yml, `tests/test_convert_recording.py`; dated line at §16.144 W70; a fix that raises the head alone makes things
@@ -47125,6 +47129,17 @@ C's first old copy, a step 2 refused on AGENTSYNC_CONFIG among its plays. Tests:
 `test_the_v43_not_used_rule_covers_a_step2_refused_before_agentsync_ran_c3018`,
 `test_prompt_routes_changes_to_the_source_not_the_checkout`,
 `test_the_prompt_text_changes_only_with_its_version`, `test_readme_prompt_compat_matches_the_installer`.
+
+**The gate's ceiling names a part stopped at the old ceiling as a censored lower bound** (C3065; `scripts/gate.sh`,
+`tests/test_gate_journal.py`; amends §16.284 C2876). C2876 raised `GATE_CEILING_S` to 23400 s on round 44's slowest
+completed rest part, 11,608.96 s, but round 45's lead run 1 had a rest part (8,930 tests collected, a gate slot grant
+of 2) stopped at the then 13,200 s ceiling (`== rest ran past its 220 min ceiling; stopped (no verdict)`, rc=124 in
+gate-verdicts.log at 2026-11-23T22:59:55Z): its length is only known to be at least 13,200 s, so 23400 is at most
+1.77x it, not "about twice". The same tree went green under 23400, and no part has been stopped since, so the
+ceiling and its test stay; gate.sh's comment records the stopped part and the rule for the next raise: about twice any
+part that runs to its end past 11,700 s, or above twice a censored lower bound only if one recurs, never on one
+censored run alone. Test: `tests/test_gate_journal.py`
+`::test_the_ceiling_comment_names_a_part_stopped_at_the_old_ceiling_a_censored_lower_bound_c3065`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

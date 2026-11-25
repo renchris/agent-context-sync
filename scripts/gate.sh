@@ -150,7 +150,11 @@ stop_group() {
 # 25 minutes: longer than the slowest single test under the load the machine runs at) has stopped making progress,
 # and GATE_CEILING_S (23400, 6 h 30 min: about twice the slowest part measured, the rest part's 11,609 s in B13 round
 # 44 lane RA's land of 468d1c94, rounded up; B13 round 42 C2273, round 43 C2483, round 45 C2876) bounds a part that
-# keeps writing. Either one stops the group
+# keeps writing. B13 round 45's lead run 1 had a rest part (8,930 tests, a gate slot grant of 2) stopped at the old
+# 13,200 s ceiling (rc=124, 2026-11-23T22:59:55Z): its length is a censored lower bound, at least 13,200 s and not
+# known, so 23400 is at most 1.77x it and twice the slowest part that ran to its end. Raise the ceiling to about twice
+# any part that runs to its end past 11,700 s, or above twice a censored lower bound only if one recurs, never on one
+# censored run alone (B13 round 46 C3065). Either one stops the group
 # (stop_group), prints `== <part> made no progress for N min; stopped (no verdict)` or `== <part> ran past its N min
 # ceiling; stopped (no verdict)` and returns GATE_STALLED_RC, so the gate exits not green and frees the land lock. The
 # stall bound never stops a slow part that still writes, since each report resets it; only the ceiling, counted from
