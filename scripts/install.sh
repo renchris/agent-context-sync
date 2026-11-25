@@ -2791,6 +2791,7 @@ CUT_FREE_CUT_TRAIL=')]}.,;: 	'
 CUT_FREE_PART_STOP='[\042\047\140\012]|[)]:|, stored as | [|] | \302\267 '
 CUT_FREE_PATH_START='[\040\011](~/|/)'
 CUT_CWD_USAGE='needs a folder, got the option|needs a folder'
+CUT_SOURCE_LOCAL_KEPT='per folder)'
 # shellcheck disable=SC2088
 CUT_CONFIG_DEFAULT='~/agent-context/sources.toml'
 CUT_TOML_BREAKS='\302\205|\342\200\250|\342\200\251'

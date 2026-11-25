@@ -154,6 +154,15 @@ one of those one-word heads right after a ``'`` or ``"`` (``'--cwd=``, ``"--sour
 ``) is a quote that wraps the whole argument: its value runs to the closing quote or the line's end, split at
 any later such head after a blank, each piece cut by its own head's rule, in both reports."""
 
+SOURCE_LOCAL_KEPT = ("per folder)",)
+"""install.sh's own words right after ``--source-local `` in its no-folder NEXTs (``(one --source-local per
+folder)``), which both reports keep whole after that head, by phrase, never by their first word, and only
+where the phrase ends (the line's end, a blank, ``;``, ``,`` or ``.``), so ``--source-local per diem/Wombat``
+and ``--source-local per folder)/Wombat`` are still cut (B13 round 47 C3203, ruling 214; makes worse True
+for skipping ``per`` or cutting only path-shaped words): the quoted-head span rule (ruling 173) ran the
+NEXT's ``"<folder>"`` quote on to the end and cut the phrase and C3003's ``not live:`` clause to
+``<path>``."""
+
 CWD_USAGE = ("needs a folder, got the option", "needs a folder")
 """install.sh's own usage words right after ``--cwd `` (``usage error: --cwd needs a folder (see --help)``),
 which both reports keep whole, by phrase, never by their first word, so ``args=--cwd needs`` still cuts a
@@ -353,7 +362,8 @@ def shell_block() -> str:
     as an awk ERE: a bracket class of octal bytes, then each phrase, ``)`` and ``|`` bracketed, a non-ASCII
     character in octal); since B13 round 42
     ruling 146, ``CUT_FREE_PATH_START`` (a blank, space or tab in octal, then :data:`FREE_PATH_START` as
-    one ERE group); then ``CUT_CWD_USAGE`` (:data:`CWD_USAGE`, ``|``-joined, longest first),
+    one ERE group); then ``CUT_CWD_USAGE`` (:data:`CWD_USAGE`, ``|``-joined, longest first), since B13 round
+    47 C3203 ``CUT_SOURCE_LOCAL_KEPT`` (:data:`SOURCE_LOCAL_KEPT`, the same way),
     ``CUT_CONFIG_DEFAULT`` (:data:`CONFIG_DEFAULT`), ``CUT_TOML_BREAKS`` (:data:`TOML_BREAKS`, each one UTF-8
     alternative in octal) and
     ``CUT_TOML_BREAKS_ESCAPED`` (each one's :func:`toml_break_spellings`, ``,``-joined, in the same order,
@@ -389,6 +399,9 @@ def shell_block() -> str:
         ),
         "CUT_FREE_PATH_START": "[\\040\\011](" + "|".join(FREE_PATH_START) + ")",
         "CUT_CWD_USAGE": "|".join(sorted(CWD_USAGE, key=len, reverse=True)),
+        "CUT_SOURCE_LOCAL_KEPT": "|".join(
+            sorted(SOURCE_LOCAL_KEPT, key=len, reverse=True)
+        ),  # B13 round 47 C3203
         "CUT_CONFIG_DEFAULT": CONFIG_DEFAULT,
         "CUT_TOML_BREAKS": "|".join(_octal(ch) for ch in TOML_BREAKS),
         "CUT_TOML_BREAKS_ESCAPED": "|".join(",".join(toml_break_spellings(ch)) for ch in TOML_BREAKS),

@@ -20087,6 +20087,14 @@ def _quoted_value_end(line: str, m: re.Match[str]) -> int | None:
     rest = line[m.end() :]
     if not kinds or rest.startswith(("'", '"', "$'")) or _ESCAPED_BLANK_WORD_RE.match(rest):
         return None
+    # B13 round 47 C3203 (ruling 214; makes worse True for skipping `per` or cutting only path-shaped words):
+    # install.sh's own `(one --source-local per folder)` keeps the one-word read, which leaves `per` as prose,
+    # by its whole phrase, as _CWD_KEPT keeps --cwd's words, so its `not live:` clause stays too
+    if m.group(1) == "--source-local " and any(
+        rest.startswith(kept) and rest[len(kept) : len(kept) + 1] in ("", " ", ";", ",", ".")
+        for kept in report_cuts.SOURCE_LOCAL_KEPT
+    ):  # the phrase ends there: `per folder)/Wombat Ledger` is still a path
+        return None
     ends = [m.end() - 1 + k for q in kinds if (k := _closing_quote(q + rest, q)) > 0]
     return min(ends, default=len(line))
 

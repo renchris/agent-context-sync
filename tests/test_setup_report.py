@@ -5599,6 +5599,7 @@ def test_the_report_cuts_table_is_what_both_reports_read_ruling_133() -> None:
         "CUT_FREE_PART_STOP",
         "CUT_FREE_PATH_START",  # B13 round 42 ruling 146
         "CUT_CWD_USAGE",
+        "CUT_SOURCE_LOCAL_KEPT",  # B13 round 47 C3203
         "CUT_CONFIG_DEFAULT",
         "CUT_TOML_BREAKS",
         "CUT_TOML_BREAKS_ESCAPED",
@@ -30662,3 +30663,32 @@ def test_the_install_log_parser_is_a_module_of_its_own_c3241() -> None:
         [sys.executable, "-I", "-c", code], capture_output=True, text=True, check=True, timeout=60
     )
     assert cp.stdout.strip() == "False", cp.stdout + cp.stderr
+
+
+def test_install_shs_per_folder_phrase_is_kept_after_source_local_c3203() -> None:
+    """B13 round 47 C3203 (ruling 214; makes worse True for skipping `per` or cutting only path-shaped words):
+    the quoted-head span rule ran install.sh's NEXT's `"<folder>"` quote on to the line's end, so `(one
+    --source-local per folder)` read `(one --source-local <path>` and C3003's `not live:` clause was cut
+    with it. install.sh's whole phrase, a report_cuts row, keeps the one-word read where it ends; a folder
+    after the flag is still cut, `per diem/Wombat` and `per folder)/Wombat Ledger` among them."""
+    red = setup_report.Redactor()
+    red.add("home", str(Path.home()))
+    tail = " [setup report: ~/agent-context/setup/setup-report.md]"
+    held = setup_report.NOT_LIVE_CLAUSE.format(folders="project-alpha (paused)")
+    for next_ in (
+        setup_report.NO_FOLDER_NEXT.format(install_sh=setup_report.INSTALL_SH, rerun=setup_report.INSTALL_SH)
+        + held,
+        setup_report.NO_FOLDER_CHOSEN_NEXT.format(rerun=setup_report.INSTALL_SH),
+    ):
+        line = f"NEXT: {next_}{tail}"
+        assert setup_report._redact_lines(red, [line]) == line, line
+    assert report_cuts.SOURCE_LOCAL_KEPT == ("per folder)",)
+    assert "CUT_SOURCE_LOCAL_KEPT='per folder)'" in report_cuts.shell_block()
+    for said in (
+        "I ran 'install.sh --source-local per diem/Wombat' first",
+        "I ran 'install.sh --source-local Wombat Ledger/x' first",
+        "I ran 'install.sh --source-local per folder)/Wombat Ledger' first",
+    ):
+        assert setup_report._redact_lines(red, [said]) == "I ran 'install.sh --source-local <path>' first", (
+            said
+        )
