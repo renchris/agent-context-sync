@@ -46410,6 +46410,10 @@ since marking the pass complete recorded a listing that held a file back as comp
 incomplete-pass count and the removal and work filters (makes worse True). Test:
 `test_materialise_never_calls_a_file_it_names_withheld_or_unknown_c2813` (a known and a new file, an unnamed settling
 file still reported).
+Amended 2026-11-24, §16.287 C3093, C3045, C3010: the alarm is built in `_scan_and_classify`, so a dry run shows it as a
+real run does, and when every withheld path is named one line says why the listing stays INCOMPLETE: `note: <n>
+inbox item(s) named by materialise is (are) inside the <quiescence_s>s settle window, so the listing stays INCOMPLETE
+and the cursor held until a sync after it settles (they settle)`; the mark and the hold stay.
 
 **One bounded run parser and git's trailer extraction for every run reader** (C2920). `_head_run_id` read
 `Agentsync-Run` with a regex over HEAD's whole message while `_newest_run_trailer` and `_highest_recorded_run` took
@@ -46908,6 +46912,18 @@ compares; readers of these fixes match their heads only. Test:
 `test_a_folder_named_in_prose_is_unquoted_and_every_command_word_keeps_its_quote_c3008` (a blank, a control
 character, the locked folder's chmod still reaching it in bash); the C2809, C2808, C1401 and state-folder tests take
 the prose form.
+
+**A dry run shows the withheld alarm, and a named settling file says why the listing stays INCOMPLETE** (C3093 with
+C3045, C3010; ruling 204 clusters; amends §16.282 C2813). C2813 built the withheld alarm after the work-queue beat in
+`_run_source`, which a dry run never reaches, so a dry run over a settling inbox read INCOMPLETE with no reason and no
+name. `cycle._withheld_lines` builds it in `_scan_and_classify`, which both modes call once per source, with the paths
+a `materialise PATH` run names left out, and the late block is deleted. When every withheld path is named, the alarm is
+None and nothing said why the pass stays INCOMPLETE: one line does, `note: 1 inbox item named by materialise is inside
+the 600s settle window, so the listing stays INCOMPLETE and the cursor held until a sync after it settles`. Marking
+the forced pass complete stays refused (C3010's makes worse True, C2813's ruling): the walk did hold the file back,
+and the mark drives the removal and work filters and doctor's incomplete-pass count. Test: the C2813 test's dry run
+(`2 inbox items withheld:` naming the unnamed file) and its run naming the only settling file (no withheld alarm, the
+note, INCOMPLETE, the cursor held).
 
 ### 16.288 Round 46: the converters: a kept Office answer read again only from the bytes and the fetch that were read, the container answers and the family parse corrected, and speech's CA words (2026-11-24, wave B13 round 46 lane E)
 

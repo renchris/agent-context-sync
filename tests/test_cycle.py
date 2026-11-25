@@ -8741,6 +8741,26 @@ def test_materialise_never_calls_a_file_it_names_withheld_or_unknown_c2813(
         "once it settles"
     )
     assert (settling in box.alarms) is not known, box.alarms
+    assert not any(a.startswith("note: ") for a in box.alarms), "an unnamed file still says withheld"
+    # B13 round 46 C3093 with C3045 (ruling 204): a dry run shows the withheld alarm as a real run does
+    dry = run(config, mode=CycleMode.DRY_RUN, only=["inbox"])
+    (box,) = [r for r in dry.sources if r.source_id == "inbox"]
+    assert box.enumeration_complete is False, box
+    assert any(a.startswith("2 inbox items withheld: ") and "'Contoso draft.txt'" in a for a in box.alarms), (
+        box
+    )
+    # B13 round 46 C3010 (makes worse True for marking the pass complete): naming the only settling file
+    # leaves INCOMPLETE and the cursor hold with no withheld alarm, so one note says why
+    (inbox / other).rename(tmp_path / "draft-moved")  # moved aside, never removed
+    report = run(config, mode=None, materialise_paths=[inbox / name])
+    (box,) = [r for r in report.sources if r.source_id == "inbox"]
+    assert box.enumeration_complete is False and box.cursor_advanced is False, box
+    assert not any("withheld" in a for a in box.alarms), box.alarms
+    note = (
+        "note: 1 inbox item named by materialise is inside the 600s settle window, so the listing stays "
+        "INCOMPLETE and the cursor held until a sync after it settles"
+    )
+    assert note in box.alarms, box.alarms
 
 
 def test_a_no_media_recording_stub_stays_uncounted_and_unplanned_c2039(

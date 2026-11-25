@@ -701,6 +701,27 @@ def _parse_iso(value: str | None) -> datetime | None:
     return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
 
+def _withheld_lines(withheld: Sequence[str], named: Collection[str], quiescence_s: int | float) -> list[str]:
+    """The lines for the inbox files a walk withheld as still settling, built in ``_scan_and_classify`` so a
+    dry run shows them as a real run does (B13 round 46 C3093 with C3045, ruling 204: a dry run lost them when
+    C2813 moved the alarm after the work-queue beat). A path a ``materialise PATH`` run names is read, or told
+    as still being written, so it is never also reported withheld (B13 round 45 C2813); when every withheld
+    path is named, one line says why the listing still reads INCOMPLETE, since the INCOMPLETE mark and the
+    cursor hold stay as the walk did hold the file back (B13 round 46 C3010, makes worse True for marking the
+    pass complete)."""
+    alarm = withheld_alarm([p for p in withheld if p not in named], quiescence_s)
+    if alarm is not None:
+        return [alarm]
+    if not withheld:
+        return []
+    n = len(withheld)
+    verb, it = ("is", "it settles") if n == 1 else ("are", "they settle")
+    return [
+        f"note: {plural(n, 'inbox item')} named by materialise {verb} inside the {quiescence_s}s settle "
+        f"window, so the listing stays INCOMPLETE and the cursor held until a sync after {it}"
+    ]
+
+
 def _sha256_file(path: Path) -> str | None:
     try:
         return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -4660,6 +4681,11 @@ class _Cycle:
         acc.pass_kind = scan.pass_kind
         acc.enumeration_complete = scan.enumeration_complete
         acc.alarms += list(scan.alarms)
+        acc.alarms += _withheld_lines(
+            scan.withheld_paths,
+            self.forced_paths.get(src.id, set()) if self.forced_paths else set(),
+            src.quiescence_s,
+        )
         if self.suppressions.items or self.suppressions.globs or self.audited:  # never come back (C15 7)
             kept = tuple(
                 it
@@ -4853,13 +4879,6 @@ class _Cycle:
         self.lock.beat(f"work:{src.id}")
         queue = self.manifest.pending_work(src.id)
         forced = self._forced_ids(src)
-        named = self.forced_paths.get(src.id, set()) if self.forced_paths else set()
-        # the withheld alarm, built here (B13 round 45 C2813): a path this materialise run names is read,
-        # or told as still being written, so it is never also reported withheld; INCOMPLETE and the cursor
-        # hold stay, as the walk did hold it back
-        alarm = withheld_alarm([p for p in scan.withheld_paths if p not in named], src.quiescence_s)
-        if alarm is not None:
-            acc.alarms.append(alarm)
         if forced is not None:
             for sid in sorted(forced - {r.stable_id for r in queue}):
                 self.manifest.set_verdict(src.id, sid, Verdict.MAYBE_CHANGED)
