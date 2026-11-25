@@ -13268,7 +13268,10 @@ step, so it has no entry in `PROMPT_LAYOUTS`. A saved v10 copy is stopped at ste
   closed; no common-word exemption is made. **Amended (2026-10-12, §16.58 F92):** not for a one-word value that
   is a word the report prints; see §16.46 "Kept as they are". **Amended 2026-11-24, §16.289 C3050:** since round 42's
   C2202 the shell fallback numbers sources.toml's CloudStorage folders, then the listing and step 1's list, and the
-  run's and install.log's `--source-local` folders last, after every other value.
+  run's and install.log's `--source-local` folders last, after every other value. **Amended 2026-11-25, §16.294
+  C3279:** the CloudStorage listing's place before step 1's list dates from round 44's C2669 (8171f2056), when the
+  shell first listed CloudStorage; round 42's C2202 (8cb6579a6) moved only the run's and install.log's
+  `--source-local` folders last.
 
 #### Outside the prompt
 
@@ -47417,7 +47420,8 @@ shell fallback's order already named install.log", K69's and C2669's quoted orde
 dated lines. No code moves: install.sh's order matches Python's on purpose. Tests:
 `tests/test_deploy_pack.py::test_the_guide_names_step_1s_folder_list_as_a_redaction_source` (the sentence) and
 `::test_the_guides_redaction_rows_name_own_moved_folders_and_dotted_remotes` (install.sh's call order and the
-`logged_late` seed).
+`logged_late` seed). Amended 2026-11-25, §16.294 C3279: the quoted guide order was not unchanged since round 9: round
+44's C2669 (8171f2056) added `then the CloudStorage listing` to it, and only the rest dates from round 9.
 
 **No report reads step 2's inbox lines** (C3051; amends §16.282 C2808). §16.282's C2808 paragraph said install.sh's
 `inbox_not_added` "and the report's reader" match step 2's `inbox: not read:` line, against §16.280's measurement that
@@ -47538,6 +47542,14 @@ test_cli's all-paused half say. Each paragraph takes a dated line for that case,
 moves after the 2026-11-03 C832 line it had read ahead of, since bb92e1b01 took over C832's leading `Amended`. Tests:
 `tests/test_deploy_pack.py::test_every_dated_line_from_round_11_on_is_held_by_a_test` and
 `::test_the_c3004_dated_lines_are_in_date_order_and_name_the_all_paused_warning_c3278`.
+
+**The shell's CloudStorage listing dates from round 44** (C3279; amends §16.43 N44 and §16.289 C3050). C3050's dated
+line under N44 said the shell numbers the listing before step 1's list "since round 42's C2202", and §16.289's C3050
+paragraph called the guide's quoted order "unchanged since round 9". At C2202 (8cb6579a6) install.sh had no
+CloudStorage listing; it only moved `--source-local` folders into `logged_late`. cloud_listing and cloud_listed came
+with round 44's C2669 (8171f2056), whose diff is the one commit `git log -S'then the CloudStorage listing, then
+install.out'` names for the guide. Both sentences keep their words, as C3051 and C3052 did, and each takes a dated
+line. Test: `tests/test_deploy_pack.py::test_every_dated_line_from_round_11_on_is_held_by_a_test`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
