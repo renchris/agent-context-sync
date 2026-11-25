@@ -7330,8 +7330,18 @@ fallback_body() {
 		say "- inbox: not checked ($why)"
 		say "- [[source]] table headers (not parsed): $(grep -c '^[[:space:]]*\[\[source\]\]' "$CONFIG" 2>/dev/null || true)"
 		say "$(source_excludes_line "$CONFIG")"
+	elif [ -e "$CONFIG" ]; then
+		# something there that is not a file (a folder, a fifo): setup_report's mark, `(exists)`, as its stat
+		# reads it, and a `loads: no:` reason, which the finish reads as a config that does not load; no table
+		# count, as a read of it reads nothing (B13 round 46 C3019)
+		say "- config: $CONFIG (exists)"
+		say "- loads: no: it is a folder or something else that is not a file"
+	elif LC_ALL=C /usr/bin/stat -L "$CONFIG" 2>&1 >/dev/null | LC_ALL=C grep -q 'Permission denied'; then
+		# a folder above it refuses this account a search: nobody can tell whether it is there, as
+		# setup_report._path_reached words it (C3019)
+		say "- config: $CONFIG (not checked: this account cannot reach it: Permission denied)"
 	else
-		say "- config: $CONFIG (missing)"
+		say "- config: $CONFIG (missing)" # nothing there, or a link to nothing, as stat reads it
 	fi
 	say ""
 	say "## Doctor"

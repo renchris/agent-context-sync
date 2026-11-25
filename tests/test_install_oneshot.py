@@ -27754,13 +27754,60 @@ def test_the_report_still_runs_over_a_config_path_step_2_refuses_c2816(
 ) -> None:
     """B13 round 45 ruling 193, C2816: --report-only keeps reading a value step 2 refuses, so the report is
     still written: a `~user` value under the folder it runs in, where nothing is, marked (missing), and a bare
-    `~` read as the home, which is no file."""
+    `~` read as the home, which is no file: since B13 round 46 C3019 marked (exists) with a `loads: no:`
+    reason, as the agentsync report's stat reads it."""
     into = ("/bin/sh", "-c", 'cd "$0" && exec "$@"', env["HOME"])  # the folder it runs in: the home
     cp = install_sh({**env, "AGENTSYNC_CONFIG": value}, "--report-only", wrap=into)
     assert cp.returncode == 0 and "shell fallback" in cp.stdout, cp.stdout + cp.stderr
     section = report_path(env).read_text().split("\n## Configuration\n\n", 1)[1].split("\n\n", 1)[0]
     shown = "~/<path>" if value != "~" else "~"  # a config path but the default is cut (C2238)
-    assert section.splitlines()[0] == f"- config: {shown} (missing)", section
+    want = ["- config: ~/<path> (missing)"] if value != "~" else [f"- config: {shown} (exists)", _C3019_LOADS]
+    assert section.splitlines() == want, section
+
+
+_C3019_LOADS = "- loads: no: it is a folder or something else that is not a file"
+
+
+@pytest.mark.parametrize("kind", ["folder", "fifo", "dangling-link", "nothing"])
+def test_the_shell_report_marks_a_config_that_is_not_a_file_as_the_agentsync_report_does_c3019(
+    env: dict[str, str], kind: str
+) -> None:
+    """B13 round 46 C3019: the shell fallback's Configuration section tested `-f` alone, so a config path
+    that is a folder or a fifo read `(missing)` where the agentsync report's stat reads `(exists)` and
+    `loads: no:`. Something there that is not a file is `(exists)` with a `loads: no:` reason and no table
+    count; a link to nothing and an empty path stay `(missing)`, as stat reads them; the agentsync report
+    gives the same mark (not run over the fifo, which its own config read waits on)."""
+    at = Path(env["HOME"]) / "Contoso-config"
+    if kind == "folder":
+        at.mkdir()
+    elif kind == "fifo":
+        os.mkfifo(at)
+    elif kind == "dangling-link":
+        at.symlink_to(Path(env["HOME"]) / "nowhere")
+    run = {**env, "AGENTSYNC_CONFIG": str(at)}
+    cp = install_sh(run, "--report-only")
+    assert cp.returncode == 0 and "shell fallback" in cp.stdout, cp.stdout + cp.stderr
+    section = report_path(env).read_text().split("\n## Configuration\n\n", 1)[1].split("\n\n", 1)[0]
+    there = kind in ("folder", "fifo")
+    mark = "exists" if there else "missing"
+    want = [f"- config: ~/<path> ({mark})", *([_C3019_LOADS] if there else [])]
+    assert section.splitlines() == want, section
+    if kind == "fifo":
+        return
+    out = Path(env["HOME"]) / "agentsync-report.md"
+    py = subprocess.run(
+        [sys.executable, "-m", "agentsync", "setup-report", "--out", str(out)],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+        env={**run, "AGENTSYNC_OCR": "0", "AGENTSYNC_TM_EXCLUDE": "0"},
+        stdin=subprocess.DEVNULL,
+    )
+    assert py.returncode == 0, py.stdout + py.stderr
+    lines = out.read_text(encoding="utf-8").split("\n## Configuration\n\n", 1)[1].splitlines()
+    assert lines[0] == section.splitlines()[0], (lines[:2], section)
+    assert lines[1].startswith("- loads: no: ") == there, lines[:2]
 
 
 @pytest.mark.parametrize(
