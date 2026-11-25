@@ -47193,6 +47193,16 @@ dated lines at §16.64 G23 and §16.69 H42, but two statements kept the Failed o
 docstrings that name the option. Test: `tests/test_deploy_pack.py`
 `::test_g12_and_h43_give_a_stopped_attempt_the_stopped_option_c3052` (held to `setup_report.STOPPED_FORM_OPTION`).
 
+**The governance guide's banner sentence covers the pages this build writes** (C3108; `docs/deploy/data-governance.md`).
+Its untrusted-content section said every mirror page opens with the `[UNTRUSTED CONTENT]` banner, but round 45's
+C2929 (§16.283) left a Markdown page published under the old eight-line rule (a source carrying the banner line under
+its own heading) with that heading above the banner until its source next changes, since the `BANNER_VERSION` bump
+re-reads and commits nothing. The sentence now says every page this build writes opens with it, and one sentence
+beside the stub and tombstone exception names that older page; "The banner is in every page body" stays true. Only
+pages whose source held the banner in its first eight lines are such pages, so the guide never says ordinary older
+pages lack a leading banner. Test: `tests/test_deploy_pack.py`
+`::test_the_governance_guides_banner_sentence_covers_the_pages_this_build_writes_c3108`.
+
 **CI's time is the time of round 45's jobs, the head is 92 and the limit 112** (C3060; `CLAUDE.md`,
 `docs/lanes/COMMON.md`, ci.yml, `tests/test_convert_recording.py`; dated line at §16.144 W70). Round 45's eight ci jobs
 on main (0ad24fd7 to 6f4c436f, re-timed with `gh api .../attempts/<n>/jobs`) took 77:32 to 89:37 on their last

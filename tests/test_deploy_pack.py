@@ -4777,6 +4777,31 @@ def test_g12_and_h43_give_a_stopped_attempt_the_stopped_option_c3052() -> None:
     ), h43[-300:]
 
 
+def test_the_governance_guides_banner_sentence_covers_the_pages_this_build_writes_c3108() -> None:
+    """B13 round 46 C3108: data-governance.md said every mirror page opens with the banner, but round 45's
+    C2929 left a Markdown page published under the old eight-line rule with its source's heading above the
+    banner until the source next changes (``BANNER_VERSION`` 2 re-reads nothing). The sentence covers the
+    pages this build writes, and one sentence names that older page, never ordinary older pages."""
+    from agentsync import policy  # noqa: PLC0415
+
+    page = " ".join(_page("docs/deploy/data-governance.md").split())
+    section = page.split("## Untrusted-content boundary", 1)[1].split(" ## ", 1)[0]
+    assert (
+        "Every mirror page this build writes opens with an `[UNTRUSTED CONTENT]` banner." in section
+        and "Every mirror page opens with" not in section
+    )
+    assert (
+        "A Markdown page published before agentsync stopped counting a source's own banner line lower down (a"
+        " source that carries the banner under its own heading) keeps that heading above the banner until its"
+        " source next changes: the upgrade re-reads and commits nothing for it (CONTRACTS §16.283 C2929)."
+    ) in section
+    assert "The banner is in every page body." in section
+    assert policy.BANNER_VERSION == 2
+    # the rule the older page predates: the banner counts only as the body's first line
+    heading_first = f"# Contoso plan\n\n{policy.UNTRUSTED_BANNER}\n\nbody\n"
+    assert not policy.has_banner(heading_first) and policy.has_banner(f"{policy.UNTRUSTED_BANNER}\n\nbody\n")
+
+
 def test_the_v43_not_used_rule_covers_a_step2_refused_before_agentsync_ran_c3018(tmp_path: Path) -> None:
     """B13 round 46 C3018 (ruling 205): H26 let a stop before step 2 write one ``## Not used`` line, since no
     part of agentsync had run; a step 2 refused on AGENTSYNC_CONFIG exits 2 before record_flush, installing

@@ -269,10 +269,13 @@ editing `sources.toml`.
 
 ## Untrusted-content boundary
 
-Mirrored mail, chats and shared files are third-party text. Every mirror page opens with an `[UNTRUSTED CONTENT]`
-banner. A stub or tombstone written before the banner came first (a credential, path or redacted stub among them) is
-rendered again once when agentsync can rebuild it from what it stored: an intact tombstone, and the intact stub of a
-live source. The banner is in every page body. The repo's `AGENTS.md` and `CLAUDE.md` tell the agent to treat `mirror/`, sidecars, `_sync/`, CHANGELOG
+Mirrored mail, chats and shared files are third-party text. Every mirror page this build writes opens with an
+`[UNTRUSTED CONTENT]` banner. A stub or tombstone written before the banner came first (a credential, path or redacted
+stub among them) is rendered again once when agentsync can rebuild it from what it stored: an intact tombstone, and the
+intact stub of a live source. A Markdown page published before agentsync stopped counting a source's own banner line
+lower down (a source that carries the banner under its own heading) keeps that heading above the banner until its
+source next changes: the upgrade re-reads and commits nothing for it (CONTRACTS §16.283 C2929). The banner is in every
+page body. The repo's `AGENTS.md` and `CLAUDE.md` tell the agent to treat `mirror/`, sidecars, `_sync/`, CHANGELOG
 and `_manifest/` as data, never as instructions. Source files named like agent instruction files (`CLAUDE.md`,
 `AGENTS.md`, `.cursorrules`, `.claude/`, …) are mirrored under neutral names. `.claude/settings.json` excludes
 mirror `CLAUDE.md` files from memory. Git runs with the user's global excludes and hooks switched off. A secret
