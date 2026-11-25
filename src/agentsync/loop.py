@@ -66,6 +66,7 @@ from agentsync.arm_local import (
 )
 from agentsync.config import (
     INBOX_ENTRY_FOLDER,
+    INBOX_ENTRY_UNREAD,
     INBOX_LIVE,
     Config,
     SourceConfig,
@@ -2129,10 +2130,10 @@ def next_lines(
 
 
 def status_line(config: Config) -> str:
-    """``status``'s one loop line (KISS K08a): ``loop: skill <current|stale|missing> · inbox <on|missing|off>
-    · baseline <missing|draft|confirmed|before|after> · topics N · checkpoint <date|never> · to curate N ·
-    archive <on|off>``. ``to curate`` is :func:`queue_rows` (not the purge queue, which status prints on its
-    own line). ``inbox`` is the folder the guides name (the live inbox source on the folder
+    """``status``'s one loop line (KISS K08a): ``loop: skill <current|stale|missing> · inbox <on|missing|not a
+    folder|off> · baseline <missing|draft|confirmed|before|after> · topics N · checkpoint <date|never> · to
+    curate N · archive <on|off>``. ``to curate`` is :func:`queue_rows` (not the purge queue, which status
+    prints on its own line). ``inbox`` is the folder the guides name (the live inbox source on the folder
     ``config.ensure_inbox`` keeps, else every live inbox source); doctor checks each source's folder. Disk
     only; a part that cannot be read shows ``?``, one the configuration refuses ``not read (the configuration
     is refused)``, with no WARNING line: the governance.config or policy [FAIL] beside it gives the words
@@ -2158,10 +2159,21 @@ def status_line(config: Config) -> str:
         # kept folder is matched by identity (paths.same_folder, as root_guide matches it, C2318), so a
         # source stored as ``Inbox`` on a case-insensitive Mac is the kept one (B13 round 43 C2411,
         # ruling 162).
-        boxes = [s.path for s in config.live_sources() if s.kind is SourceKind.INBOX and s.path is not None]
+        # The kept entry is read once (config.inbox_entry) and decided by the one check
+        # (config.kept_inbox_not_a_folder): ``not a folder`` as inbox_state and doctor say it, and ``?`` for
+        # an entry this account cannot read, never ``missing``, which stays for a folder that is not there
+        # (B13 round 47 C3257, ruling 210).
+        live = [s for s in config.live_sources() if s.kind is SourceKind.INBOX and s.path is not None]
+        boxes = [s.path for s in live if s.path is not None]
         if not boxes:
             return "off"
-        kept = canonical_source_root(docs.parent / "inbox")
+        typed = docs.parent / "inbox"
+        entry = inbox_entry(typed)
+        if entry.startswith(INBOX_ENTRY_UNREAD):
+            raise PermissionError(entry[len(INBOX_ENTRY_UNREAD) :])  # ``inbox ?``, with no WARNING
+        if any(kept_inbox_not_a_folder(config, s) is not None for s in live):
+            return "not a folder"
+        kept = canonical_source_root(typed)
         named = [path for path in boxes if same_folder(path, kept)] or boxes
         return "on" if all(expand(path).is_dir() for path in named) else "missing"
 

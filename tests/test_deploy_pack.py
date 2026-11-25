@@ -9714,11 +9714,13 @@ _ROUND_47_B_PARAGRAPH_AMENDS = (
         "**A dry run shows the withheld alarm, and a named settling file says why",
         "§16.292 C3214, C3229, C3259",
     ),
+    ("16.21", "2. `loop.status_line(config)`: `loop: skill <current|stale|missing>", "§16.292 C3257"),
 )
 """Round 47 lane B's dated lines: C3227's at §14's item 13, STATE.md's blocking-finding step, now
 ``loop.land_gate_step``'s words (B13 round 47 C3227, ruling 212); C3216's under §16.287's C3004 paragraph, its
 two WARNINGs naming the path once; C3214's under the C2813 and C3010 paragraphs, the settle-window line
-without its ``note: `` head."""
+without its ``note: `` head; C3257's at §16.21's item 2, the loop line's ``inbox not a folder`` and ``?``
+(ruling 210)."""
 _ROUND_45_RB_PARAGRAPH_AMENDS = (
     (
         "16.116",

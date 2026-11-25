@@ -2763,6 +2763,51 @@ def test_status_line_matches_the_kept_inbox_by_identity_c2411(tmp_path: Path, fo
     assert " · inbox on · " in loop.status_line(config)
 
 
+@pytest.mark.parametrize(
+    "entry",
+    [
+        "absent",
+        "folder",
+        "file",
+        "link-to-folder",
+        "link-to-file",
+        "dangling-link",
+        "self-link",
+        "two-link-loop",
+        "link-through-a-file",
+        "fifo",
+        "unsearchable-folder",
+        "link-into-an-unsearchable-folder",
+    ],
+)
+def test_status_line_says_a_kept_inbox_that_is_not_a_folder_never_missing_c3257(
+    tmp_path: Path, folder: Path, entry: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """B13 round 47 C3257 (ruling 210): status's loop line read ``inbox missing`` for a file, a link that does
+    not lead to a folder or an entry this account cannot read at the kept inbox, so it could not tell them
+    from an absent folder while inbox_state and doctor said ``is not a folder``. It reads the entry once and
+    decides by the one check: ``inbox not a folder``, ``inbox ?`` (no WARNING) for an entry it cannot read,
+    ``inbox missing`` only for a folder that is not there, and ``inbox on`` for a folder or a link to one."""
+    config = _synced(tmp_path, folder)
+    config, kept_src = ensure_inbox(config.config_path)
+    assert kept_src is not None and " · inbox on · " in loop.status_line(config)
+    kept = config.docs_repo.parent / "inbox"
+    kept.rename(tmp_path / "inbox-moved")  # moved aside, never removed
+    locked = [] if entry == "absent" else _put_entry(kept, entry)
+    try:
+        if locked and os.access(locked[0], os.X_OK):
+            pytest.skip("this account searches a mode-0 folder")
+        with _bounded(10), caplog.at_level(logging.WARNING, logger="agentsync"):
+            line = loop.status_line(load_config(config.config_path))
+    finally:
+        for made in locked:
+            made.chmod(0o700)
+    kind = _ENTRY_KINDS.get(entry, "absent")
+    want = {INBOX_ENTRY_FOLDER: "on", INBOX_ENTRY_NOT_A_FOLDER: "not a folder", INBOX_ENTRY_UNREAD: "?"}
+    assert f" · inbox {want.get(kind, 'missing')} · " in line, line
+    assert "cannot read inbox" not in caplog.text, caplog.text
+
+
 def _nothing_to_draft(config: Config, why: str, inbox: str | None = None) -> str:
     """Rule 4's NEXT over an empty mirror (B13 round 44 C2630 with C2603, ruling 181): the opening kept, the
     move the operator's, and ``or the inbox (<inbox>)`` only for an inbox that is read (C2602)."""

@@ -6279,6 +6279,9 @@ A green doctor or a full-looking status read as "done" while the curation half h
    Amended 2026-10-19, §16.137 V20: a part the configuration refuses (a `[governance]` value that does not
    pass) shows `not read (the configuration is refused)`, with no `WARNING agentsync.loop` line; any other part
    that cannot be read shows `?`.
+   Amended 2026-11-25, §16.292 C3257: the part reads `inbox <on|missing|not a folder|off>`: `not a folder` for a
+   kept inbox entry that is a file or a link that does not lead to a folder, and `?` (no WARNING) for one this
+   account cannot read; `missing` is only a folder that is not there.
 3. `doctor.format_results(doctor.run_checks(config, tcc_canary=<due>) + cli._extra_checks(config))`: doctor's
    lines byte for byte, so install.sh's `^\[FAIL` parsing is unchanged.
 4. The status lines (lock, holds, queued purges, retention, launcher events, last runs, each source with its
@@ -11927,6 +11930,9 @@ Why: the part read `inbox missing` on a Mac whose kept inbox existed, because so
 folders that were gone (triage 2026-10-08), the one place that still used the older meaning. Amends §16.21
 item 2 and the note in §16.36 (dated lines there). Test: `tests/test_loop.py`
 (`test_status_line_inbox_is_the_kept_inbox_not_every_inbox_source`).
+Amended 2026-11-25, §16.292 C3257: a fourth word, `inbox not a folder`, when the kept inbox's entry is not a folder
+(`config.kept_inbox_not_a_folder`), and `inbox ?` for an entry this account cannot read, where both read `missing`;
+`on`, `missing`, `off` and `?` keep their meanings.
 
 #### N34: the baseline NEXT names the docs repo's AGENTS.md too (`agentsync.loop`, `agentsync.setup_report`)
 
@@ -47980,6 +47986,18 @@ it aside, then run step 2 again`, any other's `until a folder is back at that na
 copy, move it aside and put a folder back at that name, or fix path in [[source]] id = "<id>" in <config>`. The
 READMEs', the prompt's and the lane notes' copies of the phrase are lanes D's and the lead's. Tests: the C2814 test
 (a self-link row added), the C3044 test and the C3007 test (the alarm in full, its self-link row included).
+
+**Status's loop line says an inbox that is not a folder** (C3257; ruling 210; amends §16.21 item 2 and §16.39 N22).
+`loop.status_line`'s inbox part decided by `is_dir()` alone, so a file, a link that does not lead to a folder and a
+denied entry at the kept inbox read `inbox missing`, like an absent folder, while `inbox state:` beside it and
+doctor said `is not a folder`. It now reads the kept entry once (`config.inbox_entry`): an entry this account cannot
+read raises PermissionError, which `part()` shows as `inbox ?` with no WARNING (C2808's path); when
+`config.kept_inbox_not_a_folder` matches a live inbox source the part reads `inbox not a folder`; otherwise the kept
+folder, or every live inbox source, is checked by `is_dir()` as before, so an absent folder stays `missing` and any
+other inbox source's gone folder stays doctor's FAIL. No reader parses the word (install.sh, the report and the
+guides were grepped; the report reads only `baseline`). Test:
+`test_status_line_says_a_kept_inbox_that_is_not_a_folder_never_missing_c3257` (eleven kinds of entry and an absent
+folder, under a timeout).
 
 ### 16.293 Round 47: the converters: ruling 202's Office twins closed (UTF-32 text, a no-namespace `<Types>`, the container answers before the cache, xlsx's emitter 1.0.7) and one noun per family (2026-11-25, wave B13 round 47 lane E)
 
