@@ -2808,6 +2808,40 @@ def test_status_line_says_a_kept_inbox_that_is_not_a_folder_never_missing_c3257(
     assert "cannot read inbox" not in caplog.text, caplog.text
 
 
+def test_status_line_says_a_denied_kept_inbox_is_unread_where_is_dir_swallows_the_denial_c3257(
+    tmp_path: Path, folder: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """C3257's denied row where Path.is_dir swallows EACCES (Python 3.14 does; 3.11 raises, which already
+    read ``?``): a link into a folder this account cannot search reads ``inbox ?``, never ``inbox missing``,
+    since the part reads config.inbox_entry, not is_dir."""
+    config = _synced(tmp_path, folder)
+    config, kept_src = ensure_inbox(config.config_path)
+    assert kept_src is not None
+    kept = config.docs_repo.parent / "inbox"
+    kept.rename(tmp_path / "inbox-moved")  # moved aside, never removed
+    locked = _put_entry(kept, "link-into-an-unsearchable-folder")
+    is_dir = Path.is_dir
+
+    def swallowing(path: Path, *args: Any, **kwargs: Any) -> bool:
+        if not os.access(locked[0], os.X_OK) and str(path).startswith((str(kept), str(locked[0]))):
+            return False  # the denial swallowed, as 3.14's is_dir does
+        return is_dir(path, *args, **kwargs)
+
+    try:
+        if os.access(locked[0], os.X_OK):
+            pytest.skip("this account searches a mode-0 folder")
+        config = load_config(config.config_path)
+        monkeypatch.setattr(Path, "is_dir", swallowing)
+        with _bounded(10), caplog.at_level(logging.WARNING, logger="agentsync"):
+            line = loop.status_line(config)
+    finally:
+        monkeypatch.undo()
+        for made in locked:
+            made.chmod(0o700)
+    assert " · inbox ? · " in line, line
+    assert "cannot read inbox" not in caplog.text, caplog.text
+
+
 def _nothing_to_draft(config: Config, why: str, inbox: str | None = None) -> str:
     """Rule 4's NEXT over an empty mirror (B13 round 44 C2630 with C2603, ruling 181): the opening kept, the
     move the operator's, and ``or the inbox (<inbox>)`` only for an inbox that is read (C2602)."""
