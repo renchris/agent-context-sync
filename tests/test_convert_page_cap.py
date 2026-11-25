@@ -658,6 +658,37 @@ def test_a_long_chart_title_is_cut_on_the_sheet_page_and_whole_in_its_sidecar_c2
     assert title in _sidecar_text(sheet, ".objects.txt")
 
 
+def test_a_capped_index_names_the_objects_sidecar_that_holds_every_object_c3025(tmp_path: Path) -> None:
+    """B13 round 46 C3025: a capped workbook index's object list said "each sheet's own page lists its own",
+    but at the same cap that page's list is cut too, and only its ``.objects.txt`` sidecar holds every object.
+    The note names the sidecar, in one fixed phrase (never each sheet's sidecar name, which the index's fixed
+    reserve could not hold), and the index stays within the cap."""
+    book = openpyxl.Workbook()
+    ws = book.active
+    assert ws is not None
+    ws.title = "Contoso"
+    for i in range(5):
+        ws.append([f"North {i}", i])
+    for i in range(150):
+        chart = BarChart()
+        chart.add_data(Reference(ws, min_col=2, min_row=1, max_row=3))
+        ws.add_chart(chart, f"D{2 + i}")
+    src = tmp_path / "charts.xlsx"
+    book.save(src)
+    index, sheet = _pages(src, 8192)[:2]
+    assert _size(index) <= 8192 and _size(sheet) <= 8192
+    [note] = [
+        ln for ln in index.body.split("\n") if ln.startswith("[object list truncated at the page size cap")
+    ]
+    assert note.endswith(
+        "; each sheet's own page lists its objects or, when that list is cut too, names its .objects.txt "
+        "sidecar, which holds them all]"
+    ), note
+    assert "[object list truncated" in sheet.body, "the sheet page's own list is cut at this cap too"
+    listed = [ln for ln in _sidecar_text(sheet, ".objects.txt").split("\n") if ln.startswith("chart ")]
+    assert len(listed) == 150 and [n for n, _ in sheet.sidecars] == ["01-contoso.objects.txt"]
+
+
 def test_a_sheet_under_the_cap_keeps_its_lists_whole_with_no_list_sidecar(tmp_path: Path) -> None:
     """B13 round 41 C2043: a list that fits is listed whole as before, with no note and no list sidecar."""
     _index, sheet = _pages(

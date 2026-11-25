@@ -866,7 +866,9 @@ def _index_body(
     of each sheet's share of that room past 2,048 bytes after 200 bytes for its row (B13 round 41 C2045,
     round 42 C2314), so the page stays within the
     cap with any number of sheets; a list past it ends in a note, the sheet list's naming each sheet's own
-    page or its CSV sidecar, one of which holds its headers (B13 round 40 C1848, round 41 C2047).  A list
+    page or its CSV sidecar, one of which holds its headers (B13 round 40 C1848, round 41 C2047), the object
+    list's naming each sheet's own page or, when that page's list is cut too, its ``.objects.txt`` sidecar,
+    which holds every object (B13 round 46 C3025: a capped sheet page lists only some).  A list
     under the budget whose headers cells are within that limit renders byte for byte as before; a longer
     cell ends ``…`` at any cap, its whole text on the sheet's page or in its sidecar."""
     out = ["# Workbook index", ""]
@@ -907,7 +909,12 @@ def _index_body(
         _listed(out, "## Defined names", names, room=room, what="defined-name list")
     objects = [f"- {_page_value(s.title)}: {line[2:]}" for s in sheets for line in s.objects]
     if objects:
-        where = "; each sheet's own page lists its own"
+        # one fixed phrase, never each sidecar's name: this note has no size of its own in _INDEX_RESERVE
+        # (B13 round 46 C3025)
+        where = (
+            "; each sheet's own page lists its objects or, when that list is cut too, names its .objects.txt"
+            " sidecar, which holds them all"
+        )
         _listed(out, "## Charts, pivots and images", objects, room=room, what="object list", where=where)
     counter: Counter[str] = Counter()
     for s in sheets:

@@ -46907,6 +46907,16 @@ beside a folder git trusts (from the environment and from the config: `SSL_CERT_
 `SSL_CERT_DIR` git's folder, no `CURL_CA_BUNDLE`), and a shell folder with no curl bundle of its own kept. Test:
 `test_speech.py::test_the_seeds_docstrings_say_a_shell_ca_for_curl_stays_over_gits_c2930`.
 
+**A capped workbook index names the objects sidecar that holds every object** (C3025; `agentsync.convert.xlsx`).
+The index's object-list cut note ended `each sheet's own page lists its own`, but at the same cap a sheet page's
+own object list is cut too, and only its `<NN>-<sheet-slug>.objects.txt` sidecar holds every object (a one-sheet
+workbook with 150 charts at 8,192 bytes: the index listed 79, the sheet page fewer, the sidecar all 150). The note
+now ends `each sheet's own page lists its objects or, when that list is cut too, names its .objects.txt sidecar,
+which holds them all`: one fixed phrase, never each sheet's sidecar name, since the note has no size of its own
+within `_INDEX_RESERVE`'s fixed 1,024 bytes. `_index_body`'s docstring says so. Test:
+`test_convert_page_cap.py::test_a_capped_index_names_the_objects_sidecar_that_holds_every_object_c3025` (the note,
+the sheet page's own cut, the sidecar's 150 lines, both pages within the cap).
+
 ### 16.289 Round 46: the prompt goes to v43 (a none, an unread inbox and a step 2 or step 3 error told from how the run ended), CI's head and limit, the gate's ceiling comment, dated lines, and the guides (2026-11-24, wave B13 round 46 lane D)
 
 Round 46's lane D items (`docs/plans/bring-back-ocr.md`, "B13 round 46"; specs `round46/items/C<n>.md`, the verifier's
