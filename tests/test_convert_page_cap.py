@@ -27,7 +27,7 @@ from agentsync.convert.registry import Registry, _bannered, _with_sidecar_digest
 from agentsync.convert.xlsx import _record_escape
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.frontmatter import MirrorFrontmatter, render_mirror_page
-from agentsync.model import PageStatus, RenderedUnit, UnitKind
+from agentsync.model import ConversionResult, PageStatus, RenderedUnit, UnitKind
 from test_convert_builders import (
     build_drawio,
     build_pdf,
@@ -687,6 +687,76 @@ def test_a_capped_index_names_the_objects_sidecar_that_holds_every_object_c3025(
     assert "[object list truncated" in sheet.body, "the sheet page's own list is cut at this cap too"
     listed = [ln for ln in _sidecar_text(sheet, ".objects.txt").split("\n") if ln.startswith("chart ")]
     assert len(listed) == 150 and [n for n, _ in sheet.sidecars] == ["01-contoso.objects.txt"]
+
+
+def test_a_workbook_cached_by_emitter_1_0_6_is_converted_again_with_the_sidecar_note_c3318(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 47 C3318 with C3263 and C3283 (ruling 215, makes worse True for a re-read): C3025 changed the
+    capped index's note but left xlsx's ``_EMITTER_VERSION`` at 1.0.6, so the action key did not move and
+    ``convert_file`` served the same bytes the old note from the cache (a copy, a second folder, a re-save).
+    The version is 1.0.7: an entry 1.0.6 stored is missed and the new note comes back, while ``outdated``
+    stays False, so no published page is read again."""
+    import dataclasses  # noqa: PLC0415
+    import hashlib  # noqa: PLC0415
+
+    from agentsync.convert import ConverterCache, convert_file  # noqa: PLC0415
+
+    book = openpyxl.Workbook()
+    ws = book.active
+    assert ws is not None
+    ws.title = "Contoso"
+    for i in range(5):
+        ws.append([f"North {i}", i])
+    for i in range(150):
+        chart = BarChart()
+        chart.add_data(Reference(ws, min_col=2, min_row=1, max_row=3))
+        ws.add_chart(chart, f"D{2 + i}")
+    src = tmp_path / "charts.xlsx"
+    book.save(src)
+    digest = hashlib.sha256(src.read_bytes()).hexdigest()
+    reg = Registry.default(replace(CFG, max_page_bytes=8192))
+    cache = ConverterCache(tmp_path / "cache")
+    new_end = "names its .objects.txt sidecar, which holds them all]"
+    old_end = "; each sheet's own page lists its own]"
+
+    def converted() -> ConversionResult:
+        return convert_file(
+            src,
+            name="Contoso charts.xlsx",
+            content_sha256=digest,
+            canonical_sha256=digest,
+            registry=reg,
+            cache=cache,
+        )
+
+    with monkeypatch.context() as older:
+        older.setattr(xlsx, "_EMITTER_VERSION", "1.0.6")
+        fresh = convert_file(
+            src,
+            name="Contoso charts.xlsx",
+            content_sha256=digest,
+            canonical_sha256=digest,
+            registry=reg,
+            cache=ConverterCache(tmp_path / "scratch-cache"),
+        )
+        index = fresh.units[0]
+        old_body = index.body.replace(
+            "; each sheet's own page lists its objects or, when that list is cut too, " + new_end, old_end
+        )
+        assert old_body != index.body
+        stale = dataclasses.replace(
+            index, body=old_body, rendered_sha256=hashlib.sha256(old_body.encode("utf-8")).hexdigest()
+        )
+        assert cache.put(dataclasses.replace(fresh, units=(stale, *fresh.units[1:])))
+        served = converted()
+        assert served.from_cache and old_end in served.units[0].body, "1.0.6 serves its own entry"
+    result = converted()
+    assert not result.from_cache, "1.0.7 misses the entry 1.0.6 stored"
+    assert new_end in result.units[0].body and old_end not in result.units[0].body
+    conv = xlsx.XlsxConverter(CFG)
+    assert conv.version().startswith("1.0.7+openpyxl-")
+    assert conv.outdated("1.0.6+openpyxl-3.1.5") is False, "no published page is read again"
 
 
 def test_a_sheet_under_the_cap_keeps_its_lists_whole_with_no_list_sidecar(tmp_path: Path) -> None:

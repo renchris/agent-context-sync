@@ -33,9 +33,11 @@ from agentsync.errors import ConversionError
 from agentsync.model import RenderedUnit, UnitKind
 from agentsync.text import plural
 
-_EMITTER_VERSION = (
-    "1.0.6"  # B13 round 44 ruling 184: C2710, C2652, C2721, C2711, C2694 (1.0.5: round 43's rulings 167, 168)
-)
+_EMITTER_VERSION = "1.0.7"
+"""B13 round 47 ruling 215: round 46 C3025's sidecar note and round 47 C3230's stub noun, once, so a new
+conversion of the same bytes misses an older entry; ``outdated`` stays False, so no published page is read
+again (C3263 with C3283 and C3318).  1.0.6: round 44 ruling 184 (C2710, C2652, C2721, C2711, C2694);
+1.0.5: round 43's rulings 167, 168."""
 _INDEX_TERM_LIMIT = 400  # distinct terms kept on 00-index (most frequent first, then listed sorted)
 _TERM_MAX_CHARS = 80  # a text cell up to this long is one term; longer text contributes its words
 _HEADER_LIMIT = 30  # column headers listed per sheet on 00-index

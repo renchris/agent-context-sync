@@ -47392,6 +47392,9 @@ which holds them all`: one fixed phrase, never each sheet's sidecar name, since 
 within `_INDEX_RESERVE`'s fixed 1,024 bytes. `_index_body`'s docstring says so. Test:
 `test_convert_page_cap.py::test_a_capped_index_names_the_objects_sidecar_that_holds_every_object_c3025` (the note,
 the sheet page's own cut, the sidecar's 150 lines, both pages within the cap).
+Amended 2026-11-25, §16.293 C3263: xlsx's `_EMITTER_VERSION` moves to 1.0.7 for this note (and C3230's noun), so
+the cache serves no index with the old note to the same bytes; `outdated` stays False and no `_REREAD_BELOW` moves,
+so a page already published takes the note when its workbook next changes.
 
 ### 16.289 Round 46: the prompt goes to v43 (a none, an unread inbox and a step 2 or step 3 error told from how the run ended), CI's head and limit, the gate's ceiling comment, dated lines, and the guides (2026-11-24, wave B13 round 46 lane D)
 
@@ -47635,6 +47638,23 @@ stub text is the only change, and a re-conversion of every deck would cost more 
 to 1.0.7, for C3025's note and this noun together (C3263 below). Test:
 `test_convert_family.py::test_each_family_takes_one_noun_on_both_sides_of_a_stub_c3230` (`.potx` and `.xlsx` stubs,
 the `.vsdx` deck, the older words still matched and classed), with the stub literals of every family test moved.
+
+**xlsx's emitter moves to 1.0.7 once, and no published page is read again** (C3263, C3283 and C3318, one defect;
+ruling 215; `agentsync.convert.xlsx`; amends §16.288 C3025). C3025 changed the capped index's object-list note but
+left `_EMITTER_VERSION` at 1.0.6, and `options()` did not move, so the action key (converter id, version, options
+hash, canonical digest) was the one an older build wrote, and `convert_file` served the same bytes under a new path,
+a second folder or an unchanged re-save the cached index with the old `each sheet's own page lists its own` note,
+which C3025 calls false. Round 45 changed no xlsx output, so this is the first change since 1.0.6. The version moves
+once, to 1.0.7, for C3025's note and C3230's `not an Excel workbook` noun together, as rulings 167, 168 and 184
+moved it once a round: a new conversion of the same bytes misses the 1.0.6 entry and gets the new note.
+`XlsxConverter.outdated` stays False and xlsx has no `_REREAD_BELOW`, so no published page is converted again:
+`outdated` sees only the produced version and the stub reason, never the body, so a rule could not pick out the
+pages that hold the old note, and a version floor would convert every 1.0.6 workbook again for a note that shows
+only past the page cap, thousands of objects at the default `max_page_bytes` (C3318, makes worse True for a
+re-read). A published page takes the note when its workbook next changes. Test:
+`test_convert_page_cap.py::test_a_workbook_cached_by_emitter_1_0_6_is_converted_again_with_the_sidecar_note_c3318`
+(an index stored under 1.0.6's key with the old note is served at 1.0.6 and missed at 1.0.7, which returns the new
+note; `outdated` of a 1.0.6 page is False).
 
 ### 16.294 Round 47: the prompt goes to v44 (a run read to its exit, an error keyed on its exit code, a paused or retired folder never offered again), CI's head and limit, dated lines, and the guides (2026-11-25, wave B13 round 47 lane D)
 
