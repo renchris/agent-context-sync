@@ -1089,6 +1089,8 @@ class CycleReport:
     new_manifest_notices: int = 0  # 2026-10-24 (§16.191 P116): of those, the deletion notices
     new_manifest_kept: int = 0  # 2026-10-24 (§16.191 P117): kept for files still settling
     new_manifest_by_job: bool = False  # 2026-10-23 (§16.185 E74): the background job's new start, said by this run
+    carried: tuple[MirrorChange, ...] = ()  # 2026-11-25 (§16.292 C3228): blocked runs' pages this commit holds
+    carried_runs: tuple[int, ...] = ()  # 2026-11-25 (§16.292 C3228): those runs, named in the commit body
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"
 """``schema`` value of the per-channel-per-month JSON the Teams arm writes and the teams converter reads.
@@ -47806,6 +47808,25 @@ findings follow. With a blocking finding and no commit the run line reads `commi
 `test_a_page_the_land_gate_cannot_read_names_its_chmod_and_the_sync_says_it_was_blocked_c3227` (a mode-000 page
 through one sync, STATE.md's copy, then chmod 600 and a commit) and
 `test_state_md_next_is_the_blocking_finding_that_held_the_commit`.
+
+**The commit that lands blocked runs' pages counts them and names those runs** (C3228; ruling 212). A run the land
+gate blocks keeps its `run_changes` rows (only a landed commit's `clear_run_changes` deletes them) and its
+CHANGELOG lines, and the next clean run's commit held its pages under a subject built from that run's own changes,
+`sync: 0a 0m 0r 0d`, with the console note `(no source changed a mirror page; ...)`. `Cycle._commit` now reads the
+rows of every earlier run that ended `failed` and still has some (`Manifest.failed_runs_with_changes`), nets them
+per page in run order (`cycle._net_changes`: an add then a change is an add, an add then a delete nothing, a delete
+then an add a change, a rename follows its page), drops the pages this run changed, and keeps those still dirty
+against HEAD, `_carry_crashed_changes`'s filter, so a change undone by `git checkout` is not counted.
+`gitops.commit_subject` counts them beside this run's changes, their sources in its ids; `commit_body` carries one
+note per source, `carried from blocked runs 4-5: <source> 0a 2m 0r 0d` (`text.run_span`: `run 5`, `runs 4-5`,
+`runs 2, 4-5`), never an `Agentsync-Run` key, whose readers would take those runs for this commit's; the CHANGELOG
+gets no second line, `append_changelog` still taking this run's changes alone. `CycleReport.carried` and
+`carried_runs` hold them, and the run line reads `0 changes this run; 2 mirror pages from blocked runs 4-5 land in
+this commit`; the no-mirror-page note is printed only for a commit that carries none. A run that failed for
+another cause and left its pages uncommitted is carried under the same words. Tests:
+`test_a_commit_counts_and_names_the_blocked_runs_whose_pages_it_lands_c3228` (two blocked runs, then a clean one
+titled `0a 2m` naming runs 4-5), `test_a_blocked_change_undone_by_git_checkout_is_not_carried_c3228` and
+`test_a_commit_that_lands_blocked_runs_pages_says_so_not_that_no_source_changed_one_c3228`.
 
 ### 16.293 Round 47: the converters: ruling 202's Office twins closed (UTF-32 text, a no-namespace `<Types>`, the container answers before the cache, xlsx's emitter 1.0.7) and one noun per family (2026-11-25, wave B13 round 47 lane E)
 

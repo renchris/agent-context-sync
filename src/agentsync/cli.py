@@ -159,7 +159,7 @@ from agentsync.paths import (
     same_folder,
 )
 from agentsync.publish import Publisher, archive_path, notice_gone_why
-from agentsync.text import plural, safe_text
+from agentsync.text import plural, run_span, safe_text
 
 EXIT_OK = 0
 EXIT_FAILED = 1  # a source failed, or a blocking lint or curate finding fired
@@ -1118,7 +1118,12 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     else:
         commit = "none (no content change)"
     counted = plural(len(report.changes), "change")  # a known count needs no "(s)" (B13 round 16 T32, T36)
-    if report.commit_sha and not report.changes:
+    if report.commit_sha and report.carried:
+        # earlier blocked runs' pages land here: never "no source changed a mirror page" (B13 round 47 C3228)
+        pages = plural(len(report.carried), "mirror page")
+        land = "lands" if len(report.carried) == 1 else "land"
+        counted += f" this run; {pages} from blocked {run_span(report.carried_runs)} {land} in this commit"
+    elif report.commit_sha and not report.changes:
         counted += " (no source changed a mirror page; the commit holds other docs-repo files)"
     # its own line, never on the summary install.sh's awk sums (B13 round 24 B37)
     if report.new_manifest_pages:

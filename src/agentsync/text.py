@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Sequence
 
 # S9 rule 5, as the recording page applies it to its own SAID text: C0, DEL, the C1 block (NEL among it), lone
 # surrogates, the two Unicode line breaks, the tag characters and the blank fillers; format characters (Cf)
@@ -23,6 +24,19 @@ def plural(n: int, word: str, many: str | None = None) -> str:
     """``"1 <word>"``, or ``"<n> <many>"`` for any other ``n``, 0 included; ``many`` is ``word`` plus "s"
     unless given. A known count needs no "(s)" (B13 round 14 Q39; setup_report's ``_plural`` before it)."""
     return f"{n} {word if n == 1 else (many or word + 's')}"
+
+
+def run_span(runs: Sequence[int]) -> str:
+    """``run 4``, ``runs 4-5`` or ``runs 2, 4-5``: run numbers, consecutive ones as one span (B13 round 47
+    C3228, the blocked runs a commit carries)."""
+    spans: list[list[int]] = []
+    for run in sorted(set(runs)):
+        if spans and run == spans[-1][-1] + 1:
+            spans[-1].append(run)
+        else:
+            spans.append([run])
+    words = ", ".join(str(s[0]) if len(s) == 1 else f"{s[0]}-{s[-1]}" for s in spans)
+    return f"run {words}" if len(set(runs)) == 1 else f"runs {words}"
 
 
 def safe_text(s: str, *, cell: bool = False) -> str:

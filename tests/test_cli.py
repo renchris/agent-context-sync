@@ -83,9 +83,11 @@ from agentsync.graph.drive import DiscoveredScope
 from agentsync.graph.errors import AuthBlockedError
 from agentsync.manifest import LOST_MANIFEST, MANIFEST_SCHEMA_VERSION, Manifest
 from agentsync.model import (
+    ChangeOp,
     CycleMode,
     CycleReport,
     LintFinding,
+    MirrorChange,
     PassKind,
     RowState,
     SourceKind,
@@ -514,6 +516,35 @@ def test_a_commit_with_no_mirror_change_says_what_its_zero_counts(capsys: pytest
     assert (
         capsys.readouterr().out.splitlines()[0]
         == "run 6 · mode poll · commit none (no content change) · 0 changes"
+    )
+
+
+def test_a_commit_that_lands_blocked_runs_pages_says_so_not_that_no_source_changed_one_c3228(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 47 C3228, ruling 212: a commit holding the pages of runs the land gate blocked read ``0
+    changes (no source changed a mirror page; ...)``. That note is only for a commit with no mirror page."""
+    page = MirrorChange(ChangeOp.MODIFIED, "mirror/contoso/a.md", "contoso", "id-a")
+    carried = (page, dataclasses.replace(page, path="mirror/contoso/b.md", stable_id="id-b"))
+    committed = CycleReport(
+        run_id=6,
+        mode=CycleMode.POLL,
+        sources=(),
+        changes=(),
+        commit_sha="0efe0129bbe4" * 3,
+        carried=carried,
+        carried_runs=(4, 5),
+    )
+    cli._print_report(committed)
+    assert capsys.readouterr().out.splitlines()[0] == (
+        "run 6 · mode poll · commit 0efe0129bbe4 · 0 changes this run; 2 mirror pages from blocked runs 4-5 "
+        "land in this commit"
+    )
+    cli._print_report(dataclasses.replace(committed, carried=carried[:1], carried_runs=(2, 4, 5)))
+    assert (
+        capsys.readouterr()
+        .out.splitlines()[0]
+        .endswith("0 changes this run; 1 mirror page from blocked runs 2, 4-5 lands in this commit")
     )
 
 

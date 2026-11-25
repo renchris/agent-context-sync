@@ -1223,6 +1223,67 @@ def test_land_gate_is_skipped_only_when_nothing_can_land(
     assert len(gates) == 3 and report.commit_sha is None
 
 
+def _blocked_runs_then_a_clean_one(
+    config: Config, source: Path, *, undo: bool
+) -> tuple[list[int], CycleReport]:
+    """Run 1 lands; runs 2 and 3 are clean polls; a hand edit of one page blocks runs 4 and 5, which change
+    ``sample.txt`` and ``sample.md``; the edit is put back (with ``undo`` run 4's page too), then run 6."""
+    repo = config.docs_repo
+    run(config)
+    run(config)
+    run(config)
+    pages = {p.name: p for p in (repo / "mirror").rglob("*.md")}
+    hand = pages["sample.csv.md"]
+    hand.write_text(hand.read_text(encoding="utf-8") + "edited by hand\n", encoding="utf-8")
+    blocked = []
+    for name in ("sample.txt", "sample.md"):
+        (source / "projects" / name).write_text(f"{name} changed in a blocked run\n", encoding="utf-8")
+        report = run(config)
+        assert report.commit_sha is None and any(f.blocking for f in report.lint_findings), report
+        blocked.append(report.run_id)
+    restore = [hand.relative_to(repo).as_posix()]
+    if undo:
+        restore.append(pages["sample.txt.md"].relative_to(repo).as_posix())
+    subprocess.run(["git", "-C", str(repo), "checkout", "--", *restore], check=True)
+    return blocked, run(config)
+
+
+def test_a_commit_counts_and_names_the_blocked_runs_whose_pages_it_lands_c3228(
+    sample_config: Config, local_source_dir: Path
+) -> None:
+    """B13 round 47 C3228, ruling 212: a run the land gate blocks keeps its changes' rows, but the next run's
+    commit, which holds their pages, was titled from its own changes alone, ``sync: 0a 0m 0r 0d``. It counts
+    them, net per page, and names those runs in its body, never with an ``Agentsync-Run`` key, and the
+    CHANGELOG they already wrote gets no second line."""
+    blocked, report = _blocked_runs_then_a_clean_one(sample_config, local_source_dir, undo=False)
+    assert blocked == [4, 5]
+    assert report.commit_sha is not None and report.changes == ()
+    assert report.carried_runs == (4, 5) and len(report.carried) == 2
+    repo = sample_config.docs_repo
+    subject, body = git(repo, "log", "-1", "--format=%s%n%b").split("\n", 1)
+    assert subject == "sync: 0a 2m 0r 0d local-fixture"
+    assert "carried from blocked runs 4-5: local-fixture 0a 2m 0r 0d" in body.splitlines(), body
+    assert [x for x in body.splitlines() if x.startswith("Agentsync-Run:")] == [
+        f"Agentsync-Run: {report.run_id}"
+    ]
+    detail = "".join(p.read_text(encoding="utf-8") for p in sorted((repo / "CHANGELOG").glob("*.md")))
+    for carried in report.carried:  # run 4's or run 5's M line, and no other
+        assert detail.count(f"- M `{carried.path}`") == 1, (carried.path, detail)
+    assert f"run {report.run_id}" not in (repo / "CHANGELOG.md").read_text(encoding="utf-8") + detail
+
+
+def test_a_blocked_change_undone_by_git_checkout_is_not_carried_c3228(
+    sample_config: Config, local_source_dir: Path
+) -> None:
+    """B13 round 47 C3228, ruling 212: only the blocked runs' pages the commit still holds are counted: one
+    put back by ``git checkout`` is not, and the run that made only that change is not named."""
+    _blocked, report = _blocked_runs_then_a_clean_one(sample_config, local_source_dir, undo=True)
+    assert report.carried_runs == (5,) and [c.op for c in report.carried] == [ChangeOp.MODIFIED]
+    subject, body = git(sample_config.docs_repo, "log", "-1", "--format=%s%n%b").split("\n", 1)
+    assert subject == "sync: 0a 1m 0r 0d local-fixture"
+    assert "carried from blocked run 5: local-fixture 0a 1m 0r 0d" in body.splitlines(), body
+
+
 INBOX_SOURCE = """
 [[source]]
 id = "inbox"

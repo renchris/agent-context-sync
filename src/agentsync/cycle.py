@@ -200,7 +200,7 @@ from agentsync.publish import (
     source_still_exists,
     superseded_page,
 )
-from agentsync.text import plural
+from agentsync.text import plural, run_span
 
 log = logging.getLogger(__name__)
 
@@ -2426,6 +2426,9 @@ class _Cycle:
         self._orphans_gone: list[str] | None = None  # of those, the ones this run did not write back (E10)
         self._fresh_notices: set[str] = set()  # those pages that were deletion notices (P116)
         self._notices_gone: list[str] = []  # of the pages not written back, the deletion notices (P116)
+        # earlier blocked runs' changes this run's commit holds, and those runs (B13 round 47 C3228)
+        self._carried: list[MirrorChange] = []
+        self._carried_runs: list[int] = []
         # per source: the stable ids and paths its walk withheld as still settling, and the pages a new start
         # kept for them (P117)
         self._withheld: dict[str, tuple[frozenset[str], frozenset[str]]] = {}
@@ -3949,6 +3952,24 @@ class _Cycle:
             gitops.tag_published(self.repo, head)
             log.warning("published tag moved to HEAD %s (it lagged at %s)", head[:12], tagged[:12] or "none")
 
+    def _carry_blocked_changes(self) -> None:
+        """The changes of earlier runs the land gate blocked that this commit holds: their ``run_changes``
+        rows outlive a blocked run (only a landed commit clears them), so a later run's commit held their
+        pages under ``sync: 0a 0m 0r 0d`` and a console line saying no source changed a mirror page (B13
+        round 47 C3228, ruling 212). Net per page in run order (an add then a change is an add, an add then a
+        delete nothing), only pages this run did not change and that are still uncommitted, the filter
+        :meth:`_carry_crashed_changes` applies, so a change undone by ``git checkout`` is not counted."""
+        runs = self.manifest.failed_runs_with_changes(self.run_id)
+        if not runs:
+            return
+        own = _paths_of(self.changes)
+        by_run = {run: self.manifest.run_changes(run) for run in runs}
+        net = [c for c in _net_changes([c for run in runs for c in by_run[run]]) if not _touches(c, own)]
+        dirty = _dirty_paths(self.repo, sorted(_paths_of(net)))
+        self._carried = [c for c in net if _touches(c, dirty)]
+        held = _paths_of(self._carried)
+        self._carried_runs = [run for run in runs if any(_touches(c, held) for c in by_run[run])]
+
     def _carry_crashed_changes(self, crashed: int) -> None:
         """A crashed run's recorded changes whose pages are still uncommitted become part of this cycle's
         change set, so its commit subject, body and CHANGELOG describe them (design 4.7: never commit a
@@ -4050,6 +4071,8 @@ class _Cycle:
             path_reread_refused=path_refused,
             path_reread_waiting=path_waiting,
             path_reread_held=path_held,
+            carried=tuple(sorted(self._carried, key=lambda c: (c.path, c.op.value))),
+            carried_runs=tuple(self._carried_runs),
         )
 
     def _path_outcomes(self) -> tuple[int, int, int, int, int, int]:
@@ -4542,7 +4565,8 @@ class _Cycle:
             log.info("no content change: no commit")
             return None
         self.publisher.write_state_snapshot(statuses)
-        source_ids = self._subject_sources()
+        self._carry_blocked_changes()
+        source_ids = [*self._subject_sources(), *(c.source_id for c in self._carried)]
         # built only when an alarm needs it: no read of any source's path on a commit with none (C1025)
         alarmed = any(a.alarms for a in self.accs.values())
         cut = _source_folder_spellings(self.config.sources) if alarmed else []
@@ -4554,8 +4578,10 @@ class _Cycle:
             f"{sid}: {plural(n, 'deletion notice')} removed ({notice_gone_why(n)})"
             for sid, n in sorted(by_source.items())
         ]
+        notes += _carried_notes(self._carried, self._carried_runs)
         body = gitops.commit_body(self.changes, run_id=self.run_id, mode=self.mode.value, notes=notes)
-        sha = gitops.commit_cycle(self.repo, gitops.commit_subject(self.changes, source_ids), body)
+        subject = gitops.commit_subject([*self._carried, *self.changes], source_ids)
+        sha = gitops.commit_cycle(self.repo, subject, body)
         if sha is not None:
             tree = gitops.head_tree_sha(self.repo)
             if tree is not None:
@@ -8354,6 +8380,59 @@ def _removal_reason(why: str) -> str:
     ``moved-out-of-scope``, ``excluded``) is ``moved`` (the item still exists: no purge is queued); anything
     else is ``deleted-upstream``."""
     return "moved" if why.startswith("moved") or why == "excluded" else "deleted-upstream"
+
+
+def _paths_of(changes: Iterable[MirrorChange]) -> set[str]:
+    """Every page ``changes`` name, a rename's old path too."""
+    return {c.path for c in changes} | {c.prev_path for c in changes if c.prev_path}
+
+
+def _touches(change: MirrorChange, paths: Collection[str]) -> bool:
+    """Whether ``change``'s page, or a rename's old path, is one of ``paths``."""
+    return change.path in paths or (change.prev_path is not None and change.prev_path in paths)
+
+
+def _net_changes(rows: Sequence[MirrorChange]) -> list[MirrorChange]:
+    """``rows``, changes in the order runs made them, as one net change per page: an add then a change is
+    an add, a change then a delete a delete, an add then a delete nothing, a delete then an add a change, and
+    a rename follows its page to its new path, an added one still an add (B13 round 47 C3228)."""
+    net: dict[str, MirrorChange] = {}
+    for c in rows:
+        if c.op is ChangeOp.RENAMED and c.prev_path is not None and c.prev_path in net:
+            before = net.pop(c.prev_path)
+            if before.op is ChangeOp.ADDED:
+                net[c.path] = dataclasses.replace(c, op=ChangeOp.ADDED, prev_path=None)
+            elif before.op is ChangeOp.RENAMED:
+                net[c.path] = dataclasses.replace(c, prev_path=before.prev_path)
+            else:
+                net[c.path] = c
+            continue
+        before_c = net.get(c.path)
+        if before_c is None:
+            net[c.path] = c
+        elif c.op is ChangeOp.DELETED and before_c.op is ChangeOp.ADDED:
+            del net[c.path]
+        elif c.op is ChangeOp.DELETED:
+            net[c.path] = dataclasses.replace(c, prev_path=before_c.prev_path)
+        elif c.op is ChangeOp.ADDED and before_c.op is ChangeOp.DELETED:
+            net[c.path] = dataclasses.replace(c, op=ChangeOp.MODIFIED)
+        elif before_c.op is ChangeOp.DELETED:
+            net[c.path] = c
+    return list(net.values())
+
+
+def _carried_notes(carried: Sequence[MirrorChange], runs: Sequence[int]) -> list[str]:
+    """The commit body's line per source for the blocked runs' changes it carries, ``carried from blocked
+    runs 4-5: <source> 0a 2m 0r 0d``: never an ``Agentsync-Run`` trailer, whose readers would take those runs
+    for this commit's (B13 round 47 C3228)."""
+    per_source: dict[str, Counter[ChangeOp]] = {}
+    for c in carried:
+        per_source.setdefault(c.source_id, Counter())[counted_op(c)] += 1
+    return [
+        f"carried from blocked {run_span(runs)}: {sid} {n[ChangeOp.ADDED]}a {n[ChangeOp.MODIFIED]}m "
+        f"{n[ChangeOp.RENAMED]}r {n[ChangeOp.DELETED]}d"
+        for sid, n in sorted(per_source.items())
+    ]
 
 
 def _dirty_paths(repo: Path, paths: Sequence[str]) -> set[str]:

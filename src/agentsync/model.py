@@ -585,6 +585,11 @@ class CycleReport:
     new_manifest_kept: int = 0
     # the new start was the background job's, said by this foreground run (B13 round 26 E74)
     new_manifest_by_job: bool = False
+    # the mirror changes of earlier runs the land gate blocked that this run's commit holds, net per page and
+    # only those still uncommitted, and those runs: counted in the commit subject and named in its body, never
+    # written to the CHANGELOG again, which those runs did (B13 round 47 C3228, ruling 212)
+    carried: tuple[MirrorChange, ...] = ()
+    carried_runs: tuple[int, ...] = ()
 
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"

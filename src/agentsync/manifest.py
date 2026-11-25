@@ -2925,6 +2925,17 @@ class Manifest:
                 ],
             )
 
+    def failed_runs_with_changes(self, before: int) -> list[int]:
+        """The runs before ``before`` that ended ``failed`` (a run the land gate blocked) and still have
+        recorded mirror changes, oldest first: no commit has landed since, which clears them (B13 round 47
+        C3228)."""
+        rows = self._db.execute(
+            "SELECT DISTINCT rc.run_id FROM run_changes rc JOIN runs r ON r.run_id = rc.run_id "
+            "WHERE r.status = 'failed' AND rc.run_id < ? ORDER BY rc.run_id",
+            (before,),
+        ).fetchall()
+        return [int(r[0]) for r in rows]
+
     def run_changes(self, run_id: int) -> list[MirrorChange]:
         """The mirror changes recorded for ``run_id``, in production order.
 
