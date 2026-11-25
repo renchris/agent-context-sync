@@ -7181,9 +7181,18 @@ def _hold_scopes(r: _Run) -> list[str]:
 # ---- sections -------------------------------------------------------------------------------------------
 
 
+_CHECKOUT_HOME = "src/agent-context-sync"
+"""The checkout the setup prompt clones, below the home folder: the one the header names by its path."""
+
+
 def _installed_from() -> tuple[str, Path | None]:
     """Where agentsync was installed from, as the header shows it, and the checkout's directory when it was
-    one (``direct_url.json``)."""
+    one (``direct_url.json``).
+
+    B13 round 47 C3208: a checkout other than ~/src/agent-context-sync (as written or resolved) is shown as
+    ``checkout <path>``, its ``(editable)`` and the commit and origin facts kept, and a wheel whose name holds
+    a character that is not printable as ``wheel <path>``: the line carried a raw C1 control (U+0085) and most
+    of a folder name no value registers. The directory itself is still read for its facts."""
     where = "unknown"
     directory: Path | None = None
     with contextlib.suppress(Exception):
@@ -7195,9 +7204,12 @@ def _installed_from() -> tuple[str, Path | None]:
             if path is not None and "dir_info" in info:
                 directory = path
                 editable = " (editable)" if info["dir_info"].get("editable") else ""
-                where = f"checkout {path}{editable}"
+                canonical = Path.home() / _CHECKOUT_HOME
+                same = path == canonical or os.path.realpath(path) == os.path.realpath(canonical)
+                shown = str(path) if same else "<path>"
+                where = f"checkout {shown}{editable}"
             elif path is not None:
-                where = f"wheel {path.name}"
+                where = f"wheel {path.name if path.name.isprintable() else '<path>'}"
             elif url:
                 where = url
     return where, directory

@@ -30692,3 +30692,35 @@ def test_install_shs_per_folder_phrase_is_kept_after_source_local_c3203() -> Non
         assert setup_report._redact_lines(red, [said]) == "I ran 'install.sh --source-local <path>' first", (
             said
         )
+
+
+@pytest.mark.parametrize(
+    ("place", "shown"),
+    [
+        ("Contoso　Vault\u0085/agent-context-sync", "checkout <path> (editable)"),
+        ("Projects/agent-context-sync", "checkout <path> (editable)"),
+        ("src/agent-context-sync", "checkout {home}/src/agent-context-sync (editable)"),
+        ("Wheels/agentsync-1.0\u0085-py3-none-any.whl", "wheel <path>"),
+        ("Wheels/agentsync-1.0-py3-none-any.whl", "wheel agentsync-1.0-py3-none-any.whl"),
+    ],
+)
+def test_a_checkout_outside_src_agent_context_sync_is_shown_as_its_path_c3208(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, place: str, shown: str
+) -> None:
+    """B13 round 47 C3208: a checkout outside ~/src/agent-context-sync printed its whole folder name in the
+    header, most of it in clear and a raw U+0085 with it. It reads `checkout <path>`, its `(editable)` kept
+    and its directory still read for the commit and origin; the prompt's own checkout keeps its path, and a
+    wheel whose name holds a character that is not printable reads `wheel <path>`."""
+    home = Path.home()
+    path = home / place
+    info = {"url": path.as_uri(), **({} if place.endswith(".whl") else {"dir_info": {"editable": True}})}
+
+    class Dist:
+        def read_text(self, name: str) -> str | None:
+            return json.dumps(info) if name == "direct_url.json" else None
+
+    monkeypatch.setattr(setup_report.importlib.metadata, "distribution", lambda _name: Dist())
+    where, directory = setup_report._installed_from()
+    assert where == shown.format(home=home), where
+    assert directory == (None if place.endswith(".whl") else path)
+    assert not any("\x80" <= c <= "\x9f" for c in where), where
