@@ -2259,10 +2259,11 @@ def test_the_text_converters_docstrings_give_the_decode_order_the_code_uses() ->
     """B13 round 32 C670: both docstrings said utf-8 first, then a BOM, and left out cp1252, while
     ``_common._decode_text`` takes a BOM first, then strict UTF-8, then cp1252, then latin-1, as the options'
     ``decode`` records; the spec copy in CONTRACTS.md said the same. Words only: the emitter and options
-    stay."""
+    stay. B13 round 47 C3321: UTF-32's marks are told before UTF-16's, and the summary names them, the
+    options' ``decode`` unchanged, since only inputs that failed before decode now."""
     from agentsync.convert import text  # noqa: PLC0415
 
-    said = "decoded (UTF-8/UTF-16 BOM first, then strict UTF-8, then cp1252, else latin-1)"
+    said = "decoded (UTF-8/UTF-32/UTF-16 BOM first, then strict UTF-8, then cp1252, else latin-1)"
     contracts = " ".join(
         (Path(__file__).parent.parent / "docs" / "design" / "CONTRACTS.md")
         .read_text(encoding="utf-8")
@@ -2271,6 +2272,7 @@ def test_the_text_converters_docstrings_give_the_decode_order_the_code_uses() ->
     for doc in (text.__doc__, text.PlainTextConverter.__doc__):
         assert said in " ".join((doc or "").split()), doc
     assert contracts.count(said) == 2 and "decoded (utf-8, then utf-8-sig/utf-16 BOM" not in contracts
+    assert "(UTF-8/UTF-16 BOM first" not in contracts, "round 47 C3321: UTF-32's marks are told too"
     assert text.PlainTextConverter(ConvertConfig()).options()["decode"] == "bom,utf-8,cp1252,latin-1"
 
 
@@ -2563,6 +2565,70 @@ def test_a_utf32_content_types_part_is_parsed_before_any_decode_c3098(tmp_path: 
     parts["[Content_Types].xml"] = b"\xff\xfe" + bad
     src.unlink()
     assert common_mod._ooxml_family(make_zip(src, parts)) is None
+
+
+_UTF32_MARKS = {"utf-32-le": b"\xff\xfe\x00\x00", "utf-32-be": b"\x00\x00\xfe\xff"}
+
+
+@pytest.mark.parametrize("codec", ["utf-32-le", "utf-32-be"])
+def test_a_utf32_text_file_is_decoded_before_utf16s_mark_c3321(tmp_path: Path, codec: str) -> None:
+    """B13 round 47 C3321 with C3268 and C3291 (ruling 215): ``_decode_text`` told only UTF-8's and UTF-16's
+    marks, and UTF-32LE's ``FF FE 00 00`` opens with UTF-16LE's, so a UTF-32LE text file read as UTF-16 failed
+    as ``binary content (NUL characters)`` and a UTF-32BE one as ``(NUL bytes)``. UTF-32's marks are told
+    first: the text decodes, a character past U+FFFF included, through ``convert_file`` too; a bad length or
+    code point is ``invalid UTF-32 text``, a ConversionError, never UnicodeDecodeError; a NUL inside is still
+    binary; UTF-16 text is read as before."""
+    mark, said = _UTF32_MARKS[codec], "Contoso notes\nline two \U0001d800 caf\u00e9\n"
+    assert common_mod._decode_text(mark + said.encode(codec)) == said
+    assert common_mod._decode_text(said.encode("utf-32")) == said, "the mark Python writes"
+    src = tmp_path / "notes.txt"
+    src.write_bytes(mark + said.encode(codec))
+    digest = hashlib.sha256(src.read_bytes()).hexdigest()
+    result = convert_file(
+        src,
+        name="Contoso notes.txt",
+        content_sha256=digest,
+        canonical_sha256=digest,
+        registry=Registry.default(ConvertConfig()),
+        cache=ConverterCache(tmp_path / "cache"),
+    )
+    assert result.status is ConversionStatus.OK, result.reason
+    assert "line two \U0001d800 caf\u00e9" in result.units[0].body
+    surrogate = (0xD800).to_bytes(4, "little" if codec.endswith("le") else "big")
+    past = (0x110000).to_bytes(4, "little" if codec.endswith("le") else "big")
+    for bad in (mark + "Hi".encode(codec) + b"\x00", mark + surrogate, mark + past):
+        with pytest.raises(ConversionError, match=r"^invalid UTF-32 text: "):
+            common_mod._decode_text(bad)
+    with pytest.raises(ConversionError, match=re.escape("binary content (NUL characters)")):
+        common_mod._decode_text(mark + "A\x00B".encode(codec))
+    for utf16 in ("utf-16-le", "utf-16-be"):
+        bom = b"\xff\xfe" if utf16.endswith("le") else b"\xfe\xff"
+        assert common_mod._decode_text(bom + "Hi \u00e9".encode(utf16)) == "Hi \u00e9"
+    with pytest.raises(ConversionError, match=re.escape("binary content (NUL bytes)")):
+        common_mod._decode_text("Hi".encode(codec))  # unmarked UTF-32 stays binary, as before
+
+
+def test_a_utf16_part_opening_u0000_still_takes_emls_lenient_fallback_c3268(tmp_path: Path) -> None:
+    """B13 round 47 C3268 (ruling 215, makes worse True for a bare decode): a UTF-16LE part whose first
+    character is U+0000 opens ``FF FE 00 00``, UTF-32LE's mark, and ``FF FE 00 00 41 00 42 00`` is no UTF-32
+    text, so a bare ``decode("utf-32")`` raised UnicodeDecodeError past eml's ``except ConversionError`` and
+    failed the whole message. The UTF-32 branch raises ConversionError, so the part still takes eml's lenient
+    fallback and the message converts."""
+    from agentsync.convert.eml import EmlConverter  # noqa: PLC0415
+
+    with pytest.raises(ConversionError, match=r"^invalid UTF-32 text: "):
+        common_mod._decode_text(b"\xff\xfe\x00\x00\x41\x00\x42\x00")
+    raw = (
+        b"From: a@contoso.com\r\nTo: b@contoso.com\r\nSubject: Contoso parts\r\nMIME-Version: 1.0\r\n"
+        b'Content-Type: multipart/mixed; boundary="b1"\r\n\r\n'
+        b"--b1\r\nContent-Type: text/plain\r\nContent-Transfer-Encoding: base64\r\n\r\n//4AAEEAQgA=\r\n"
+        b"--b1\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nContoso second part\r\n--b1--\r\n"
+    )
+    src = tmp_path / "parts.eml"
+    src.write_bytes(raw)
+    units = EmlConverter(CFG).convert(src, name="Contoso parts.eml")
+    lenient = b"\xff\xfe\x00\x00\x41\x00\x42\x00".decode("utf-8", errors="replace")
+    assert units and lenient in units[0].body, "the part read by eml's lenient fallback, never a failure"
 
 
 def test_the_docs_say_an_office_container_rejection_is_never_cached_c3048_c3101() -> None:

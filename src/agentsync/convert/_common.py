@@ -23,6 +23,9 @@ _OLE_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 _ENCRYPTED_PACKAGE = "EncryptedPackage".encode("utf-16-le")
 _DRM_DATASPACES = "\x06DataSpaces".encode("utf-16-le")
 _UTF16_BOMS = (b"\xff\xfe", b"\xfe\xff")
+_UTF32_BOMS = (b"\xff\xfe\x00\x00", b"\x00\x00\xfe\xff")
+"""UTF-32LE's and UTF-32BE's byte order marks (``codecs.BOM_UTF32_LE`` and ``BOM_UTF32_BE``), told before
+:data:`_UTF16_BOMS`, since ``FF FE 00 00`` opens with UTF-16LE's mark (B13 round 47 C3321)."""
 
 _FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*#*\s*$")
@@ -328,13 +331,23 @@ def _check_odf_container(src: Path) -> None:
 
 
 def _decode_text(data: bytes) -> str:
-    """Decode bytes: UTF-8/UTF-16 BOM first, then strict UTF-8, then cp1252, then latin-1.
+    """Decode bytes: UTF-8/UTF-32/UTF-16 BOM first, then strict UTF-8, then cp1252, then latin-1.
 
     cp1252 before latin-1 because Windows-authored corporate text uses its smart quotes (0x91-0x94), which
-    latin-1 maps to C1 control characters.  Raises ConversionError on NUL bytes outside UTF-16 (binary).
+    latin-1 maps to C1 control characters.  Raises ConversionError on NUL bytes outside UTF-16 and UTF-32
+    (binary), and on a marked body that does not decode.  UTF-32's marks are told before UTF-16's, since
+    ``FF FE 00 00`` opens with UTF-16LE's mark: a UTF-32LE file read as UTF-16 was NUL characters, and a
+    UTF-32BE one fell to the NUL-byte check (B13 round 47 C3321 with C3268 and C3291).  A body of a bad
+    length or code point raises ConversionError, never UnicodeDecodeError, so a UTF-16LE part opening
+    U+0000 (``FF FE 00 00 41 00``) is still the ConversionError eml's lenient fallback catches.
     """
     if data.startswith(b"\xef\xbb\xbf"):
         text = data[3:].decode("utf-8", errors="replace")
+    elif data.startswith(_UTF32_BOMS):  # before UTF-16's, a prefix of one (C3321)
+        try:
+            text = data.decode("utf-32")
+        except UnicodeDecodeError as exc:
+            raise ConversionError(f"invalid UTF-32 text: {exc.reason}") from exc
     elif data.startswith(_UTF16_BOMS):
         try:
             text = data.decode("utf-16")

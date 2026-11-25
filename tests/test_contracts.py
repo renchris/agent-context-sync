@@ -1003,7 +1003,7 @@ def test_the_plain_text_reference_says_what_text_py_does() -> None:
     assert ".url" in listed and ".vtt" not in listed
     assert VttConverter.converter_id == "vtt-turns" and VttConverter.extensions == (".vtt",)
     assert "``.vtt`` is not here: it routes to ``vtt-turns`` (§16.35); ``.url`` joined per §16.42." in flat
-    said = "decoded (UTF-8/UTF-16 BOM first, then strict UTF-8, then cp1252, else latin-1)"
+    said = "decoded (UTF-8/UTF-32/UTF-16 BOM first, then strict UTF-8, then cp1252, else latin-1)"
     assert " ".join(raw.split()).count(said) == 2
 
 

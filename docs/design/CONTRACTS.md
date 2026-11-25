@@ -2648,13 +2648,13 @@ class PdfConverter:
 
 ### `agentsync.convert.text` — `src/agentsync/convert/text.py` — owner: **convert**
 
-Converter: plain text: decoded (UTF-8/UTF-16 BOM first, then strict UTF-8, then cp1252, else latin-1)
-into a fenced block (owner: convert).
+Converter: plain text: decoded (UTF-8/UTF-32/UTF-16 BOM first, then strict UTF-8, then cp1252, else
+latin-1) into a fenced block (owner: convert).
 
 ```python
 class PlainTextConverter:
-    """Plain text: decoded (UTF-8/UTF-16 BOM first, then strict UTF-8, then cp1252, else latin-1) into a
-    fenced block.
+    """Plain text: decoded (UTF-8/UTF-32/UTF-16 BOM first, then strict UTF-8, then cp1252, else latin-1)
+    into a fenced block.
 
     The body is the text inside a fenced block (``csv``/``tsv`` rendered as a GFM table up to
     max_rows_per_sheet rows).  NUL bytes -> ConversionError (binary).  No file-name heading: the action key
@@ -36750,6 +36750,9 @@ first, then strict UTF-8, then cp1252, else latin-1`, which `options()` already 
 (`bom,utf-8,cp1252,latin-1`); no emitter version or option moves (C670). Tests:
 `test_convert_family.py::test_the_registry_docstring_tells_a_cached_unreadable_stub_from_an_uncached_refusal` and
 `test_convert_family.py::test_the_text_converters_docstrings_give_the_decode_order_the_code_uses`.
+Amended 2026-11-25, §16.293 C3321: `_decode_text` tells UTF-32's marks before UTF-16's, so both docstrings and §15's
+copy read `UTF-8/UTF-32/UTF-16 BOM first, then strict UTF-8, then cp1252, else latin-1`; `decode` stays
+`bom,utf-8,cp1252,latin-1`.
 
 ### 16.217 Round 32: the records page on a hand purge, dated lines for stale quotes and the kit note's lists (2026-10-28, wave B13 round 32 lane D)
 
@@ -47479,7 +47482,27 @@ Reserved for round 47 lane B of B13.
 
 ### 16.293 Round 47: the converters: ruling 202's Office twins closed (UTF-32 text, a no-namespace `<Types>`, the container answers before the cache, xlsx's emitter 1.0.7) and one noun per family (2026-11-25, wave B13 round 47 lane E)
 
-Reserved for round 47 lane E of B13.
+Round 47's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 47"; specs `round47/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's rulings 206 to 216 settle it). A dated line this round writes reads
+`Amended 2026-11-25, §16.293 C<n>`.
+
+**The text decoder tells UTF-32's marks before UTF-16's** (C3321 with C3268 and C3291, one defect; ruling 215;
+`agentsync.convert._common`, `agentsync.convert.text`; amends §16.216 C670). `_decode_text` told only UTF-8's and
+UTF-16's byte order marks, and UTF-32LE's `FF FE 00 00` opens with UTF-16LE's, so a UTF-32LE text file read as UTF-16
+failed as `binary content (NUL characters)` (or `invalid UTF-16 text` past U+FFFF), and a UTF-32BE one, whose
+`00 00 FE FF` is no UTF-16 mark, as `binary content (NUL bytes)`: every caller (the text, Markdown, eml, msg, Teams and
+vtt converters) failed a valid file, retried and then settled. `_UTF32_BOMS`, the two marks as literal bytes, is told
+after UTF-8's mark and before UTF-16's and decodes `utf-32`; a body of a bad length or code point raises
+`ConversionError` (`invalid UTF-32 text: <reason>`), never `UnicodeDecodeError`, since a bare decode let that escape
+every caller and turned a UTF-16LE part whose first character is U+0000 (`FF FE 00 00 41 00 42 00`), which eml's
+lenient fallback reads, into a failed message (C3268, makes worse True for a bare decode). The NUL-character check
+after the decode stays, and UTF-32 with no mark stays binary. Only inputs that failed before change, so no emitter
+version or option moves (`decode` stays `bom,utf-8,cp1252,latin-1`); the text converter's summary and §15's copy say
+`UTF-8/UTF-32/UTF-16 BOM first`. Tests:
+`test_convert_family.py::test_a_utf32_text_file_is_decoded_before_utf16s_mark_c3321` (UTF-32LE and BE with a character
+past U+FFFF, through `convert_file` too; a truncated, a surrogate and an out-of-range body; a NUL inside; UTF-16 and an
+unmarked UTF-32 file as before) and
+`test_convert_family.py::test_a_utf16_part_opening_u0000_still_takes_emls_lenient_fallback_c3268`.
 
 ### 16.294 Round 47: the prompt goes to v44 (a run read to its exit, an error keyed on its exit code, a paused or retired folder never offered again), CI's head and limit, dated lines, and the guides (2026-11-25, wave B13 round 47 lane D)
 
