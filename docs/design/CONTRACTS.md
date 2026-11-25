@@ -46330,6 +46330,11 @@ read inbox` for a PermissionError, which the listable line and `inbox state: not
 it cannot read, never `inbox: not added`; install.sh's inbox_not_added and the report's reader match it (lanes RB and
 RA). Test: `test_an_inbox_link_into_a_locked_folder_gets_the_persons_parent_fix_c2808`; the C1414 test's fix reads
 `the person runs chmod u+rx <word>`.
+Amended 2026-11-24, §16.289 C3051: no report reads step 2's `inbox:` lines, so "the report's reader" names nothing.
+Only install.sh's `inbox_not_added` and `inbox_not_read` match `inbox: not read: ...` (lane RB, §16.281, install.log's
+`inbox=not-read`); the setup report's Configuration `- inbox:` line prints `config.inbox_state`'s answer (`not read
+(<why>)`), and step 2's line reaches a report only as text in the install.out tail, as §16.280's C2808 paragraph
+measured. Lane RA built nothing for it.
 
 **The source on a kept inbox that is not a folder is shown as typed, with the person's fix** (C2809; ruling 194).
 When inbox_state reads `not added (<folder> is not a folder)`, the source whose stored path is canonical_source_root
@@ -47166,6 +47171,15 @@ dated lines. No code moves: install.sh's order matches Python's on purpose. Test
 `tests/test_deploy_pack.py::test_the_guide_names_step_1s_folder_list_as_a_redaction_source` (the sentence) and
 `::test_the_guides_redaction_rows_name_own_moved_folders_and_dotted_remotes` (install.sh's call order and the
 `logged_late` seed).
+
+**No report reads step 2's inbox lines** (C3051; amends §16.282 C2808). §16.282's C2808 paragraph said install.sh's
+`inbox_not_added` "and the report's reader" match step 2's `inbox: not read:` line, against §16.280's measurement that
+the agentsync report reads no step 2 `inbox:` line and needs none (its `- inbox:` line prints `config.inbox_state`).
+The paragraph keeps its words; a dated line right under it says no report reads those lines, only install.sh's two
+functions, and lane B rewords `cli.INBOX_NOT_READ`'s docstring in its own commit. No report-side matcher is added:
+inbox_state already gives the not-read state. Test: `tests/test_deploy_pack.py`
+`::test_no_report_reads_step_2s_inbox_lines_c3051` (neither report's source names the line; install.sh's two
+functions do).
 
 **CI's time is the time of round 45's jobs, the head is 92 and the limit 112** (C3060; `CLAUDE.md`,
 `docs/lanes/COMMON.md`, ci.yml, `tests/test_convert_recording.py`; dated line at §16.144 W70). Round 45's eight ci jobs

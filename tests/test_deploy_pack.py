@@ -4725,6 +4725,29 @@ def test_the_v43_step3_reads_a_run_to_its_exit_and_logs_an_error_with_no_next_c3
     assert retry < flat.index(STEP3_NO_NEXT)
 
 
+def test_no_report_reads_step_2s_inbox_lines_c3051() -> None:
+    """B13 round 46 C3051: §16.282's C2808 paragraph said install.sh's inbox_not_added "and the report's
+    reader" match step 2's ``inbox: not read:`` line, but §16.280 measured that no report reads step 2's
+    ``inbox:`` lines: the report's ``- inbox:`` line prints ``config.inbox_state``. Only install.sh's two
+    functions match it; a dated line under C2808 says so, the paragraph's words kept."""
+    from agentsync import cli, setup_report  # noqa: PLC0415
+
+    line = cli.INBOX_NOT_READ.rstrip()
+    assert line == "inbox: not read:"
+    for module in (setup_report, report_cuts):
+        source = inspect.getsource(module)
+        assert line not in source and "INBOX_NOT_READ" not in source, module.__name__
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    assert "inbox_not_read() { LC_ALL=C grep -q '^inbox: not read' \"$1\" 2>/dev/null; }" in script
+    assert "-e '^inbox: not read'" in script.split("inbox_not_added() {", 1)[1].split("}", 1)[0]
+    contracts = " ".join(CONTRACTS.read_text(encoding="utf-8").split())
+    assert "install.sh's inbox_not_added and the report's reader match it" in contracts  # its words kept
+    assert (
+        "Amended 2026-11-24, §16.289 C3051: no report reads step 2's `inbox:` lines, so \"the report's"
+        ' reader" names nothing.'
+    ) in contracts
+
+
 def test_the_v43_not_used_rule_covers_a_step2_refused_before_agentsync_ran_c3018(tmp_path: Path) -> None:
     """B13 round 46 C3018 (ruling 205): H26 let a stop before step 2 write one ``## Not used`` line, since no
     part of agentsync had run; a step 2 refused on AGENTSYNC_CONFIG exits 2 before record_flush, installing
