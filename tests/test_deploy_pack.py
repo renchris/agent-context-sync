@@ -14694,7 +14694,7 @@ def test_the_guides_redaction_rows_name_own_moved_folders_and_dotted_remotes() -
     own = source.index("_own_folder_values(expand(own_dir), expand(default))")
     assert projects < own < source.index("cloud_ids = {sid")
     script = SCRIPTS[0].read_text(encoding="utf-8")
-    shell_projects = script.index('\t\t\tproject_values "$line"\n')
+    shell_projects = script.index('\t\t\tproject_values "$line" configured\n')  # its fuzzy mode (C3289)
     shell_own = script.index('own_folder_values "$own_state" "$HOME/Library/Application Support/agentsync"')
     # the source ids' loops, after id_known's lookup (B13 round 43 ruling 159, C2501 with C2433)
     assert shell_projects < shell_own < script.index('\t\t\tid_known "$v"\n')

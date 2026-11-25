@@ -4025,6 +4025,10 @@ redaction_pairs() {
 		[ "${#2}" -eq 2 ] && two_letter_word "$(recase lower "$2")" || return 0
 		[ -z "${LIB_SHORT_FILE:-}" ] || printf '%s\n' "$1" >>"$LIB_SHORT_FILE"
 	}
+	# PLACEHOLDER: a configured project folder's <folder-N> registered fuzzily (flag f, as a cloud folder's), which
+	# the legend's project-folder clause reads from the same file, tagged so lib_short_has never matches it (B13
+	# round 47 ruling 207, C3289): its flag no longer tells it from a cloud folder's
+	project_mark() { [ -z "${LIB_SHORT_FILE:-}" ] || printf 'project\t%s\n' "$1" >>"$LIB_SHORT_FILE"; }
 	# VALUE PLACEHOLDER [fuzzy] [lib]: lib for a library's own registration, whose folded value Python's _folded
 	# holds whatever its length, so a later id or folder `it` finds <library-N> (B13 round 44 ruling 172, C2670)
 	hidden_by() {
@@ -4244,7 +4248,8 @@ redaction_pairs() {
 		done
 		return 1
 	}
-	folder_value() { # VALUE [fuzzy]: its <folder-N>, the placeholder another spelling has (folder_keys), in any case
+	folder_value() { # VALUE [fuzzy] [FLAG]: its <folder-N>, the placeholder another spelling has (folder_keys),
+		# matched by FLAG (default i: a whole word in any case); the escaped and shlex-quoted aliases stay i
 		k="$(id_key "$1")"
 		case "$folder_keys" in
 		*$'\n'"$k"$'\t'*)
@@ -4257,7 +4262,7 @@ redaction_pairs() {
 			folder_keys+="$k"$'\t'"$m"$'\n'
 			;;
 		esac
-		add_pair "$1" "$m" i
+		add_pair "$1" "$m" "${3:-i}"
 		hidden_by "$1" "$m" "${2:-}"
 		# and as a double-quoted word shows it, \ " $ and ` escaped (shown_arg, cycle._shown_arg), and as
 		# shlex.quote's single-quoted one does, each ' written '"'"' (a name holding !): a vanished source's
@@ -4271,7 +4276,18 @@ redaction_pairs() {
 		fe="'\"'\"'" # in a variable: bash 3.2 keeps a replacement's backslashes
 		case "$1" in *\'*) add_pair "${1//\'/$fe}" "$m" i ;; esac
 	}
-	project_values() { # PATH
+	# PATH [configured]: configured, from the configured-sources loop alone, registers the path's rel and first
+	# part with fuzzy_flag's flag, as setup_report registers a configured folder fuzzily: f, or i for a joined
+	# name (its mode j, which Python keeps literal), and i for any value holding `/`; the vanished-source loop,
+	# the own folders and a path outside the home stay i (B13 round 47 ruling 207, C3289)
+	project_flag() { # VALUE MODE: sets FUZZY to the flag project_values registers VALUE with
+		FUZZY=i
+		[ "$2" = configured ] || return 0
+		case "$1" in */*) return 0 ;; esac
+		fuzzy_flag "$1"
+		[ "$FUZZY" = f ] || FUZZY=i
+	}
+	project_values() { # PATH [configured]
 		local rel first rest
 		case "$1" in \~) set -- "$HOME" ;; \~/*) set -- "$HOME/${1#\~/}" ;; esac
 		own_folder "$1" && return 0
@@ -4290,8 +4306,14 @@ redaction_pairs() {
 				rel="$rest"
 				continue
 			fi
-			folder_value "$rel" fuzzy
-			[ -z "$rest" ] || folder_value "$first" fuzzy
+			project_flag "$rel" "${2:-}"
+			folder_value "$rel" fuzzy "$FUZZY"
+			[ "$FUZZY" = i ] || project_mark "$m"
+			if [ -n "$rest" ]; then
+				project_flag "$first" "${2:-}"
+				folder_value "$first" fuzzy "$FUZZY"
+				[ "$FUZZY" = i ] || project_mark "$m"
+			fi
 			return 0
 		done
 	}
@@ -4360,7 +4382,7 @@ redaction_pairs() {
 				[ "$inbox_at" -eq 1 ] || own_folder_values "$line" /
 				continue
 			fi
-			project_values "$line"
+			project_values "$line" configured
 			placed+=("$line")
 		done < <(config_path_values)
 	fi
@@ -7680,8 +7702,8 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	# round 10 L1 for the items): step 1's list where one of its folders was registered; the whole-word rule
 	# where a configured name every drive has (a pair of flag w) has its placeholder in the body; the list-only
 	# rule where a name step 1's list alone gave, and folder_parts skipped, is in the body as a whole word; the
-	# project-folder clause where a folder outside CloudStorage (folder_value's pairs, flag i) has its
-	# placeholder in the body (B13 round 19 W5, W22).
+	# project-folder clause where a folder outside CloudStorage (folder_value's pairs, flag i, or f with its
+	# project_mark) has its placeholder in the body (B13 round 19 W5, W22).
 	if [ -n "${3:-}" ]; then
 		# the agent's own name is no folder: every whole-word copy of an Agent: header's value is left out of
 		# the list-only test (B13 round 13 O10), as setup_report._without_agents, longest first, so a name
@@ -7728,7 +7750,8 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 		while IFS=$'\t' read -r v p fl; do
 			case "$p" in
 			"<folder-"*)
-				if [ "$fl" = i ]; then
+				# a configured project folder's fuzzy pair (flag f) by its mark (project_mark, C3289)
+				if [ "$fl" = i ] || { [ "$fl" = f ] && lib_short_has "project"$'\t'"$p"; }; then
 					! LC_ALL=C grep -qF -- "$p" "$3" 2>/dev/null || proj=1
 					continue
 				fi
