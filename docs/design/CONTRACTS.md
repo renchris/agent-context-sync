@@ -47829,7 +47829,9 @@ CHANGELOG lines, and the next clean run's commit held its pages under a subject 
 `sync: 0a 0m 0r 0d`, with the console note `(no source changed a mirror page; ...)`. `Cycle._commit` now reads the
 rows of every earlier run that ended `failed` and still has some (`Manifest.failed_runs_with_changes`), nets them
 per page in run order (`cycle._net_changes`: an add then a change is an add, an add then a delete nothing, a delete
-then an add a change, a rename follows its page), drops the pages this run changed, and keeps those still dirty
+then an add a change, a rename follows its page, a page renamed away and back is a change at most, and one renamed
+onto a path and deleted there is its old path's delete, so an add there again stays an add), drops the pages this
+run changed, and keeps those still dirty
 against HEAD, `_carry_crashed_changes`'s filter, so a change undone by `git checkout` is not counted.
 `gitops.commit_subject` counts them beside this run's changes, their sources in its ids; `commit_body` carries one
 note per source, `carried from blocked runs 4-5: <source> 0a 2m 0r 0d` (`text.run_span`: `run 5`, `runs 4-5`,
@@ -47839,7 +47841,8 @@ gets no second line, `append_changelog` still taking this run's changes alone. `
 this commit`; the no-mirror-page note is printed only for a commit that carries none. A run that failed for
 another cause and left its pages uncommitted is carried under the same words. Tests:
 `test_a_commit_counts_and_names_the_blocked_runs_whose_pages_it_lands_c3228` (two blocked runs, then a clean one
-titled `0a 2m` naming runs 4-5), `test_a_blocked_change_undone_by_git_checkout_is_not_carried_c3228` and
+titled `0a 2m` naming runs 4-5), `test_a_blocked_change_undone_by_git_checkout_is_not_carried_c3228`, `test_blocked_runs_changes_net_per_page_c3228`
+and
 `test_a_commit_that_lands_blocked_runs_pages_says_so_not_that_no_source_changed_one_c3228`.
 
 **A file at the docs path reads baseline missing** (C3239; ruling 211). With a file where the docs repo belongs, the

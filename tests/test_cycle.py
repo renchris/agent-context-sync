@@ -72,6 +72,7 @@ from agentsync.model import (
     ChangeOp,
     CycleMode,
     CycleReport,
+    MirrorChange,
     OutputStatus,
     PassKind,
     RenderedUnit,
@@ -1270,6 +1271,47 @@ def test_a_commit_counts_and_names_the_blocked_runs_whose_pages_it_lands_c3228(
     for carried in report.carried:  # run 4's or run 5's M line, and no other
         assert detail.count(f"- M `{carried.path}`") == 1, (carried.path, detail)
     assert f"run {report.run_id}" not in (repo / "CHANGELOG.md").read_text(encoding="utf-8") + detail
+
+
+def _net_row(op: str, path: str, prev: str | None = None) -> MirrorChange:
+    return MirrorChange(ChangeOp(op), path, "contoso", f"id-{prev or path}", prev_path=prev)
+
+
+@pytest.mark.parametrize(
+    ("rows", "want"),
+    [
+        ([("A", "a"), ("M", "a")], [("A", "a", None)]),
+        ([("A", "a"), ("D", "a")], []),
+        ([("M", "a"), ("D", "a")], [("D", "a", None)]),
+        ([("D", "a"), ("A", "a")], [("M", "a", None)]),
+        ([("A", "a"), ("R", "b", "a")], [("A", "b", None)]),
+        ([("R", "b", "a"), ("M", "b")], [("R", "b", "a")]),
+        ([("R", "b", "a"), ("R", "c", "b")], [("R", "c", "a")]),
+        ([("R", "b", "a"), ("R", "a", "b")], [("M", "a", None)]),  # moved back: a change, never a→a
+        ([("R", "a", "x"), ("D", "a"), ("A", "a")], [("D", "x", None), ("A", "a", None)]),  # x's delete kept
+        ([("R", "a", "x"), ("D", "a")], [("D", "x", None)]),
+    ],
+    ids=[
+        "add-change",
+        "add-delete",
+        "change-delete",
+        "delete-add",
+        "add-rename",
+        "rename-change",
+        "rename-rename",
+        "rename-back",
+        "rename-delete-add",
+        "rename-delete",
+    ],
+)
+def test_blocked_runs_changes_net_per_page_c3228(
+    rows: list[tuple[str, ...]], want: list[tuple[str, str, str | None]]
+) -> None:
+    """B13 round 47 C3228: the blocked runs' changes count once per page, net. A page renamed away and back
+    is a change at most (the dirty filter drops it when its bytes are HEAD's), and a page renamed onto a
+    path, deleted, and added there again keeps the old path's delete."""
+    net = cycle_mod._net_changes([_net_row(*r) for r in rows])
+    assert sorted((c.op.value, c.path, c.prev_path) for c in net) == sorted(want)
 
 
 def test_a_blocked_change_undone_by_git_checkout_is_not_carried_c3228(

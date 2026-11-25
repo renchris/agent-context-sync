@@ -8416,13 +8416,17 @@ def _touches(change: MirrorChange, paths: Collection[str]) -> bool:
 def _net_changes(rows: Sequence[MirrorChange]) -> list[MirrorChange]:
     """``rows``, changes in the order runs made them, as one net change per page: an add then a change is
     an add, a change then a delete a delete, an add then a delete nothing, a delete then an add a change, and
-    a rename follows its page to its new path, an added one still an add (B13 round 47 C3228)."""
+    a rename follows its page to its new path, an added one still an add; a page renamed away and back is a
+    change at most, and one renamed onto a path and deleted there is a delete of its old path (B13 round 47
+    C3228)."""
     net: dict[str, MirrorChange] = {}
     for c in rows:
         if c.op is ChangeOp.RENAMED and c.prev_path is not None and c.prev_path in net:
             before = net.pop(c.prev_path)
             if before.op is ChangeOp.ADDED:
                 net[c.path] = dataclasses.replace(c, op=ChangeOp.ADDED, prev_path=None)
+            elif before.op is ChangeOp.RENAMED and before.prev_path == c.path:  # moved back: a change at most
+                net[c.path] = dataclasses.replace(c, op=ChangeOp.MODIFIED, prev_path=None)
             elif before.op is ChangeOp.RENAMED:
                 net[c.path] = dataclasses.replace(c, prev_path=before.prev_path)
             else:
@@ -8433,8 +8437,18 @@ def _net_changes(rows: Sequence[MirrorChange]) -> list[MirrorChange]:
             net[c.path] = c
         elif c.op is ChangeOp.DELETED and before_c.op is ChangeOp.ADDED:
             del net[c.path]
+        elif c.op is ChangeOp.DELETED and before_c.op is ChangeOp.RENAMED and before_c.prev_path is not None:
+            # renamed here, then deleted: the page that goes is the one under the old path, a delete there,
+            # so an add at this path later is an add, not a change (B13 round 47 C3228)
+            del net[c.path]
+            old = before_c.prev_path
+            there = net.get(old)
+            if there is not None and there.op is ChangeOp.ADDED:  # something new took the old path since
+                net[old] = dataclasses.replace(there, op=ChangeOp.MODIFIED)
+            else:
+                net[old] = dataclasses.replace(c, path=old, prev_path=None)
         elif c.op is ChangeOp.DELETED:
-            net[c.path] = dataclasses.replace(c, prev_path=before_c.prev_path)
+            net[c.path] = c
         elif c.op is ChangeOp.ADDED and before_c.op is ChangeOp.DELETED:
             net[c.path] = dataclasses.replace(c, op=ChangeOp.MODIFIED)
         elif before_c.op is ChangeOp.DELETED:
