@@ -45,6 +45,7 @@ from agentsync import (
     cycle,
     gitops,
     governance,
+    install_log,
     it_request,
     lints,
     loop,
@@ -30422,3 +30423,17 @@ def test_the_outcome_docstrings_name_the_forms_stopped_option_c3035_c3053() -> N
         assert 'as it has no "stopped"' not in flat, flat
     stopped = setup_report.Outcome("stopped", 1, ("x",), 42)
     assert stopped.form_label == setup_report.STOPPED_FORM_OPTION
+
+
+def test_the_install_log_parser_is_a_module_of_its_own_c3241() -> None:
+    """B13 round 47 C3241 (ruling 213): loop.next_step's rule 2 gives the person's-choice NEXT after a
+    completed --no-folder run, read from install.log as the report reads it, so the parser (InstallRun,
+    install_runs_only, read_install_runs and their helpers) is a module of its own that imports no report:
+    the report re-exports each under its old name, one object, so the two readers cannot drift."""
+    for name in ("InstallRun", "install_runs_only", "read_install_runs", "parse_time", "_install_runs"):
+        assert getattr(setup_report, name) is getattr(install_log, name), name
+    code = "import sys, agentsync.install_log; print('agentsync.setup_report' in sys.modules)"
+    cp = subprocess.run(
+        [sys.executable, "-I", "-c", code], capture_output=True, text=True, check=True, timeout=60
+    )
+    assert cp.stdout.strip() == "False", cp.stdout + cp.stderr
