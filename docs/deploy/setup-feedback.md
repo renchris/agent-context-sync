@@ -224,8 +224,10 @@ words) is yours to remove. The CLI always redacts.
   sources.toml moves from their defaults, then (since B13 round 44 C2668) the CloudStorage folders that only
   install.log's `--source-local` words name, which no configuration or finished listing numbered, and last a
   listing that finished after its 3-second bound but in
-  time for the report, so no earlier number moves; the shell fallback report: that run's `--source-local` folders,
-  then sources.toml, then install.log, then the CloudStorage listing, then install.out's step 1 list), so an added folder, a listing past its
+  time for the report, so no earlier number moves; the shell fallback report: sources.toml's CloudStorage folders,
+  then the CloudStorage listing, then install.out's step 1 list, then configured folders elsewhere and agentsync's
+  own moved folders as above, then, after every other value, that run's `--source-local` folders and install.log's,
+  since it has no late listing), so an added folder, a listing past its
   3-second bound (step 1's list then stands in its place) or a fallback report gives a folder another number,
   between two sessions or between step 2's and step 3's report of one. Since prompt v11 each name carries a role that tells it apart: identify the folder
   by that role, not by the placeholder's number. A part written before v11 may give a placeholder alone: trust

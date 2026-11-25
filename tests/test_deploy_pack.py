@@ -13089,10 +13089,10 @@ def test_the_repeat_conversions_row_quotes_the_columns_and_the_re_screen_note() 
 def test_the_guide_names_step_1s_folder_list_as_a_redaction_source() -> None:
     """B13 round 9 K69: since round 8 J69 both reports register the folders step 1's `--list-folders` runs
     printed into install.out (the agentsync report after its CloudStorage listing, the shell report after
-    install.log), and a listing that did not finish with no such list makes the agentsync report Private
-    only; the guide gave one Private-only cause and neither registration order had the list. Since B13 round
-    44 C2669 the shell report lists CloudStorage too, before install.out's list, with the same Private-only
-    line."""
+    the CloudStorage listing too, B13 round 46 C3050), and a listing that did not finish with no such list
+    makes the agentsync report Private only; the guide gave one Private-only cause and neither registration
+    order had the list. Since B13 round 44 C2669 the shell report lists CloudStorage too, before install.out's
+    list, with the same Private-only line."""
     from agentsync import setup_report  # noqa: PLC0415
 
     source = inspect.getsource(setup_report)
@@ -13127,9 +13127,14 @@ def test_the_guide_names_step_1s_folder_list_as_a_redaction_source() -> None:
         "then the CloudStorage listing, then the folders step 1's `--list-folders` runs printed into "
         "install.out, then configured folders elsewhere" in page
     )
+    # B13 round 46 C3050: the shell order as install.sh calls it, never round 9's
     assert (
-        "then sources.toml, then install.log, then the CloudStorage listing, then install.out's step 1 list)"
-    ) in page
+        "the shell fallback report: sources.toml's CloudStorage folders, then the CloudStorage listing, then"
+        " install.out's step 1 list, then configured folders elsewhere and agentsync's own moved folders as"
+        " above, then, after every other value, that run's `--source-local` folders and install.log's, since"
+        " it has no late listing)"
+    ) in " ".join(page.split())
+    assert "then sources.toml, then install.log, then the CloudStorage listing" not in " ".join(page.split())
 
 
 def test_the_first_sync_row_names_every_clause_the_summary_adds() -> None:
@@ -14367,6 +14372,13 @@ def test_the_guides_redaction_rows_name_own_moved_folders_and_dotted_remotes() -
     # B13 round 45 C2864: install.log's CloudStorage parts are numbered after agentsync's own folders and
     # before a late listing (C2668's comment in _build_redactor, _late_listing's "after every other value")
     assert own < source.index("_logged_cloud_folders(r.install_log)") < source.index("def _late_listing")
+    # B13 round 46 C3050: the shell numbers in the order the guide gives: sources.toml's folders, the listing
+    # with step 1's list, the folders elsewhere and its own, and this run's and install.log's words last
+    configured = script.index('\tfolder_parts "" ${known[@]+"${known[@]}"}\n')
+    listed = script.index('\tfolder_parts listed ${listed[@]+"${listed[@]}"}\n')
+    late = script.index('\tfolder_parts late ${logged_late[@]+"${logged_late[@]}"}\n')
+    assert configured < listed < shell_projects < shell_own < late
+    assert 'logged_late=(${FOLDERS[@]+"${FOLDERS[@]}"})' in script
     assert 'section.startswith("remote.")' in source and "dotted [remote.<name>] (Z76)" in script
     [hosts] = [ln for ln in _feedback_page().splitlines() if ln.startswith("| `<email-N>`, `<guid-N>`")]
     assert (

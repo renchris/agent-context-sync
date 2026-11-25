@@ -13266,7 +13266,9 @@ step, so it has no entry in `PROMPT_LAYOUTS`. A saved v10 copy is stopped at ste
   (a repeated organisation takes no number, §16.47) and never reads `graph.tenant` or SharePoint site hosts. A one-word organisation is
   redacted as a whole word wherever it stands (`Microsoft` in `Microsoft Graph`) on purpose, since that fails
   closed; no common-word exemption is made. **Amended (2026-10-12, §16.58 F92):** not for a one-word value that
-  is a word the report prints; see §16.46 "Kept as they are".
+  is a word the report prints; see §16.46 "Kept as they are". **Amended 2026-11-24, §16.289 C3050:** since round 42's
+  C2202 the shell fallback numbers sources.toml's CloudStorage folders, then the listing and step 1's list, and the
+  run's and install.log's `--source-local` folders last, after every other value.
 
 #### Outside the prompt
 
@@ -18921,6 +18923,9 @@ orders, standing in for a listing past its bound. Test: `test_the_guide_names_st
 Amended 2026-11-22, §16.276 C2669: the shell report lists CloudStorage now, so the guide names the second cause for
 both reports and the shell order `then sources.toml, then install.log, then the CloudStorage listing, then
 install.out's step 1 list`.
+Amended 2026-11-24, §16.289 C3050: that shell order was not install.sh's: `redaction_pairs` numbers sources.toml's
+folders, then the CloudStorage listing and step 1's list (`folder_parts listed`), and the run's and install.log's
+`--source-local` folders last (`folder_parts late`, C2202, C2668); the guide now says so.
 
 **The first-sync row names every clause the Summary adds** (K82). After its converted, deferred and read-again
 counts, `_first_sync_line` adds up to four parts from install.out's line of the same sync (§16.58 F8, §16.63 G35,
@@ -46713,6 +46718,11 @@ listing numbered" (a folder a late listing also names takes install.log's number
 named install.log. Test: `tests/test_deploy_pack.py`
 `::test_the_guides_redaction_rows_name_own_moved_folders_and_dotted_remotes` (the sentence, and the call's place
 between the own-folder values and `_late_listing`).
+Amended 2026-11-24, §16.289 C3050: "The shell fallback's order already named install.log" held only for the word: the
+guide's shell order was not install.sh's. Its `redaction_pairs` numbers sources.toml's folders (`folder_parts ""`),
+then the CloudStorage listing and step 1's list (`folder_parts listed`), then the folders elsewhere and its own, and
+the run's and install.log's `--source-local` folders last, after every other value (`folder_parts late`, C2202,
+C2668); the guide says so now.
 
 **The shell's CloudStorage listing is said with its real bounds** (C2940; `docs/deploy/setup-feedback.md`; ruling 186).
 C2669 says the shell lists `~/Library/CloudStorage` as `cloud_folder_names` does. It reads each provider in full with
@@ -47141,6 +47151,21 @@ ceiling and its test stay; gate.sh's comment records the stopped part and the ru
 part that runs to its end past 11,700 s, or above twice a censored lower bound only if one recurs, never on one
 censored run alone. Test: `tests/test_gate_journal.py`
 `::test_the_ceiling_comment_names_a_part_stopped_at_the_old_ceiling_a_censored_lower_bound_c3065`.
+
+**The guide gives the shell report's numbering order as install.sh calls it** (C3050; `docs/deploy/setup-feedback.md`;
+amends §16.284 C2864, §16.85 K69, §16.43 N44). The guide said the shell fallback numbers "that run's `--source-local`
+folders, then sources.toml, then install.log, then the CloudStorage listing, then install.out's step 1 list", unchanged
+since round 9. `redaction_pairs` seeds `logged_late` with this run's FOLDERS and appends install.log's words to it,
+numbers sources.toml's folders (`folder_parts ""`), then the listing and step 1's rows (`folder_parts listed`), then the
+configured folders elsewhere, its own moved folders, the vanished add-backs and the hold scopes, and `logged_late` last
+(`folder_parts late`, round 42's C2202, round 44's C2668), as the agentsync report numbers them. Measured in a fresh
+home with a configured folder, a listed-only one and one named only by install.log's `--source-local`: the shell report
+numbered them 1, 2 and 3, where the guide predicted 1, 3 and 2. The guide now gives install.sh's order; C2864's "The
+shell fallback's order already named install.log", K69's and C2669's quoted order and N44's older shell order take
+dated lines. No code moves: install.sh's order matches Python's on purpose. Tests:
+`tests/test_deploy_pack.py::test_the_guide_names_step_1s_folder_list_as_a_redaction_source` (the sentence) and
+`::test_the_guides_redaction_rows_name_own_moved_folders_and_dotted_remotes` (install.sh's call order and the
+`logged_late` seed).
 
 **CI's time is the time of round 45's jobs, the head is 92 and the limit 112** (C3060; `CLAUDE.md`,
 `docs/lanes/COMMON.md`, ci.yml, `tests/test_convert_recording.py`; dated line at §16.144 W70). Round 45's eight ci jobs
