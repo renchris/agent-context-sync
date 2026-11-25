@@ -540,8 +540,10 @@ def _baseline(docs: Path) -> str:
 
 
 def _eval_status(path: Path) -> str | None:
-    """The ``status:`` value near the top of ``path`` (lower-cased); None when the file is missing,
-    "" when it has no status line."""
+    """The ``status:`` value near the top of ``path`` (lower-cased); None when the file is missing, or under
+    a path that is not a folder (a file where the docs repo belongs: B13 round 47 C3239, ruling 211), "" when
+    it has no status line or cannot be read for any other reason (logged: a file that exists is never read as
+    missing)."""
     try:
         with path.open(encoding="utf-8", errors="replace") as fh:
             for _ in range(_STATUS_LINES_READ):
@@ -551,7 +553,7 @@ def _eval_status(path: Path) -> str | None:
                 m = _STATUS_LINE.match(line)
                 if m:
                     return m.group(1).strip("'\"").lower()
-    except FileNotFoundError:
+    except (FileNotFoundError, NotADirectoryError):
         return None
     except OSError as exc:
         _log.warning("loop: cannot read %s: %s", path, exc)

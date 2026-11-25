@@ -2565,6 +2565,38 @@ def test_status_line_tracks_skill_baseline_topics_and_queue(tmp_path: Path, fold
     assert " topics 2 " in loop.status_line(config) and "skill missing" in loop.status_line(config)
 
 
+def test_baseline_under_a_file_at_the_docs_path_is_missing(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """B13 round 47 C3239 (ruling 211): a file where the docs repo belongs holds no ``_eval/questions.md``,
+    so its baseline is ``missing``, not ``draft``, with no draft wait and nothing logged as unreadable (the
+    read raised NotADirectoryError, which fell into the logged OSError branch and read as a draft)."""
+    config = _setup(tmp_path)
+    shutil.rmtree(config.docs_repo)
+    config.docs_repo.write_text("not a folder\n", encoding="utf-8")
+    with caplog.at_level(logging.WARNING, logger="agentsync.loop"):
+        assert loop.baseline_state(config.docs_repo) == "missing"
+        assert loop.docs_waits(config) == []
+        line = loop.status_line(config)
+    assert "baseline draft" not in line and " baseline missing " in line
+    assert not [r for r in caplog.records if "cannot read" in r.getMessage()]
+
+
+def test_baseline_questions_that_cannot_be_read_stay_a_draft(tmp_path: Path) -> None:
+    """C3239's other half: only a path under a non-folder reads as missing; a questions.md that exists but
+    cannot be opened is still no ``missing`` baseline, since that would hide a real file."""
+    config = _setup(tmp_path)
+    _eval(config, "draft", "draft")
+    questions = config.docs_repo / "_eval" / "questions.md"
+    questions.chmod(0)
+    try:
+        if os.access(questions, os.R_OK):
+            pytest.skip("this account reads a mode-0 file")
+        assert loop.baseline_state(config.docs_repo) == "draft"
+    finally:
+        questions.chmod(0o644)
+
+
 def test_status_line_inbox_is_the_kept_inbox_not_every_inbox_source(tmp_path: Path, folder: Path) -> None:
     """2026-10-08 D2.a: the guides name one inbox, the folder ``ensure_inbox`` keeps (publish's root_guide),
     so status's ``inbox`` part is about that folder: a hand-added inbox source whose folder is gone is

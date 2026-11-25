@@ -47828,6 +47828,14 @@ another cause and left its pages uncommitted is carried under the same words. Te
 titled `0a 2m` naming runs 4-5), `test_a_blocked_change_undone_by_git_checkout_is_not_carried_c3228` and
 `test_a_commit_that_lands_blocked_runs_pages_says_so_not_that_no_source_changed_one_c3228`.
 
+**A file at the docs path reads baseline missing** (C3239; ruling 211). With a file where the docs repo belongs, the
+read of `_eval/questions.md` raised NotADirectoryError, which `loop._eval_status` logged as unreadable and returned
+`""`, so `baseline_state` said `draft`, status's line `baseline draft` and the report `Loop: baseline drafted`, and
+`docs_waits` could name a draft. `_eval_status` now reads NotADirectoryError as FileNotFoundError, None (missing);
+every other OSError is still logged and reads `""`, so a questions.md that exists but cannot be opened stays a draft
+and is never hidden as missing. Tests: `test_baseline_under_a_file_at_the_docs_path_is_missing` and
+`test_baseline_questions_that_cannot_be_read_stay_a_draft`.
+
 ### 16.293 Round 47: the converters: ruling 202's Office twins closed (UTF-32 text, a no-namespace `<Types>`, the container answers before the cache, xlsx's emitter 1.0.7) and one noun per family (2026-11-25, wave B13 round 47 lane E)
 
 Round 47's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 47"; specs `round47/items/C<n>.md`, the
