@@ -30743,11 +30743,14 @@ def test_a_tilde_name_log_variable_is_named_as_a_log_not_read_and_the_report_wri
     out = tmp_path / "r.md"
     capsys.readouterr()
     assert cli.main(["setup-report", "--out", str(out), "--config", str(fake_mac["config"])]) == 0
+    printed = capsys.readouterr().out
     text = out.read_text(encoding="utf-8")
     said = f"${env_name} names another account's home; export it as an absolute path (not read)"
     assert said in text, text
     for raw in ("kestrel", "Zephyr", "Quarry"):
         assert raw not in text, (raw, [ln for ln in text.splitlines() if raw in ln])
+    if env_name == setup_report.FRICTION_ENV:
+        assert f"friction log not read: {said}" in printed, printed
     assert setup_report._env_log(env_name, "~/x") == (
         Path("~kestrel/Zephyr Quarry/f.md"),
         "~kestrel/Zephyr Quarry/f.md",

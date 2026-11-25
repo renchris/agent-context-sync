@@ -4148,7 +4148,8 @@ def _cmd_setup_report(args: argparse.Namespace) -> int:
     """Never fails hard: every section records its own error; exit 1 only when --out cannot be written
     (the report then goes to stdout instead)."""
     out = expand(args.out)
-    friction = setup_report.default_friction_path()
+    # B13 round 47 C3292: the report's one resolver; a ~name friction log is not read, never exit 2
+    friction, refused = setup_report._env_log(setup_report.FRICTION_ENV, setup_report.FRICTION_DEFAULT)
     text, red = setup_report.build_report(
         getattr(args, "config", None), hooks=_report_hooks(), friction_path=friction
     )
@@ -4165,7 +4166,13 @@ def _cmd_setup_report(args: argparse.Namespace) -> int:
             _out(link)
         return EXIT_FAILED
     what = f"{plural(red.total, 'replacement')} of {plural(red.values, 'value')}"
-    embedded = "friction log embedded" if friction.is_file() else f"no friction log found at {friction}"
+    embedded = (
+        f"friction log not read: {setup_report._env_log_refusal(setup_report.FRICTION_ENV)}"
+        if refused is not None
+        else "friction log embedded"
+        if friction.is_file()
+        else f"no friction log found at {friction}"
+    )
     _out(f"wrote {out} ({what}; {embedded})")
     if link:
         _out(link)  # the last line: setup prompt step 3 (v5: step 5) shows it (no "next:" hint)
