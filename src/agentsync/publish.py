@@ -2445,8 +2445,11 @@ class Publisher:
                 continue
             for line in text.splitlines():
                 m = _CHANGELOG_HEADING.match(line)
-                if m and cutoff <= m.group(1) <= today:
-                    entries.append((m.group(1), int(m.group(2)), m.group(3), month))
+                # a run number bounded as cycle._run_value bounds it (ASCII digits, at most 18): a 5000-digit
+                # heading raised ValueError on every content-changing run (B13 round 46 C3042)
+                run = m.group(2) if m else ""
+                if m and cutoff <= m.group(1) <= today and run.isascii() and run.isdigit() and len(run) <= 18:
+                    entries.append((m.group(1), int(run), m.group(3), month))
         entries.sort(key=lambda e: (e[0], e[1]), reverse=True)
         lines = [
             "# CHANGELOG — the last 30 days",

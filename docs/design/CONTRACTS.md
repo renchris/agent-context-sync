@@ -46425,6 +46425,10 @@ largest valid value as `_newest_run_trailer` does. `gitops._SAFE_CONFIG` pins `t
 operator's `separators = "="` (makes worse True without the pin), and an alias on the `Agentsync-Run` token, in any
 case, renamed the key (measured; an alias from another token to it changes nothing, and git warns once when the
 operator has one). Test: `test_every_run_reader_reads_a_trailer_as_git_does_c2920`.
+Amended 2026-11-24, §16.287 C3042, C3090, C3091: the extraction is `%(trailers:key=Agentsync-Run,valueonly,unfold)`,
+each LF-ended value read whole; `_newest_run_trailer` returns the newest valid value past newer commits that hold
+none, behind a case-blind prefilter; and STATE.md's `run:` line, CHANGELOG.md's index line and a month heading go
+through `_run_value` too (publish's index by an equal check).
 
 **A lost first-open race on `run_changes.unit_removed` is no failure** (C2852). The column is added on open by
 an unlocked check and an ALTER, so of two first opens of a pre-upgrade manifest that both saw it missing, the
@@ -46924,6 +46928,23 @@ the forced pass complete stays refused (C3010's makes worse True, C2813's ruling
 and the mark drives the removal and work filters and doctor's incomplete-pass count. Test: the C2813 test's dry run
 (`2 inbox items withheld:` naming the unnamed file) and its run naming the only settling file (no withheld alarm, the
 note, INCOMPLETE, the cursor held).
+
+**Every run number agentsync reads is bounded, read whole and found past an invalid one** (C3042, C3090, C3091; amends
+§16.282 C2920). C2920 bounded the trailer readers only: STATE.md's `run:` line, CHANGELOG.md's index line and a month
+page's `## <date> · run N ·` heading took a bare int(), so 19 digits overflowed SQLite's int64 in seed_run_sequence and
+5000 raised ValueError before the run began, on every later sync; `_state_md_run`, `_recorded_run_hint` and
+`_highest_recorded_run` read them through `_run_value`, a refused value being no record, and
+`publish._write_changelog_index` skips a heading whose run fails an equal local check (C3042). `_run_values` split
+git's output on any whitespace, so `invalid 750` read 750 and a folded `7` over ` 500` read 500: the format adds
+`unfold` and each LF-ended value is read whole, only blanks and tabs around it dropped (C3090). `_newest_run_trailer`
+trusted the newest commit `--grep=^Agentsync-Run: ` matched, so a newer body-only line or invalid value hid an older
+valid run and a restored manifest reused a number: it reads matching commits newest first, 32 at a time (`-n32
+--skip=k`, each commit's values ended by `%x00`), behind `-i -E --grep=^agentsync-run[[:space:]]*:`, as blind to case
+and spacing as git's key match, and returns the first commit's largest valid value, 0 only when they run out
+(C3091). Tests: `test_every_run_number_a_page_records_is_bounded_as_a_trailer_is_c3042` (19 and 5000 digits on each
+page: the hint and the history read no more than the last run, a dry run and a sync go on, the next run follows),
+the C2920 test's `invalid 750`, `7 500`, folded and lowercase `agentsync-run:9` rows and its newest-valid answers,
+and the C2677 test's newest valid `3` past a superscript.
 
 ### 16.288 Round 46: the converters: a kept Office answer read again only from the bytes and the fetch that were read, the container answers and the family parse corrected, and speech's CA words (2026-11-24, wave B13 round 46 lane E)
 

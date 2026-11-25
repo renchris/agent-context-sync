@@ -211,10 +211,12 @@ _LABEL_UNREADABLE_HEAD = f"{content_policy.REFUSED_PREFIX}sensitivity label unre
 _RUN_DIGITS_MAX = 18
 """The most digits an ``Agentsync-Run`` value may hold (:func:`_run_value`): inside SQLite's int64 and far
 below Python's 4300-digit int() limit, which raised ValueError on a 5000-digit value (B13 round 45 C2920)."""
-_RUN_TRAILER_FORMAT = "--format=%(trailers:key=Agentsync-Run,valueonly)"
+_RUN_TRAILER_FORMAT = "--format=%(trailers:key=Agentsync-Run,valueonly,unfold)"
 """git's own trailer extraction, the one reader of a run number in a commit message for all three readers
 (``trailer.separators`` is pinned to ``:`` in ``gitops._SAFE_CONFIG``, so an operator's setting cannot hide
-agentsync's own trailers; B13 round 45 C2920)."""
+agentsync's own trailers; B13 round 45 C2920). ``unfold`` joins a folded value onto one line, so
+:func:`_run_values` reads each value whole: ``7`` folded over `` 500`` is ``7 500``, no run, never 500 (B13
+round 46 C3090)."""
 
 
 def _run_value(value: str) -> int | None:
@@ -226,8 +228,10 @@ def _run_value(value: str) -> int | None:
 
 
 def _run_values(out: str) -> list[int]:
-    """Every valid run number in ``git log``'s trailer extraction output (:func:`_run_value`)."""
-    return [run for value in out.split() if (run := _run_value(value)) is not None]
+    """Every valid run number in ``git log``'s trailer extraction output (:func:`_run_value`), one value per
+    LF-ended line, each read whole: splitting on any whitespace took ``750`` from ``invalid 750`` and ``500``
+    from a folded value (B13 round 46 C3090). Only blanks and tabs around a value are dropped."""
+    return [run for line in out.split("\n") if (run := _run_value(line.strip(" \t"))) is not None]
 
 
 _SETTLED_PUBLISHED = Verdict.UNCHANGED  # a published row is in sync; CHANGED would be pending work again
@@ -1119,8 +1123,8 @@ def _highest_recorded_run(config: Config) -> int:
             continue
         for line in text.splitlines():
             m = _CHANGELOG_HEADING.match(line)
-            if m:
-                high = max(high, int(m.group(2)))
+            if m and (run := _run_value(m.group(2))) is not None:  # bounded as a trailer is (C3042)
+                high = max(high, run)
     return high
 
 
@@ -1130,7 +1134,9 @@ _STATE_RUN = re.compile(r"^run: (\d+) · ", re.MULTILINE)
 
 def _state_md_run(config: Config) -> int:
     """The run ``_sync/STATE.md``'s ``run:`` line names (every real run writes it, one that committed nothing
-    too); 0 when the page is missing, a link, unreadable or has no such line (B13 round 28 I22)."""
+    too); 0 when the page is missing, a link, unreadable or has no such line (B13 round 28 I22), or its value
+    is no run :func:`_run_value` takes (19 digits overflowed SQLite's int64 and 5000 raised ValueError, on
+    every later sync; B13 round 46 C3042)."""
     path = config.layout.state_md
     try:
         if path.is_symlink():
@@ -1139,7 +1145,7 @@ def _state_md_run(config: Config) -> int:
     except OSError:
         return 0
     m = _STATE_RUN.search(text)
-    return int(m.group(1)) if m else 0
+    return (_run_value(m.group(1)) if m else None) or 0
 
 
 def _recorded_run_hint(config: Config) -> int:
@@ -1153,19 +1159,47 @@ def _recorded_run_hint(config: Config) -> int:
     except OSError:
         text = ""
     m = _INDEX_RUN.search(text)
-    return max(_newest_run_trailer(config.docs_repo), int(m.group(1)) if m else 0, _state_md_run(config))
+    index = (_run_value(m.group(1)) if m else None) or 0  # bounded as a trailer is (C3042)
+    return max(_newest_run_trailer(config.docs_repo), index, _state_md_run(config))
+
+
+_NEWEST_RUN_BATCH = 32
+"""Commits :func:`_newest_run_trailer` reads per ``git log`` call (B13 round 46 C3091)."""
 
 
 def _newest_run_trailer(repo: Path) -> int:
-    """The ``Agentsync-Run`` trailer of the newest commit that has one (a curated commit over a run that
-    wrote no CHANGELOG section hides it from HEAD's); 0 when none does, or git cannot say (P137)."""
+    """The ``Agentsync-Run`` trailer of the newest commit that has a valid one (a curated commit over a run
+    that wrote no CHANGELOG section hides it from HEAD's); 0 when none does, or git cannot say (P137).
+
+    The commits whose message may hold one are read newest first, :data:`_NEWEST_RUN_BATCH` at a time,
+    behind a prefilter as blind to case and spacing as git's own key match, and the first commit with a valid
+    value gives it (its largest, a squash's). ``-1`` trusted the newest commit the prefilter matched, so a
+    newer body-only line or invalid value hid an older valid run and a restored manifest reused a number
+    (B13 round 46 C3091)."""
     try:
         if gitops.head_sha(repo) is None:
             return 0
-        out = gitops.run_git(repo, "log", "-1", "--grep=^Agentsync-Run: ", _RUN_TRAILER_FORMAT).stdout
+        skip = 0
+        while True:
+            out = gitops.run_git(
+                repo,
+                "log",
+                f"-n{_NEWEST_RUN_BATCH}",
+                f"--skip={skip}",
+                "-i",
+                "-E",
+                "--grep=^agentsync-run[[:space:]]*:",
+                _RUN_TRAILER_FORMAT + "%x00",
+            ).stdout
+            chunks = out.split("\x00")[:-1]  # one per commit, each ended by its NUL
+            for chunk in chunks:
+                if runs := _run_values(chunk):
+                    return max(runs)
+            if len(chunks) < _NEWEST_RUN_BATCH:
+                return 0
+            skip += _NEWEST_RUN_BATCH
     except AgentSyncError:
         return 0
-    return max(_run_values(out), default=0)
 
 
 _OCR_KEPT_CONVERTERS = frozenset({ImageConverter.converter_id, RecordingConverter.converter_id})

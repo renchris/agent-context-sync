@@ -5982,7 +5982,10 @@ def test_every_run_reader_reads_a_trailer_as_git_does_c2920(
     extraction, so a run line in a body paragraph, a squashed message and an Arabic-Indic digit read one way
     at HEAD and another in history, and a 5000-digit value raised ValueError in all three. One bounded ASCII
     parser and git's extraction serve all three, with ``trailer.separators`` pinned to ``:``, so an operator's
-    ``separators = "="`` no longer hides agentsync's own trailers."""
+    ``separators = "="`` no longer hides agentsync's own trailers. B13 round 46 C3090: a value is read whole
+    and unfolded, so ``invalid 750``, ``7 500`` and a folded ``7`` over `` 500`` are no run; C3091: the newest
+    valid trailer is found past newer commits whose line is invalid or in a body paragraph, and a lowercase
+    ``agentsync-run:9`` reads in all three, as git's key match reads it."""
     config = config_with(tmp_path, meetings)
     assert run(config).exit_code == 0
     repo = config.docs_repo
@@ -5993,13 +5996,26 @@ def test_every_run_reader_reads_a_trailer_as_git_does_c2920(
         return cycle_mod._head_run_id(repo), cycle_mod._newest_run_trailer(repo), high
 
     base = cycle_mod._highest_recorded_run(config)
-    assert readers("by hand\n\nAgentsync-Run: \u0667") == (None, 0, base)  # an Arabic-Indic seven
+    assert base >= 1
+    # each newer commit below holds no valid run, so the newest valid one stays the first sync's (C3091)
+    assert readers("by hand\n\nAgentsync-Run: \u0667") == (None, base, base)  # an Arabic-Indic seven
     for digits in (20, 5000):  # past int64, and past int()'s 4300-digit limit: ignored, never raised
-        assert readers(f"by hand\n\nAgentsync-Run: {'7' * digits}") == (None, 0, base)
+        assert readers(f"by hand\n\nAgentsync-Run: {'7' * digits}") == (None, base, base)
     # a run line in a body paragraph that is not the trailer block is no run, at HEAD as in history
-    assert readers("curated\n\nAgentsync-Run: 7\n\nmore words after it") == (None, 0, base)
+    assert readers("curated\n\nAgentsync-Run: 7\n\nmore words after it") == (None, base, base)
+    # a value read whole and unfolded: no token of it is a run (C3090)
+    for value in ("invalid 750", "7 500", "7\n 500"):
+        assert readers(f"by hand\n\nAgentsync-Run: {value}") == (None, base, base), value
     # a squashed message: git reads the last paragraph's trailer, at HEAD too
     assert readers("squash\n\nAgentsync-Run: 5\n\nsecond\n\nAgentsync-Run: 6")[:2] == (6, 6)
+    # git matches the key blind to case and the space after the colon; so do the prefilter and every reader
+    assert readers("by hand\n\nagentsync-run:9") == (9, 9, max(base, 9))
+    # past a full batch of matching commits with no valid value, the next batch is read
+    monkeypatch.setattr(cycle_mod, "_NEWEST_RUN_BATCH", 2)
+    for n in range(3):
+        gitops.run_git(repo, "commit", "-q", "--allow-empty", "-m", f"by hand {n}\n\nAgentsync-Run: x{n}")
+    assert cycle_mod._newest_run_trailer(repo) == 9
+    monkeypatch.setattr(cycle_mod, "_NEWEST_RUN_BATCH", 32)
     # an operator's trailer.separators without ":" (and an alias on the key) hides nothing
     cfg = tmp_path / "contoso-gitconfig"
     cfg.write_text(
@@ -6008,6 +6024,45 @@ def test_every_run_reader_reads_a_trailer_as_git_does_c2920(
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(cfg))
     run_n = base + 40
     assert readers(f"sync: contoso\n\nAgentsync-Run: {run_n}\nAgentsync-Version: 1") == (run_n, run_n, run_n)
+
+
+@pytest.mark.parametrize("where", ["state", "index", "heading"])
+@pytest.mark.parametrize("digits", [19, 5000])
+def test_every_run_number_a_page_records_is_bounded_as_a_trailer_is_c3042(
+    tmp_path: Path, local_source_dir: Path, where: str, digits: int
+) -> None:
+    """B13 round 46 C3042 (C2920's twins): STATE.md's ``run:`` line, CHANGELOG.md's index line and a month
+    page's ``## <date> · run N ·`` heading were read with a bare int(): 19 digits overflowed SQLite's int64 in
+    seed_run_sequence and 5000 raised ValueError before the run began, on every later sync, and publish's
+    index rewrite raised on the heading too. Each is read through ``_run_value`` (publish by an equal local
+    check), a refused value is no record, and a sync and a dry run go on, numbering from the valid ones."""
+    config = config_with(tmp_path, local_source_dir)
+    first = run(config)
+    assert first.exit_code == 0 and first.commit_sha is not None
+    repo, layout, bad = config.docs_repo, config.layout, "9" * digits
+    if where == "state":
+        path, pattern = layout.state_md, r"^run: \d+ · "
+        repl = f"run: {bad} · "
+    elif where == "index":
+        path, pattern = layout.changelog_md, r"^(- \d{4}-\d{2}-\d{2} · run )\d+( · )"
+        repl = rf"\g<1>{bad}\g<2>"
+    else:
+        [path] = sorted(layout.changelog_dir.glob("*.md"))
+        pattern, repl = r"^(## \d{4}-\d{2}-\d{2} · run )\d+( · )", rf"\g<1>{bad}\g<2>"
+    text, n = re.subn(pattern, repl, path.read_text(encoding="utf-8"), count=1, flags=re.MULTILINE)
+    assert n == 1, (where, path)
+    path.write_text(text, encoding="utf-8")
+    git(repo, "commit", "-qa", "--allow-empty", "-m", "a run number no build writes")  # STATE.md is untracked
+    with Manifest(config.state_paths.db) as m:  # as agentsync's own commit: no recovery resets it
+        m.set_tree_sha(git(repo, "rev-parse", "HEAD^{tree}").strip())
+    assert cycle_mod._recorded_run_hint(config) <= first.run_id
+    assert cycle_mod._highest_recorded_run(config) <= first.run_id
+    assert run(config, mode=CycleMode.DRY_RUN).exit_code == 0
+    (local_source_dir / "projects" / "Contoso added.txt").write_text("A new page.\n", encoding="utf-8")
+    report = run(config)
+    assert report.exit_code == 0 and report.commit_sha is not None, report
+    assert report.run_id == first.run_id + 1, report.run_id
+    assert bad not in layout.changelog_md.read_text(encoding="utf-8")  # the index skipped the bad heading
 
 
 def test_every_isdigit_that_feeds_int_takes_ascii_digits_only_c2677(
@@ -6022,7 +6077,7 @@ def test_every_isdigit_that_feeds_int_takes_ascii_digits_only_c2677(
     before = cycle_mod._highest_recorded_run(config)
     for value in ("3", "\u00b2"):  # the newest commit's trailer is the superscript
         gitops.run_git(repo, "commit", "-q", "--allow-empty", "-m", f"by hand\n\nAgentsync-Run: {value}")
-    assert cycle_mod._newest_run_trailer(repo) == 0
+    assert cycle_mod._newest_run_trailer(repo) == 3  # the newest valid one, past it (B13 round 46 C3091)
     assert cycle_mod._highest_recorded_run(config) == max(before, 3)
     with Manifest(config.state_paths.db) as m:
         m.set_meta(cycle_mod._SCOPE_ROOT_META + "contoso", "\u00b2:/x")
