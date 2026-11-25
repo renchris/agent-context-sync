@@ -46750,6 +46750,26 @@ install.log's `step=agentsync` note for any recorded lock holder is `waited-for-
 `waited-for-a-background-sync`, which lane RA's report reads with the same words. The guide names both. Test:
 `tests/test_deploy_pack.py::test_the_guide_names_install_logs_waited_for_another_sync_note_c2829`.
 
+### 16.285 Round 46: the report: a refused config spelling cut per field and a redactor that failed kept private, both reports reading sources, the docs repo and the inbox alike, and an escaped listed row read in every reading it allows (2026-11-24, wave B13 round 46 lane RA)
+
+Reserved for round 46 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 46").
+
+### 16.286 Round 46: the installer: the shell halves of rulings 198 and 199, every word it writes valid UTF-8 that reads back as its path, an older build's inbox read, and C2060 waits on the operator (2026-11-24, wave B13 round 46 lane RB)
+
+Reserved for round 46 lane RB of B13.
+
+### 16.287 Round 46: a `~name` config value a configuration error and a refused skill copy a warning, the STUB_RENDER marker held for a page not rendered, and an inbox that is not a folder told as inbox_state tells it (2026-11-24, wave B13 round 46 lane B)
+
+Reserved for round 46 lane B of B13.
+
+### 16.288 Round 46: the converters: a kept Office answer read again only from the bytes and the fetch that were read, the container answers and the family parse corrected, and speech's CA words (2026-11-24, wave B13 round 46 lane E)
+
+Reserved for round 46 lane E of B13.
+
+### 16.289 Round 46: the prompt goes to v43 (a none, an unread inbox and a step 2 or step 3 error told from how the run ended), CI's head and limit, the gate's ceiling comment, dated lines, and the guides (2026-11-24, wave B13 round 46 lane D)
+
+Reserved for round 46 lane D of B13.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units
