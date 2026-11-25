@@ -9783,6 +9783,47 @@ def test_source_statuses_warns_a_refused_heartbeat_only_for_a_caller_that_record
     assert loud == [logging.WARNING] and said == [logging.DEBUG], (loud, said)
 
 
+def test_a_sync_over_a_corrupt_heartbeat_warns_of_it_once_c3004(
+    initialised: Config, caplog: pytest.LogCaptureFixture
+) -> None:
+    """B13 round 46 C3004 (makes worse True for keeping the sync's stderr off install.sh's output): a sync
+    over a heartbeat.json holding damaged JSON logged ``heartbeat unreadable`` from the cycle's own read and
+    ``is corrupt ...; rewriting it`` from write_heartbeat, one fact twice on stderr. The cycle's read is
+    debug, so write_heartbeat's line is the one WARNING; the sync exits 0 and leaves valid JSON. A caller
+    that records nothing still warns (the D47 test)."""
+    _synced(initialised)
+    beat = expand(initialised.state_paths.heartbeat)
+    beat.write_text("{bad", encoding="utf-8")
+    with caplog.at_level(logging.DEBUG, "agentsync"):
+        assert cli.main(["sync", "--config", str(initialised.config_path)]) == cli.EXIT_OK
+    warned = [
+        r.getMessage()
+        for r in caplog.records
+        if r.levelno >= logging.WARNING and "heartbeat" in r.getMessage()
+    ]
+    assert len(warned) == 1 and "is corrupt" in warned[0] and "rewriting it" in warned[0], warned
+    debug = [r.levelno for r in caplog.records if "heartbeat unreadable" in r.getMessage()]
+    assert debug and set(debug) == {logging.DEBUG}, debug
+    assert isinstance(json.loads(beat.read_text(encoding="utf-8")), dict)
+    # every source paused: no write_heartbeat runs, so the pass's own read says it, once (the review's find)
+    cfg = initialised.config_path
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8").replace("[[source]]\n", '[[source]]\nstate = "paused"\n'),
+        encoding="utf-8",
+    )
+    assert all(not s.is_live for s in load_config(cfg).sources)
+    beat.write_text("{bad", encoding="utf-8")
+    caplog.clear()
+    with caplog.at_level(logging.DEBUG, "agentsync"):
+        assert cli.main(["sync", "--config", str(cfg)]) == cli.EXIT_OK
+    warned = [
+        r.getMessage()
+        for r in caplog.records
+        if r.levelno >= logging.WARNING and "heartbeat" in r.getMessage()
+    ]
+    assert len(warned) == 1 and "is corrupt" in warned[0], warned
+
+
 def test_fail_steps_docstring_gives_no_stale_count_of_the_persons_kinds() -> None:
     """B13 round 25 D48: "the whole list (447 characters)" went stale when v33 made it 476; no count."""
     assert "447 characters" not in (cli._fail_step.__doc__ or "")

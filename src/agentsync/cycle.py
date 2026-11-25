@@ -4208,12 +4208,17 @@ class _Cycle:
             # no source wrote one (every one paused, retired or unselected): its read is the only test, and a
             # refused read is a refused write (write_heartbeat reads first), said once by the CLI as when a
             # write is refused (B13 round 24 B71: the sync exited 0 and said nothing, status FAILed it). A
-            # corrupt file or another error keeps the statuses' WARNING
+            # corrupt file is this pass's one warning, since the statuses' read of it is DEBUG and no
+            # write_heartbeat says it (B13 round 46 C3004); another error keeps the statuses' WARNING
             try:
                 read_heartbeat(hb)
             except PermissionError as exc:
                 self.heartbeat_refused = exc
-            except (OSError, ValueError):
+            except ValueError as exc:
+                log.warning(
+                    "heartbeat %s is corrupt (%s); the next sync of a live source rewrites it", hb, exc
+                )
+            except OSError:
                 pass
         # hold-record.json keeps the state hold scopes, outside governance/ and apart from heartbeat.json, so
         # neither move aside lifts a hold; with every lost hold kept (B13 round 28 I89; round 29 C199, C170)
@@ -8380,14 +8385,18 @@ def source_statuses(
     cycle's read" was enough, and a cycle that wrote no heartbeat said nothing). A refused read is a WARNING
     only for a caller that records no refusal, the default, which no current caller takes (the cycle passes
     ``refused_said=True``, status ``quiet=True``): kept so a new caller fails loud, never silent (B13 round
-    25 D47)."""
+    25 D47). The cycle's own read of a corrupt heartbeat (ValueError) is debug too: ``write_heartbeat``'s
+    ``is corrupt ...; rewriting it`` in the same run is the one WARNING, which says what happens next, so a
+    sync no longer says one fact twice on stderr (B13 round 46 C3004; install.sh's stderr passthrough is
+    untouched, since its NEXT points at the sync's own lines there, makes worse True for hiding it)."""
     heartbeat: dict[str, dict[str, object]] = {}
     try:
         heartbeat = {k: dict(v) for k, v in read_heartbeat(config.state_paths.heartbeat).items()}
     except (OSError, ValueError) as exc:
         # a heartbeat this account cannot open whose refusal the cycle recorded: the CLI says that once (B13
         # round 23 A84: two more WARNING lines per run)
-        refused = isinstance(exc, PermissionError) and refused_said
+        # ... and a corrupt one, which write_heartbeat warns of once as it rewrites it (C3004)
+        refused = isinstance(exc, (PermissionError, ValueError)) and refused_said
         log.log(logging.DEBUG if quiet or refused else logging.WARNING, "heartbeat unreadable: %s", exc)
     out: list[SourceStatus] = []
     for src in config.sources:

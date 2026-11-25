@@ -27456,7 +27456,9 @@ path in the state folder, `<path> cannot be opened: <reason>` with `state_path_f
 folder and state_dir.files' set, else the lock, heartbeat, governance.hold or governance.purge_queue [FAIL] line,
 else nothing. Status's read of the heartbeat logs at DEBUG (`cycle.source_statuses(quiet=True)`). `state_dir.files`
 is not widened to every entry (the verifier's). Test:
-`test_cli.py::test_a_lock_or_heartbeat_this_account_cannot_open_names_its_own_fix` (this account's and another's). Amended
+`test_cli.py::test_a_lock_or_heartbeat_this_account_cannot_open_names_its_own_fix` (this account's and another's).
+Amended 2026-11-24, §16.287 C3004: the cycle's own read (`refused_said=True`) of a corrupt heartbeat logs at DEBUG
+too, so write_heartbeat's rewrite warning is the sync's one line for it. Amended
 2026-11-03, §16.227 C832: a path in governance/ while that folder refuses this account a look inside
 (`doctor.governance_refuser`) points at the governance.hold [FAIL] line, the folder's one FAIL, and the line names
 `agentsync's governance folder`, never holds.json or purge-queue.json, which need not exist.
@@ -29131,6 +29133,8 @@ NEXT says; its [FAIL] line names the fix`; not STATE_REFUSED_STEP, whose "did no
 a `--mode` run and install.sh's keep their exit and log one `heartbeat not written: ...` WARNING with the fix. A
 corrupt heartbeat (doctor's WARN, rewritten by the next pass) and a full disk keep today's warning. Test:
 `test_cli.py::test_a_heartbeat_this_account_cannot_open_is_said_once_and_an_interactive_sync_exits_1`.
+Amended 2026-11-24, §16.287 C3004: a corrupt heartbeat keeps one warning, write_heartbeat's `is corrupt ...; rewriting
+it`; the cycle's own read of it is DEBUG, as its read of a refused one is.
 
 **A9: a foreground sync that stops on a state file records it beside the setup log (`agentsync.cli`; the report's
 half is lane RA's, §16.164).** A step-3 sync stop the agent's chmod fixed left no trace, so the report said "fully
@@ -46887,7 +46891,7 @@ permission denied` with `_parent_fix(<sentinel>)`, the person's, naming the subf
 source on the kept inbox stores canonical_source_root's answer, the link's target, so with a link at the inbox's name
 the walk's alarm, its echoed warning and STATE.md (which keep the full path, ruling 103) read `source root missing:
 <target>` or `source root is not a directory: <target>`, while status, doctor and the C2814 note name the folder as
-typed. The cycle reads `config.kept_inbox_not_a_folder` (loop's own test: the source's stored path is
+typed. The cycle reads `config.kept_inbox_not_a_folder` (loop's own test, for an inbox-kind source: its stored path is
 canonical_source_root of the kept folder, and `inbox_entry` reads that entry as not a folder) before the walk and
 sets `LocalArm.shown_root`; `_walk_scan`'s root branches then return `source root is not a folder: <folder> is a file,
 a link to a file or a dangling link (walk skipped; nothing is deleted; inbox state says what to do)`, with
@@ -46945,6 +46949,18 @@ and spacing as git's key match, and returns the first commit's largest valid val
 page: the hint and the history read no more than the last run, a dry run and a sync go on, the next run follows),
 the C2920 test's `invalid 750`, `7 500`, folded and lowercase `agentsync-run:9` rows and its newest-valid answers,
 and the C2677 test's newest valid `3` past a superscript.
+
+**A sync says a corrupt heartbeat once** (C3004; amends §16.155 Y43 and §16.167 A84). Over a heartbeat.json holding
+damaged JSON a sync logged `heartbeat unreadable: ...` from the cycle's own `source_statuses` read and `heartbeat
+<path> is corrupt (...); rewriting it` from `write_heartbeat`, one fact twice on stderr beside doctor's [warn]. The
+cycle's read (`refused_said=True`) of a ValueError is DEBUG, as its read of a refused one is (A84), so
+write_heartbeat's line, which says what happens next, is the one WARNING, in a LaunchAgent's err.log as on a
+terminal; when no source writes one (every source paused, retired or unselected), `_after`'s own read gives the one
+WARNING, `heartbeat <path> is corrupt (...); the next sync of a live source rewrites it`; status's read stays DEBUG
+(`quiet`, Y43) and a caller that records nothing still warns (D47). install.sh's
+stderr passthrough is untouched: keeping a sync's warnings off its output would hide the lines its NEXT points to (the
+first sync's error, the configuration error, the lock holder's line) and a foreground sync's only copy (makes worse
+True). Test: `test_a_sync_over_a_corrupt_heartbeat_warns_of_it_once_c3004` (a live sync and an all-paused one).
 
 ### 16.288 Round 46: the converters: a kept Office answer read again only from the bytes and the fetch that were read, the container answers and the family parse corrected, and speech's CA words (2026-11-24, wave B13 round 46 lane E)
 
