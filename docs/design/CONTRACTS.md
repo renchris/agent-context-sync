@@ -6541,7 +6541,8 @@ or empty for this case (a source sat incomplete for 900 passes):
   Amended 2026-10-17, §16.107 O51: a Graph source and an inbox read `agentsync sync -v; a full pass that lists all
   of <id> clears this`, no bracket inside the line's own.
   Amended 2026-11-25, §16.292 C3218: the inbox on the kept folder while its entry is not a folder reads `source.<id>.listable
-  says what to do: no sync lists <id> until it is a folder again`, on status's path and install's alike, never the note.
+  says what to do: no sync lists <id> until it is a folder again`, on status's path and install's alike, never the note;
+  one this account cannot read ends `until this account can read it`.
 - `walk` logs a zero-child cloud folder at info, not warning. The scan's one alarm still names the first five
   each pass (logged at warning, printed by `sync -v`, kept in STATE.md). **Amended 2026-10-11, §16.39 N28:**
   that alarm is printed and kept, not logged; a folder whose listing failed is logged at info too, and one
@@ -48092,7 +48093,9 @@ the one test, `config.kept_inbox_not_a_folder` (an lstat, never a listing), and 
 held` included (install.sh's cleared_listings finds the line by it), with the fix `source.<id>.listable says what to
 do: no sync lists <id> until it is a folder again`, the row named, never "above" (the setup report's Doctor section
 may show none above), no bracket inside, and never the note; below 3 passes the ok line ends `; <that pointer>` in
-place of `, a warn after 3`. Graph and local sources and any other inbox keep their fixes. Test:
+place of `, a warn after 3`. An entry there this account cannot read (`INBOX_ENTRY_UNREAD`, through
+`config.kept_inbox_entry`) takes the same pointer, ending `until this account can read it`, and never the note.
+Graph and local sources and any other inbox keep their fixes. Test:
 `test_the_inbox_heartbeat_warn_points_at_the_listable_row_when_not_a_folder_c3218` (eleven kinds of entry, status's and
 install's paths, under a timeout).
 

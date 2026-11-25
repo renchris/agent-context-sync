@@ -39,6 +39,7 @@ from agentsync.arm_local import LISTING_TIMEOUT_S as _ARM_LISTING_TIMEOUT_S
 from agentsync.arm_local import CallTimedOutError, call_with_timeout, cloud_provider_root
 from agentsync.config import (
     INBOX_ENTRY_FOLDER,
+    INBOX_ENTRY_UNREAD,
     RETIRE_ADVICE,
     Config,
     SourceConfig,
@@ -4230,11 +4231,15 @@ def _check_heartbeat(
         incomplete = entry.get("consecutive_incomplete")
         # the inbox on the kept folder while its entry is not a folder: the listable row has the person's
         # remedy, and no sync lists it until then, so neither "sync -v" nor install's walk-next note is said;
-        # the one test, an lstat, never a listing (B13 round 47 C3218, ruling 210)
-        not_folder = src.kind is SourceKind.INBOX and kept_inbox_not_a_folder(config, src) is not None
-        pointer = (
-            f"source.{src.id}.listable says what to do: no sync lists {src.id} until it is a folder again"
+        # the one test, an lstat, never a listing (B13 round 47 C3218, ruling 210); an entry there this
+        # account cannot read takes the pointer too, with its own "until" (the review's find)
+        on_kept = kept_inbox_entry(config, src) if src.kind is SourceKind.INBOX else None
+        unread = on_kept is not None and on_kept[1].startswith(INBOX_ENTRY_UNREAD)
+        not_folder = unread or (
+            src.kind is SourceKind.INBOX and kept_inbox_not_a_folder(config, src) is not None
         )
+        until = "this account can read it" if unread else "it is a folder again"
+        pointer = f"source.{src.id}.listable says what to do: no sync lists {src.id} until {until}"
         if age is None:
             out.append(_bad(name, "no successful pass yet", Severity.WARN, fix=f"{BIN} sync -v"))
         elif age > limit:

@@ -3507,7 +3507,7 @@ def test_the_inbox_heartbeat_warn_points_at_the_listable_row_when_not_a_folder_c
     note, that its own sync is that walk), which no sync can do. Over every kind of entry the check returns
     and raises nothing; one that is not a folder keeps ``deletions held`` and its fix names
     ``source.<id>.listable``, on status's path and install's alike, and below 3 passes the ok line points
-    there in place of ``a warn after 3``."""
+    there in place of ``a warn after 3``; so does an entry it cannot read, with its own ``until``."""
     root = tmp_path / "Contoso Gamma"
     (root / "Gamma Empty").mkdir(parents=True)
     config = _synced(tmp_path, root)
@@ -3536,9 +3536,13 @@ def test_the_inbox_heartbeat_warn_points_at_the_listable_row_when_not_a_folder_c
     finally:
         for folder in locked:
             folder.chmod(0o700)
-    if _ENTRY_KINDS[entry] != INBOX_ENTRY_NOT_A_FOLDER:
+    if _ENTRY_KINDS[entry] == INBOX_ENTRY_UNREAD:  # its own "until", never sync -v or the note (review)
+        pointer = (
+            f"source.{box.id}.listable says what to do: no sync lists {box.id} until this account can read it"
+        )
+    elif _ENTRY_KINDS[entry] != INBOX_ENTRY_NOT_A_FOLDER:
         for row in (first, *rows):
-            assert pointer not in row.detail + (row.fix or ""), row
+            assert "listable says what to do" not in row.detail + (row.fix or ""), row
         return
     assert first.ok and first.detail.endswith(f"deletions held; {pointer}"), first
     assert "a warn after" not in first.detail, first
