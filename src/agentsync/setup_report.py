@@ -2062,6 +2062,7 @@ class Redactor:
         fuzzy: bool = False,
         url: bool = False,
         keep_lead: bool = False,
+        of: str | None = None,
     ) -> None:
         """Register ``value`` as a ``kind`` (home, user, name, org, library, folder, source, email, serial,
         host, mdmhost, proxy); a value already registered (or a variant of a fuzzy one) keeps its first
@@ -2074,9 +2075,19 @@ class Redactor:
         anchors its start) is written back before the placeholder, so ``https://<proxy-1>/<proxy-2>/`` reads
         as a host and a path, not one token (B13 round 9 K2, K27), after any escape before it (K10); such a
         value is matched wherever no letter or digit follows it, as install.sh's pair flag ``e``: a ``.git``,
-        a ``-tools`` or a ``_x`` may (K46)."""
+        a ``-tools`` or a ``_x`` may (K46).
+
+        B13 round 47 C3288 (ruling 208; privacy): ``of``, a placeholder-preserving alias: ``value`` takes the
+        placeholder ``of`` already has, never a new number (nothing when ``of`` is not registered), through
+        this method's own choice of joined, context, fuzzy (a norm of 3 or more with tokens) or literal, so
+        an escaped listed row's other reading (``Wombat\x1eLedger`` of ``Wombat\nLedger``) cuts its
+        blank-joined and slug forms under the LF reading's number, and a name made of report words stays
+        joined."""
         value = (value or "").strip()
         if len(value) < 2 or value in ("~", "/"):
+            return
+        target = self._known(of) if of is not None else None
+        if of is not None and target is None:
             return
         if keep_lead:
             self._lead_kept.add(_bare(value).lower())
@@ -2143,7 +2154,7 @@ class Redactor:
             return
         if url and _bare(value).lower() in self._url_hosts:
             return
-        placeholder = known or self._placeholder(kind)
+        placeholder = target or known or self._placeholder(kind)
         self._kind_of.setdefault(placeholder, kind)
         if named:
             self._word_named.add(placeholder)
@@ -20479,9 +20490,16 @@ def _add_listed(
     is decoded: keyed by name, a plain row whose folder is literally named as another provider's escaped row
     is printed was decoded too. Every name is registered in row order, as install.sh numbers them, and the
     escaped spellings are aliased only after the loop, so a plain row registers its literal name fuzzy
-    (``project-177-ledger``) even when an escaped row with that spelling came first."""
+    (``project-177-ledger``) even when an escaped row with that spelling came first.
+
+    B13 round 47 C3288 (ruling 208; privacy): after the loop, each other decoding of an escaped row is a
+    fuzzy alias of the row's number (:meth:`Redactor.add`'s ``of``), so the RS reading of a ``\\n`` row cuts
+    ``Wombat Ledger``, ``WombatLedger`` and ``wombat-ledger``, where the LF reading, LF being no separator,
+    cut none of them; the shared separator class is unchanged."""
     # (an escaped row's name, "") or (its escaped spelling or other decoding, that name)
     late: list[tuple[str, str]] = []
+    # B13 round 47 C3288 (ruling 208; privacy): (another decoding of an escaped row, its name, the row's kind)
+    readings: list[tuple[str, str, str]] = []
     for n, (provider, depth, written) in enumerate(entries):
         names = (decoded or {}).get(n) or []
         name = next((c for c in names if red._known(c) is not None), names[0]) if names else written
@@ -20491,7 +20509,9 @@ def _add_listed(
             continue
         shared = provider.startswith("OneDrive-SharedLibraries-")
         fresh = red._known(name) is None
-        red.add("library" if shared and depth == 2 else "folder", name, fuzzy=True)
+        kind = "library" if shared and depth == 2 else "folder"
+        red.add(kind, name, fuzzy=True)
+        readings += [(other, name, kind) for other in dict.fromkeys(names) if other != name]
         # an escaped row: its list spelling is the one a plain row may have (C3082), so after the loop
         if names:
             late.append((name, ""))
@@ -20501,6 +20521,8 @@ def _add_listed(
         placeholder = red._known(name)
         if fresh and placeholder is not None and name.casefold() not in red.configured_names:
             red.listed_only.add(placeholder)  # B13 round 39 C1656 with C1601
+    for other, name, kind in readings:  # each other reading's fuzzy forms, under the row's one number
+        red.add(kind, other, fuzzy=True, of=name)
     for other, name in late:
         _alias_escaped(red, other, of=name or None)
 

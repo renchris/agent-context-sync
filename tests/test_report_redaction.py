@@ -3155,13 +3155,22 @@ def test_the_agentsync_report_cuts_a_folder_step_1_listed_but_not_configured_c28
     disk printed its TOML, safe_text and split words in clear (6 and 2 lines), hidden by the strict xfail
     that holds the shell half. An escaped row's name is decoded and registered under one number, its
     escaped spelling an alias: the agentsync report holds no fragment and one line per row, in both locales,
-    an RS and an LF name among them, asserted whatever the shell half does."""
+    an RS and an LF name among them, asserted whatever the shell half does. B13 round 47 C3288 (ruling 208;
+    privacy): and an escaped row's other reading's blank-joined and slug forms (`Alder32 Birch32`,
+    `alder32-birch32`), compared case-blind, cut under the row's one number, where the LF reading, LF being no
+    separator, registered none of them."""
     said = [ln for n, name in enumerate(names) for ln in _hostile_lines(n, name, locale, home=env["HOME"])]
+    for (
+        name
+    ) in names:  # C3288: each name's words as its RS reading splits them, joined by a blank and slugged
+        words = setup_report._tokens(name.replace("\n", "\x1e"))
+        if len(words) > 1 and all(w.isprintable() for w in words):
+            said += [f"the folder {' '.join(words)} is listed", f"slug {'-'.join(w.lower() for w in words)}"]
     _shell, python, _sp, _pp = _both_reports(
         env, ["Juniper Notes"], said, locale, shell=False, listed=names, vanish=True
     )
     assert len(python) == len(said), (len(python), len(said))
-    leaks = [ln for ln in python for f in _fragments(names) if f in ln]
+    leaks = [ln for ln in python for f in _fragments(names) if f.casefold() in ln.casefold()]
     assert not leaks, (len(leaks), leaks[:4])
 
 
