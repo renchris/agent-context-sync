@@ -286,7 +286,10 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
     C3060: round 45's eight jobs (0ad24fd7 to 6f4c436f) took 77:32 to 89:37 on their last attempts, three past
     the head of 86, and d132a14c's first attempt failed a test at 91:40, leaving 105 only 13:20, inside the
     15-minute rule: the head is 92 in both guides, the limit 112, 20:20 above it, and both files add the
-    bracket and 006e48a6, round 46's base, at 80:39."""
+    bracket and 006e48a6, round 46's base, at 80:39. B13 round 47 C3286: round 46's ten jobs (006e48a6 to
+    42ca57e0) took 80:39 to 104:04, two past the head of 92, and fbbc2d07's 104:04 left 112 only 7:56, inside
+    the 15-minute rule: the head is 105 in both guides, the limit 125, 20:56 above it, and both files add the
+    bracket, cb4cc114's 26:28 wait and 42ca57e0, round 47's base, at 92:44."""
     guide = " ".join((ROOT / "CLAUDE.md").read_text(encoding="utf-8").split())
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     [limit] = re.findall(r"^jobs:\n  test:\n(?:    .*\n)*?    timeout-minutes: (\d+)\n", ci, re.M)
@@ -299,9 +302,10 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
     assert "about 18 to 52 minutes" not in guide and "about 18 to 60 minutes" not in guide
     assert "about 18 to 62 minutes" not in guide and "about 18 to 67 minutes" not in guide
     assert "about 18 to 81 minutes" not in guide and "about 18 to 86 minutes" not in guide
+    assert "about 18 to 92 minutes" not in guide
     assert "(one waited 21 minutes, another 17)" not in guide
     assert (
-        "`ci` takes about 18 to 92 minutes once its job starts (measured October and November 2026; 24 at"
+        "`ci` takes about 18 to 105 minutes once its job starts (measured October and November 2026; 24 at"
         " 5120 tests, and the same tests and source ran 24 and then 21 minutes on two runs; the eight jobs"
         " from eaed1034 to fcafd734 took 18:05 to 28:34; the nine from fcafd734 to 7a54f938 took 19:29 to"
         " 31:21; the thirteen from ed901cd3 to b1f4a087 took 24:34 to 32:18; the ten from c93fcd96 to"
@@ -352,7 +356,9 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
         " last attempts, all past 70, five past 80 and three past 86, the slowest green on 6f4c436f, 9699"
         " tests and pytest's step 89:02, and one attempt failed a test at 91:40, d132a14c's first, and its"
         " rerun was green at 89:31; 006e48a6, round 46's base, took 80:39, 9699 tests and pytest's step"
-        " 80:00;"
+        " 80:00; the eight after it, from 9e62806f to fbbc2d07, took 81:55 to 104:04, all past 80 and one"
+        " past 100, all green on attempt 1, the slowest on fbbc2d07, 9904 tests and pytest's step 103:20;"
+        " 42ca57e0, round 47's base, took 92:44, 9904 tests and pytest's step 92:12;"
         " one run took 34 on a runner loaded 5 to 8 per core), plus any wait"
         " for a macOS runner, counted from the run appearing to its job starting (one waited 63 minutes, on"
         " ef12f28f, another 50, one 21, on d8385ef6, one 25, on 820c69dd, one 16, on 0c6b1207, one 38, on"
@@ -360,18 +366,19 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
         " 16, on c6d8227c, one 50, on 293c8081, one 39, on 4d3ba971's rerun, counted from the rerun's start,"
         " one 32, on 526fa1e2, one 52, on ffefbe0f, one 31, on 10845acb, one 29, on 4041089d's rerun, counted"
         " from the rerun's start, one 26, on c72c736b, one 25, on 60835dd7, one 55, on dea3fabc, one 16, on"
-        " bb3cf651, one 14, on 13b58a12's rerun, counted from the rerun's start, and earlier ones 48 and 46);"
+        " bb3cf651, one 14, on 13b58a12's rerun, counted from the rerun's start, one 26, on cb4cc114, and"
+        " earlier ones 48 and 46);"
         " the"
         " job's limit is"
         f" {limit} minutes (`timeout-minutes` in ci.yml), and a wait does not count against it."
     ) in guide
-    # about 20 minutes above the slowest (91:40), and at least 15 above the head (B13 round 40 C1866,
-    # round 45 C2878, round 46 C3060)
-    assert int(limit) - 92 >= 15 and int(limit) == 112
+    # about 20 minutes above the slowest (104:04), and at least 15 above the head (B13 round 40 C1866,
+    # round 45 C2878, round 46 C3060, round 47 C3286)
+    assert int(limit) - 105 >= 15 and int(limit) == 125
     lanes = _page("docs/lanes/COMMON.md")
     assert (
-        "CI takes 18 to 92 minutes a run (the slowest, 91:40, in round 45, a failed first attempt; 89:37"
-        " green), and a run can wait over an hour for a macOS runner first (63:27 in round 31); its limit is"
+        "CI takes 18 to 105 minutes a run (the slowest, 104:04, in round 46), and a run can wait over an"
+        " hour for a macOS runner first (63:27 in round 31); its limit is"
         f" {limit} "
     ) in lanes
     assert (
@@ -392,8 +399,9 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
         and "18 to 67 minutes" not in lanes
         and "18 to 81 minutes" not in lanes
         and "18 to 86 minutes" not in lanes
+        and "18 to 92 minutes" not in lanes
         and "round 30 C372, round 31 C571, round 32 C662, round 35 C985, round 37 C1290, round 38 C1460,"
-        " round 40 C1866, round 45 C2878, round 46 C3060)"
+        " round 40 C1866, round 45 C2878, round 46 C3060, round 47 C3286)"
         in lanes
         and f"its limit is {limit} " in lanes
     )
@@ -530,6 +538,15 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
         " 89:31, which left 105 only 13:20 above it, so it is 112: 20:20 above it, and the guides' head is"
         " 92; runner waits reached 0:04, not counted against timeout-minutes (B13 round 46 C3060). 006e48a6,"
         " round 46's base, took 80:39 (pytest's step 80:00 at 9699 tests)."
+    ) in note
+    # B13 round 47 C3286: round 46's ten, fbbc2d07 at 104:04 left 112 only 7:56; 105 and 125
+    assert (
+        "Round 46's ten jobs (006e48a6 to 42ca57e0) took 80:39 to 104:04, all green on attempt 1, all past 80"
+        " and two past the head of 92 (fbbc2d07 at 104:04, 42ca57e0 at 92:44); the slowest was fbbc2d07"
+        " (pytest's step 103:20 at 9904 tests), which left 112 only 7:56 above it, inside the 15-minute rule,"
+        " so it is 125: 20:56 above it, and the guides' head is 105; runner waits reached 26:28 (cb4cc114,"
+        " counted from the run appearing), not counted against timeout-minutes (B13 round 47 C3286)."
+        " 42ca57e0, round 47's base, took 92:44 (pytest's step 92:12 at 9904 tests)."
     ) in note
     assert "(measured October 2026;" not in guide
     assert "Round 24's ten jobs (c93fcd96 to 3ec66a92) took 30:06 to 36:24, all green on attempt 1" in note

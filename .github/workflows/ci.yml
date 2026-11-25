@@ -107,6 +107,11 @@ name: ci
 # only 13:20 above it, so it is 112: 20:20 above it, and the guides' head is 92; runner waits reached 0:04, not counted
 # against timeout-minutes (B13 round 46 C3060). 006e48a6, round 46's base, took 80:39 (pytest's step 80:00 at 9699
 # tests).
+# Round 46's ten jobs (006e48a6 to 42ca57e0) took 80:39 to 104:04, all green on attempt 1, all past 80 and two past the
+# head of 92 (fbbc2d07 at 104:04, 42ca57e0 at 92:44); the slowest was fbbc2d07 (pytest's step 103:20 at 9904 tests),
+# which left 112 only 7:56 above it, inside the 15-minute rule, so it is 125: 20:56 above it, and the guides' head is
+# 105; runner waits reached 26:28 (cb4cc114, counted from the run appearing), not counted against timeout-minutes (B13
+# round 47 C3286). 42ca57e0, round 47's base, took 92:44 (pytest's step 92:12 at 9904 tests).
 on:
   workflow_dispatch:
   push:
@@ -123,7 +128,7 @@ concurrency:
 jobs:
   test:
     runs-on: macos-15
-    timeout-minutes: 112
+    timeout-minutes: 125
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

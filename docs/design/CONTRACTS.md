@@ -26161,7 +26161,8 @@ ci.yml, raised from 80 after a job took 66:14. **Amended 2026-11-13, §16.249 C1
 100 minutes, `timeout-minutes` in ci.yml, raised from 90 after a job took 75:09. **Amended 2026-11-23, §16.284 C2878:**
 the bound is now well under the ci job's 105 minutes, `timeout-minutes` in ci.yml, raised from 100 after a job took
 85:06. **Amended 2026-11-24, §16.289 C3060:** the bound is now well under the ci job's 112 minutes, `timeout-minutes`
-in ci.yml, raised from 105 after a job took 91:40.
+in ci.yml, raised from 105 after a job took 91:40. **Amended 2026-11-25, §16.294 C3286:** the bound is now well under the
+ci job's 125 minutes, `timeout-minutes` in ci.yml, raised from 112 after a job took 104:04.
 
 ### 16.145 Round 19: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 19 lane D)
 
@@ -47461,7 +47462,24 @@ Reserved for round 47 lane E of B13.
 
 ### 16.294 Round 47: the prompt goes to v44 (a run read to its exit, an error keyed on its exit code, a paused or retired folder never offered again), CI's head and limit, dated lines, and the guides (2026-11-25, wave B13 round 47 lane D)
 
-Reserved for round 47 lane D of B13.
+Round 47's lane D items (`docs/plans/bring-back-ocr.md`, "B13 round 47"; specs `round47/items/C<n>.md`, the verifier's
+corrected fix built, as the lead's rulings 206 to 216 settle it). A dated line this round writes reads
+`Amended 2026-11-25, §16.294 C<n>`.
+
+**CI's time is the time of round 46's jobs, the head is 105 and the limit 125** (C3286; `CLAUDE.md`,
+`docs/lanes/COMMON.md`, ci.yml, `tests/test_convert_recording.py`; dated line at §16.144 W70). Round 46's ten ci jobs
+on main (006e48a6 to 42ca57e0, re-timed with `gh api .../attempts/1/jobs`) all ended green on attempt 1 and took 80:39
+to 104:04, all past 80 and two past the guides' head of 92: 42ca57e0 at 92:44 (pytest's step 92:12) and fbbc2d07 at
+104:04 (pytest's step 103:20, `9904 passed, 31 skipped, 6 xfailed in 6192.73s`). 104:04 left the 112 limit only 7:56,
+inside ci.yml's 15-minute rule. cb4cc114's run appeared at 10:30:45Z and its job started at 10:57:13Z, a 26:28 wait
+counted from the run appearing as the guides count waits (the finder's 26:24 was 4 seconds short); every other wait was
+0:02 to 0:05. So `timeout-minutes` is 125, 20:56 above 104:04, both guides' head is 105 (COMMON.md `the slowest, 104:04,
+in round 46`), ci.yml's note and CLAUDE.md add the bracket, the wait and 42ca57e0, round 47's base, and the recording
+tests' docstring and the W70 paragraph name 125. The pytest step is not split (lead triage, conviction 70): a split
+changes the job graph and doubles the macOS runner waits a run already pays; if round 47's slowest passes 110, round 48
+splits the step instead of raising the limit again. Older sentences keep the 112 they measured against. Tests:
+`tests/test_deploy_pack.py::test_claude_md_gives_cis_time_and_its_limit` and
+`::test_the_recording_tests_limit_names_cis_own_limit`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
