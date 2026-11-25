@@ -25,6 +25,7 @@ from agentsync.config import (
     local_source_table,
     parse_config,
     parse_size,
+    toml_string,
 )
 from agentsync.errors import ConfigError
 from agentsync.governance import parse_governance
@@ -335,6 +336,73 @@ def test_load_config_missing_file_names_add_source(tmp_path: Path) -> None:
 def test_invalid_configs_have_clear_errors(tmp_path: Path, text: str, match: str) -> None:
     with pytest.raises(ConfigError, match=match):
         parse(text, tmp_path)
+
+
+_C3333_BLANKS = pytest.mark.parametrize("blank", ["\u3000", " ", "\u00a0"], ids=["u3000", "space", "nbsp"])
+
+
+@_C3333_BLANKS
+def test_a_stored_path_keeps_the_blank_its_writer_wrote_c3333(tmp_path: Path, blank: str) -> None:
+    """B13 round 47 C3333 (ruling 209; data integrity): the loader read every path through ``_str``, which
+    strips, so a source path ending in U+3000, U+00A0 or a space loaded as its sibling without the blank and a
+    sync mirrored the sibling's files. A path key keeps the bytes its writer wrote, both siblings present; a
+    blank-only value still counts as missing."""
+    work = tmp_path / "w"
+    for name in ("Project", "docs", "state", "cache"):
+        (work / name).mkdir(parents=True)
+        (work / f"{name}{blank}").mkdir()
+    for name in ("pandoc", f"pandoc{blank}"):
+        (work / name).write_text("#!/bin/sh\n", encoding="utf-8")
+    text = (
+        f"[agentsync]\ndocs_repo = {toml_string(str(work / f'docs{blank}'))}\n"
+        f"state_dir = {toml_string(str(work / f'state{blank}'))}\n"
+        f"cache_dir = {toml_string(str(work / f'cache{blank}'))}\n"
+        f"[convert]\npandoc_path = {toml_string(str(work / f'pandoc{blank}'))}\n"
+        f"[[source]]\nid = 'p'\nkind = 'local'\npath = {toml_string(str(work / f'Project{blank}'))}\n"
+    )
+    cfg = parse(text, tmp_path)
+    assert cfg.sources[0].path == canonical_source_root(work / f"Project{blank}")
+    assert cfg.docs_repo == work / f"docs{blank}"
+    assert cfg.state_dir == work / f"state{blank}"
+    assert cfg.cache_dir == work / f"cache{blank}"
+    assert cfg.convert.pandoc_path == work / f"pandoc{blank}"
+    blank_only = parse(
+        f"[agentsync]\ndocs_repo = '{blank}'\n[convert]\npandoc_path = '{blank}{blank}'\n", tmp_path
+    )
+    assert blank_only.convert.pandoc_path is None
+    assert blank_only.docs_repo == parse("", tmp_path).docs_repo
+    with pytest.raises(ConfigError, match="missing required key 'path'"):
+        parse(f"[[source]]\nid = 'p'\nkind = 'local'\npath = '{blank}'\n", tmp_path)
+
+
+@_C3333_BLANKS
+@pytest.mark.parametrize(
+    ("table", "key", "make"),
+    [
+        ("[[source]]\nid = 'p'\nkind = 'local'\n", "path", "dir"),
+        ("[agentsync]\n", "docs_repo", "dir"),
+        ("[agentsync]\n", "state_dir", "dir"),
+        ("[convert]\n", "pandoc_path", "file"),
+    ],
+)
+def test_a_stored_path_absent_whose_stripped_spelling_exists_names_both_c3333(
+    tmp_path: Path, blank: str, table: str, key: str, make: str
+) -> None:
+    """B13 round 47 C3333 (ruling 209): a config written before the fix may hold a blank the old loader
+    stripped; when the path as written is absent and its stripped spelling exists, the load stops on a
+    ConfigError naming the key and both spellings (repr, so the blank shows), never picking one."""
+    target = tmp_path / "w" / "Thing"
+    target.parent.mkdir()
+    if make == "dir":
+        target.mkdir()
+    else:
+        target.write_text("#!/bin/sh\n", encoding="utf-8")
+    written = f"{target}{blank}"
+    with pytest.raises(ConfigError) as caught:
+        parse(f"{table}{key} = {toml_string(written)}\n", tmp_path)
+    message = str(caught.value)
+    assert f"{key!r} {written!r}" in message and repr(str(target)) in message, message
+    assert "edit sources.toml" in message, message
 
 
 def test_the_retire_advice_names_a_source_block_the_loader_accepts(tmp_path: Path) -> None:

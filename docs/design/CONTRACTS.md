@@ -47744,7 +47744,18 @@ Test: `test_install_oneshot.py::test_the_no_folder_swaps_comment_names_c3003s_re
 
 ### 16.292 Round 47: a reader keeps the bytes its writer wrote, the kept inbox's state decided by one check and told in one phrase, a file at the docs repo's path the person's, and the land gate's block naming its fix (2026-11-25, wave B13 round 47 lane B)
 
-Reserved for round 47 lane B of B13.
+**A stored path keeps its blanks** (C3333; ruling 209; data integrity). add-source writes the folder it validated
+as chosen, but the loader read every value through `config._str`, which strips, so a source path ending in U+3000,
+U+00A0 or a space loaded as its sibling without the blank, and a sync published the sibling's files. Every key
+holding a filesystem path (a `[[source]]` path, docs_repo, state_dir, cache_dir, log_dir and pandoc_path) is now
+read by `config._path_str`, which strips nothing and reads an empty or blank-only string as missing; every other key
+keeps `_str`. A config written while the loader stripped may hold a blank its writer never meant: when the path as
+written does not exist and its stripped spelling does, the load stops on `configuration error: <file>: <table>:
+'<key>' '<as written>' does not exist but '<stripped>' does; edit sources.toml to the spelling you mean`, both
+spellings in repr so the blank shows, never picking one; only a value carrying an outer blank is looked up. The
+sentinel, a path relative to the source root, keeps `_str`. Tests: `test_a_stored_path_keeps_the_blank_its_writer_wrote_c3333`,
+`test_a_stored_path_absent_whose_stripped_spelling_exists_names_both_c3333` and
+`test_add_source_on_a_folder_ending_in_a_blank_syncs_that_folder_not_its_sibling_c3333`.
 
 ### 16.293 Round 47: the converters: ruling 202's Office twins closed (UTF-32 text, a no-namespace `<Types>`, the container answers before the cache, xlsx's emitter 1.0.7) and one noun per family (2026-11-25, wave B13 round 47 lane E)
 

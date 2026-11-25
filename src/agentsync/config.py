@@ -452,9 +452,42 @@ def _expand_value(v: str, key: str, where: str) -> Path:
         ) from None
 
 
+def _path_str(t: Mapping[str, Any], key: str, where: str) -> str | None:
+    """A filesystem path value as its writer wrote it: nothing stripped, an empty or blank-only string read as
+    missing. :func:`_str` strips, so a source path ending in U+3000, U+00A0 or a space, which add-source
+    writes as chosen, loaded as its sibling without the blank and a sync published the sibling's files (B13
+    round 47 C3333, ruling 209). Every other key keeps :func:`_str`."""
+    v = t.get(key)
+    if v is None:
+        return None
+    if not isinstance(v, str):
+        raise ConfigError(f"{where}: {key!r} must be a string, got {type(v).__name__}")
+    return v if v.strip() else None
+
+
+def _literal_path(v: str, key: str, where: str) -> Path:
+    """:func:`_expand_value` of a path read by :func:`_path_str`. A config written while the loader stripped
+    may hold a blank its writer never meant; when the path as written is absent and its stripped spelling
+    exists, the load stops naming both, never picking one (B13 round 47 C3333, ruling 209). Only a value
+    that carries an outer blank is looked up, so a plain path is never touched at load."""
+    p = _expand_value(v, key, where)
+    stripped = v.strip()
+    if stripped != v and not os.path.lexists(p):
+        try:
+            other = expand(stripped)
+        except AccountHomeError:
+            return p
+        if os.path.lexists(other):
+            raise ConfigError(
+                f"{where}: {key!r} {v!r} does not exist but {stripped!r} does; edit sources.toml to the "
+                "spelling you mean"
+            )
+    return p
+
+
 def _path(t: Mapping[str, Any], key: str, where: str, default: Path) -> Path:
-    v = _str(t, key, where)
-    return _expand_value(v, key, where) if v else default
+    v = _path_str(t, key, where)
+    return _literal_path(v, key, where) if v else default
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -512,7 +545,7 @@ def _parse_source(raw: object, n: int, cfg_where: str) -> SourceConfig:
         # Resolved: a root reached through a symlink (OneDrive's own ``~/OneDrive - <Org>`` link to
         # ~/Library/CloudStorage/OneDrive-<Org>) must get every File Provider safeguard -- the launcher, the
         # TCC canary, the zero-children rule -- which all test the canonical path (review deploy-ops).
-        path = canonical_source_root(_expand_value(_str(raw, "path", where) or "", "path", where))
+        path = canonical_source_root(_literal_path(_path_str(raw, "path", where) or "", "path", where))
     sentinel = _str(raw, "sentinel", where)
     if sentinel is not None and (sentinel.startswith("/") or ".." in Path(sentinel).parts):
         raise ConfigError(f"{where}: 'sentinel' must be a path relative to the source root")
@@ -610,14 +643,14 @@ def parse_config(text: str, *, config_path: Path) -> Config:
     c = _table(doc, "convert", where)
     cw = f"{where}: [convert]"
     _check_keys(c, _CONVERT_KEYS, cw)
-    pandoc = _str(c, "pandoc_path", cw)
+    pandoc = _path_str(c, "pandoc_path", cw)
     convert = ConvertConfig(
         xlsx_stream_threshold_bytes=parse_size(
             c.get("xlsx_stream_threshold_bytes", 20 * 1000**2), where=f"{cw}: xlsx_stream_threshold_bytes"
         ),
         max_rows_per_sheet=_int(c, "max_rows_per_sheet", cw, 5000, minimum=1),
         max_page_bytes=_page_cap(c, cw),
-        pandoc_path=_expand_value(pandoc, "pandoc_path", cw) if pandoc else None,
+        pandoc_path=_literal_path(pandoc, "pandoc_path", cw) if pandoc else None,
         ocr=_bool(c, "ocr", cw, True),
         recordings=_bool(c, "recordings", cw, True),
     )

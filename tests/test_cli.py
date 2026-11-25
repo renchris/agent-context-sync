@@ -294,6 +294,30 @@ def test_add_source_writes_a_valid_config_repo_and_scaffold(
     ).is_file()
 
 
+@pytest.mark.parametrize("blank", ["\u3000", " ", "\u00a0"], ids=["u3000", "space", "nbsp"])
+def test_add_source_on_a_folder_ending_in_a_blank_syncs_that_folder_not_its_sibling_c3333(
+    tmp_path: Path, blank: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 47 C3333 (ruling 209; data integrity): add-source wrote ``Project<U+3000>`` as chosen, the
+    loader stripped it to the sibling ``Project``, and the sync published the sibling's file. The stored path
+    loads as written, and the sync mirrors only the chosen folder's file."""
+    work = tmp_path / "w"
+    (work / "Project").mkdir(parents=True)
+    chosen = work / f"Project{blank}"
+    chosen.mkdir()
+    (work / "Project" / "only-in-sibling.txt").write_text("sibling\n", encoding="utf-8")
+    (chosen / "chosen.txt").write_text("chosen\n", encoding="utf-8")
+    cfg = tmp_path / "ctx" / "sources.toml"
+    assert cli.main(["add-source", str(chosen), "--config", str(cfg)]) == cli.EXIT_OK
+    config = load_config(cfg)
+    source = config.sources[0]
+    assert source.path == canonical_source_root(chosen)
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", str(cfg)]) == cli.EXIT_OK, capsys.readouterr()
+    mirrored = sorted(p.name for p in (config.docs_repo / "mirror" / source.id).rglob("*.md"))
+    assert mirrored == ["chosen.txt.md"], mirrored
+
+
 def test_init_names_a_config_it_cannot_load_by_its_error_alone(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
