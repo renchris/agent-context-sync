@@ -30062,3 +30062,30 @@ def test_both_legends_name_round_40_and_41s_path_forms_c2033() -> None:
         "where the shell fallback report cuts it whole",
     ):
         assert clause in legend, clause
+
+
+def test_a_redactor_that_raises_leaves_the_report_private_only_c3099(
+    fake_mac: dict[str, Path],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 46 C3099 with C3033, C3037 and C3110 (ruling 198; privacy): when _build_redactor raised, the
+    report fell back to a redactor that cut the home only, kept no flag, went out public with the issue link
+    and printed the login, full name, serial and host in clear. The fallback fails closed: its own Private
+    only line, no issue link in the report or in the CLI's printed link, and this Mac's identity still cut."""
+
+    def boom(r: object) -> setup_report.Redactor:
+        raise RuntimeError("redaction facts unreadable")
+
+    monkeypatch.setattr(setup_report, "_build_redactor", boom)
+    out = tmp_path / "r.md"
+    capsys.readouterr()
+    assert cli.main(["setup-report", "--out", str(out), "--config", str(fake_mac["config"])]) == 0
+    printed = capsys.readouterr().out
+    text = out.read_text(encoding="utf-8")
+    assert "Private only: redaction facts could not be read, so names may show in clear." in text, text
+    assert setup_report.issue_link(text) is None and setup_report.ISSUE_URL not in text
+    assert setup_report.ISSUE_LINK_LABEL not in printed and setup_report.ISSUE_URL not in printed, printed
+    for raw in (LOGIN, FULL_NAME, SERIAL, HOST):
+        assert raw not in text, (raw, [ln for ln in text.splitlines() if raw in ln])

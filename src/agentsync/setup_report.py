@@ -1918,6 +1918,10 @@ class Redactor:
         # sources.toml exists, does not load and does not parse as TOML, so no source id or folder it names
         # was registered: the report is for a private copy only (B13 round 44 C2609, ruling 172)
         self.config_unparsed = False
+        # _build_redactor raised, so the report's redactor is the fallback's (the home and this Mac's identity
+        # only): a folder, id or organisation may show in clear, so the report is for a private copy only and
+        # ends with no issue link (B13 round 46 C3099 with C3033, C3037 and C3110, ruling 198; privacy)
+        self.redactor_failed = False
         # the listed names :func:`_add_listed` kept in clear (a generic name, or one of coding-agent product
         # words) that no configured folder has, and the configured names it compares with: the legend says
         # why one stays in clear where the body shows it (B13 round 12 N3)
@@ -1981,9 +1985,16 @@ class Redactor:
         owner that is a report word replaced in a line (:attr:`value_word_shown`, B13 round 25 D80), or a
         CloudStorage listing for redaction that did not finish with no list of step 1 in its place
         (:attr:`listing_unread`), or a sources.toml that does not load and does not parse
-        (:attr:`config_unparsed`, B13 round 44 C2609). Such a report ends with no public issue link (B13 round
-        7 H75)."""
-        return self.word_named_shown or self.value_word_shown or self.listing_unread or self.config_unparsed
+        (:attr:`config_unparsed`, B13 round 44 C2609), or a redactor that could not be built
+        (:attr:`redactor_failed`, B13 round 46 C3099, ruling 198). Such a report ends with no public issue
+        link (B13 round 7 H75)."""
+        return (
+            self.word_named_shown
+            or self.value_word_shown
+            or self.listing_unread
+            or self.config_unparsed
+            or self.redactor_failed
+        )
 
     def _placeholder(self, kind: str) -> str:
         if kind == "home":
@@ -6192,22 +6203,16 @@ def _logged_cloud_folders(log: Path) -> list[tuple[list[str], bool]]:
     return out
 
 
-def _build_redactor(r: _Run) -> Redactor:
-    """Register everything this Mac's report could name (see the module docstring)."""
-    red = Redactor()
-    home = Path.home()
-    for h in sorted({str(home), str(home.resolve())}, key=len, reverse=True):
-        red.add("home", h)
-    with contextlib.suppress(Exception):  # after the home: a sandbox HOME inside $TMPDIR stays "~"
-        tmpdir = os.environ.get("TMPDIR", "").strip() or tempfile.gettempdir()
-        for t in sorted({tmpdir.rstrip("/"), os.path.realpath(tmpdir).rstrip("/")}, key=len, reverse=True):
-            if t not in ("", "/tmp", "/private/tmp", "/var/tmp"):
-                red.add("tmp", t)
+def _register_identity(red: Redactor, r: _Run) -> list[str]:
+    """Register this Mac's login, full name, serial number and host names, each best effort, and return the
+    full name's bracketed words, which :func:`_register_name_tail` registers after every fuzzy value: the
+    identity :func:`_build_redactor` opens with and :func:`_build_report`'s fallback keeps when that raises
+    (B13 round 46 C3037 with C3099, ruling 198; privacy)."""
+    tail_words: list[str] = []  # the bracketed part's words, registered last (_register_name_tail)
     # The login first: registered after the fuzzy full name, a login that is the name run together
     # ("janedoe" for "Jane Doe") would be taken for a variant of the name and shown as <name>.
     with contextlib.suppress(Exception):
         red.add("user", _login_name())
-    tail_words: list[str] = []  # the bracketed part's words, registered last (below)
     with contextlib.suppress(Exception):
         full = _full_name()
         red.add("name", full, fuzzy=True)  # "Jane Doe", "jane-doe", "JaneDoe", "JANE_DOE"
@@ -6269,6 +6274,32 @@ def _build_redactor(r: _Run) -> Redactor:
     with contextlib.suppress(Exception):
         for h in _computer_names(r.run):
             red.add("host", h, ignore_case=True)
+    return tail_words
+
+
+def _register_name_tail(red: Redactor, tail_words: Sequence[str]) -> None:
+    """The full name's bracketed words (:func:`_register_identity`), after every fuzzy value."""
+    # The full name's bracketed words, without the brackets, as lone names (written and upper-case forms),
+    # after every fuzzy value: a tail that is the organisation ("Contoso") stays <org-N>, bare and joined.
+    for word in (w.strip(".,") for w in tail_words):
+        if len(word) >= 3:
+            red.add("name", word)
+            red.add("name", word.upper())
+            red.add("name", word.capitalize() if word.isupper() else None)
+
+
+def _build_redactor(r: _Run) -> Redactor:
+    """Register everything this Mac's report could name (see the module docstring)."""
+    red = Redactor()
+    home = Path.home()
+    for h in sorted({str(home), str(home.resolve())}, key=len, reverse=True):
+        red.add("home", h)
+    with contextlib.suppress(Exception):  # after the home: a sandbox HOME inside $TMPDIR stays "~"
+        tmpdir = os.environ.get("TMPDIR", "").strip() or tempfile.gettempdir()
+        for t in sorted({tmpdir.rstrip("/"), os.path.realpath(tmpdir).rstrip("/")}, key=len, reverse=True):
+            if t not in ("", "/tmp", "/private/tmp", "/var/tmp"):
+                red.add("tmp", t)
+    tail_words = _register_identity(red, r)
     orgs: list[str] = []
     heads: set[str] = set()  # the app names before a registered organisation ("Dropbox" of "Dropbox-<team>")
     # A CloudStorage entry that is a symlink names no organisation: its name is the person's own (B13 round
@@ -6545,13 +6576,7 @@ def _build_redactor(r: _Run) -> Redactor:
             red.add("proxy", value, ignore_case=True)
         if tail:
             red.add("proxy", tail, ignore_case=True, keep_lead=True)
-    # The full name's bracketed words, without the brackets, as lone names (written and upper-case forms),
-    # after every fuzzy value: a tail that is the organisation ("Contoso") stays <org-N>, bare and joined.
-    for word in (w.strip(".,") for w in tail_words):
-        if len(word) >= 3:
-            red.add("name", word)
-            red.add("name", word.upper())
-            red.add("name", word.capitalize() if word.isupper() else None)
+    _register_name_tail(red, tail_words)
     with contextlib.suppress(Exception):
         for sha in _docs_commits(r):
             red.add_commit(sha)
@@ -19418,6 +19443,8 @@ def _redaction_section(
             "Private only: sources.toml does not load and is not readable as TOML, so a source id or folder "
             "it names may show in clear."
         )
+    if red.redactor_failed:  # B13 round 46 C3099 (ruling 198)
+        word.append("Private only: redaction facts could not be read, so names may show in clear.")
     if red.private_only:
         why = (  # by flag (B13 round 26 E6): a hold's one-word value is a word, no name
             "it would show that name"
@@ -20453,8 +20480,14 @@ def _build_report(
     try:
         red = _build_redactor(r)
     except Exception:  # redaction facts are best effort; the patterns (email, GUID, hex) still apply
+        # B13 round 46 C3099 with C3033, C3037 and C3110 (ruling 198; privacy): fails closed, private only and
+        # with no issue link, this Mac's identity still cut; a raise here had sent a public report with the
+        # login, name, serial, host, organisations and folders in clear
         red = Redactor()
         red.add("home", str(Path.home()))
+        red.redactor_failed = True
+        with contextlib.suppress(Exception):
+            _register_name_tail(red, _register_identity(red, r))
     r.red = red
     try:
         r.friction = read_friction(r.friction_path)
