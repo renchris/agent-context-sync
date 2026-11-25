@@ -13823,6 +13823,43 @@ print(sum(1 for t in s if isinstance(t, dict) and not (isinstance(t.get("kind"),
 		END { if (t && !ib) n++; print n + 0 }
 	' "$1" 2>/dev/null || echo 0
 }
+# The sources other than the inbox whose state is paused or retired, as "; not live: <id> (<state>), ...: setting a
+# folder to live is the person's own edit of sources.toml, never the agent's" (setup_report.NOT_LIVE_CLAUSE; never
+# "not a step for the agent", the prompt's key for a stop whose fix is the person's), in config order, kind and state
+# stripped as config._str strips them; nothing when there is none. A bare run's no-folder NEXT says it, so the
+# person learns why a configured folder is not synced and the agent never sets one live itself (B13 round 46
+# C3003). Read as non_inbox_sources reads: the installed interpreter's tomllib, else the line reader.
+held_sources_clause() { # $1: sources.toml
+	local l=""
+	[ -f "$1" ] || return 0
+	if [ -x "$TOOL_PY" ]; then
+		l="$(with_timeout 10 "$TOOL_PY" -I -c 'import sys, tomllib
+with open(sys.argv[1], "rb") as f:
+    d = tomllib.load(f)
+s = d.get("source", [])
+def w(v):
+    return v.strip() if isinstance(v, str) else ""
+o = []
+for t in s if isinstance(s, list) else []:
+    if isinstance(t, dict) and w(t.get("kind")) != "inbox" and w(t.get("state")) in ("paused", "retired") and w(t.get("id")):
+        o.append(w(t.get("id")) + " (" + w(t.get("state")) + ")")
+sys.stdout.buffer.write(", ".join(o).encode("utf-8", "surrogateescape"))' "$1" 2>/dev/null)" || l="-"
+	else
+		l="-"
+	fi
+	if [ "$l" = "-" ]; then
+		l="$(LC_ALL=C awk '
+			function v(s) { sub(/^[^=]*=[[:space:]]*["\047][[:space:]]*/, "", s); sub(/[[:space:]]*["\047][[:space:]]*(#.*)?$/, "", s); return s }
+			function flush() { if (t && !ib && id != "" && (st == "paused" || st == "retired")) o = o (o == "" ? "" : ", ") id " (" st ")"; id = ""; st = ""; ib = 0 }
+			{ sub(/\r$/, "") }
+			/^[[:space:]]*\[/ { flush(); t = ($0 ~ /^[[:space:]]*\[\[[[:space:]]*(source|"source"|\047source\047)[[:space:]]*\]\]/); next }
+			t && /^[[:space:]]*["\047]?kind["\047]?[[:space:]]*=[[:space:]]*["\047][[:space:]]*inbox[[:space:]]*["\047]/ { ib = 1 }
+			t && /^[[:space:]]*["\047]?id["\047]?[[:space:]]*=[[:space:]]*["\047]/ { id = v($0) }
+			t && /^[[:space:]]*["\047]?state["\047]?[[:space:]]*=[[:space:]]*["\047]/ { st = v($0) }
+			END { flush(); printf "%s", o }' "$1" 2>/dev/null)" || l=""
+	fi
+	[ -z "$l" ] || printf '; not live: %s: setting a folder to live is the person%ss own edit of sources.toml, never the agent%ss' "$l" "'" "'"
+}
 HAVE_SOURCES=0
 if [ "${#FOLDERS[@]}" -gt 0 ] || [ "$(non_inbox_sources "$CONFIG")" -gt 0 ]; then
 	HAVE_SOURCES=1
@@ -14680,6 +14717,18 @@ else # the loop's NEXT, after the background-sync result when it was asked for
 		"the agentsync-docs skill is missing or out of date"*)
 			next="no folder is synced yet: list them with $SELF --list-folders, choose the folders to sync, then run: $SELF$BASE_ARGS --source-local \"<folder>\" (one --source-local per folder)"
 			[ "$NO_FOLDER" -eq 0 ] || next="$NO_FOLDER_CHOSEN_NEXT" # the person chose none (B13 round 44 C2658)
+			;;
+		esac
+	fi
+	# a bare run that ends 0 on status's rule-2 opener (`no folder is synced yet: ask the operator ...`, which
+	# names add-source and a sync, never a step of setup) ends on this script's own --source-local form, its
+	# opener kept so the prompt's folder rule still reads it, with a clause naming each paused or retired folder
+	# as the person's edit; keyed on the NEXT text alone, HAVE_SOURCES state-blind (C2700), the --no-folder swap
+	# below still the person's choice; loop.py's rule 2 unchanged (B13 round 46 C3003, amending ruling 191)
+	if [ "$EXIT_RC" -eq 0 ]; then
+		case "$next" in
+		"no folder is synced yet: ask the operator"*)
+			next="no folder is synced yet: list them with $SELF --list-folders, choose the folders to sync, then run: $SELF$BASE_ARGS --source-local \"<folder>\" (one --source-local per folder)$(held_sources_clause "$CONFIG")"
 			;;
 		esac
 	fi

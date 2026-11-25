@@ -17687,8 +17687,8 @@ _RULE2_OPENER = "NEXT: no folder is synced yet: ask the operator"
 """status's rule-2 NEXT on a config with no live folder (loop.py), which install.sh's bare run that ended 0
 says in its own words (B13 round 46 C3003)."""
 NOT_LIVE_CLAUSE = (
-    "; not live: {folders}: setting a folder to live is the person's edit of sources.toml, not a step for "
-    "the agent"
+    "; not live: {folders}: setting a folder to live is the person's own edit of sources.toml, "
+    "never the agent's"
 )
 """install.sh's clause after :data:`NO_FOLDER_NEXT` naming each folder sources.toml holds that is not live, as
 ``<id> (paused)`` or ``<id> (retired)`` in config order, joined by ``, `` (B13 round 46 C3003, amending ruling

@@ -1752,7 +1752,13 @@ def test_a_bare_rerun_counts_a_paused_or_retired_folder_and_syncs_c2700(
     assert [p for p in home.rglob("SKILL.md") if p.parent.name == "agentsync-docs"], (
         "the sync wrote the skill"
     )
-    assert one_next(again) and last_line(again).startswith("NEXT: no folder is synced yet:"), last_line(again)
+    held = ", ".join(
+        f"{t['id']} ({t['state']})"
+        for t in tomllib.loads(cfg.read_text(encoding="utf-8"))["source"]
+        if "state" in t
+    )
+    assert one_next(again) and last_line(again) == _bare_no_folder_next(env, wheel, held), last_line(again)
+    assert "add-source" not in again.stdout, again.stdout  # B13 round 46 C3003
     loop = [
         ln for ln in report_path(env).read_text(encoding="utf-8").splitlines() if ln.startswith("- Loop: ")
     ]
@@ -27523,6 +27529,20 @@ def _chosen_next(env: dict[str, str], wheel: Path) -> str:
     )
 
 
+_HELD_TAIL = ": setting a folder to live is the person's own edit of sources.toml, never the agent's"
+
+
+def _bare_no_folder_next(env: dict[str, str], wheel: Path, held: str = "") -> str:
+    """install.sh's own no-folder NEXT on a bare run that ends 0 (B13 round 46 C3003), with the clause naming
+    each paused or retired folder ``held`` names."""
+    clause = f"; not live: {held}{_HELD_TAIL}" if held else ""
+    return (
+        f"NEXT: no folder is synced yet: list them with {INSTALL_SH} --list-folders, choose the folders to "
+        f'sync, then run: {INSTALL_SH} {wheel} --source-local "<folder>" (one --source-local per folder)'
+        f"{clause} [setup report: {report_path(env)}]"
+    )
+
+
 def _rule_2_next(env: dict[str, str]) -> str:
     """status's rule-2 NEXT (loop.py): no live folder, whatever the config holds paused or retired."""
     return (
@@ -27542,8 +27562,9 @@ def test_no_folder_turns_status_no_folder_next_into_the_persons_choice_c2910(
     person's none only for status's skill-missing NEXT, so a --no-folder re-run over the inbox-only config
     whose skill was current ended on status's rule 2, `no folder is synced yet: ask the operator which folders
     to sync`, and the prompt asked for folders again. Keyed on --no-folder alone, a NEXT opening `no folder is
-    synced yet` or `no folder to sync yet` turns the person's choice, exit 0, at either status exit; a bare
-    re-run keeps status's rule-2 NEXT (C2316)."""
+    synced yet` or `no folder to sync yet` turns the person's choice, exit 0, at either status exit. A bare
+    re-run that ends 0 on status's rule 2 ends on install.sh's own --source-local form, its opener kept (B13
+    round 46 C3003, amending C2316's keep)."""
     assert install_sh(env, str(wheel), "--no-folder").returncode == 0
     said = _rule_2_next(env) if words == "rule 2" else "NEXT: no folder to sync yet: list them (stub)"
     stub = {**env, "STUB_STATUS_OUT": said, "STUB_STATUS_RC": rc}
@@ -27555,7 +27576,7 @@ def test_no_folder_turns_status_no_folder_next_into_the_persons_choice_c2910(
     if words == "rule 2":
         bare = install_sh(stub, str(wheel))
         assert bare.returncode == 0, bare.stdout + bare.stderr
-        assert last_line(bare).startswith("NEXT: no folder is synced yet: ask the operator"), last_line(bare)
+        assert bare.returncode == 0 and last_line(bare) == _bare_no_folder_next(env, wheel), last_line(bare)
 
 
 def test_no_folder_after_a_sync_ends_on_the_persons_choice_c2910(
@@ -28122,3 +28143,72 @@ def test_a_spaces_only_path_renders_as_before_ruling_203(env: dict[str, str], tm
     ), failed
     logged = f"args={shown_wheel} --source-local {str(folder).replace(' ', chr(92) + ' ')}"
     assert any(ln.endswith(logged) for ln in install_log(env)), install_log(env)
+
+
+# ---- B13 round 46 lane RB: C3003, a bare run's no-folder NEXT ----------------------------------------------
+
+_C3003_TABLES = (
+    '\n[[source]]\nid = "kestrel-plans"\nkind = "local"\npath = "~/Kestrel Plans"\nstate = " paused "\n'
+    "\n[[ 'source' ]]\nid = 'wombat-notes'\nkind = 'local'\npath = '~/Wombat Notes'\nstate = 'retired'\n"
+    "retired_reason = 'made-up'\n"
+    '\n[[source]]\nid = "quokka-drop"\nkind = " inbox "\npath = "~/Quokka Drop"\nstate = "paused"\n'
+    '\n[[source]]\nid = "live-one"\nkind = "local"\npath = "~/Live One"\n'
+)
+_C3003_HELD = "kestrel-plans (paused), wombat-notes (retired)"
+
+
+def test_a_bare_run_ends_on_install_shs_own_no_folder_next_naming_held_folders_c3003(
+    env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 46 C3003 (amending ruling 191): a bare re-run that ended 0 on status's rule 2 printed `ask
+    the operator ... add-source ... sync`, which v42 forbids in step 2, while the skill-missing swap printed
+    install.sh's own --source-local form: two forms for one state. Keyed on the NEXT text, it ends on the
+    --source-local form, and a configured folder that is paused or retired is named with its state as the
+    person's edit of sources.toml (an inbox never named); the person's none still wins."""
+    assert install_sh(env, str(wheel)).returncode == 2, "a first run makes an inbox-only config"
+    cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
+    cfg.write_text(cfg.read_text(encoding="utf-8") + _C3003_TABLES, encoding="utf-8")
+    stub = {**env, "STUB_STATUS_OUT": _rule_2_next(env), "STUB_STATUS_RC": "0"}
+    cp = install_sh(stub, str(wheel))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert last_line(cp) == _bare_no_folder_next(env, wheel, _C3003_HELD) and one_next(cp), cp.stdout
+    assert "add-source" not in cp.stdout + cp.stderr, cp.stdout
+    chosen = install_sh(stub, str(wheel), "--no-folder")
+    assert chosen.returncode == 0 and last_line(chosen) == _chosen_next(env, wheel), chosen.stdout
+
+
+@pytest.mark.parametrize("tool_py", ["tomllib", "none"])
+def test_both_held_folder_readers_read_as_the_loader_does_c3003(tmp_path: Path, tool_py: str) -> None:
+    """B13 round 46 C3003: held_sources_clause reads with the installed interpreter's tomllib or, with none,
+    the line reader, and both name the paused and retired folders load_config reads, kind and state stripped
+    as config._str strips them."""
+    config = tmp_path / "sources.toml"
+    config.write_text(default_config_text() + _C3003_TABLES, encoding="utf-8")
+    harness = "\n".join(
+        [
+            _shell_function("watchdog"),
+            _shell_function("with_timeout"),
+            _shell_function("held_sources_clause"),
+            'held_sources_clause "$1"',
+        ]
+    )
+    cp = _bash_run(
+        [BASH32, "-c", harness, "x", str(config)],
+        capture_output=True,
+        text=True,
+        env={
+            "PATH": "/usr/bin:/bin",
+            "HOME": str(tmp_path),
+            "TOOL_PY": sys.executable if tool_py == "tomllib" else "",
+        },
+    )
+    assert (cp.returncode, cp.stderr) == (0, ""), cp
+    held = [
+        f"{s.id} ({s.state.value})"
+        for s in load_config(config).sources
+        if s.kind is not SourceKind.INBOX and s.state.value in ("paused", "retired")
+    ]
+    assert ", ".join(held) == _C3003_HELD
+    assert cp.stdout == f"; not live: {_C3003_HELD}{_HELD_TAIL}"
+    # the report's own copy of the clause, which lane RA's _install_sh_said_no_folder mirror prints (C3003)
+    assert cp.stdout == setup_report.NOT_LIVE_CLAUSE.format(folders=_C3003_HELD)

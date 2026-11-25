@@ -46220,6 +46220,19 @@ status timeout), `test_install_sh_names_the_persons_choice_as_the_reports_consta
 `test_no_folder_is_refused_beside_a_folder_c2658` pinned to its exact usage error, the `--list-folders` row the
 folder list's generic guard (C2844). The fresh bare run still exits 2 on `no folder to sync yet`
 (`test_a_bare_rerun_over_an_inbox_only_config_says_no_folder_is_synced_yet_c2401`).
+Amended 2026-11-24, §16.286 C3003: a bare run no longer keeps status's rule-2 NEXT. With EXIT_RC 0, a NEXT opening
+`no folder is synced yet: ask the operator` (which names add-source and a sync, never a step of setup) ends on
+install.sh's own form, `no folder is synced yet: list them with <SELF> --list-folders, choose the folders to sync,
+then run: <SELF><BASE_ARGS> --source-local "<folder>" (one --source-local per folder)`, its opener kept, and with
+`; not live: <id> (<state>), ...: setting a folder to live is the person's own edit of sources.toml, never the
+agent's` (never `not a step for the agent`, the prompt's key for a stop whose fix is the person's) when the config
+holds a paused or retired folder (kind and state stripped as config._str does, the inbox
+never named). Keyed on the NEXT text alone (HAVE_SOURCES stays state-blind, C2700); the `--no-folder` swap after it
+still turns it the person's choice; loop.py's rule 2 is unchanged. Tests:
+`test_install_oneshot.py::test_a_bare_run_ends_on_install_shs_own_no_folder_next_naming_held_folders_c3003`,
+`test_both_held_folder_readers_read_as_the_loader_does_c3003`, and the bare re-run rows of
+`test_no_folder_turns_status_no_folder_next_into_the_persons_choice_c2910` and
+`test_a_bare_rerun_counts_a_paused_or_retired_folder_and_syncs_c2700`.
 
 **A state read that did not finish says so, and the shell report never guesses the inbox** (C2948 with C2868 and
 C2935, C2810, C2808's installer half; ruling 194; data integrity; makes worse True for an explicit live line and for
@@ -46958,8 +46971,8 @@ wait`), so an older install.log still reads. Test: the row added to
 bare-run swap and its dated line amending ruling 191 are lane RB's, §16.286). A bare install.sh run that ended 0 on
 status's rule-2 NEXT (`no folder is synced yet: ask the operator ...`, which names add-source and a sync) now prints
 `NO_FOLDER_NEXT`, with `NOT_LIVE_CLAUSE` naming each paused or retired folder as `<id> (paused)` or `<id>
-(retired)` in config order (`; not live: ...: setting a folder to live is the person's edit of sources.toml, not a
-step for the agent`): `_install_sh_said_no_folder` gives the same words for a latest install run that ended 0 and
+(retired)` in config order (`; not live: ...: setting a folder to live is the person's own edit of sources.toml,
+never the agent's`): `_install_sh_said_no_folder` gives the same words for a latest install run that ended 0 and
 recorded no none, keyed on the NEXT's text whatever the config counts, never over a doctor FAIL, from the one
 copy of each constant. Test: `test_the_loop_line_says_install_shs_own_form_on_status_rule_2_next_c3003`.
 
