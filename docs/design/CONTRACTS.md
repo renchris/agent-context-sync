@@ -47299,6 +47299,9 @@ carry a stub the old rule made, and such a cached stub stays until its bytes cha
 Office file a cache miss). Tests:
 `test_convert_family.py::test_a_decoy_override_outside_the_types_namespace_is_not_read_c3047` (a `.vsdx` and a
 deck, each with a foreign-namespace and an `xmlns=""` decoy) and the C2854 workbook test, whose deck is now a deck.
+Amended 2026-11-25, §16.293 C3264: under a `<Types>` with no namespace, its direct children in the content-types
+namespace are read too (a `ct:`-prefixed `Override`, which openpyxl reads by local name), never `{*}`; under a
+namespaced `<Types>` nothing changes, so the foreign and `xmlns=""` decoys stay unread.
 
 **The family check parses a part before it decodes it, UTF-32 marks before UTF-16's** (C3098; ruling 202;
 `agentsync.convert._common`; amends §16.283 C2855). `_ooxml_family` decoded a part that opens with a UTF-16 mark
@@ -47519,6 +47522,22 @@ of that shape lost its `not the type its name says` stub to python-pptx's failed
 `family_parse` moves: the changed answer was a failed conversion, never cached. Test:
 `test_convert_family.py::test_a_content_types_part_that_does_not_parse_gives_utf32_no_family_with_no_early_return_c3266`
 (UTF-32LE and BE parts that do not parse are None; the UTF-16 part opening U+0000 is `word`).
+
+**A no-namespace `<Types>`' content-types-namespace children are read** (C3264 with C3267; ruling 215;
+`agentsync.convert._common`; amends §16.288 C3047). C3047 read `<Types>`' direct children in its own namespace, or in
+none when it has none, so a hand-built Word package named `.xlsx` whose `<Types xmlns:ct="...content-types">` holds
+`ct:Default` and `ct:Override` gave no family and went to openpyxl as C2854's failed conversion (`openpyxl cannot
+read the workbook: OSError: File contains no valid workbook part`), retried every cycle, where the build before C3047
+gave the cached `not-ooxml: a Word document, not a workbook (not the type its name says)` stub; openpyxl reads those
+children by local name, so the docstring's "as openpyxl reads a part with no `xmlns`" was false for them. Under a
+no-namespace `<Types>` the names read are `Override`, `Default` and the two in `_CONTENT_TYPES_NS`, direct children
+only and never `{*}`, so a foreign-namespace child there stays unread, more conservative than openpyxl; under a
+namespaced `<Types>` nothing changes and C3047's decoys stay unread. No `family_parse` moves: the older answer was a
+failed conversion, never cached, so the next read gives the stub. The `_ooxml_family` and `_CONTENT_TYPES_NS`
+docstrings say so, and the C2854 test's docstring, which still said "in any namespace or none", now says C3047
+narrowed it (C3267, words only). Test:
+`test_convert_family.py::test_a_prefixed_content_types_child_under_a_no_namespace_types_is_read_c3264` (the
+prefixed Word package named `.xlsx` is `word` and the stub; the same under a foreign `ct` namespace is None).
 
 ### 16.294 Round 47: the prompt goes to v44 (a run read to its exit, an error keyed on its exit code, a paused or retired folder never offered again), CI's head and limit, dated lines, and the guides (2026-11-25, wave B13 round 47 lane D)
 

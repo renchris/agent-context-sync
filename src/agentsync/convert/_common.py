@@ -93,8 +93,9 @@ _CONTENT_TYPES_NS = "http://schemas.openxmlformats.org/package/2006/content-type
 """The namespace of ``[Content_Types].xml``'s Override and Default elements, the only ones that type a part:
 pptx's ``_decoded_deck_types`` retypes them (B13 round 43 C2517; one copy, here, since round 44 C2708).
 :func:`_ooxml_family` reads them as ``<Types>``' direct children in ``<Types>``' own namespace, or in none
-when it has none, as openpyxl reads a part with no ``xmlns`` (B13 round 45 C2854; round 46 C3047: in any
-namespace, a foreign or ``xmlns=""`` decoy beside a Visio drawing's real Override was the one family read)."""
+or this one when it has none, as openpyxl reads a part with no ``xmlns`` (B13 round 45 C2854; round 46 C3047:
+in any namespace, a foreign or ``xmlns=""`` decoy beside a Visio drawing's real Override was the one family
+read; round 47 C3264: in none only, a ``ct:``-prefixed child under a no-namespace ``<Types>`` was unread)."""
 _MAIN_TYPE_RE = re.compile(
     # whitespace around the "=" is XML's too (B13 round 29 C222)
     rb"\bContentType\s*=\s*[\"']application/vnd\.(?:openxmlformats-officedocument\."
@@ -148,7 +149,10 @@ def _ooxml_family(src: Path) -> str | None:
 
     The parse decides: the families are read from the decoded ContentType of each Override and Default
     element (:func:`content_types_tree`) that is a direct child of ``<Types>`` in ``<Types>``' own namespace,
-    or in none when ``<Types>`` has none, as openpyxl reads a part with no ``xmlns`` (B13 round 45 C2854: read
+    or in none or the content-types namespace when ``<Types>`` has none, as openpyxl reads a part with no
+    ``xmlns`` by local name (B13 round 47 C3264: a Word package named ``.xlsx`` whose ``<Types
+    xmlns:ct=...>`` holds ``ct:Override`` children gave no family, C2854's failed conversion back; a foreign
+    namespace is still not read there, more conservative than openpyxl) (B13 round 45 C2854: read
     in the content-types namespace only, a Word package or a deck named ``.xlsx`` whose ``<Types>`` has no
     ``xmlns`` lost its ``not the type its name says`` stub to a failed conversion; round 46 C3047: read in
     any namespace, a foreign or ``xmlns=""`` decoy beside a Visio drawing's real Override, whose type is no
@@ -176,12 +180,19 @@ def _ooxml_family(src: Path) -> str | None:
         families = {_FAMILY_OF[m[1] or m[2]] for m in _MAIN_TYPE_RE.finditer(types)}
     else:  # decoded, and only the elements that type a part (B13 round 44 C2708 with C2653)
         families = set()
-        # <Types>' own namespace, or none when it has none (C2854), and only its direct children: a decoy of
-        # another namespace or in xmlns="" is not read at all (B13 round 46 C3047); iterchildren by tag never
-        # yields a comment or processing instruction
+        # <Types>' own namespace, or none or the content-types one when it has none (C2854; B13 round 47
+        # C3264: a ct:-prefixed child under a no-namespace <Types>, which openpyxl reads by local name), and
+        # only its direct children: a decoy of another namespace or in xmlns="" under a namespaced <Types> is
+        # not read at all (B13 round 46 C3047); iterchildren by tag never yields a comment or processing
+        # instruction
         tag = tree.tag if isinstance(tree.tag, str) else ""
         ns = tag[1:].partition("}")[0] if tag.startswith("{") else ""
-        names = (f"{{{ns}}}Override", f"{{{ns}}}Default") if ns else ("Override", "Default")
+        ct = _CONTENT_TYPES_NS
+        names = (
+            (f"{{{ns}}}Override", f"{{{ns}}}Default")
+            if ns
+            else ("Override", "Default", f"{{{ct}}}Override", f"{{{ct}}}Default")
+        )
         for el in tree.iterchildren(*names):
             if m := _MAIN_TYPE_VALUE_RE.fullmatch(el.get("ContentType") or ""):
                 families.add(_FAMILY_OF[(m[1] or m[2]).encode("ascii")])

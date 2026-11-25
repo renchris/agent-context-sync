@@ -2466,7 +2466,10 @@ def test_a_package_whose_content_types_have_no_namespace_is_still_not_the_type_i
     content-types namespace only, so a package whose ``<Types>`` has no ``xmlns`` gave no family, and a Word
     package or a deck named ``.xlsx`` (or a Word package named ``.pptx``) went on to openpyxl or python-pptx
     as a failed conversion, tried twice more, where the byte read before it gave the cached ``not the type
-    its name says`` stub. They are read in any namespace or none now, as openpyxl reads them."""
+    its name says`` stub. They are read in ``<Types>``' own namespace, or in none (or the content-types
+    namespace, B13 round 47 C3264) when it has none, as openpyxl reads a part with no ``xmlns``; round 46
+    C3047 narrowed this from any namespace: only ``<Types>``' direct children count, and a foreign or
+    ``xmlns=""`` decoy is not read (B13 round 47 C3267)."""
     made = tmp_path / ("made" + Path(name).suffix)
     built = word_package(made) if make == "word" else build_pptx_rich(made)
     src = _without_types_namespace(built.rename(tmp_path / name))
@@ -2474,6 +2477,32 @@ def test_a_package_whose_content_types_have_no_namespace_is_still_not_the_type_i
     with pytest.raises(UnreadableSourceError) as caught:
         converter(CFG).convert(src, name=name)
     assert str(caught.value) == f"not-ooxml: {message} (not the type its name says)"
+
+
+def test_a_prefixed_content_types_child_under_a_no_namespace_types_is_read_c3264(tmp_path: Path) -> None:
+    """B13 round 47 C3264 (ruling 215): C3047 read a no-namespace ``<Types>``' no-namespace children only, so
+    a Word package named ``.xlsx`` whose ``<Types xmlns:ct=...>`` holds ``ct:Default`` and ``ct:Override``
+    (openpyxl reads them by local name) gave no family and was C2854's failed conversion again. Under a
+    no-namespace ``<Types>`` the content-types namespace's children are read too, never ``{*}``: a foreign
+    child there is still not read, and under a namespaced ``<Types>`` nothing changes (C3047)."""
+    src = word_package(tmp_path / "made.docx").rename(tmp_path / "Contoso prefixed.xlsx")
+    with zipfile.ZipFile(src) as zin:
+        parts = {i.filename: zin.read(i) for i in zin.infolist()}
+    types = parts["[Content_Types].xml"].decode("utf-8")
+    prefixed = re.sub(r'<Types xmlns="[^"]*"', f'<Types xmlns:ct="{_TYPES}"', types, count=1)
+    prefixed = re.sub(r"<(/?)(Default|Override)\b", r"<\1ct:\2", prefixed)
+    assert prefixed != types and "<ct:Override" in prefixed and 'xmlns="' not in prefixed, prefixed[:300]
+    parts["[Content_Types].xml"] = prefixed.encode("utf-8")
+    src.unlink()
+    make_zip(src, parts)
+    assert common_mod._ooxml_family(src) == "word"
+    with pytest.raises(UnreadableSourceError) as caught:
+        XlsxConverter(CFG).convert(src, name=src.name)
+    assert str(caught.value) == "not-ooxml: a Word document, not a workbook (not the type its name says)"
+    foreign = prefixed.replace(f'xmlns:ct="{_TYPES}"', 'xmlns:ct="urn:contoso:not-content-types"', 1)
+    parts["[Content_Types].xml"] = foreign.encode("utf-8")
+    src.unlink()
+    assert common_mod._ooxml_family(make_zip(src, parts)) is None, "a foreign namespace is still not read"
 
 
 def test_a_real_workbook_whose_content_types_have_no_namespace_still_converts_c2854(tmp_path: Path) -> None:
