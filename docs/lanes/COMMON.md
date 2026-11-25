@@ -2388,6 +2388,10 @@ version lines and the old-copy refusal list (v41 joins), a K66 row, INBOX_NOT_A_
 (--no-folder then --report-only gives none; a paused-only config too; the sentence pinned to install.sh's case arms),
 §16.49's, §16.279's and §16.284's dated lines and one beside ruling 187; CUT_OFF_TOLD stays. Round 46 rehearses v42 with
 v41's block (9acf0c54b) as scenario C's first old copy.
+(2026-11-24) Ruling 205 amends this one: v43 tells the none only when the --no-folder run exits 0 on the person's-choice
+NEXT, step 1's none branches running it as step 2 says and step 3's sync loop never started after it, and gives
+`inbox state: not read (<why>)` a branch of its own after the no-drop-folder sentence, beside C2868's not-checked one,
+with step 2's `inbox: not read:` line shown (round 46 C3102, C3112, C3113, C3013).
 
 ROUND 46 RULINGS (lead; every lane builds to them; the prompt goes to v43 in lane D's one commit, ruling 205):
 (198) A config value whose spelling a reader refuses is skipped per field and cut, and a redactor that could not be

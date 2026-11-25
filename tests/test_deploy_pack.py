@@ -1792,7 +1792,7 @@ INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 INSTALL_NO_FOLDER = f"{INSTALL_SH} --no-folder"
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (42, "df377a1b490739c2b1f7234312f53d0858059acf4bf78770f69489807c0f33a5")
+PROMPT = (43, "d7e2a6768e22798f5596e80ab161b627c49805f60f74fe981380e608e337df7b")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -2499,7 +2499,8 @@ def test_prompt_routes_changes_to_the_source_not_the_checkout() -> None:
     # the line per part was twelve copies of it. Only a stop before step 2 shares a line: in any other session
     # the per-part reasons are what triage reads.
     assert (
-        "background sync), saying why (if setup stopped before step 2, no part was used: one line saying so "
+        "background sync), saying why (if setup stopped before step 2, or step 2 stopped on an error before "
+        "agentsync ran, such as its refusal of AGENTSYNC_CONFIG, no part was used: one line saying so "
         "and naming the step it stopped at is enough); skip this part if "
         "~/src/agent-context-sync/scripts/install.sh does not exist."
     ) in " ".join(step3.split())
@@ -3739,14 +3740,11 @@ def test_readme_step3_runs_the_loop_then_the_report() -> None:
     assert "WAITING ON YOU: lines are mine: show them to me, but keep doing what NEXT: says." in flat
     assert (
         "Run each sync like step 2's command: with the longest command timeout your tool allows, or in the"
-        " background, reading its output until the NEXT: line appears." in flat
+        " background, reading its output until it exits (the NEXT: line comes before its WAITING ON YOU: and"
+        " note: lines)." in flat
     ), "the first downloading sync and a held listing (120 s) outlast a default tool timeout"
     assert "if it seems stuck, a macOS prompt may be waiting for me" in flat
-    assert (
-        "sync and curate print their NEXT: line even when they exit non-zero (curate exits 1 while it lists"
-        " errors for you to fix): follow it, and go to the report only when no NEXT: line was printed."
-        in flat
-    )
+    assert STEP3_NO_NEXT in flat
     assert (
         'The steps a NEXT: line refers to (the agentsync-docs skill, its "Baseline questions" section and the'
         " page rules) are written out in AGENTS.md (CLAUDE.md for Claude Code) in the folder step 2's docs"
@@ -4205,9 +4203,17 @@ C2869, ruling 194): "a file, a link to a file or a dangling link", since a link 
 
 INBOX_NOT_READ = (
     'If it reads "inbox state: not read (<why>)", tell me agentsync could not read what is on my inbox '
-    "folder and show me that line."
+    "folder, so whether files I drop there sync is unknown, and show me that line and step 2's \"inbox: not "
+    'read:" line. Name each kind = "inbox" source in that config that is not paused or retired, by its path, '
+    "as a folder that may take files I drop, never as one I added myself (one may be my inbox under its"
+    " stored spelling); say that ~/.local/bin/agentsync status tells it again once that folder can be read,"
+    " and never tell me I have no drop folder."
 )
-"""Step 2's v41 words for an inbox whose state could not be read (lane B's C2644, ruling 180)."""
+"""Step 2's v41 words for an inbox whose state could not be read (lane B's C2644, ruling 180). v43 (B13 round
+46 C3113 with C3013, ruling 205; C2808 line named): a branch of its own after the no-drop-folder sentence,
+since ``config.inbox_state`` returns ``not read`` before it matches any source, so a live inbox source there
+is not seen; step 2's own ``inbox: not read:`` line (``cli.INBOX_NOT_READ``) is shown beside the state
+line."""
 
 INBOX_OTHER_LIVE = (
     'In each of these cases but a live one, if another kind = "inbox" source in that config is not '
@@ -4244,6 +4250,27 @@ STEP3_ASK_ONCE = (
 )
 """Step 3's v42 question on a ``nothing to draft yet`` NEXT (B13 round 45 C2831, ruling 197): once a session,
 and it stands after step 1's exceptions' none; an already-answered guard makes things worse."""
+
+STEP3_NO_NEXT = (
+    "sync and curate print a NEXT: line even when most failures make them exit non-zero (curate exits 1 while"
+    " it lists errors for you to fix): follow it. A usage or configuration error (exit 2 or 78, a line"
+    ' starting "error:" or "configuration error:") prints none: log it as a step 3 error with its exit code,'
+    " show me that line, do not do what it says, and go to the report. Any other run that printed no NEXT:"
+    ' line, but the "skipped: lock held" one above, goes to the report too.'
+)
+"""Step 3's v43 words for a sync or curate run that printed no NEXT: line (B13 round 46 C3116, ruling 205):
+v42 said both print their NEXT: line even when they exit non-zero, but ``cli._refused`` (exit 2) and a
+configuration error (exit 78) print only their error line, so step 3 reads a run until it exits."""
+
+NO_FOLDER_TOLD = (
+    "If it exits 0 and its NEXT: line says I chose no folder, tell me this Mac syncs no folder and, once this"
+    " step is done, go to step 3's report, not its sync loop. Any other result is handled by this step's"
+    " rules below: a re-run it names keeps --no-folder, and do not ask the folder question again. After my"
+    " none, never start step 3's sync loop: once this step is done, go to step 3's report."
+)
+"""Step 2's v43 words for a ``--no-folder`` run (B13 round 46 C3102 with C3112, ruling 205): install.sh sets
+NO_FOLDER_CHOSEN_NEXT only after every failure branch, each of which exits 1 on its own NEXT, so v42's "Its
+NEXT: line then says I chose no folder" was false for a failed run."""
 
 
 def test_step2_tells_of_the_inbox_only_when_its_source_is_live_c2092(
@@ -4568,6 +4595,141 @@ def test_the_v42_prompt_reads_a_config_path_and_an_unread_inbox_state_as_setup_g
     assert INBOX_NOT_A_FOLDER in step2 and "(a file or a link has the folder's name)" not in step2
     assert STEP2_NO_NEXT in step2 and "(an export it names is mine)" not in step2
     assert STEP3_ASK_ONCE in step3
+
+
+def test_the_v43_prompt_tells_a_none_only_from_how_the_no_folder_run_ended_c3102_c3112() -> None:
+    """B13 round 46 C3102 with C3112 (ruling 205): v42's step 2 said "Its NEXT: line then says I chose no
+    folder" and its step 1 none branches told this Mac syncs no folder before reading the run, while
+    install.sh checks a dry run, a status timeout and every blocking status note first, each ending exit 1 on
+    its own NEXT, and sets NO_FOLDER_CHOSEN_NEXT only after them. v43 tells the none only on exit 0 and that
+    NEXT, hands any other result to step 2's rules (a re-run keeps --no-folder, the question is not asked
+    again) and never starts step 3's sync loop after a none; step 1's branches run the command as step 2
+    says."""
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    steps = _prompt_steps()
+    step1, step2 = " ".join(steps[1].split()), " ".join(steps[2].split())
+    assert NO_FOLDER_TOLD in step2 and "Its NEXT: line then says I chose no folder" not in step2
+    assert NO_FOLDER_RECOVERY in step1
+    branch = "step 2's --no-folder command as step 2 says (its exit status and NEXT: line first), then go to"
+    assert step1.count(branch) == 2 and "tell me this Mac syncs no folder" not in step1, step1
+    # the words the prompt keys on are install.sh's own, set only after every failure branch, on exit 0
+    [chosen] = re.findall(r'^NO_FOLDER_CHOSEN_NEXT="(the person chose no folder),', script, re.M)
+    assert "says I chose no folder" in NO_FOLDER_TOLD and chosen == "the person chose no folder"
+    uses = [m.start() for m in re.finditer(r'next="\$NO_FOLDER_CHOSEN_NEXT"', script)]
+    timeout = script.index('elif [ "$DOCTOR_TIMEOUT" -eq 1 ]; then\n\tEXIT_RC=1\n')
+    assert len(uses) == 3 and all(at > timeout for at in uses), uses
+    # the status timeout and the six blocking-note branches each exit 1 before the chosen none's branch
+    first = script[timeout : uses[0]]
+    assert first.count("elif [") == 8 and first.count("\tEXIT_RC=1") == 7, first
+    for at in uses[1:]:
+        assert '[ "$EXIT_RC" -eq 0 ]; then' in script[at - 700 : at], script[at - 700 : at]
+    # ruling 197 keeps its words; a dated line right after it says what v43 changed
+    lanes = _page("docs/lanes/COMMON.md")
+    words197 = "v41's block (9acf0c54b) as scenario C's first old copy."
+    line = "(2026-11-24) Ruling 205 amends this one: v43 tells the none only when the --no-folder run exits 0"
+    assert lanes.index(words197) + len(words197) + 1 == lanes.index(line) < lanes.index("ROUND 46 RULINGS")
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a mode-000 folder")
+def test_the_v43_prompt_tells_an_unread_inbox_apart_from_no_drop_folder_c3113_c3013(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 46 C3113 with C3013 (ruling 205): ``config.inbox_state`` returns ``not read (<why>)`` before
+    it matches any source, so a live inbox source can sit on an inbox agentsync could not read, yet v42 put
+    that case inside the no-drop-folder sentence and showed only the state line, not step 2's own
+    ``inbox: not read:`` line. v43 gives it a branch after that sentence: unknown, both lines shown, each live
+    inbox source named as a folder that may take dropped files, status named, never "no drop folder"."""
+    from agentsync import cli, config, paths  # noqa: PLC0415
+
+    home = tmp_path / "home"
+    home.mkdir()
+    cfg = home / "sources.toml"
+    cfg.write_text(f"[agentsync]\ndocs_repo = {config.toml_string(str(home / 'docs'))}\n", encoding="utf-8")
+    monkeypatch.setenv(paths.CONFIG_ENV, str(cfg))
+    assert cli.main(["init"]) == cli.EXIT_OK
+    folder = home / "inbox"
+    folder.rename(tmp_path / "inbox-moved")  # moved aside, never removed
+    locked = tmp_path / "contoso-locked"
+    (locked / "drop").mkdir(parents=True)
+    folder.symlink_to(locked / "drop")
+    locked.chmod(0)
+    try:
+        loaded = config.load_config(cfg)
+        capsys.readouterr()
+        cli._ensure_inbox(loaded)
+        step2_line = capsys.readouterr().err
+        state = config.inbox_state(loaded)
+    finally:
+        locked.chmod(0o700)
+    live = [s for s in loaded.sources if s.kind is SourceKind.INBOX and s.is_live]
+    assert live, "a live inbox source sits on the folder whose state is not read"
+    assert state == (folder, "not read (Permission denied)"), state
+    assert step2_line.startswith(cli.INBOX_NOT_READ), step2_line
+    step2 = " ".join(_prompt_steps()[2].split())
+    assert INBOX_NOT_READ in step2 and f'step 2\'s "{cli.INBOX_NOT_READ.strip()}" line' in INBOX_NOT_READ
+    assert f'"{config.INBOX_STATE_LINE}not read (<why>)"' in INBOX_NOT_READ
+    assert step2.index("if none is, tell me I have no drop folder.") < step2.index(INBOX_NOT_READ)
+    assert "never tell me I have no drop folder" in INBOX_NOT_READ
+    assert step2.count('"inbox state: not read (<why>)"') == 1 and "not read" not in INBOX_OTHER_LIVE
+
+
+def test_the_v43_step3_reads_a_run_to_its_exit_and_logs_an_error_with_no_next_c3116(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 46 C3116 (ruling 205): v42's step 3 read a sync until its NEXT: line and said sync and curate
+    print one even when they exit non-zero, but a usage error (``cli._refused``, exit 2, ``error:``) and a
+    configuration error (exit 78, ``configuration error:``) print only their error line. v43 reads a run until
+    it exits and logs either as a step 3 error with its exit code, shown, not followed, then the report; the
+    lock-held retry is kept."""
+    from agentsync import cli  # noqa: PLC0415
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    bad = tmp_path / "bad.toml"
+    bad.write_text("[agentsync\n", encoding="utf-8")
+    for command in ("sync", "curate"):
+        for args, code, opener in (
+            (["--config", str(bad)], cli.EXIT_CONFIG, "configuration error: "),
+            (["--config", "~contoso/sources.toml"], cli.EXIT_USAGE, "error: "),
+        ):
+            capsys.readouterr()
+            assert cli.main([command, *args]) == code, (command, args)
+            out, err = capsys.readouterr()
+            lines = (out + err).splitlines()
+            assert lines and lines[0].startswith(opener), (command, lines)
+            assert not any(ln.startswith("NEXT:") for ln in lines), (command, lines)
+    assert (cli.EXIT_USAGE, cli.EXIT_CONFIG) == (2, 78)
+    flat = " ".join(_prompt_steps()[3].split())
+    assert STEP3_NO_NEXT in flat and "until the NEXT: line appears" not in flat
+    assert '(exit 2 or 78, a line starting "error:" or "configuration error:")' in STEP3_NO_NEXT
+    assert "reading its output until it exits (the NEXT: line comes before its WAITING ON YOU: and" in flat
+    retry = flat.index('ends "skipped: lock held" with no NEXT: line, run the same sync once more')
+    assert retry < flat.index(STEP3_NO_NEXT)
+
+
+def test_the_v43_not_used_rule_covers_a_step2_refused_before_agentsync_ran_c3018(tmp_path: Path) -> None:
+    """B13 round 46 C3018 (ruling 205): H26 let a stop before step 2 write one ``## Not used`` line, since no
+    part of agentsync had run; a step 2 refused on AGENTSYNC_CONFIG exits 2 before record_flush, installing
+    and writing nothing, and its NEXT sends the agent to the report, so it is the same case. v43's rule names
+    it by the refusal the agent sees; a step 2 that installed agentsync and then failed keeps a line per
+    part."""
+    home = tmp_path / "home"
+    home.mkdir()
+    env = tmp_home_env(home) | {"PATH": "/usr/bin:/bin", "AGENTSYNC_CONFIG": "rel.toml"}
+    cp = subprocess.run(
+        ["bash", str(SCRIPTS[0])], cwd=tmp_path, env=env, capture_output=True, text=True, check=False,
+        timeout=120,
+    )  # fmt: skip
+    assert cp.returncode == 2, cp.stdout + cp.stderr
+    assert cp.stderr.startswith("usage error: AGENTSYNC_CONFIG is a relative path"), cp.stderr
+    [nxt] = [ln for ln in cp.stdout.splitlines() if ln.startswith("NEXT:")]
+    assert "not a step for the agent, so show them the error and go on to the report" in nxt, nxt
+    assert list(home.rglob("*")) == [], "the refusal installs and writes nothing"
+    step3 = " ".join(_prompt_steps()[3].split())
+    assert (
+        "(if setup stopped before step 2, or step 2 stopped on an error before agentsync ran, such as its"
+        " refusal of AGENTSYNC_CONFIG, no part was used: one line saying so and naming the step it stopped at"
+        " is enough)"
+    ) in step3
 
 
 def test_the_v40_prompt_reads_only_lines_setup_prints_in_every_branch_c2406_c2408_c2419_c2523() -> None:
@@ -5756,13 +5918,15 @@ NO_FOLDER_RECOVERY = (
     " to sync yet, this Mac syncs no folder, so the folder question above applies as on a new Mac: ask me"
     " which folders from the list to sync. If earlier this session I answered this question, which"
     " folders to sync, with none (my answer to the exceptions' question whether to add a folder does not"
-    " count), do not ask again: run step 2's --no-folder command, tell me this Mac syncs no folder and go"
-    " to step 3's report. If you cannot ask me, do not choose them for me: log a deviation at step 1, stop"
+    " count), do not ask again: run step 2's --no-folder command as step 2 says (its exit status and NEXT:"
+    " line first), then go to step 3's report. If you cannot ask me, do not choose them for me: log a"
+    " deviation at step 1, stop"
     ' and wait for my answer exactly as in step 1. Run no --report-only and add no "## Not used" section.'
     ' Your final message says "none: waiting for your folder answer" for the NEXT: line and "none" for'
     " bring-back.md, because the one step 2 wrote holds a provisional report. Once I answer, run step 2"
-    " again with one --source-local per folder I chose, or, if I answer none, step 2's --no-folder command,"
-    " then tell me this Mac syncs no folder and go to step 3's report. Do not use the add-source that its"
+    " again with one --source-local per folder I chose, or, if I answer none, step 2's --no-folder command"
+    " as step 2 says (its exit status and NEXT: line first), then go to step 3's report. Do not use the"
+    " add-source that its"
     " NEXT: line names: no step 2 line reports those folders as added."
 )
 """Step 1's no-folder recovery (setup prompt v40; B13 round 43 C2523 with C2538, ruling 170). v18 to v39 put
@@ -5771,7 +5935,9 @@ exception, after a new Mac's list or from a later sync of step 3 had nothing ste
 "step 1's last sentences" could land on, and a person who answered none was asked again. It is a paragraph of
 its own after the exceptions, for step 2 or any sync of step 3, and asks no one twice. v41 (B13 round 44
 C2604, ruling 178): a none, fresh or given earlier, runs step 2's ``--no-folder`` command, which install.log
-records, and goes to the report; step 2 never runs again with no folder after it."""
+records, and goes to the report; step 2 never runs again with no folder after it. v43 (B13 round 46 C3102
+with C3112, ruling 205): the none runs that command as step 2 says, its exit status and NEXT: line first, so
+step 2's own rules tell this Mac syncs no folder only on exit 0 and the choice NEXT."""
 
 
 def test_a_folder_list_that_could_not_read_the_config_goes_on_unattended(tmp_path: Path) -> None:

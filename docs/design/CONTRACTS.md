@@ -17467,6 +17467,10 @@ line per part was twelve copies of one reason. Step 3 adds, after "saying why", 
 no part was used: one line saying so and naming the step it stopped at is enough)". Only that case shares a line:
 in any other session the per-part reasons are what triage reads. Test: `tests/test_deploy_pack.py`
 (`test_prompt_routes_changes_to_the_source_not_the_checkout`).
+Amended 2026-11-24, §16.289 C3018: since v43 a step 2 that stopped on an error before agentsync ran, such as its
+refusal of AGENTSYNC_CONFIG (install.sh exits 2 before `record_flush`, installing and writing nothing, and its NEXT
+sends the agent to the report), shares the one line too, keyed on the refusal the agent saw; a step 2 that installed
+agentsync and then failed keeps a line per part.
 
 **The checkout sentence follows any error that does not name the checkout** (H65; amends §16.67's G15/G67
 paragraph). Installers v8 to v14 answer a newer copy with "Tell the person to copy the prompt again" (measured on
@@ -45934,6 +45938,11 @@ session, and it stands after step 1's exceptions' none (C2831).
 Amended 2026-11-23, §16.280 C2947, C2933: the last install run is scored as the person's none only when it holds
 --no-folder as a shell word of args= and ended rc 0 with no failed step; a failed, killed or unended one is scored as
 that failure.
+Amended 2026-11-24, §16.289 C3102, C3112, C3113, C3013: since v43 a none runs `install.sh --no-folder` as step 2 says,
+its exit status and NEXT: line first, and the agent tells the person this Mac syncs no folder only when it exits 0 on
+the person's-choice NEXT, any other result handled by step 2's rules and step 3's sync loop never started after the
+none; `not read (<why>)` is a branch of its own after the no-drop-folder sentence, never told as no drop folder, with
+step 2's `inbox: not read:` line shown beside it.
 
 **Where round 44's other lanes moved round 43 lane D's §16.274** (docs). Two round 44 lanes changed a rule §16.274
 states, each with a dated line in its own commit, so §16.274 keeps round 43's words and is read with those two lines.
@@ -46703,6 +46712,10 @@ v42 with v41's block (9acf0c54b) as scenario C's first old copy. Tests:
 `test_the_v42_prompt_reads_a_config_path_and_an_unread_inbox_state_as_setup_gives_them_c2821_c2868`,
 `test_no_line_of_the_prompt_block_is_a_lone_word_or_wider_than_the_block`,
 `test_the_prompt_text_changes_only_with_its_version`, `test_readme_prompt_compat_matches_the_installer`.
+Amended 2026-11-24, §16.289 C3113, C3013: v42 left `inbox state: not read (<why>)` inside the no-drop-folder sentence,
+though `config.inbox_state` returns it before matching any source; v43 moves it after that sentence too, so neither
+unread state is told as no drop folder, and shows step 2's `inbox: not read:` line beside it. Lane RB's
+person's-choice NEXT is told only on exit 0 (C3102, C3112).
 
 **Both READMEs name the unread inbox forms, and the guide `--no-folder`'s exit** (C2869, C2865; ruling 194, 191;
 `README.md`, `docs/deploy/README.md`; a fix inside ruling 162's pinned list makes things worse). README's inbox
@@ -46768,7 +46781,47 @@ Reserved for round 46 lane E of B13.
 
 ### 16.289 Round 46: the prompt goes to v43 (a none, an unread inbox and a step 2 or step 3 error told from how the run ended), CI's head and limit, the gate's ceiling comment, dated lines, and the guides (2026-11-24, wave B13 round 46 lane D)
 
-Reserved for round 46 lane D of B13.
+Round 46's lane D items (`docs/plans/bring-back-ocr.md`, "B13 round 46"; specs `round46/items/C<n>.md`, the verifier's
+corrected fix built, as the lead's rulings 198 to 205 settle it). A dated line this round writes reads
+`Amended 2026-11-24, §16.289 C<n>`.
+
+**Setup prompt v43: a none, an unread inbox and a step 2 or step 3 error told from how the run ended** (C3102,
+C3112, C3113, C3013, C3116, C3018; ruling 205; amends §16.279 C2604, §16.284 C2868, §16.72 H26). v42 told a fact
+before checking it. Its step 2 said "Its NEXT: line then says I chose no folder" and its step 1 none branches told
+the person this Mac syncs no folder before reading the `--no-folder` run, while install.sh checks a dry run, a status
+timeout and every blocking status note first, each ending exit 1 on its own NEXT, and sets `NO_FOLDER_CHOSEN_NEXT`
+only after them (C3102, C3112). Step 2 now tells the none only when the run exits 0 and its NEXT: line says the
+person chose no folder; any other result is handled by step 2's rules, a re-run it names keeping `--no-folder` and the
+folder question not asked again, and after a none step 3's sync loop never starts (a sync there prints "no folder is
+synced yet", which would send the agent back to step 1). Step 1's two none branches run step 2's `--no-folder`
+command as step 2 says, its exit status and NEXT: line first, then go to the report. `config.inbox_state` returns
+`not read (<why>)` before matching any source, so a live inbox source can sit on an inbox agentsync could not read,
+yet v42 put that case inside the no-drop-folder sentence and showed only the state line (C3113, C3013). It is now a
+branch of its own after that sentence, beside C2868's not-checked one: whether dropped files sync is unknown, that
+line and step 2's `inbox: not read:` line (`cli.INBOX_NOT_READ`, round 45 C2808) shown, each kind = "inbox" source
+neither paused nor retired named by its path as a folder that may take dropped files, never as one the person added
+(one may be the inbox under its stored spelling), status named, and never "no drop folder". Step 3 read a sync until
+its NEXT: line and said sync and curate print one even when they exit non-zero, but `cli._refused` (exit 2, a line
+opening `error:`) and a configuration error (exit 78, `configuration error:`) print only their error line (C3116): it
+reads a run until it exits, and such an error is logged as a step 3 error with its exit code, shown, not followed,
+then the report; the lock-held retry is kept, and any other run with no NEXT: line still goes to the report. H26's one
+`## Not used` line covered a stop before step 2 alone; a step 2 refused on AGENTSYNC_CONFIG exits 2 before
+`record_flush`, installing and writing nothing, so the rule now names "or step 2 stopped on an error before agentsync
+ran, such as its refusal of AGENTSYNC_CONFIG", keyed on what the agent saw, and a step 2 that installed agentsync and
+then failed keeps a line per part (C3018). No step moves, so v43 is read with v7's layout. Version 43 everywhere the
+bump list names it (the block and its digest in `PROMPT`, `prompt v43` in step 1's `--log-start`,
+`SETUP_PROMPT_COMPAT`, `setup_report.PROMPT_VERSION`, its docstring's list and its v42 mentions, the form's
+placeholder, the version pins, setup-feedback.md's version lines and its old-copy list, which v42 joins, and a K67
+row); `INBOX_NOT_READ`, held by no test before, is now asserted; `CUT_OFF_TOLD` names no version and is unchanged.
+§16.279's v41 paragraph, §16.284's v42 paragraph and §16.72's H26 paragraph take dated lines, and
+`docs/lanes/COMMON.md` takes one beside ruling 197. Round 47 rehearses v43 with v42's block (97049c792) as scenario
+C's first old copy, a step 2 refused on AGENTSYNC_CONFIG among its plays. Tests:
+`test_the_v43_prompt_tells_a_none_only_from_how_the_no_folder_run_ended_c3102_c3112`,
+`test_the_v43_prompt_tells_an_unread_inbox_apart_from_no_drop_folder_c3113_c3013`,
+`test_the_v43_step3_reads_a_run_to_its_exit_and_logs_an_error_with_no_next_c3116`,
+`test_the_v43_not_used_rule_covers_a_step2_refused_before_agentsync_ran_c3018`,
+`test_prompt_routes_changes_to_the_source_not_the_checkout`,
+`test_the_prompt_text_changes_only_with_its_version`, `test_readme_prompt_compat_matches_the_installer`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
