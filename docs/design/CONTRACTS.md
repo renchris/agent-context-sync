@@ -47881,6 +47881,14 @@ counts only the named paths with a manifest row, the test `_forced_ids` reads, s
 `materialise: <rel> is still being written ...` and no second line, and with none left there is no line. Test:
 `test_materialise_never_calls_a_file_it_names_withheld_or_unknown_c2813` (a known and a new file: one line each).
 
+**A stub is rendered again from one read of its page** (C3314). `Cycle._stub_again` read its single stub page up to
+three times: a probe whose OSError holds the STUB_RENDER key, `_pages_intact`'s hash, and the parse. A page that read
+once and failed after was judged not intact, a skip, so the meta moved on and the stub never took the new rendering
+(ruling 201's upgrade lost on a second read). It now reads the page once, lets that read's OSError hold the key, and
+judges and parses the same bytes, through `_page_bytes_intact`, the one-page test `_pages_intact` also calls. Tests:
+`test_a_refused_stub_is_rendered_again_from_one_read_of_its_page_c3314` (every read after the first failing) and
+the C3106 tests unchanged.
+
 ### 16.293 Round 47: the converters: ruling 202's Office twins closed (UTF-32 text, a no-namespace `<Types>`, the container answers before the cache, xlsx's emitter 1.0.7) and one noun per family (2026-11-25, wave B13 round 47 lane E)
 
 Round 47's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 47"; specs `round47/items/C<n>.md`, the

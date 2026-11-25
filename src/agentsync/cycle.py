@@ -1232,11 +1232,18 @@ def _pages_intact(repo: Path, outputs: Sequence[OutputRow]) -> bool:
             data = path.read_bytes()
         except OSError:
             return False
-        if out.page_sha256 is not None and hashlib.sha256(data).hexdigest() != out.page_sha256:
-            return False
-        if _SIDECAR_MARK in data and not _sidecars_intact(repo, out.output_path, data):
+        if not _page_bytes_intact(repo, out, data):
             return False
     return True
+
+
+def _page_bytes_intact(repo: Path, out: OutputRow, data: bytes) -> bool:
+    """True when a page's bytes, read once by the caller, hash to its ``outputs`` row and every sidecar it
+    names matches: :func:`_pages_intact`'s test of one page, shared with ``Cycle._stub_again``, which reads
+    its page once and must never judge one read and parse another (B13 round 47 C3314)."""
+    if out.page_sha256 is not None and hashlib.sha256(data).hexdigest() != out.page_sha256:
+        return False
+    return not (_SIDECAR_MARK in data and not _sidecars_intact(repo, out.output_path, data))
 
 
 _SIDECAR_MARK = f"\n{SIDECAR_DIGEST_PREFIX}`".encode()
@@ -3570,9 +3577,13 @@ class _Cycle:
         if len(live) != 1 or live[0].status is not stub:
             return None
         page = self.repo / live[0].output_path
-        if not page.is_symlink() and page.is_file():
-            page.read_bytes()  # raises OSError for a page this run cannot read (mode 000, an I/O error)
-        if not _pages_intact(self.repo, outs):
+        if page.is_symlink() or not page.is_file():
+            return None
+        # read once: an OSError (mode 000, an I/O error) holds the key for a retry, and the bytes judged
+        # intact are the bytes parsed, so a read that fails or changes between two reads never loses an
+        # upgrade (B13 round 47 C3314)
+        data = page.read_bytes()
+        if not _page_bytes_intact(self.repo, live[0], data):
             return None
         if _no_converter_stub(row):
             named = self._no_converter(src, row)
@@ -3586,7 +3597,7 @@ class _Cycle:
             # The page's own hashes: a stub made from the name has none, though a re-read stored the row's
             # since, and a later rendering must not differ from this one by them alone.
             try:
-                fm, _body = parse_mirror_page(page.read_text(encoding="utf-8"))
+                fm, _body = parse_mirror_page(data.decode("utf-8"))
             except (UnicodeDecodeError, FrontmatterError):
                 return None
             out = live[0]
@@ -3602,7 +3613,7 @@ class _Cycle:
                 reason=reason,
             )
         try:
-            fm, _body = parse_mirror_page(page.read_text(encoding="utf-8"))
+            fm, _body = parse_mirror_page(data.decode("utf-8"))
         except (UnicodeDecodeError, FrontmatterError):
             return None
         # What the page already says about the read that made it (a local label refusal is a converter's,

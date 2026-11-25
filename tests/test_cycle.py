@@ -8239,6 +8239,48 @@ def test_an_unreadable_refused_stub_holds_the_stub_render_meta_c3106(
     assert _stub_render_meta(sample_config) == "8"
 
 
+def test_a_refused_stub_is_rendered_again_from_one_read_of_its_page_c3314(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 47 C3314: _stub_again read its page up to three times (a probe, _pages_intact's hash and the
+    parse), so a page that read once and then failed (an I/O error, a mode change between reads) was judged
+    not intact, a skip, and the meta moved on without the new rendering. It reads the page once and judges
+    and parses those bytes: with every read after the first failing, the stub is still rebuilt."""
+    (local_source_dir / "projects" / "blob.xyz").write_bytes(b"contoso\n")
+    assert run(sample_config).exit_code == 0
+    path = sample_config.docs_repo / slug.mirror_rel_path(SID, "projects/blob.xyz")
+    with Manifest(sample_config.state_paths.db) as m:
+        m.set_meta(cycle_mod._STUB_RENDER_META, "7")
+    again = cycle_mod._Cycle._stub_again
+    real_read = Path.read_bytes
+    reads: list[int] = []
+    results: list[Any] = []
+
+    def flaky(self: Path) -> bytes:
+        if reads and self == path:
+            reads.append(1)
+            raise OSError(errno.EIO, "Input/output error", str(self))
+        if self == path:
+            reads.append(1)
+        return real_read(self)
+
+    def spy(self: Any, src: Any, row: ItemRow) -> Any:
+        if row.rel_path != "projects/blob.xyz":
+            return again(self, src, row)
+        reads.clear()
+        with monkeypatch.context() as mp:
+            mp.setattr(Path, "read_bytes", flaky)
+            got = again(self, src, row)
+        results.append(got)
+        assert len(reads) == 1, "the page is read once"
+        return got
+
+    monkeypatch.setattr(cycle_mod._Cycle, "_stub_again", spy)
+    assert run(sample_config).exit_code == 0
+    assert results and results[0] is not None, "one good read is enough to rebuild the stub"
+    assert _stub_render_meta(sample_config) == "8"
+
+
 def test_hand_edited_stubs_and_tombstones_still_let_the_stub_render_meta_through_c3106(
     sample_config: Config, local_source_dir: Path
 ) -> None:
