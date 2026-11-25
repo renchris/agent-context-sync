@@ -47382,6 +47382,9 @@ cases now: git's bundle in the environment, git's bundle in its config alone, an
 beside a folder git trusts (from the environment and from the config: `SSL_CERT_FILE` the shell's bundle,
 `SSL_CERT_DIR` git's folder, no `CURL_CA_BUNDLE`), and a shell folder with no curl bundle of its own kept. Test:
 `test_speech.py::test_the_seeds_docstrings_say_a_shell_ca_for_curl_stays_over_gits_c2930`.
+Amended 2026-11-25, §16.293 C3319: the config-alone case set the shell's `CURL_CA_BUNDLE` first, which `_curl_env`
+keeps without reading git's config, so it passed with the config branch deleted; it asserts git's bundle applied
+before the shell sets its own, and the environment case does the same.
 
 **A capped workbook index names the objects sidecar that holds every object** (C3025; `agentsync.convert.xlsx`).
 The index's object-list cut note ended `each sheet's own page lists its own`, but at the same cap a sheet page's
@@ -47655,6 +47658,15 @@ re-read). A published page takes the note when its workbook next changes. Test:
 `test_convert_page_cap.py::test_a_workbook_cached_by_emitter_1_0_6_is_converted_again_with_the_sidecar_note_c3318`
 (an index stored under 1.0.6's key with the old note is served at 1.0.6 and missed at 1.0.7, which returns the new
 note; `outdated` of a 1.0.6 page is False).
+
+**The speech test's git-config case is asserted before the shell's bundle is set** (C3319; ruling 215;
+`agentsync.convert.speech`; amends §16.288 C3049; test only). C3049's second case set `CURL_CA_BUNDLE` and then
+asserted the shell's value, and `_curl_env`'s `"CURL_CA_BUNDLE" not in env` guard short-circuits there, so the case
+passed with the `cainfo` lines deleted or with `or git_config.get("http.sslcainfo")` removed, though its docstring
+says it reads the git-config branch (the rest of `test_speech.py` still caught the first mutant). Each of the first
+two cases now asserts git's bundle in `CURL_CA_BUNDLE` with no shell bundle set, and only then sets the shell's and
+asserts it wins: both mutants fail it. No source changes. Test:
+`test_speech.py::test_the_seeds_docstrings_say_a_shell_ca_for_curl_stays_over_gits_c2930`.
 
 ### 16.294 Round 47: the prompt goes to v44 (a run read to its exit, an error keyed on its exit code, a paused or retired folder never offered again), CI's head and limit, dated lines, and the guides (2026-11-25, wave B13 round 47 lane D)
 

@@ -982,18 +982,25 @@ def test_the_seeds_docstrings_say_a_shell_ca_for_curl_stays_over_gits_c2930(
     keeps over git's, but beside the shell's own CURL_CA_BUNDLE its SSL_CERT_DIR is one its curl does not
     read, and the CA folder git trusts replaces it. The pinned phrases stay and each summary names that
     exception; the behavior runs as three cases, the second with no GIT_SSL_CAINFO, so the git-config branch
-    is the one read (the first case masked it)."""
+    is the one read (the first case masked it).
+
+    B13 round 47 C3319: the second case set the shell's CURL_CA_BUNDLE first, and ``_curl_env`` keeps a
+    shell bundle without reading git's config, so it passed with the config branch deleted. Each of the first
+    two cases now asserts git's bundle applied before the shell sets its own, then the shell's winning."""
     names = ("GIT_SSL_CAINFO", "GIT_SSL_CAPATH", "CURL_CA_BUNDLE", "SSL_CERT_FILE", "SSL_CERT_DIR")
     for name in names:
         monkeypatch.delenv(name, raising=False)
     with monkeypatch.context() as env:  # (i) git's bundle in the environment, the shell's own curl bundle
         env.setenv("GIT_SSL_CAINFO", "/Users/contoso/inspect.pem")
+        assert speech._curl_env({})["CURL_CA_BUNDLE"] == "/Users/contoso/inspect.pem"  # applied
         env.setenv("CURL_CA_BUNDLE", "/etc/ssl/cert.pem")
-        assert speech._curl_env({})["CURL_CA_BUNDLE"] == "/etc/ssl/cert.pem"
+        assert speech._curl_env({})["CURL_CA_BUNDLE"] == "/etc/ssl/cert.pem"  # the shell's wins
     with monkeypatch.context() as env:  # (ii) git's bundle in its config alone
-        env.setenv("CURL_CA_BUNDLE", "/etc/ssl/cert.pem")
         config = {"http.sslcainfo": "/Users/contoso/inspect.pem"}
-        assert speech._curl_env(config)["CURL_CA_BUNDLE"] == "/etc/ssl/cert.pem"
+        # B13 round 47 C3319: asserted before the shell sets its bundle, so only the config branch can give it
+        assert speech._curl_env(config)["CURL_CA_BUNDLE"] == "/Users/contoso/inspect.pem"  # applied
+        env.setenv("CURL_CA_BUNDLE", "/etc/ssl/cert.pem")
+        assert speech._curl_env(config)["CURL_CA_BUNDLE"] == "/etc/ssl/cert.pem"  # the shell's wins
     for git_dir in ("env", "config"):  # (iii) the shell's bundle and folder, and a CA folder git trusts
         with monkeypatch.context() as env:
             env.setenv("CURL_CA_BUNDLE", "/Users/contoso/shell.pem")
