@@ -5,6 +5,7 @@ Every case is tested in both, with made-up names (B13 round 3, CONTRACTS §16.46
 from __future__ import annotations
 
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -4890,6 +4891,166 @@ def test_both_reports_cut_a_project_folders_fuzzy_spellings_alike_c3289(
     if arm == "configured":
         assert all(re.fullmatch(r"<folder-\d+> is mine", ln) for ln in python_rows), python_rows
     assert shell == python_rows and shell_private == python_private, (shell, python_rows)
+
+
+# ---- B13 round 47 ruling 206: the kept inbox's link, resolved alike in both reports ------------------------
+
+_INBOX_LINK_BODY = (
+    default_config_text() + '\n[[source]]\nid = "inbox"\nkind = "inbox"\npath = "~/agent-context/inbox"\n'
+)
+_C3245_ROWS = [
+    "self-link",
+    "chain",
+    "loop-locked",
+    "documents-self-link",
+    "relative",
+    "link-to-link",
+    "folder-link",
+]
+_C3245_LOOPS = [
+    "self-link",
+    "chain",
+    "loop-locked",
+    "documents-self-link",
+]  # pathlib's resolve() raises on these
+
+
+def _inbox_link_row(home: Path, row: str) -> tuple[list[str], list[str], Path | None]:
+    """C3245's ``row`` under ``home``: ~/agent-context/inbox a link that loops, chains or is relative. The
+    friction lines naming its target as doctor prints it, the words neither report may print, and the folder
+    held at mode 000 for the run (None for none)."""
+    ac = home / "agent-context"
+    ac.mkdir(exist_ok=True)
+    inbox = ac / "inbox"
+    locked = home / "Locked Contoso"
+    if row == "self-link":
+        inbox.symlink_to("inbox")
+        return ["the inbox is a link to itself"], [], None
+    if row == "chain":  # inbox -> a -> b -> a
+        alpha, beta = home / "Wombat Alpha", home / "Wombat Beta"
+        inbox.symlink_to(alpha)
+        alpha.symlink_to(beta)
+        beta.symlink_to(alpha)
+        return ["the inbox links to ~/Wombat Alpha"], ["Wombat", "Alpha"], None
+    if row == "loop-locked":  # inbox -> ~/Locked Contoso/x -> inbox
+        locked.mkdir()
+        inbox.symlink_to(locked / "x")
+        (locked / "x").symlink_to(inbox)
+        return ["the inbox links to ~/Locked Contoso/x"], ["Locked"], None
+    if row == "documents-self-link":
+        juniper = home / "Documents" / "Juniper"
+        juniper.parent.mkdir(parents=True, exist_ok=True)
+        juniper.symlink_to("Juniper")
+        inbox.symlink_to(juniper)
+        return ["the inbox links to ~/Documents/Juniper"], ["Juniper"], None
+    (locked / "inner").mkdir(parents=True)
+    if row == "relative":
+        inbox.symlink_to("../Locked Contoso/inner")
+    elif row == "link-to-link":
+        (ac / "inbox2").symlink_to(locked / "inner")
+        inbox.symlink_to("inbox2")
+    else:  # folder-link: a relative link whose own folder is a link, read against its physical folder
+        deep = home / "Real Spot" / "deep"
+        deep.mkdir(parents=True)
+        (home / "Quokka Hop").symlink_to(deep)
+        (deep / "x").symlink_to("../../Locked Contoso/inner")
+        inbox.symlink_to(home / "Quokka Hop" / "x")
+    return ["the inbox links to ~/Locked Contoso/inner"], ["Locked"], locked
+
+
+def _resolved(home: str, path: str) -> str:
+    """install.sh's own resolved() over ``path``, run under /bin/bash (3.2 on macOS) with ``home``, bounded:
+    a loop must return, never hang (B13 round 47 C3245)."""
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    [fn] = re.findall(r"(?ms)^\tresolved_into\(\) \{.*?^\tresolved\(\) \{.*?^\t\}\n", script)
+    cp = subprocess.run(
+        [BASH32, "-c", fn + 'resolved "$1"', "_", path],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=30,
+        env={"HOME": home, "LC_ALL": "C", "LANG": "C", "PATH": "/usr/bin:/bin"},
+    )
+    return cp.stdout.removesuffix("\n")
+
+
+@pytest.mark.parametrize("row", [*_C3245_ROWS, "cap", "mutual"])
+def test_install_resolves_the_inbox_link_as_realpath_reads_it_c3245(tmp_path: Path, row: str) -> None:
+    """B13 round 47 C3245 (ruling 206; privacy): resolved() read one link and never normalized it, so a
+    relative `../Locked Contoso/inner` matched the folder beside the docs repo and was skipped as agentsync's
+    own, and a link to a link stopped after one hop. It walks as os.path.realpath does, each `cd -P`, a
+    relative target against the link's resolved folder; on a loop, or past 40 hops, the first hop's target
+    with its folder resolved. Two links that each name the other's folder return too."""
+    home = tmp_path / "home"
+    home.mkdir()
+    real = Path(os.path.realpath(home))
+    inbox = home / "agent-context" / "inbox"
+    locked = None
+    if row == "cap":  # 45 links in a ring: the cap, not the seen set, ends the walk
+        (home / "agent-context").mkdir()
+        inbox.symlink_to(home / "ring0")
+        for n in range(45):
+            (home / f"ring{n}").symlink_to(home / f"ring{(n + 1) % 45}")
+    elif row == "mutual":
+        (home / "agent-context").mkdir()
+        (home / "a").symlink_to(home / "b" / "x")
+        (home / "b").symlink_to(home / "a" / "x")
+        inbox.symlink_to(home / "a")
+    else:
+        _said, _secrets, locked = _inbox_link_row(home, row)
+    expected = {
+        "self-link": real / "agent-context" / "inbox",
+        "chain": real / "Wombat Alpha",
+        "loop-locked": real / "Locked Contoso" / "x",
+        "documents-self-link": real / "Documents" / "Juniper",
+        "cap": real / "ring0",
+    }.get(row, real / "Locked Contoso" / "inner")
+    if locked is not None:
+        locked.chmod(0)
+    try:
+        got = _resolved(str(home), str(inbox))
+    finally:
+        if locked is not None:
+            locked.chmod(0o755)
+    if row == "mutual":
+        assert got.startswith(f"{real}/"), got
+    else:
+        assert got == str(expected), (got, expected)
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize("row", _C3245_LOOPS)
+def test_the_shell_report_cuts_a_looped_inbox_links_target_c3245(
+    env: dict[str, str],  # noqa: F811
+    row: str,
+    locale: str,
+) -> None:
+    """B13 round 47 C3245 (ruling 206), the shell half alone (both reports: lane RA's
+    test_both_reports_resolve_the_kept_inbox_link_alike_ruling_206): the shell report holds no word of the
+    first hop's target, cuts it and stays public, and a self-link (agentsync's own) prints as said."""
+    home = Path(env["HOME"])
+    said, secrets, _locked = _inbox_link_row(home, row)
+    config = home / "agent-context" / "sources.toml"
+    config.write_text(_INBOX_LINK_BODY, encoding="utf-8")
+    rows = "".join(
+        f"2026-10-10T00:00:{n:02d}Z | step 1 | deviation | {ln} | -\n" for n, ln in enumerate(said)
+    )
+    friction_path(env).parent.mkdir(parents=True, exist_ok=True)
+    friction_path(env).write_text(f"Attempt: 2026-10-10T00:00:00Z\nPrompt: v15\n{rows}", encoding="utf-8")
+    cp = install_sh(
+        {**env, "AGENTSYNC_CONFIG": str(config), "LC_ALL": locale, "LANG": locale}, "--report-only"
+    )
+    assert cp.returncode == 0 and "shell fallback" in cp.stdout, cp.stdout + cp.stderr
+    text = report_path(env).read_text(encoding="utf-8")
+    leaks = [ln for ln in text.splitlines() if any(w in ln for w in secrets)]
+    assert not leaks, leaks
+    assert "Private only:" not in text, text
+    cut = " | step 1 | deviation | "
+    printed = [ln.split(cut, 1)[1].removesuffix(" | -") for ln in text.splitlines() if cut in ln]
+    if secrets:
+        assert re.fullmatch(r"the inbox links to ~/(Documents/)?<folder-\d+>(/x)?", printed[0]), printed
+    else:
+        assert printed == said, printed
 
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])

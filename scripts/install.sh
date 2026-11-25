@@ -4146,19 +4146,52 @@ redaction_pairs() {
 		case "$1" in "$beside" | "$beside/"*) return 0 ;; esac
 		return 1
 	}
-	resolved() { # PATH: as pathlib's resolve() reads it, not strict: pwd -P where it can be entered, a link read
-		# with readlink where its target cannot be searched, else the path under its resolved parent
-		local r
-		r="$(cd "$1" 2>/dev/null && pwd -P || true)"
-		if [ -z "$r" ] && [ -L "$1" ]; then
-			r="$(readlink "$1" 2>/dev/null || true)"
-			case "$r" in /* | "") ;; *) r="${1%/*}/$r" ;; esac
-		fi
-		if [ -z "$r" ]; then
-			r="$(cd "${1%/*}" 2>/dev/null && pwd -P || true)"
-			r="${r:+$r/${1##*/}}"
-		fi
-		printf '%s\n' "${r:-$1}"
+	resolved_into() { # PATH: into resolved_out, as os.path.realpath reads it, not strict (B13 round 47 ruling 206,
+		# C3245): pwd -P where `cd -P` enters it; else the path under its parent resolved the same way, a last part
+		# `..` dropped by text against that parent as pathlib drops it, and a link there read with readlink, a
+		# relative target taken against the link's own resolved folder, and walked again. A link seen again in the
+		# walk, or the 40 hops resolved() allows (ELOOP's cap) spent, is a loop: its first hop's target stands, that
+		# hop's folder resolved and its last part kept, as lane RA reads it. One budget for every nested walk, so
+		# two links that each name the other's folder end too.
+		local p="$1" d b q t first="" seen=$'\n' hops=0
+		while :; do
+			resolved_out="$(cd -P "$p" 2>/dev/null && pwd -P || true)"
+			[ -z "$resolved_out" ] || return 0
+			case "$p" in */*) d="${p%/*}" b="${p##*/}" ;; *) d=. b="$p" ;; esac
+			[ -n "$d" ] || d=/
+			if [ "$d" = "$p" ]; then
+				resolved_out="$p"
+				return 0
+			fi
+			resolved_into "$d"
+			case "$b" in
+			"" | .) return 0 ;;
+			..)
+				q="${resolved_out%/*}"
+				resolved_out="${q:-/}"
+				return 0
+				;;
+			esac
+			q="${resolved_out%/}/$b"
+			[ "$hops" -ne 1 ] || [ -n "$first" ] || first="$q"
+			resolved_out="$q"
+			[ -L "$q" ] || return 0
+			case "$seen" in *$'\n'"$q"$'\n'*) resolved_out="${first:-$q}" && return 0 ;; esac
+			if [ "$resolved_hops" -le 0 ]; then
+				resolved_out="${first:-$q}"
+				return 0
+			fi
+			resolved_hops=$((resolved_hops - 1)) hops=$((hops + 1))
+			seen+="$q"$'\n'
+			t="$(readlink "$q" 2>/dev/null || true)"
+			[ -n "$t" ] || return 0
+			case "$t" in /*) p="$t" ;; *) p="${q%/*}/$t" ;; esac
+		done
+	}
+	resolved() { # PATH: resolved_into's path, printed
+		resolved_hops=40
+		resolved_into "$1"
+		printf '%s\n' "$resolved_out"
 	}
 	# The kept inbox's targets that are not agentsync's own, as setup_report._build_redactor reads them (B13 round
 	# 46 ruling 199, C3055 with lane RA's review rows): ~/agent-context/inbox resolved, the kept inbox only (an
@@ -4170,7 +4203,7 @@ redaction_pairs() {
 	local -a inbox_targets=()
 	gb=0
 	{ generic_home_dir "$(recase lower "${beside##*/}")" || [ "$beside" = "$HOME" ] || [ "$beside" = "$hp" ]; } && gb=1
-	bx="$(cd "$beside" 2>/dev/null && pwd -P || true)"
+	bx="$(resolved "$beside")" # as the target is read, so a folder beside that no cd enters still matches
 	while IFS= read -r cand; do
 		[ -n "$cand" ] || continue
 		case "$cand" in "$cs" | "$cs"/* | "$hp/Library/CloudStorage" | "$hp/Library/CloudStorage/"*) continue ;; esac
