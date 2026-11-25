@@ -10618,8 +10618,8 @@ def test_a_mac_already_set_up_has_no_folder_question_and_says_what_it_kept(
         "not observable)"
     ), "nobody had to be asked: the unlogged folder question is not counted"
     assert _line(summary, "- expected turns: ") == (
-        f"- expected turns: {NOT_ASKED.format('2 folders')} · {STEP_3_ASKS} · the announced Allow click "
-        "(step 1; not logged)"
+        # a v11 attempt: step 3's question exists since v41 (B13 round 47 C3272, ruling 213)
+        f"- expected turns: {NOT_ASKED.format('2 folders')} · the announced Allow click (step 1; not logged)"
     )
     assert _line(summary, "- folders: ") == (
         "- folders: kept the 2 already synced (none added) · 0 named with --source-local (install.log)"
@@ -12689,7 +12689,8 @@ def test_the_loop_line_says_the_next_install_sh_printed_for_a_none_c2946(fake_ma
     all. From the latest install run (list runs skipped), with no doctor FAIL, it says the words install.sh
     printed: NO_FOLDER_CHOSEN_NEXT for a none that ended clean, on the skill-missing NEXT of an inbox-only
     config or on either no-folder NEXT whatever the config counts; NO_FOLDER_FIRST_NEXT for the first run;
-    NO_FOLDER_NEXT otherwise. A failed none, a doctor FAIL and a folder keep status's NEXT."""
+    NO_FOLDER_NEXT otherwise. A doctor FAIL and a folder keep status's NEXT; a failed none reads
+    NO_FOLDER_UNFINISHED_NEXT since B13 round 47 C3202."""
     skill = (
         "NEXT: the agentsync-docs skill is missing or out of date: run `~/.local/bin/agentsync sync` (it "
         "writes the skill; if this line is still here after that sync, the skills folder cannot be written: "
@@ -12752,13 +12753,15 @@ def test_the_loop_line_says_the_next_install_sh_printed_for_a_none_c2946(fake_ma
         assert want in line, (logged, line)
         if want == chosen:
             assert "skill is missing" not in line and "choose the folders" not in line, line
+    # B13 round 47 C3202 (ruling 213): a failed none reads its own sentence, never status's skill NEXT
+    failed_none = _no_folder_run(t0, "--no-folder", 1, steps=("agentsync seconds=4 rc=1 result=failed",))
+    line = loop(inbox_only, failed_none, skill)
+    assert setup_report.NO_FOLDER_UNFINISHED_NEXT.format(why="its agentsync step failed with rc 1") in line, (
+        line
+    )
+    assert "skill is missing" not in line and setup_report.NO_FOLDER_CHOSEN not in line, line
     for body, logged, found, fail in (
-        (
-            inbox_only,
-            _no_folder_run(t0, "--no-folder", 1, steps=("agentsync seconds=4 rc=1 result=failed",)),
-            skill,
-            False,
-        ),
+        (inbox_only, failed_none, skill, True),  # with a doctor FAIL, status's NEXT stands
         (inbox_only, none_ok, skill, True),  # a doctor FAIL: install.sh's [FAIL] branch comes first
         (inbox_only + folder, none_ok, skill, False),  # a folder: status's skill-missing NEXT stands
         (inbox_only + folder, _no_folder_run(t0, "", 2), skill, False),
@@ -13397,7 +13400,7 @@ def test_v7_announces_one_allow_click_in_step_1(
     assert "1 click beyond the announced Allow click (not logged)" in summary
     assert (
         "- expected turns: the folder question (step 1; not logged as a question) · "
-        f"{STEP_3_ASKS} · the announced Allow click (step 1; not logged)" in summary
+        "the announced Allow click (step 1; not logged)" in summary  # v7: no step 3 question (C3272)
     )
     assert "steps 1 and 2" not in summary
 
@@ -30378,11 +30381,12 @@ def test_the_expected_turns_name_step_3s_at_most_folder_question_c3029(
     whether to add a folder after a `nothing to draft yet` NEXT, a question the prompt asks, yet the expected
     turns said no folder question on a synced Mac and only step 1's on a new one. Once the attempt reached
     step 3 the line names it, not logged, and the human turns and the outcome stay as they were; an attempt
-    whose install run failed and that logged nothing at step 3 does not name it."""
+    whose install run failed and that logged nothing at step 3 does not name it. B13 round 47 C3272 (ruling
+    213): a v43 attempt, as the question exists since v41."""
     config = "skipped note=exists kept=2 added=0" if mac == "synced" else "done note=created kept=0 added=2"
     listed = " synced=2" if mac == "synced" else " synced=0"
     log = set_up_log(fake_mac, ("", config), listed=listed)
-    write_friction(fake_mac, V11_HAPPY)
+    write_friction(fake_mac, V11_HAPPY.replace("Prompt: v11", "Prompt: v43"))
     monkeypatch.setattr(setup_report, "home_path", lambda: "/Users/jdoe")
     rc, text, _ = report(tmp_path, fake_mac["config"])
     summary = section(text, "Summary")
@@ -30395,6 +30399,227 @@ def test_the_expected_turns_name_step_3s_at_most_folder_question_c3029(
     assert STEP_3_ASKS not in _line(section(text, "Summary"), "- expected turns: ")
     if mac == "synced":
         assert outcome.startswith("- **outcome: fully one command**"), outcome
+
+
+def _r213_run(
+    n: int,
+    args: str,
+    rc: int | None,
+    *,
+    config: str = "rc=0 result=done note=created kept=0 added=0",
+    status: str = "rc=0 result=done",
+    first: str = "rc=0 result=done note=converted-0-deferred-0",
+) -> str:
+    """One install.sh run of an attempt as install.log has it, for B13 round 47 ruling 213's rows."""
+    at, run = f"2026-11-25T10:0{n}:00Z", f"run=20261125T100{n}00Z-4{n}"
+    lines = [
+        f"{at} {run} start install.sh compat=43 commit=0123456789ab kind=checkout source=- args={args}",
+        f"{at} {run} step=config seconds=1 {config}",
+        f"{at} {run} step=status seconds=3 {status}",
+        f"{at} {run} step=first-sync seconds=2 {first}",
+    ]
+    if rc is not None:
+        lines.append(f"{at} {run} end rc={rc} seconds=9")
+    return "\n".join(lines) + "\n"
+
+
+_R213_NONE = _r213_run(1, "--no-folder", 0, first="rc=0 result=skipped note=no-sources")
+_R213_ROWS = {  # install.log of the attempt, a step-3 friction line or not, whether step 3's question is due
+    "h-none-h": (_R213_NONE, False, False),
+    "n-tmo-h": (
+        _R213_NONE + _r213_run(2, "--no-folder", 1, status="rc=143 result=done note=timeout"),
+        False,
+        False,
+    ),
+    "older-none": (_r213_run(1, "--no-folder", 0, status="rc=1 result=done note=fail-lines"), False, False),
+    "none-step-3-line": (_R213_NONE, True, False),
+    "none-then-source": (_R213_NONE + _r213_run(2, "--source-local x", 0), False, True),
+    "source-then-none": (
+        _r213_run(1, "--source-local x", 0) + _R213_NONE.replace("T10010", "T10020"),
+        False,
+        True,
+    ),
+    "role-h": (_r213_run(1, "--source-local x", 0), False, True),
+    "f-fail0-h": (_r213_run(1, "--no-folder", 1, config="rc=1 result=failed"), False, False),
+    "bare-failed": (_r213_run(1, "", 1, config="rc=1 result=failed"), False, False),
+    "bare-failed-logged": (_r213_run(1, "", 1, config="rc=1 result=failed"), True, True),
+    "bare-no-sources": (_r213_run(1, "", 0, first="rc=0 result=skipped note=no-sources"), False, False),
+    "bare-fail-lines": (_r213_run(1, "", 0, status="rc=1 result=done note=fail-lines"), False, False),
+}
+
+
+_R202_NEXTS = {
+    "skill": "NEXT: the agentsync-docs skill is missing or out of date: run `~/.local/bin/agentsync sync`",
+    "rule2": (
+        "NEXT: no folder is synced yet: ask the operator which folders to sync (`~/.local/bin/agentsync "
+        "--list-folders`), then run `~/.local/bin/agentsync add-source <folder>` and a sync"
+    ),
+    "chosen": (
+        f"NEXT: {setup_report.NO_FOLDER_CHOSEN}, so this Mac syncs none of their folders: go on to the "
+        'report; if they choose one later, the run is: `~/.local/bin/agentsync add-source "<folder>"` for '
+        "each, then `~/.local/bin/agentsync sync`"
+    ),
+}
+_R202_LOGS = {  # install.log, then the Loop line's NEXT: None for status's own, else a fragment of the line
+    "f-fail0-h": (
+        _r213_run(1, "--no-folder", 1, config="rc=1 result=failed"),
+        "its config step failed with rc 1",
+    ),
+    "n-tmo-h": (
+        _r213_run(1, "--no-folder", 0)
+        + _r213_run(2, "--no-folder", 1, status="rc=143 result=done note=timeout"),
+        "its status step was stopped at its time limit (rc 143)",
+    ),
+    "no-end": (_r213_run(1, "--no-folder", None), "it logged no end line"),
+    "bare-failed": (_r213_run(1, "", 1, config="rc=1 result=failed"), None),
+}
+
+
+@pytest.mark.parametrize("next_", ["skill", "rule2"])
+@pytest.mark.parametrize("shape", [*_R202_LOGS, "n-perm-h"])
+def test_a_none_that_did_not_finish_says_its_own_next_says_what_to_do_c3202(
+    fake_mac: dict[str, Path], shape: str, next_: str
+) -> None:
+    """B13 round 47 C3202 (ruling 213; makes worse True for reading the NEXT from install.out): after a
+    --no-folder run that failed, timed out or never ended, the Loop line kept status's skill-missing or
+    rule-2 NEXT (a sync, add-source, the folder question), which v43 forbids after a none. It reads one
+    sentence built from install.log's facts: the run did not finish, its own NEXT says what to do, a re-run
+    keeps --no-folder, the folder question is not asked again. A doctor [FAIL] still comes first (n-perm-h)
+    and a bare failed run keeps status's NEXT."""
+    hooks = setup_report.ReportHooks(loop_next=lambda _config: [_R202_NEXTS[next_]])
+    cfg = fake_mac["config"]
+    cfg.write_text(
+        default_config_text() + inbox_source_table("inbox", Path.home() / "agent-context" / "inbox"),
+        encoding="utf-8",
+    )
+    logged, want = _R202_LOGS.get(shape, _R202_LOGS["f-fail0-h"])
+    (fake_mac["setup"] / "install.log").write_text(logged, encoding="utf-8")
+    r = setup_report._Run(cfg, hooks, 60.0)
+    if shape == "n-perm-h":
+        r.facts.doctor_problems.append(("FAIL", "state_dir.files", "x"))
+    line = setup_report._loop_line(r)
+    head = setup_report.NO_FOLDER_UNFINISHED_NEXT.split("{", 1)[0]
+    if shape in ("n-perm-h", "bare-failed"):
+        assert head not in line, line
+        return
+    assert want is not None
+    assert setup_report.NO_FOLDER_UNFINISHED_NEXT.format(why=want) in line, line
+    for kept in ("add-source", "agentsync sync", "syncs none of their folders", "ask the operator"):
+        assert kept not in line, (kept, line)
+
+
+def test_status_own_choice_next_after_a_completed_none_is_kept_c3241(fake_mac: dict[str, Path]) -> None:
+    """B13 round 47 C3241 (ruling 213): lane B's next_step rule 2 says the person's choice itself after a
+    completed none on a config with no source but the inbox (`loop.NO_FOLDER_CHOSEN_LOOP_NEXT`); the Loop line
+    keeps it as status says it, swapped neither for install.sh's form nor for C3202's sentence: once."""
+    hooks = setup_report.ReportHooks(loop_next=lambda _config: [_R202_NEXTS["chosen"]])
+    cfg = fake_mac["config"]
+    cfg.write_text(
+        default_config_text() + inbox_source_table("inbox", Path.home() / "agent-context" / "inbox"),
+        encoding="utf-8",
+    )
+    for logged in (_R213_NONE, _r213_run(1, "--no-folder", 1, config="rc=1 result=failed")):
+        (fake_mac["setup"] / "install.log").write_text(logged, encoding="utf-8")
+        line = setup_report._loop_line(setup_report._Run(cfg, hooks, 60.0))
+        assert line.count(setup_report.NO_FOLDER_CHOSEN) == 1 and "add-source" in line, line
+        assert "--source-local" not in line, line
+
+
+_N14 = _r213_run(1, "", 0, config="rc=0 result=done note=exists kept=0 added=0")
+
+
+@pytest.mark.parametrize("deviation", [True, False])
+@pytest.mark.parametrize("not_live", [[], ["wombat (paused)"], None])
+def test_a_bare_run_that_ended_0_with_no_live_folder_is_never_fully_one_command_c3209(
+    tmp_path: Path, deviation: bool, not_live: list[str] | None
+) -> None:
+    """B13 round 47 C3209 (ruling 213): a latest bare install run that ended 0 over a sources.toml with no
+    live folder but the inbox (n-14: a paused or retired folder, or none) was scored fully one command, though
+    its NEXT sends the agent back to the folder question. With a step 1 deviation after it (the prompt's
+    re-ask, unanswered) it stopped at step 1; without one it worked with help, the held folders named; a
+    config with a live folder (``not_live`` None) keeps fully one command."""
+    log = tmp_path / "install.log"
+    log.write_text(_N14, encoding="utf-8")
+    runs = setup_report.read_install_runs(log)
+    events = "2026-11-25T10:02:00Z | step 1 | deviation | no folder answer came | -\n" if deviation else ""
+    [att] = setup_report.parse_friction(f"Attempt: 2026-11-25T09:59:00Z\nPrompt: v43\n{events}").attempts
+    outcome = setup_report.compute_outcome(att, runs, not_live=not_live)
+    if not_live is None:
+        assert outcome.kind == "fully one command", outcome  # the agent's deviation is no person's turn
+        assert setup_report.NO_LIVE_FOLDER_WHY not in outcome.why, outcome
+    elif deviation:
+        assert (outcome.kind, outcome.step, outcome.why) == (
+            "stopped",
+            1,
+            (setup_report.NO_FOLDER_UNANSWERED,),
+        ), outcome
+    else:
+        assert outcome.kind == "worked with help" and setup_report.NO_LIVE_FOLDER_WHY in outcome.why, outcome
+        assert ("wombat (paused)" in " ".join(outcome.why)) is bool(not_live), outcome
+    for args in ("--source-local x", "--no-folder"):  # a run that named an answer is scored as before
+        other = setup_report.read_install_runs(
+            _write(tmp_path / "o.log", _N14.replace("args=", f"args={args}"))
+        )
+        assert (
+            setup_report.NO_LIVE_FOLDER_WHY not in setup_report.compute_outcome(att, other, not_live=[]).why
+        )
+
+
+def _write(path: Path, text: str) -> Path:
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_only_the_latest_attempt_reads_todays_config_for_its_outcome_c3209(fake_mac: dict[str, Path]) -> None:
+    """B13 round 47 C3209 (ruling 213): the held-folder test reads today's sources.toml, so only the latest
+    attempt takes it; an earlier attempt is judged from its own record, untouched by today's config."""
+    cfg = fake_mac["config"]
+    home = Path.home()
+    cfg.write_text(
+        default_config_text()
+        + inbox_source_table("inbox", home / "agent-context" / "inbox")
+        + local_source_table("wombat", home / "Wombat").replace(
+            'kind = "local"', 'kind = "local"\nstate = "paused"'
+        ),
+        encoding="utf-8",
+    )
+    r = setup_report._Run(cfg, setup_report.ReportHooks(), 60.0)
+    assert setup_report._not_live_folders(r) == ["wombat (paused)"]
+    (fake_mac["setup"] / "install.log").write_text(
+        _N14 + _N14.replace("T10:01", "T11:01").replace("T1001", "T1101")
+    )
+    text = "Attempt: 2026-11-25T09:59:00Z\nPrompt: v43\nAttempt: 2026-11-25T11:00:00Z\nPrompt: v43\n"
+    r.friction = setup_report.parse_friction(text)
+    r.install_runs = setup_report.read_install_runs(fake_mac["setup"] / "install.log")
+    assert setup_report.NO_LIVE_FOLDER_WHY not in setup_report._attempt_outcome(r, 0).why
+    assert setup_report.NO_LIVE_FOLDER_WHY in setup_report._attempt_outcome(r, 1).why
+
+
+@pytest.mark.parametrize("row", list(_R213_ROWS))
+@pytest.mark.parametrize("version", [11, 40, 41, 43, None])
+def test_step_3s_question_is_credited_only_on_the_route_the_attempt_took_ruling_213(
+    tmp_path: Path, row: str, version: int | None
+) -> None:
+    """B13 round 47 ruling 213 (C3237 with C3204, C3306 and C3337; C3272 with C3248 and C3328): the expected
+    turns named step 3's folder question after the person's none (v43 sends the agent to the report, never
+    the loop), after a failed run that ended 0 and on prompts from v7, though the question exists since v41
+    (once a session since v42). It is due only when the attempt's last run is no none or an earlier run
+    without --no-folder completed, a run counting when it ended 0 with no failed step, no blocking status
+    note and no first sync skipped for no sources, a logged step-3 line read only with no --no-folder run,
+    and only for a v41 or later (or unstated) attempt: v41's words have no `at most once`."""
+    logged, line, due = _R213_ROWS[row]
+    log = tmp_path / "install.log"
+    log.write_text(logged, encoding="utf-8")
+    runs = setup_report.read_install_runs(log)
+    head = "Attempt: 2026-11-25T09:59:00Z\n" + (f"Prompt: v{version}\n" if version is not None else "")
+    step3 = "2026-11-25T10:05:00Z | step 3 | error | the report step stopped | -\n" if line else ""
+    [att] = setup_report.parse_friction(head + step3).attempts
+    due = due and (version is None or version >= 41)
+    assert setup_report._reached_step_3(att, runs) is due, (row, version)
+    turns = setup_report._expected_turns_line(att, "first install", reached_step_3=due)
+    once, plain = setup_report.STEP_3_ASKS_ONCE, setup_report.STEP_3_ASKS_V41
+    assert (once in turns) is (due and version != 41), turns
+    assert (plain in turns) is (due and version == 41), turns
 
 
 def test_a_config_named_with_a_trailing_exists_is_never_an_earlier_runs_c3115(tmp_path: Path) -> None:

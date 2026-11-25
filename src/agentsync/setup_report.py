@@ -3155,6 +3155,17 @@ def _unread_stuck(att: Attempt, runs: Sequence[InstallRun]) -> bool:
     )
 
 
+STEP_3_ASKS_FROM = 41
+"""The first setup prompt whose step 3 asks whether to add a folder on a ``nothing to draft yet`` NEXT (B13
+round 47 C3272 with C3248 and C3328, ruling 213): v41 asks it, at most once a session since v42 (B13 round 45
+C2831, ruling 197); an attempt of an earlier prompt never names it."""
+STEP_3_ASKS_ONCE = "step 3 asks at most once whether to add a folder (not logged)"
+"""The expected turns' step 3 part for a v42 or later attempt, or one whose version is unstated (B13 round 46
+C3029)."""
+STEP_3_ASKS_V41 = "step 3 asks whether to add a folder (not logged)"
+"""The expected turns' step 3 part for a v41 attempt, which asked with no once-a-session limit (B13 round 47
+C3272)."""
+
 SIGN_IN_WAITS = 20
 """The first setup prompt whose step 1 waits, as for a click, for the OneDrive sign-in that a list exiting 3
 ``not-signed-in`` asks for, then lists again (B13 round 11 M4; round 12 N5)."""
@@ -3892,6 +3903,7 @@ def compute_outcome(
     persons_fails: Sequence[str] = (),
     earlier: bool = False,
     late_stops: Sequence[_SyncStop] = (),
+    not_live: Sequence[str] | None = None,
 ) -> Outcome:
     """Computed from what the person saw and did, never from the agent's own friction lines. Judged on the
     attempt's install runs (``--list-folders`` runs are not install runs):
@@ -3988,6 +4000,27 @@ def compute_outcome(
     # "fully one command": failed at the install step, in its own record's words
     if last is not None and last.chose_no_folder and last.rc == 0:
         return Outcome("failed", layout.install_step, (_no_folder_failure_words(last),), version)
+    # B13 round 47 C3209 (ruling 213): the latest attempt's last bare run ended 0 and completed, but
+    # sources.toml holds no live folder but the inbox (``not_live``, the caller's, each held folder's words):
+    # its NEXT sends the agent back to the folder question, so it is never fully one command; with a step 1
+    # deviation logged after it (the prompt's re-ask with no answer) it stopped there
+    if not_live is not None and last is not None and _bare_run(last) and last.completed_none:
+        if (
+            attempt is not None
+            and last.started is not None
+            and any(
+                e.kind == "deviation"
+                and e.step == FOLDER_QUESTION_STEP
+                and e.at is not None
+                and e.at >= last.started
+                for e in attempt.events
+            )
+        ):
+            return Outcome(
+                "stopped", FOLDER_QUESTION_STEP, (NO_FOLDER_UNANSWERED,), version, NO_FOLDER_UNANSWERED
+            )
+        held = (NOT_LIVE_CLAUSE.removeprefix("; ").format(folders=", ".join(not_live)),) if not_live else ()
+        return Outcome("worked with help", None, ("install.sh exit 0", NO_LIVE_FOLDER_WHY, *held), version)
     if (
         last is not None
         and last.no_folder_first_run
@@ -4228,29 +4261,55 @@ def _status_fail_words(run: InstallRun) -> str:
     return f": its status step reported [FAIL] lines (rc {rc})"
 
 
-def _no_folder_failure_words(run: InstallRun) -> str:
-    """Why a ``--no-folder`` run that ended 0 is no completed none (:attr:`InstallRun.completed_none`), from
-    its own record (B13 round 46 C3086, ruling 205): its failed step and that step's rc (or signal), else its
-    status step's note, ``reported [FAIL] lines (rc N)``, ``exited N with no [FAIL] line`` or ``was stopped
-    at its time limit (rc 143)``; then that an older install.sh ended such a run 0 and that is no success.
-    Never :func:`_status_fail_words`, which says nothing for a run that ended 0."""
+NO_LIVE_FOLDER_WHY = (
+    "install.sh ended 0 with no folder synced (its NEXT: sends the agent back to the folder question)"
+)
+"""The worked-with-help reason of a latest bare run that ended 0 over a sources.toml with no live folder but
+the inbox (B13 round 47 C3209, ruling 213)."""
+
+
+def _bare_run(run: InstallRun) -> bool:
+    """Whether an install run named no folder answer: no ``--source-local`` and no ``--no-folder`` word."""
+    if run.chose_no_folder:
+        return False
+    try:
+        words = shlex.split(run.args)
+    except ValueError:
+        words = run.args.split()
+    return not any(w == "--source-local" or w.startswith("--source-local=") for w in words)
+
+
+def _no_folder_cause(run: InstallRun) -> str:
+    """What stopped a ``--no-folder`` run that is no completed none, from install.log alone (B13 round 46
+    C3086; round 47 C3202, ruling 213): its failed step and that step's rc (or signal), else its status step's
+    blocking note, else its exit status or that it logged no end line."""
     failing = run.failed_step()
     status = run.step("status") or run.step("doctor") or {}
     if failing is not None:
         rc = failing[1].get("rc", "")
         words = _step_rc_words(failing[1]) if rc else ""
         said = f", {words}" if words.startswith(("stopped by ", "stopped at its limit")) else f" with rc {rc}"
-        cause = f"its {failing[0]} step failed{said if rc else ' with no rc logged'}"
-    else:
-        rc, note = status.get("rc", "") or "not logged", status.get("note", "")
-        cause = {
+        return f"its {failing[0]} step failed{said if rc else ' with no rc logged'}"
+    rc, note = status.get("rc", "") or "not logged", status.get("note", "")
+    if note in ("fail-lines", "status-error", "timeout") or run.rc == 0:
+        return {
             "fail-lines": f"its status step reported [FAIL] lines (rc {rc})",
             "status-error": f"its status step exited {rc} with no [FAIL] line",
             "timeout": f"its status step was stopped at its time limit (rc {rc})",
         }.get(note, f"its status step logged {note or 'no note'} (rc {rc})")
+    return f"it exited {run.rc}" if run.rc is not None else "it logged no end line"
+
+
+def _no_folder_failure_words(run: InstallRun) -> str:
+    """Why a ``--no-folder`` run that ended 0 is no completed none (:attr:`InstallRun.completed_none`), from
+    its own record (B13 round 46 C3086, ruling 205): its failed step and that step's rc (or signal), else its
+    status step's note, ``reported [FAIL] lines (rc N)``, ``exited N with no [FAIL] line`` or ``was stopped
+    at its time limit (rc 143)``; then that an older install.sh ended such a run 0 and that is no success.
+    Never :func:`_status_fail_words`, which says nothing for a run that ended 0. The cause is
+    :func:`_no_folder_cause`'s, which the Loop line's :data:`NO_FOLDER_UNFINISHED_NEXT` shares (C3202)."""
     return (
-        f"install.sh exit 0 on a --no-folder run, but {cause}: an older install.sh ended such a run 0, "
-        "and that is no success"
+        f"install.sh exit 0 on a --no-folder run, but {_no_folder_cause(run)}: an older install.sh ended "
+        "such a run 0, and that is no success"
     )
 
 
@@ -14250,6 +14309,16 @@ def _stop_unread_why(stop: _SyncStop) -> str:
     return "the state file cannot be read"
 
 
+def _not_live_folders(r: _Run) -> list[str] | None:
+    """Each folder sources.toml holds that is not live, as ``<id> (paused)`` or ``<id> (retired)`` in config
+    order, when the config loads and holds no live source but the inbox; else None (B13 round 47 C3209, ruling
+    213: the test ``_loop_line`` and the Loop line's no-folder NEXT read)."""
+    config = r.config
+    if config is None or any(s.kind is not SourceKind.INBOX for s in config.live_sources()):
+        return None
+    return [f"{s.id} ({s.state.value})" for s in config.sources if s.kind is not SourceKind.INBOX]
+
+
 def _attempt_outcome(r: _Run, index: int) -> Outcome:
     """Attempt ``index``'s outcome; the latest attempt's also counts this Mac's doctor FAILs (doctor shows
     the state now, which is the latest attempt's)."""
@@ -14266,6 +14335,7 @@ def _attempt_outcome(r: _Run, index: int) -> Outcome:
         persons_fails=_persons_fails(r, runs) if latest else (),
         earlier=not latest,  # B13 round 27 P123
         late_stops=[s for s, _e in _late_stops(r, index)] if latest else (),  # B13 round 27 P101
+        not_live=_not_live_folders(r) if latest else None,  # B13 round 47 C3209: today's config, the latest's
     )
     rerun = _rerun_note(fr, index)
     if rerun is not None and (outcome.kind, outcome.step) == ("failed", 1):
@@ -14707,10 +14777,11 @@ def _expected_turns_line(
     of the turns: ``sign_in`` is its click line, if one was logged (B13 round 12 N5).
 
     B13 round 46 C3029 (ruling 205; makes worse True for logging the answer): with ``reached_step_3``, an
-    attempt of a prompt from v7 on that reached step 3 (:func:`_reached_step_3`), the line names step 3's
-    at-most question, ``step 3 asks at most once whether to add a folder (not logged)``: like step 1's
-    add-one question on a synced Mac, the prompt asks it, so it is no turn beyond the unavoidable ones and
-    never changes the outcome, where the line said no folder question at all."""
+    attempt that reached step 3's sync loop (:func:`_reached_step_3`), the line names step 3's question,
+    :data:`STEP_3_ASKS_ONCE`: like step 1's add-one question on a synced Mac, the prompt asks it, so it is no
+    turn beyond the unavoidable ones and never changes the outcome, where the line said no folder question at
+    all. B13 round 47 C3272 with C3248 and C3328 (ruling 213): a v41 attempt reads :data:`STEP_3_ASKS_V41`,
+    as v41 asked with no once-a-session limit."""
     layout = att.layout
     # a list that stopped again after the sign-in step 1 asked for: that sign-in is the one turn
     none = (
@@ -14788,8 +14859,8 @@ def _expected_turns_line(
         if signed_in:
             said = f"F{sign_in.line}" if sign_in is not None else "not logged"
             parts.append(f"{sign_in_name} step {step} asked for ({said})")
-        if reached_step_3:  # B13 round 46 C3029
-            parts.append(f"step {layout.report_step} asks at most once whether to add a folder (not logged)")
+        if reached_step_3:  # B13 round 46 C3029; round 47 C3272: v41's words have no "at most once"
+            parts.append(STEP_3_ASKS_V41 if att.version == STEP_3_ASKS_FROM else STEP_3_ASKS_ONCE)
         if no_clicks is not None:
             parts.append(f"Allow clicks: none possible ({no_clicks})")
         else:
@@ -14807,15 +14878,39 @@ def _expected_turns_line(
     return "- expected turns: " + " · ".join(parts)
 
 
+def _loop_run(run: InstallRun) -> bool:
+    """Whether an install run sends the agent into step 3's sync loop (B13 round 47 C3306 with C3337, ruling
+    213): it chose a folder answer other than none, ended 0 with no failed step and no blocking status note
+    (:attr:`InstallRun.completed_none`'s test, never ``rc == 0`` alone) and did not skip its first sync for no
+    sources, where the prompt goes back to step 1's folder question."""
+    first = run.step("first-sync") or {}
+    no_sources = first.get("result") == "skipped" and first.get("note") == "no-sources"
+    return not run.chose_no_folder and run.completed_none and not no_sources
+
+
 def _reached_step_3(att: Attempt, runs: Sequence[InstallRun]) -> bool:
-    """Whether an attempt of a prompt from v7 on (step 3 the sync loop and report) reached step 3: a friction
-    line logged at that step or later, or an install run of the attempt that ended 0, after which the prompt
-    goes on to step 3 (B13 round 46 C3029)."""
+    """Whether the attempt reached step 3's sync loop, where its question whether to add a folder is asked
+    (B13 round 46 C3029): an install run of the attempt that went on to the loop (:func:`_loop_run`), or a
+    friction line logged at step 3 or later.
+
+    B13 round 47 ruling 213 (C3237 with C3204, C3306 and C3337; C3272 with C3248 and C3328): only on the route
+    the attempt's own runs took. After the person's none, completed or failed, the prompt goes to step 3's
+    report, never its loop: an attempt whose last install run chose no folder reached it only when an earlier
+    run without ``--no-folder`` went on to the loop, and a logged step 3 line, which the report step alone
+    can write, is read only for an attempt with no ``--no-folder`` run. And only for an attempt of v41 or
+    later (:data:`STEP_3_ASKS_FROM`), or one whose version is unstated, read with the newest layout as
+    :func:`prompt_layout` reads it: the question did not exist before v41."""
     layout = att.layout
     if layout.version < 7 or layout.report_step != 3:
         return False
+    if att.version is not None and att.version < STEP_3_ASKS_FROM:
+        return False
+    installs = install_runs_only(runs)
+    looped = any(_loop_run(run) for run in installs)
+    if any(run.chose_no_folder for run in installs):
+        return looped
     logged = any(e.step is not None and e.step >= layout.report_step for e in att.events)
-    return logged or any(run.rc == 0 for run in install_runs_only(runs))
+    return logged or looped
 
 
 def _ids(events: Sequence[FrictionEvent]) -> str:
@@ -17673,6 +17768,18 @@ for byte)."""
 _NO_FOLDER_OPENERS = ("NEXT: no folder is synced yet", "NEXT: no folder to sync yet")
 """The two NEXT openers install.sh turns into :data:`NO_FOLDER_CHOSEN_NEXT` on a run that recorded the
 person's none, whatever the config counts (status's rule 2 among them; ruling 191)."""
+NO_FOLDER_UNFINISHED_NEXT = (
+    "the --no-folder run did not finish ({why}): its own NEXT: line says what to do; a re-run keeps "
+    "--no-folder; the folder question is not asked again and no sync starts"
+)
+"""The Loop line's NEXT after a ``--no-folder`` run that did not complete its none (B13 round 47 C3202, ruling
+213; makes worse True for reading the NEXT from install.out, which the run writing the report has not printed
+yet and where the latest NEXT can be an earlier run's completed none): one sentence built from install.log's
+facts alone (:func:`_no_folder_cause`), in place of status's skill-missing, rule-2 or no-folder NEXT, which
+would send the agent to the folder question or the sync loop the prompt forbids after a none."""
+_CHOSEN_LOOP_OPENER = "NEXT: " + NO_FOLDER_CHOSEN
+"""status's own rule-2 NEXT after a completed none (lane B's ``loop.NO_FOLDER_CHOSEN_LOOP_NEXT``, B13 round 47
+C3241, ruling 213), which already carries the person's choice: the Loop line keeps it as status says it."""
 
 
 def _install_sh_said_no_folder(r: _Run, config: Config, found: str) -> str | None:
@@ -17695,8 +17802,15 @@ def _install_sh_said_no_folder(r: _Run, config: Config, found: str) -> str | Non
       ``--source-local`` form there, keyed on the NEXT's text, where the Loop line kept status's.
 
     The config's sources are counted in every state (install.sh's HAVE_SOURCES, paused and retired ones
-    included, never ``live_sources()``)."""
+    included, never ``live_sources()``).
+
+    B13 round 47 ruling 213: after a ``--no-folder`` run that did not complete its none, status's
+    skill-missing, rule-2 or no-folder NEXT reads :data:`NO_FOLDER_UNFINISHED_NEXT` (C3202), the doctor FAIL
+    return kept first; and status's own choice NEXT after a completed none (:data:`_CHOSEN_LOOP_OPENER`) is
+    kept as it is (C3241)."""
     if any(tag == "FAIL" for tag, _name, _detail in r.facts.doctor_problems):
+        return None
+    if found.startswith(_CHOSEN_LOOP_OPENER):  # B13 round 47 C3241: status already said the choice
         return None
     installs = install_runs_only(r.install_runs)
     latest = installs[-1] if installs else None
@@ -17704,8 +17818,11 @@ def _install_sh_said_no_folder(r: _Run, config: Config, found: str) -> str | Non
         return None
     inbox_only = not any(s.kind is not SourceKind.INBOX for s in config.sources)
     missing = found.startswith(_SKILL_MISSING_NEXT)
+    if latest.chose_no_folder and not latest.completed_none:  # B13 round 47 C3202 (ruling 213)
+        sent_on = missing or found.startswith((_RULE2_OPENER, *_NO_FOLDER_OPENERS))
+        return NO_FOLDER_UNFINISHED_NEXT.format(why=_no_folder_cause(latest)) if sent_on else None
     if latest.chose_no_folder:
-        chosen = latest.completed_none and ((inbox_only and missing) or found.startswith(_NO_FOLDER_OPENERS))
+        chosen = (inbox_only and missing) or found.startswith(_NO_FOLDER_OPENERS)
         return NO_FOLDER_CHOSEN_NEXT if chosen else None
     if latest.rc == 0 and found.startswith(_RULE2_OPENER):  # B13 round 46 C3003
         # a local folder by its path too, escaped as step 1's list escapes a row, its braces doubled: the
