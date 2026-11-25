@@ -1659,7 +1659,9 @@ def _cmd_init(args: argparse.Namespace) -> int:
 
 INBOX_NOT_READ = "inbox: not read: "
 """Step 2's line for a kept inbox entry it cannot read (B13 round 45 C2808): install.sh's inbox_not_added
-and the setup report's reader match it beside ``inbox: not added``."""
+matches it beside ``inbox: not added`` and inbox_not_read tells it apart (install.log's
+``inbox=not-read``). No report reads it: the setup report's ``- inbox:`` line prints config.inbox_state
+(§16.280; B13 round 46 C3051)."""
 
 
 def _ensure_inbox(config: Config) -> Config:
