@@ -2565,6 +2565,36 @@ def test_a_utf32_content_types_part_is_parsed_before_any_decode_c3098(tmp_path: 
     assert common_mod._ooxml_family(make_zip(src, parts)) is None
 
 
+def test_the_docs_say_an_office_container_rejection_is_never_cached_c3048_c3101() -> None:
+    """B13 round 46 C3048 with C3101 (ruling 202): since C2924 ``convert_file`` gives an Office name's
+    container rejection before the cache and never stores it, but registry.py's module doc called it "cached
+    and settled, never retried" and policy.py's "cached, settled". Each splits cache from settled now, keeps
+    an encrypted PDF cached, and ``_check_ooxml_family`` names the one family re-read."""
+    from agentsync.convert import cache as cache_mod  # noqa: PLC0415
+    from agentsync.convert import registry as registry_mod  # noqa: PLC0415
+
+    def flat(text: str | None) -> str:
+        return " ".join((text or "").split())
+
+    registry_doc = flat(registry_mod.__doc__)
+    assert "stub that is cached and settled" not in registry_doc
+    assert (
+        "gives this guard's answer before the cache (``_container_screen``) and never stores it"
+        in registry_doc
+    )
+    assert "(an encrypted PDF, an encrypted container under another name) is cached" in registry_doc
+    assert "never reads or writes the cache (C1466)" in registry_doc
+    policy_doc = flat(policy_mod.__doc__)
+    assert "(cached, settled: no retry storm)" not in policy_doc
+    assert "an encrypted PDF is cached, while ``encrypted-office`` under an Office name" in policy_doc
+    assert "is given before the cache and never stored" in policy_doc
+    family_doc = flat(common_mod._check_ooxml_family.__doc__)
+    assert "cached, never retried" not in family_doc
+    assert "except the one re-read ``cycle._Cycle._reread_family_stubs`` gives" in family_doc
+    put_doc = flat(cache_mod.ConverterCache.put.__doc__)
+    assert "never calls this for an Office name's container rejection" in put_doc
+
+
 def _decoy_potx(path: Path) -> Path:
     """A ``.potx`` whose real Override is spelled ``presentation&#109;l`` and whose part holds a Word
     main-type literal in a comment: round 44's family rule (C2708) reads it as a deck, the build before it as

@@ -375,6 +375,11 @@ installed one, and the pypandoc_binary pandoc otherwise (load root cause 2026-10
 The cache is write-once under `Config.cache_dir` (`~/Library/Caches/agentsync`), never in git; OK and UNREADABLE
 results are cached, FAILED/REFUSED are not. `Converter.version()` is the version **as run**.
 `double_conversion_differs` backs the NONDETERMINISTIC land-gate lint.
+Amended 2026-11-24, §16.288 C3101: with §16.283 C2924 and §16.248 C1466, an Office container rejection
+(`encrypted-office`, `not-ooxml` or `empty-output` for an `OOXML_SUFFIXES` name whose bytes are not a ZIP at offset
+0) and any zero-byte file are never cached; such a stub stays settled by the cycle's decision (`_container_moved`),
+not the cache's. An encrypted PDF and a converter's own UNREADABLE answer, a family-mismatch stub among them, are
+cached.
 
 ## 8. Classifier (design §4.3)
 
@@ -2462,6 +2467,8 @@ class ConverterCache:
         """Store ``result`` under ``result.action_key`` if absent (write-once); return True if written.
 
         Only OK and UNREADABLE results are cached; FAILED/REFUSED are not (a transient failure retries).
+        Amended 2026-11-24, §16.288 C3101: ``convert_file`` never calls this for an Office name's container
+        rejection or a zero-byte file, so those UNREADABLE answers are not stored.
         """
 
     def gc(self, live_keys: Iterable[str]) -> int:
@@ -4020,6 +4027,8 @@ class NetworkConfig:
   cached copy of the same content must not be served past an excluded label) and returns a true `REFUSED`
   result; the guard's `UNREADABLE` + `refused: …` reason is also treated as REFUSED (`RowState.REFUSED`).
   Encrypted Office/PDF files stay `UNREADABLE` stubs (cached, no retry storm).
+  Amended 2026-11-24, §16.288 C3101: an encrypted PDF is cached; `encrypted-office` under an Office name whose
+  bytes are not a ZIP at offset 0 is given before the cache and never stored, the stub settled by the cycle.
 - **Step 7, purge queue (C15 req 38).** Each confirmed upstream deletion (explicit tombstone, or absent past the
   breaker) calls `governance.enqueue_purge(state_dir, PurgeSelector(source_id, stable_id),
   PurgeReason.UPSTREAM_DELETED)` when `[governance] purge_on_upstream_delete` (default true). The history
@@ -46860,6 +46869,21 @@ fallback, a UTF-32 mark (which the byte read cannot read) None before the UTF-16
 not decode None as before. Test: `test_convert_family.py::test_a_utf32_content_types_part_is_parsed_before_any_decode_c3098`
 (UTF-32LE and UTF-32BE parts with a U+1D800 comment, each a Word document, not a deck; a UTF-16 part with a lone
 surrogate that does not parse still None).
+
+**An Office name's container rejection is given before the cache and never stored, said where the cache is**
+(C3048 with C3101, one defect; ruling 202; `agentsync.convert.registry`, `agentsync.convert._common`,
+`agentsync.policy`, `agentsync.convert.cache`; docs only). Since C2924 `convert_file` gives the guard's answer for an
+`OOXML_SUFFIXES` name whose bytes are not a ZIP at offset 0 (`encrypted-office`, `not-ooxml`, `empty-output`, and
+`encrypted-pdf` since C3046) before the cache and never calls `cache.put`, and a zero-byte file never reads or writes
+the cache (C1466), but registry.py's module doc still called every such stub "cached and settled, never retried",
+policy.py's "cached, settled", and §7, §15's `ConverterCache.put` and §16.3's step said every UNREADABLE result is
+cached. Each now splits the two: such a stub is settled by the cycle (`_container_moved` decides when it is converted
+again), not the cache, while an encrypted PDF under another name and a converter's own UNREADABLE answer, a
+family-mismatch stub among them, are cached. `_check_ooxml_family`'s "cached, never retried" names the one re-read
+`_reread_family_stubs` gives (C2925). Neither "UNREADABLE is never cached" nor "retried every sync" is written: both
+are false. Dated lines at §7's cache sentence, §15's `ConverterCache.put` and §16.3's encrypted-files sentence, each
+pinned in `test_deploy_pack.py`. Test:
+`test_convert_family.py::test_the_docs_say_an_office_container_rejection_is_never_cached_c3048_c3101`.
 
 ### 16.289 Round 46: the prompt goes to v43 (a none, an unread inbox and a step 2 or step 3 error told from how the run ended), CI's head and limit, the gate's ceiling comment, dated lines, and the guides (2026-11-24, wave B13 round 46 lane D)
 

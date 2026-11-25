@@ -9074,6 +9074,14 @@ _ROUND_44_RB_PARAGRAPH_AMENDS = (
 §16.85's K69 paragraph (the shell report lists CloudStorage too), and C2639's at §16.116's plural paragraph
 (the older-render rewrite's zero walk)."""
 
+_ROUND_46_E_PARAGRAPH_AMENDS = (
+    ("7", "The cache is write-once under `Config.cache_dir`", "§16.288 C3101"),
+    ("15", "Only OK and UNREADABLE results are cached; FAILED/REFUSED are not", "§16.288 C3101"),
+    ("16.3", "Encrypted Office/PDF files stay `UNREADABLE` stubs", "§16.288 C3101"),
+)
+"""Round 46 lane E's dated lines no one claim holds alone: C3101's at §7's cache sentence, at
+``ConverterCache.put`` in §15's code block and at §16.3's encrypted-files sentence, sections its paragraph
+names with no item (B13 round 46 C3048 with C3101, ruling 202)."""
 _ROUND_45_RB_PARAGRAPH_AMENDS = (
     (
         "16.116",
@@ -9363,6 +9371,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_45_D_PARAGRAPH_AMENDS,
         *_ROUND_45_B_PARAGRAPH_AMENDS,
         *_ROUND_45_RB_PARAGRAPH_AMENDS,
+        *_ROUND_46_E_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")

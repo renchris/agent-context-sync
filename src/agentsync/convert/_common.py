@@ -205,9 +205,11 @@ def content_types_tree(types: bytes) -> Any | None:
 
 def _check_ooxml_family(src: Path, family: str, noun: str) -> None:
     """Raise UnreadableSourceError when ``src``'s main part is of another Office family than ``family`` (a
-    Word document named ``.potx``, B13 round 28 I39): one stub, cached, never retried, which the setup
-    report classes "not the type its name says".  Fixed words, the family noun only.  A family that cannot
-    be told, or the converter's own one under another main type (a template, a macro deck), passes."""
+    Word document named ``.potx``, B13 round 28 I39): one stub, cached and not retried, except the one re-read
+    ``cycle._Cycle._reread_family_stubs`` gives after the family rule changed (B13 round 45 C2925; round 46
+    C3048), which the setup report classes "not the type its name says".  Fixed words, the family noun
+    only.  A family that cannot be told, or the converter's own one under another main type (a template, a
+    macro deck), passes."""
     found = _ooxml_family(src)
     if found is not None and found != family:
         raise UnreadableSourceError(

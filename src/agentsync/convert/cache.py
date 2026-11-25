@@ -205,6 +205,9 @@ class ConverterCache:
         """Store ``result`` under ``result.action_key`` if absent (write-once); return True if written.
 
         Only OK and UNREADABLE results are cached; FAILED/REFUSED are not (a transient failure retries).
+        ``convert_file`` never calls this for an Office name's container rejection (``_container_screen``,
+        B13 round 45 C2924) or a zero-byte file (C1466), so those UNREADABLE answers are not stored either
+        (B13 round 46 C3101).
         """
         if result.status not in _CACHEABLE:
             return False
