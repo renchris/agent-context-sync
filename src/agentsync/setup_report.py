@@ -20516,9 +20516,8 @@ def _add_listed(
         shared = provider.startswith("OneDrive-SharedLibraries-")
         fresh = red._known(name) is None
         red.add("library" if shared and depth == 2 else "folder", name, fuzzy=True)
-        if (
-            names
-        ):  # an escaped row: its list spelling is the one a plain row may have (C3082), so after the loop
+        # an escaped row: its list spelling is the one a plain row may have (C3082), so after the loop
+        if names:
             late.append((name, ""))
         else:
             _alias_escaped(red, name)  # its list, $'...' and safe_text spellings too (ruling 126)
