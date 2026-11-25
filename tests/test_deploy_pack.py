@@ -5183,14 +5183,17 @@ def test_both_readmes_name_the_unread_inbox_forms_and_the_no_folder_exit_c2865_c
     the pinned list both READMEs say a file, a link to a file or a dangling link reads `not added (<folder> is
     not a folder)` (a link to a folder reads live), name `not read (<why>)` and step 2's own `inbox state: not
     checked (<why>)` (lane RB's ruling 194 line); docs/deploy/README.md's exit-2 sentence names
-    `--no-folder`'s exit 0 and its person's-choice NEXT (ruling 191). Held to install.sh's own words."""
+    `--no-folder`'s exit 0 and its person's-choice NEXT (ruling 191). Held to install.sh's own words. B13
+    round 47 C3213 (ruling 210): the three kinds left out a looping link and a link through a file; both
+    READMEs take lane B's one phrase, `a file or a link that does not lead to a folder`."""
     script = SCRIPTS[0].read_text(encoding="utf-8")
     assert "inbox state: not checked (" in script and "it did not finish within 10 s" in script
     chose = "the person chose no folder, so this Mac syncs none of their folders: go on to the report;"
     assert chose in script
     unread = (
-        "It reads `not added (<folder> is not a folder)` when a file, a link to a file or a dangling link has"
-        " the inbox's name, whatever `sources.toml` lists, and `not read (<why>)` when agentsync cannot read"
+        "It reads `not added (<folder> is not a folder)` when a file or a link that does not lead to a folder"
+        " has the inbox's name, whatever `sources.toml` lists, and `not read (<why>)` when agentsync cannot"
+        " read"
         " what is on that name. Step 2 prints `inbox state: not checked (<why>)` instead when its own read of"
         " that state did not finish (the read raised, stopped at its 10-second limit or printed nothing), so"
         " it cannot say whether the inbox is live; `~/.local/bin/agentsync status` reads it again."

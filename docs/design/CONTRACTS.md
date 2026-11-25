@@ -47571,6 +47571,13 @@ Each ruling keeps its words and takes a `(2026-11-25) Ruling 204 amends this one
 as rulings 181, 191, 195 and 197 did (ruling 186), dated with this commit's round, not round 46's. Test:
 `tests/test_deploy_pack.py::test_rulings_130_and_194_take_ruling_204s_dated_lines_c3255`.
 
+**Both READMEs name a not-a-folder inbox in lane B's one phrase** (C3213; ruling 210; `README.md`,
+`docs/deploy/README.md`). Both said `not added (<folder> is not a folder)` comes from "a file, a link to a file or a
+dangling link", which leaves out a looping link and a link through a file, both of which `inbox_state` reads as not a
+folder. Both now say `a file or a link that does not lead to a folder`, the phrase lane B's alarm and note print;
+the prompt's parenthetical takes it in v44. Test:
+`tests/test_deploy_pack.py::test_both_readmes_name_the_unread_inbox_forms_and_the_no_folder_exit_c2865_c2869`.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units
