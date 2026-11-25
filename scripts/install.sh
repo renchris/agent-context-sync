@@ -2721,7 +2721,7 @@ output_word() {
 two_letter_word() {
 	case "$1" in
 	ad | ai | an | as | at | be | bf | bv | by | bz | ca | cd | cf | cr | cs | db | dd | df | do | ds | dt | en | eq | fa | fc | ff | fm | gb | gc | gh | go | gp) return 0 ;;
-	gz | id | if | im | in | is | it | js | kt | lc | ld | le | ls | mb | md | ml | mp | ms | mv | my | nf | no | np | nr | oe | of | ok | on | or | os | ou | ps) return 0 ;;
+	gz | id | if | im | in | is | it | js | kt | lc | ld | le | ls | mb | md | me | ml | mp | ms | mv | my | nf | no | np | nr | oe | of | ok | on | or | os | ou | ps) return 0 ;;
 	py | rb | rc | rd | re | rm | ro | rw | rx | sh | sm | so | sw | sz | ta | to | tr | ts | tz | up | us | uv | vb | vn | wc | we | xm | xz | ya | za) return 0 ;;
 	esac
 	return 1
@@ -4413,9 +4413,17 @@ redaction_pairs() {
 		add_pair "$v" "~<user>${rest:+/<path>}" c
 		# a head holding a blank names no account: cut only inside the whole value, never alone (lane RA's review)
 		# (C3304: a blank as Python's isspace names it, under any locale)
+		# C3247: a head of any length, anchored on its ~ (add_forms, no 3-character floor), and the name alone
+		# from 3 characters, or of 2 as written past the report words and the two-letter word list, as
+		# _register_refused registers them; one character alone never
 		py_has_space "${head#\~}" || {
-			add_pair "$head" "~<user>" c
-			report_word "$(recase lower "${head#\~}")" || add_pair "${head#\~}" "<user>" w
+			add_forms "$head" "~<user>" c
+			x="${head#\~}"
+			if [ "${#x}" -ge 3 ]; then
+				report_word "$(recase lower "$x")" || add_pair "$x" "<user>" w
+			elif [ "${#x}" -eq 2 ] && ! report_word "$(recase lower "$x")" && ! two_letter_word "$(recase lower "$x")"; then
+				add_forms "$x" "<user>" w
+			fi
 		}
 		# under Library/CloudStorage/<entry>, the folders after the entry: CloudStorage itself is no folder
 		case "$rest" in Library/CloudStorage/*/*) x="${rest#Library/CloudStorage/}" && rest="${x#*/}" ;; Library/CloudStorage/*) rest="" ;; esac
