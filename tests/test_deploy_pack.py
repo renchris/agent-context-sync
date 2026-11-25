@@ -4748,6 +4748,35 @@ def test_no_report_reads_step_2s_inbox_lines_c3051() -> None:
     ) in contracts
 
 
+def test_g12_and_h43_give_a_stopped_attempt_the_stopped_option_c3052() -> None:
+    """B13 round 46 C3052: round 45's C2803 gave a stopped attempt the form's Stopped option, but G12's H42
+    line and H43's guide paragraph still said its field is ``Failed at step 1 (preflight)``. Each keeps its
+    words and a dated line in C2803's name, held to ``setup_report.STOPPED_FORM_OPTION``, says it is
+    stopped."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    option = setup_report.STOPPED_FORM_OPTION
+    assert option == "Stopped at step 1 (preflight)" and option in setup_report.FORM_OUTCOME_OPTIONS
+    sections = dict(_contracts_numbered_sections())
+    g12 = _contracts_section("**G12: the issue title names the attempt's own step.**", "\n\n")
+    g12 = " ".join(g12.split())
+    assert "its `outcome` field stays `Failed at step 1 (preflight)`." in g12  # its words kept
+    assert (
+        f"Amended 2026-11-24, §16.289 C3052 (by §16.280 C2803): its `outcome` field is the form's `{option}`"
+        " (`STOPPED_FORM_OPTION`), never step 1's Failed option;"
+    ) in g12
+    [h43] = [
+        " ".join(b.split())
+        for b in sections["16.73"].split("\n\n")
+        if "**The stopped outcome and the title's step name are in the reviewer's guide** (H43" in b
+    ]
+    assert h43.endswith(
+        "**Amended 2026-11-24, §16.289 C3052 (by §16.280 C2803):** the guide's bullet names the form's"
+        f" `{option}` option, not `Failed at step 1 (preflight)`; a stopped attempt's title and field both"
+        " say stopped."
+    ), h43[-300:]
+
+
 def test_the_v43_not_used_rule_covers_a_step2_refused_before_agentsync_ran_c3018(tmp_path: Path) -> None:
     """B13 round 46 C3018 (ruling 205): H26 let a stop before step 2 write one ``## Not used`` line, since no
     part of agentsync had run; a step 2 refused on AGENTSYNC_CONFIG exits 2 before record_flush, installing

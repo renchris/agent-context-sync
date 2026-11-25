@@ -16369,6 +16369,8 @@ gives it to a v7 and later attempt failed at step 3, as the title does; `Failed 
 stays for v6 and v5 links, so triage of step 3 now adds both options (`FORM_OUTCOME_OPTIONS`).
 Amended 2026-10-13, §16.69 H42: a `stopped` attempt's title reads `Stopped at step 1 (<the step's name in its own
 layout>)`, as its Summary does; its `outcome` field stays `Failed at step 1 (preflight)`.
+Amended 2026-11-24, §16.289 C3052 (by §16.280 C2803): its `outcome` field is the form's `Stopped at step 1
+(preflight)` (`STOPPED_FORM_OPTION`), never step 1's Failed option; title and field both say stopped.
 
 **Amended 2026-10-13, §16.73 H67:** "a v7 to v14 attempt" is every v7 or later attempt: `prompt_layout` reads every
 later version with v7's layout until one adds an entry. A v5 title names v5's own step number and name too (its step 3 is `install and start`, which
@@ -17552,6 +17554,8 @@ current one`) stays `failed at step 1`, with a note naming both readings, since 
 window looks the same.
 Amended 2026-10-18, §16.121 S67 (by §16.110 Q25): v7's step 2 is `install and start`, the form's own option, so
 only a v5 step still maps to the option for the same work.
+**Amended 2026-11-24, §16.289 C3052 (by §16.280 C2803):** the guide's bullet names the form's `Stopped at step 1
+(preflight)` option, not `Failed at step 1 (preflight)`; a stopped attempt's title and field both say stopped.
 
 **A label-escalation entry stays queued while its file is published, in both guides** (H58, H63). Since §16.62
 G30, `governance.KEPT_REASONS` holds `label-escalation` as well as `upstream-deleted`: a run of the queue skips such
@@ -47180,6 +47184,14 @@ functions, and lane B rewords `cli.INBOX_NOT_READ`'s docstring in its own commit
 inbox_state already gives the not-read state. Test: `tests/test_deploy_pack.py`
 `::test_no_report_reads_step_2s_inbox_lines_c3051` (neither report's source names the line; install.sh's two
 functions do).
+
+**A stopped attempt's field is the Stopped option in G12 and H43 too** (C3052; amends §16.64 G12, §16.73 H43). Round
+45's C2803 gave a stopped attempt the form's `Stopped at step 1 (preflight)` option (`STOPPED_FORM_OPTION`) and took
+dated lines at §16.64 G23 and §16.69 H42, but two statements kept the Failed option: G12's H42 dated line ("its
+`outcome` field stays `Failed at step 1 (preflight)`") and H43's guide paragraph ("the form's `Failed at step 1
+(preflight)`"). Each keeps its words and takes a dated line in C2803's name; lane RA's C3035 with C3053 corrects the
+docstrings that name the option. Test: `tests/test_deploy_pack.py`
+`::test_g12_and_h43_give_a_stopped_attempt_the_stopped_option_c3052` (held to `setup_report.STOPPED_FORM_OPTION`).
 
 **CI's time is the time of round 45's jobs, the head is 92 and the limit 112** (C3060; `CLAUDE.md`,
 `docs/lanes/COMMON.md`, ci.yml, `tests/test_convert_recording.py`; dated line at §16.144 W70). Round 45's eight ci jobs
