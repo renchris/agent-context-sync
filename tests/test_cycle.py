@@ -25,7 +25,7 @@ import threading
 import time
 import tomllib
 import zlib
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, NoReturn
@@ -64,10 +64,10 @@ from agentsync.convert.registry import Registry
 from agentsync.convert.speech import SpeechEngine
 from agentsync.cycle import RecoveryAction, recover, run_cycle
 from agentsync.errors import ConversionError, DatalessRefusedError, LockHeldError, MaterialiseError
-from agentsync.frontmatter import parse_frontmatter, render_frontmatter
+from agentsync.frontmatter import parse_frontmatter, render_frontmatter, split_frontmatter
 from agentsync.graph.client import GraphClient
 from agentsync.graph.drive import DriveArm
-from agentsync.manifest import Manifest, parse_convert_options
+from agentsync.manifest import ItemRow, Manifest, OutputRow, parse_convert_options
 from agentsync.model import (
     ChangeOp,
     CycleMode,
@@ -95,6 +95,7 @@ from test_convert_builders import (
     build_picture_pdf,
     build_potx,
     build_vsdx,
+    build_xlsx_rich,
     eml_bytes,
     msg_bytes,
     page_picture,
@@ -7921,6 +7922,63 @@ def _waiting_stub_at(
 STUB_RENDER_NOW = publish_mod.STUB_RENDER
 
 
+def _replaced_tombstone_at_7(
+    config: Config, folder: Path, sync: Callable[[], CycleReport]
+) -> tuple[str, str]:
+    """A real replaced tombstone in a home at STUB_RENDER 7 (B13 round 46 C3041 with C3095, ruling 201): a
+    workbook first read as a whole-page stub (bytes no reader opens) is republished as its ``.d/`` pages, so
+    the stub's page becomes a ``unit-removed`` tombstone with ``superseded_by``; it is then aged to the
+    heading an older build wrote, ``# [NO LONGER PRODUCED]``, with that page's own hashes stored in its row so
+    it stays intact (else ``_rerender_tombstones`` leaves it to the repair path), committed, and the meta set
+    to 7, the manifest recording that commit's tree as its own. The tombstone's path and its successor."""
+    book = folder / "Contoso Book.xlsx"
+    book.write_bytes(b"not a workbook\n")
+    sync()
+    build_xlsx_rich(book)
+    os.utime(book, (1_900_000_000, 1_900_000_000))
+    sync()
+    repo, at = config.docs_repo, str(slug.mirror_rel_path(SID, "Contoso Book.xlsx"))
+    fm, body = page(repo, at)
+    successor = fm["superseded_by"]
+    assert fm["status"] == "deleted" and successor and successor.endswith(".xlsx.d/00-index.md"), fm
+    assert "\n# [REPLACED] " in f"\n{body}", body
+    aged = (repo / at).read_text(encoding="utf-8").replace("# [REPLACED] ", "# [NO LONGER PRODUCED] ")
+    (repo / at).write_text(aged, encoding="utf-8")
+    with Manifest(config.state_paths.db) as m:
+        [out] = [o for o in m.iter_outputs(source_id=SID) if o.output_path == at]
+        assert out.status is OutputStatus.TOMBSTONE
+        m.replace_outputs(
+            SID,
+            out.stable_id,
+            [
+                dataclasses.replace(
+                    o,
+                    page_sha256=publish_mod._sha256_text(aged),
+                    rendered_sha256=publish_mod._sha256_text(split_frontmatter(aged)[1]),
+                )
+                if o.output_path == at
+                else o
+                for o in m.outputs_for(SID, out.stable_id)
+            ],
+        )
+        m.set_meta(cycle_mod._STUB_RENDER_META, "7")
+    git(repo, "commit", "-qam", "a replaced tombstone from before C2812")
+    with Manifest(config.state_paths.db) as m:  # as the older build's own commit: no recovery resets it
+        m.set_tree_sha(git(repo, "rev-parse", "HEAD^{tree}").strip())
+    return at, successor
+
+
+def _assert_replaced(config: Config, at: str, successor: str) -> None:
+    """The tombstone at ``at`` reads as this build renders a replaced page (C2812, C2646, C2613)."""
+    fm, body = page(config.docs_repo, at)
+    assert (fm["status"], fm["superseded_by"]) == ("deleted", successor), fm
+    lines = body.splitlines()
+    heading = next(n for n, line in enumerate(lines) if line.startswith("# ["))
+    assert lines[heading].startswith("# [REPLACED] "), lines[: heading + 1]
+    first = next(line for line in lines[heading + 1 :] if line.strip())
+    assert first.startswith(f"This page was replaced by {successor} on "), first
+
+
 def test_a_home_at_stub_render_7_renders_its_waiting_stubs_and_tombstones_again_c2851(
     tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -7931,24 +7989,138 @@ def test_a_home_at_stub_render_7_renders_its_waiting_stubs_and_tombstones_again_
     nothing."""
     assert STUB_RENDER_NOW == 8
     config, _ = _waiting_stub_at(tmp_path, meetings, monkeypatch, 7)
+    # the tombstone is seeded under rendering 7, so its seeding syncs leave the waiting stub as it is
+    for mod in (publish_mod, cycle_mod):
+        monkeypatch.setattr(mod, "STUB_RENDER", 7)
+    monkeypatch.setattr(publish_mod, "STUB_WAITING_LABEL", "REFUSED")
+    at, successor = _replaced_tombstone_at_7(config, meetings, lambda: run(config, mode=None))
+    for mod in (publish_mod, cycle_mod):
+        monkeypatch.setattr(mod, "STUB_RENDER", STUB_RENDER_NOW)
+    monkeypatch.setattr(publish_mod, "STUB_WAITING_LABEL", "WAITING")
     walked: list[str] = []
+    counts: list[int] = []
     again = cycle_mod._Cycle._rerender_tombstones
 
-    def spy(self: Any, source_id: str) -> int:
+    def spy(self: Any, source_id: str) -> tuple[int, bool]:
         walked.append(source_id)
-        return again(self, source_id)
+        got = again(self, source_id)
+        counts.append(got[0])
+        return got
 
     monkeypatch.setattr(cycle_mod._Cycle, "_rerender_tombstones", spy)
     assert run(config, mode=None).exit_code == 0
     fm, body = _recording_page(config, MEETING)
     assert "\n# [WAITING] " in body and fm["summary"].startswith("waiting: "), (fm, body)
-    assert walked, "every tombstone is rendered again on a home at 7"
+    assert sum(counts) >= 1, (walked, counts)  # a real tombstone was rendered again, not only walked
+    _assert_replaced(config, at, successor)
     with Manifest(config.state_paths.db) as m:
         assert m.get_meta(cycle_mod._STUB_RENDER_META) == "8"
     walked.clear()
     assert run(config, mode=None).commit_sha is None, "the next sync writes nothing"
     assert walked == [], "once per version"
     assert rec.worked == [], "no recording was read"
+
+
+def _stub_render_meta(config: Config) -> str | None:
+    with Manifest(config.state_paths.db) as m:
+        return m.get_meta(cycle_mod._STUB_RENDER_META)
+
+
+@pytest.mark.parametrize("fault", ["raises", "mode-000"])
+def test_a_tombstone_not_rendered_again_holds_the_stub_render_meta_c3040(
+    sample_config: Config,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    fault: str,
+) -> None:
+    """B13 round 46 C3040 with C3106 and C3092 (ruling 201): _rerender_tombstones caught a failed render and
+    read an unreadable page as an edited one, returned only a count, and the meta went to 8 over a tombstone
+    left in its old heading for good. A tombstone whose render raises OSError once, or whose page is at mode
+    000, keeps the meta at 7, and the next readable sync renders it and writes 8."""
+    if fault == "mode-000" and os.geteuid() == 0:
+        pytest.skip("root reads a mode-000 page")
+    at, successor = _replaced_tombstone_at_7(sample_config, local_source_dir, lambda: run(sample_config))
+    path = sample_config.docs_repo / at
+    aged = path.read_text(encoding="utf-8")
+    real = Publisher.rerender_tombstone
+    if fault == "raises":
+
+        def once(self: Publisher, out: OutputRow, **kw: Any) -> OutputRow | None:
+            monkeypatch.setattr(Publisher, "rerender_tombstone", real)
+            raise OSError(errno.ENOSPC, "No space left on device")
+
+        monkeypatch.setattr(Publisher, "rerender_tombstone", once)
+    else:
+        path.chmod(0)
+    try:
+        with caplog.at_level(logging.WARNING, logger="agentsync"):
+            run(sample_config)  # the land gate may refuse a page it cannot read; the cycle runs on
+        meta = _stub_render_meta(sample_config)
+    finally:
+        path.chmod(0o644)
+    assert "a tombstone could not be rendered again" in caplog.text, caplog.text
+    assert meta == "7", "a tombstone left unrendered keeps the meta, so the next sync tries again"
+    assert path.read_text(encoding="utf-8") == aged
+    assert run(sample_config).exit_code == 0
+    _assert_replaced(sample_config, at, successor)
+    assert _stub_render_meta(sample_config) == "8"
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads a mode-000 page")
+def test_an_unreadable_refused_stub_holds_the_stub_render_meta_c3106(
+    sample_config: Config,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """B13 round 46 C3106 with C3092 (ruling 201): _pages_intact and _stub_again read an unreadable refused
+    stub as no stub, the loop went on without marking it pending, and the meta went to 8, so the stub never
+    took the new rendering. Its page at mode 000 logs the warning and keeps the meta at 7; the next readable
+    sync calls _stub_again on it and writes 8."""
+    (local_source_dir / "projects" / "blob.xyz").write_bytes(b"contoso\n")
+    assert run(sample_config).exit_code == 0
+    path = sample_config.docs_repo / slug.mirror_rel_path(SID, "projects/blob.xyz")
+    assert page(sample_config.docs_repo, str(slug.mirror_rel_path(SID, "projects/blob.xyz")))[0]["status"]
+    with Manifest(sample_config.state_paths.db) as m:
+        m.set_meta(cycle_mod._STUB_RENDER_META, "7")
+    seen: list[str] = []
+    again = cycle_mod._Cycle._stub_again
+
+    def spy(self: Any, src: Any, row: ItemRow) -> Any:
+        got = again(self, src, row)
+        seen.append(row.rel_path)
+        return got
+
+    monkeypatch.setattr(cycle_mod._Cycle, "_stub_again", spy)
+    path.chmod(0)
+    try:
+        with caplog.at_level(logging.WARNING, logger="agentsync"):
+            run(sample_config)
+        meta = _stub_render_meta(sample_config)
+    finally:
+        path.chmod(0o644)
+    assert "a stub could not be rendered again" in caplog.text, caplog.text
+    assert meta == "7"
+    assert "projects/blob.xyz" not in seen, "the unreadable page raised before it was read as no stub"
+    run(sample_config)
+    assert "projects/blob.xyz" in seen
+    assert _stub_render_meta(sample_config) == "8"
+
+
+def test_hand_edited_stubs_and_tombstones_still_let_the_stub_render_meta_through_c3106(
+    sample_config: Config, local_source_dir: Path
+) -> None:
+    """B13 round 46 C3106 (ruling 201): only a page that cannot be read now is pending; a hand-edited stub
+    and tombstone are the repair path's and never hold the meta, which would walk every stub and tombstone on
+    every full sync for good."""
+    (local_source_dir / "projects" / "blob.xyz").write_bytes(b"contoso\n")
+    at, _ = _replaced_tombstone_at_7(sample_config, local_source_dir, lambda: run(sample_config))
+    stub = sample_config.docs_repo / slug.mirror_rel_path(SID, "projects/blob.xyz")
+    for path in (stub, sample_config.docs_repo / at):
+        path.write_text(path.read_text(encoding="utf-8") + "\nedited by hand\n", encoding="utf-8")
+    run(sample_config)
+    assert _stub_render_meta(sample_config) == "8"
 
 
 @pytest.mark.usefixtures("rec")

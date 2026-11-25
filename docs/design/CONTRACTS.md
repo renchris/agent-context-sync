@@ -46351,6 +46351,11 @@ it after a failed page lost the upgrade for good (C2918's finder fix, makes wors
 `# [WAITING]` and every tombstone walked after one sync, no commit and no walk after the next),
 `test_an_unreadable_waiting_stub_is_rendered_once_it_is_readable_c2918` (a waiting stub at mode 000: the warning, the
 meta left at 7, `# [WAITING]` once it is readable).
+Amended 2026-11-24, §16.287 C3106, C3092, C3040, C3041, C3095: two more sources mark the run pending, a refused or
+quarantined stub whose live page is a regular file that cannot be read now (`_stub_again` raises OSError) and a
+tombstone whose page cannot be read or whose `rerender_tombstone` raised PublishError or OSError (the second value
+`_rerender_tombstones` returns); a missing, linked, hand-edited or reaped page, or one that matches its row and does
+not parse, holds nothing. The C2851 test now renders a real replaced tombstone, not only walks its source.
 
 **A re-read whose only remaining files wait for a converter prints only their note** (C2922). `loop._reread_notes`
 tested an OCR outage before "only converter waits remain", so a run that read some files, with `reread_left` 0 and
@@ -46822,6 +46827,26 @@ skill check and status. `skill._config_dir` catches AccountHomeError only: skill
 never reported missing), and write_skill logs one warning, `skill: no copy under $CLAUDE_CONFIG_DIR: <why>`, and
 never raises (§16.16). Test:
 `test_a_claude_config_dir_naming_another_home_leaves_its_copy_out_and_the_sync_ends_ok`.
+
+**The STUB_RENDER marker moves only when every stub and tombstone was rendered** (C3106 with C3092 and C3040, C3041
+with C3095; ruling 201, amending ruling 195; amends §16.282 C2851). C2918 marked the run pending for the waiting
+recording loop and the plan or write try only: a tombstone whose `rerender_tombstone` failed was logged and skipped,
+an unreadable tombstone hashed to None and read as a hand-edited page, and an unreadable refused or quarantined stub
+read as no stub, so the meta went to 8 and those pages kept their old rendering for good. `_rerender_tombstones`
+returns `(rewritten, pending)`, pending on PublishError or OSError from `rerender_tombstone` and on a regular, non-link
+page whose digest cannot be read, each logged `a tombstone could not be rendered again`; `_stub_again` raises OSError
+when its single stub page is a regular file it cannot read, and the caller logs `a stub could not be rendered again`
+and marks the run pending. A page that is not a tombstone, has no row or no `page_sha256`, is due for reaping, is a
+link, is missing, was hand-edited or renders None, and a stub page that matches its row and does not parse
+(UnicodeDecodeError, FrontmatterError), stay silent skips: no retry changes them, and holding the meta for them would
+walk every stub and tombstone on every full sync. The C2851 test seeded no tombstone, so its `assert walked` held for
+any configured source (C3041, C3095): it now republishes a whole-page stub as a workbook's `.d/` pages, ages the
+replaced tombstone to `# [NO LONGER PRODUCED]` with its new hashes stored, and asserts the spy's counts sum to at least
+1, `# [REPLACED]`, status deleted, the same `superseded_by` and the successor named in the first body sentence. Tests:
+`test_a_home_at_stub_render_7_renders_its_waiting_stubs_and_tombstones_again_c2851`,
+`test_a_tombstone_not_rendered_again_holds_the_stub_render_meta_c3040` (a render raising OSError once, a page at mode
+000), `test_an_unreadable_refused_stub_holds_the_stub_render_meta_c3106`,
+`test_hand_edited_stubs_and_tombstones_still_let_the_stub_render_meta_through_c3106`.
 
 ### 16.288 Round 46: the converters: a kept Office answer read again only from the bytes and the fetch that were read, the container answers and the family parse corrected, and speech's CA words (2026-11-24, wave B13 round 46 lane E)
 

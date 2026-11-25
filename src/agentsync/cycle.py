@@ -3037,7 +3037,11 @@ class _Cycle:
         meta key is written after the last row, so an interrupted run tries again, only on a run that covers
         every live source, and only when no stub was left unrendered: a stub that could not be read, planned
         or written is logged, the run goes on, and the next sync tries again, where writing the key would have
-        lost its upgrade for good (B13 round 45 C2918, ruling 195)."""
+        lost its upgrade for good (B13 round 45 C2918, ruling 195). A refused or quarantined stub whose live
+        page cannot be read (:meth:`_stub_again` raises OSError) and a tombstone that could not be read or
+        rendered (:meth:`_rerender_tombstones`' second value) hold the key the same way; a page that is
+        missing, a link, hand-edited or due for reaping, or that matches its row and still does not parse, is
+        no retry and holds nothing (B13 round 46 C3106 with C3092 and C3040, ruling 201)."""
         if self.manifest.get_meta(_STUB_RENDER_META) == str(STUB_RENDER):
             return
         if {s.id for s in self.config.live_sources()} - {s.id for s in self.selected}:
@@ -3047,7 +3051,12 @@ class _Cycle:
             for row in list(
                 self.manifest.iter_items(src.id, states=(RowState.REFUSED, RowState.QUARANTINED))
             ):
-                result = self._stub_again(src, row)
+                try:  # a page that cannot be read now is a retry, never a skip (C3106 with C3092)
+                    result = self._stub_again(src, row)
+                except OSError as exc:
+                    log.warning("%s: a stub could not be rendered again (%s); it keeps its page", src.id, exc)
+                    pending = True
+                    continue
                 if result is None:
                     continue
                 outs = self.manifest.outputs_for(row.source_id, row.stable_id)
@@ -3092,7 +3101,9 @@ class _Cycle:
             o.source_id for o in self.manifest.iter_outputs() if o.status is OutputStatus.TOMBSTONE
         }
         for sid in sorted(ids):
-            rewritten += self._rerender_tombstones(sid)
+            count, failed = self._rerender_tombstones(sid)
+            rewritten += count
+            pending = pending or failed
         if not pending:
             self.manifest.set_meta(_STUB_RENDER_META, str(STUB_RENDER))
         if rewritten:
@@ -3405,18 +3416,22 @@ class _Cycle:
             return content_policy.page_says_withheld(fm.reason, fm.summary, body)
         return None
 
-    def _rerender_tombstones(self, source_id: str) -> int:
+    def _rerender_tombstones(self, source_id: str) -> tuple[int, bool]:
         """Re-render the intact tombstone pages of ``source_id`` in this version's layout (B13 round 6
         G77): one written before Q9 kept its heading above the banner until it was reaped. Each is rebuilt
         from its own frontmatter, so its title, path and redaction stay; a page that is missing or changed
         is the repair path's. Its output row takes the new hashes, or that repair would see drift. The
-        count.
+        count, and whether a tombstone is pending: a regular page whose digest cannot be read, or one
+        ``rerender_tombstone`` failed on (PublishError or OSError), is logged and holds the STUB_RENDER key
+        (B13 round 46 C3106 with C3092 and C3040, ruling 201); a page that is not a tombstone, has no row or
+        no ``page_sha256``, is due for reaping, is a link, is missing, was hand-edited or renders None is a
+        silent skip.
 
         A tombstone row with no ``last_commit`` (compaction squashed it) first takes the newest commit on
         its path whose page is not a tombstone, so the page gets an exact ``git show`` line: the rewrite is
         itself a tombstone commit, and "the commit before this tombstone" would then open the older one
         (B13 round 7 H77). With none in history it is still rewritten, banner first."""
-        rewritten, today = 0, self.today()
+        rewritten, today, pending = 0, self.today(), False
         for out in list(self.manifest.iter_outputs(source_id=source_id)):
             path = self.repo / out.output_path
             tomb = self.manifest.get_tombstone(out.output_path)
@@ -3427,8 +3442,17 @@ class _Cycle:
                 or out.page_sha256 is None
                 or path.is_symlink()
                 or not path.is_file()
-                or _sha256_file(path) != out.page_sha256
             ):
+                continue
+            try:  # an unreadable page is a retry, not an edited one (C3092)
+                digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            except OSError as exc:
+                log.warning(
+                    "%s: a tombstone could not be rendered again (%s); it keeps its page", source_id, exc
+                )
+                pending = True
+                continue
+            if digest != out.page_sha256:
                 continue
             if tomb.last_commit is None and (found := self._content_commit(out.output_path)) is not None:
                 self.manifest.add_tombstone(dataclasses.replace(tomb, last_commit=found))
@@ -3438,6 +3462,7 @@ class _Cycle:
                 log.warning(
                     "%s: a tombstone could not be rendered again (%s); it keeps its page", source_id, exc
                 )
+                pending = True
                 continue
             if new is None:
                 continue
@@ -3446,7 +3471,7 @@ class _Cycle:
                 MirrorChange(ChangeOp.MODIFIED, out.output_path, out.source_id, out.stable_id)
             )
             rewritten += 1
-        return rewritten
+        return rewritten, pending
 
     def _content_commit(self, output_path: str) -> str | None:
         """The newest commit on ``output_path`` whose page there is not a tombstone (``status: deleted``),
@@ -3462,12 +3487,20 @@ class _Cycle:
 
     def _stub_again(self, src: SourceConfig, row: ItemRow) -> ConversionResult | None:
         """The result ``row``'s stub was published from, rebuilt from stored state alone, or None when it
-        cannot be (see ``_rerender_stubs``) or its page is not an intact single stub."""
+        cannot be (see ``_rerender_stubs``) or its page is not an intact single stub. Raises OSError when the
+        single stub page is a regular file, not a link, that cannot be read now, so the caller holds the
+        STUB_RENDER key for a retry; a page that matches its row and still does not parse (UnicodeDecodeError,
+        FrontmatterError) is None, which no retry changes (B13 round 46 C3106 with C3092, ruling 201)."""
         reason = row.state_reason or ""
         outs = self.manifest.outputs_for(row.source_id, row.stable_id)
         live = [o for o in outs if o.status is not OutputStatus.TOMBSTONE]
         stub = OutputStatus.REFUSED if row.state is RowState.REFUSED else OutputStatus.QUARANTINED
-        if len(live) != 1 or live[0].status is not stub or not _pages_intact(self.repo, outs):
+        if len(live) != 1 or live[0].status is not stub:
+            return None
+        page = self.repo / live[0].output_path
+        if not page.is_symlink() and page.is_file():
+            page.read_bytes()  # raises OSError for a page this run cannot read (mode 000, an I/O error)
+        if not _pages_intact(self.repo, outs):
             return None
         if _no_converter_stub(row):
             named = self._no_converter(src, row)
@@ -3481,8 +3514,8 @@ class _Cycle:
             # The page's own hashes: a stub made from the name has none, though a re-read stored the row's
             # since, and a later rendering must not differ from this one by them alone.
             try:
-                fm, _body = parse_mirror_page((self.repo / live[0].output_path).read_text(encoding="utf-8"))
-            except (OSError, UnicodeDecodeError, FrontmatterError):
+                fm, _body = parse_mirror_page(page.read_text(encoding="utf-8"))
+            except (UnicodeDecodeError, FrontmatterError):
                 return None
             out = live[0]
             return ConversionResult(
@@ -3497,8 +3530,8 @@ class _Cycle:
                 reason=reason,
             )
         try:
-            fm, _body = parse_mirror_page((self.repo / live[0].output_path).read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, FrontmatterError):
+            fm, _body = parse_mirror_page(page.read_text(encoding="utf-8"))
+        except (UnicodeDecodeError, FrontmatterError):
             return None
         # What the page already says about the read that made it (a local label refusal is a converter's,
         # which read the label): carried over as it is, so only the rendering can differ.
