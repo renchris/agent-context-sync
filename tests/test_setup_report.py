@@ -30174,3 +30174,52 @@ def test_an_inbox_target_is_judged_by_where_it_lies_c3055(case: str) -> None:
     if case == "documents":
         assert red._known("Kestrel Matters") is not None and red._known("Documents") is None
     assert not red.private_only
+
+
+def test_the_loop_line_says_install_shs_own_form_on_status_rule_2_next_c3003(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 46 C3003 (amending ruling 191): a bare install.sh run that ended 0 on status's rule-2 NEXT
+    (`no folder is synced yet: ask the operator ...`, which names add-source and a sync) now says its own
+    `--source-local` form, with a clause naming each paused or retired folder as the person's edit of
+    sources.toml; the Loop line kept status's words. It says install.sh's, from the one constant, keyed on the
+    NEXT's text whatever the config counts; a failed run and a doctor FAIL keep status's NEXT."""
+    rule2 = (
+        "NEXT: no folder is synced yet: ask the operator which folders to sync (`~/.local/bin/agentsync "
+        "--list-folders`), then run `~/.local/bin/agentsync add-source <folder>` and a sync"
+    )
+    hooks = setup_report.ReportHooks(loop_next=lambda _config: [rule2])
+    cfg = fake_mac["config"]
+    home = Path.home()
+    inbox = inbox_source_table("inbox", home / "agent-context" / "inbox")
+    paused = local_source_table("wombat", home / "Wombat").replace(
+        'kind = "local"', 'kind = "local"\nstate = "paused"'
+    )
+    retired = local_source_table("quokka", home / "Quokka").replace(
+        'kind = "local"', 'kind = "local"\nstate = "retired"\nretired_reason = "moved"'
+    )
+    log = fake_mac["setup"] / "install.log"
+    run = "2026-11-24T10:00:00Z run=20261124T100000Z-7"
+    ok = (
+        f"{run} start install.sh compat=42 commit=0123456789ab kind=checkout source=- args=\n{run} end rc=0\n"
+    )
+    own = setup_report.NO_FOLDER_NEXT.format(
+        install_sh=setup_report.INSTALL_SH, rerun=setup_report.INSTALL_SH
+    )
+
+    def loop(body: str, logged: str, fail: bool = False) -> str:
+        cfg.write_text(default_config_text() + body, encoding="utf-8")
+        log.write_text(logged, encoding="utf-8")
+        r = setup_report._Run(cfg, hooks, 60.0)
+        if fail:
+            r.facts.doctor_problems.append(("FAIL", "state_dir.files", "x"))
+        return setup_report._loop_line(r)
+
+    clause = setup_report.NOT_LIVE_CLAUSE.format(folders="wombat (paused), quokka (retired)")
+    line = loop(inbox + paused + retired, ok)
+    assert f"NEXT: {own}{clause}" in line and "add-source" not in line, line
+    line = loop(inbox, ok)
+    assert f"NEXT: {own}" in line and "not live:" not in line and "add-source" not in line, line
+    for logged, fail in ((ok.replace("end rc=0", "end rc=1"), False), (ok, True)):
+        line = loop(inbox + paused, logged, fail)
+        assert "add-source" in line and "not live:" not in line, (logged, fail, line)

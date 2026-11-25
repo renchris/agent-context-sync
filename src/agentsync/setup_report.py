@@ -17688,6 +17688,16 @@ NO_FOLDER_FIRST_NEXT = (
 )
 """install.sh's NEXT for a bare run that created the config and found no folder (C2605's no-folder first run,
 exit 2), held to install.sh's ``next=`` literal by content (B13 round 45 C2802, ruling 192)."""
+_RULE2_OPENER = "NEXT: no folder is synced yet: ask the operator"
+"""status's rule-2 NEXT on a config with no live folder (loop.py), which install.sh's bare run that ended 0
+says in its own words (B13 round 46 C3003)."""
+NOT_LIVE_CLAUSE = (
+    "; not live: {folders}: setting a folder to live is the person's edit of sources.toml, not a step for "
+    "the agent"
+)
+"""install.sh's clause after :data:`NO_FOLDER_NEXT` naming each folder sources.toml holds that is not live, as
+``<id> (paused)`` or ``<id> (retired)`` in config order, joined by ``, `` (B13 round 46 C3003, amending ruling
+191): the one copy of its words."""
 _NO_FOLDER_OPENERS = ("NEXT: no folder is synced yet", "NEXT: no folder to sync yet")
 """The two NEXT openers install.sh turns into :data:`NO_FOLDER_CHOSEN_NEXT` on a run that recorded the
 person's none, whatever the config counts (status's rule 2 among them; ruling 191)."""
@@ -17706,7 +17716,11 @@ def _install_sh_said_no_folder(r: _Run, config: Config, found: str) -> str | Non
       C2836 and C2932, ruling 192): the Loop line asked for folders the person had declined;
     - :data:`NO_FOLDER_FIRST_NEXT` for C2605's no-folder first run (exit 2) on such a config, whatever status
       says, as install.sh's created-config branch comes before its loop NEXT (C2802);
-    - :data:`NO_FOLDER_NEXT` for any other run that ended 0, on the skill-missing NEXT of such a config.
+    - :data:`NO_FOLDER_NEXT` for any other run that ended 0, on the skill-missing NEXT of such a config;
+    - :data:`NO_FOLDER_NEXT` for a run that ended 0 and recorded no none, on status's rule-2 NEXT
+      (:data:`_RULE2_OPENER`) whatever the config counts, with :data:`NOT_LIVE_CLAUSE` naming each paused or
+      retired folder (B13 round 46 C3003, amending ruling 191): install.sh's bare run says its own
+      ``--source-local`` form there, keyed on the NEXT's text, where the Loop line kept status's.
 
     The config's sources are counted in every state (install.sh's HAVE_SOURCES, paused and retired ones
     included, never ``live_sources()``)."""
@@ -17721,6 +17735,13 @@ def _install_sh_said_no_folder(r: _Run, config: Config, found: str) -> str | Non
     if latest.chose_no_folder:
         chosen = latest.completed_none and ((inbox_only and missing) or found.startswith(_NO_FOLDER_OPENERS))
         return NO_FOLDER_CHOSEN_NEXT if chosen else None
+    if latest.rc == 0 and found.startswith(_RULE2_OPENER):  # B13 round 46 C3003
+        idle = [
+            f"{s.id} ({s.state.value})"
+            for s in config.sources
+            if s.kind is not SourceKind.INBOX and not s.is_live
+        ]
+        return NO_FOLDER_NEXT + (NOT_LIVE_CLAUSE.format(folders=", ".join(idle)) if idle else "")
     if not inbox_only:
         return None
     if latest.no_folder_first_run:

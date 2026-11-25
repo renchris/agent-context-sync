@@ -46935,6 +46935,15 @@ busy: the sync lock was still held past the wait`, and keeps `lock-busy` (`anoth
 wait`), so an older install.log still reads. Test: the row added to
 `test_the_first_sync_steps_note_is_in_words_in_the_table_and_the_summary`.
 
+**The Loop line says install.sh's own form on status's rule-2 NEXT** (C3003, the report's mirror; install.sh's
+bare-run swap and its dated line amending ruling 191 are lane RB's, §16.286). A bare install.sh run that ended 0 on
+status's rule-2 NEXT (`no folder is synced yet: ask the operator ...`, which names add-source and a sync) now prints
+`NO_FOLDER_NEXT`, with `NOT_LIVE_CLAUSE` naming each paused or retired folder as `<id> (paused)` or `<id>
+(retired)` in config order (`; not live: ...: setting a folder to live is the person's edit of sources.toml, not a
+step for the agent`): `_install_sh_said_no_folder` gives the same words for a latest install run that ended 0 and
+recorded no none, keyed on the NEXT's text whatever the config counts, never over a doctor FAIL, from the one
+copy of each constant. Test: `test_the_loop_line_says_install_shs_own_form_on_status_rule_2_next_c3003`.
+
 ### 16.286 Round 46: the installer: the shell halves of rulings 198 and 199, every word it writes valid UTF-8 that reads back as its path, an older build's inbox read, and C2060 waits on the operator (2026-11-24, wave B13 round 46 lane RB)
 
 Reserved for round 46 lane RB of B13.
