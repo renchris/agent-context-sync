@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from agentsync.errors import ConfigError
+from agentsync.errors import AccountHomeError, ConfigError
 from agentsync.model import SourceKind, SourceState
 from agentsync.paths import (
     DocsLayout,
@@ -439,9 +439,22 @@ def canonical_source_root(path: Path, _depth: int = 0) -> Path:
     return current
 
 
+def _expand_value(v: str, key: str, where: str) -> Path:
+    """:func:`expand` for a path value read from the config file: a ``~name`` value expand refuses (ruling
+    193) is a plain :class:`ConfigError` naming the file, table and key (exit 78, Reason config), never the
+    :class:`AccountHomeError` usage form (exit 2, "run the command again"), which stays for a path the
+    command line or AGENTSYNC_CONFIG gave (B13 round 46 C3039, ruling 198)."""
+    try:
+        return expand(v)
+    except AccountHomeError:
+        raise ConfigError(
+            f"{where}: {key!r} {v} names another account's home; give it as an absolute path"
+        ) from None
+
+
 def _path(t: Mapping[str, Any], key: str, where: str, default: Path) -> Path:
     v = _str(t, key, where)
-    return expand(v) if v else default
+    return _expand_value(v, key, where) if v else default
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -499,7 +512,7 @@ def _parse_source(raw: object, n: int, cfg_where: str) -> SourceConfig:
         # Resolved: a root reached through a symlink (OneDrive's own ``~/OneDrive - <Org>`` link to
         # ~/Library/CloudStorage/OneDrive-<Org>) must get every File Provider safeguard -- the launcher, the
         # TCC canary, the zero-children rule -- which all test the canonical path (review deploy-ops).
-        path = canonical_source_root(expand(_str(raw, "path", where) or ""))
+        path = canonical_source_root(_expand_value(_str(raw, "path", where) or "", "path", where))
     sentinel = _str(raw, "sentinel", where)
     if sentinel is not None and (sentinel.startswith("/") or ".." in Path(sentinel).parts):
         raise ConfigError(f"{where}: 'sentinel' must be a path relative to the source root")
@@ -604,7 +617,7 @@ def parse_config(text: str, *, config_path: Path) -> Config:
         ),
         max_rows_per_sheet=_int(c, "max_rows_per_sheet", cw, 5000, minimum=1),
         max_page_bytes=_page_cap(c, cw),
-        pandoc_path=expand(pandoc) if pandoc else None,
+        pandoc_path=_expand_value(pandoc, "pandoc_path", cw) if pandoc else None,
         ocr=_bool(c, "ocr", cw, True),
         recordings=_bool(c, "recordings", cw, True),
     )

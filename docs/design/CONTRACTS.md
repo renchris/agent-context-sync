@@ -46368,6 +46368,9 @@ home; export it as an absolute path and run the command again` (install.sh's wor
 `error: --config names another account's home; give it as an absolute path and run the command again` when the flag
 did, else the path itself. `~` and `~/...` still read the home. Test:
 `test_a_config_under_another_accounts_home_is_a_usage_error_c2822`.
+Amended 2026-11-24, §16.287 C3039: "else the path itself" holds only for a path the command line gave; a `~name`
+value read from sources.toml (a source path, docs_repo and the other `[agentsync]` folders, pandoc_path) is a
+configuration error naming the file, table and key, exit 78.
 
 **A replaced page is headed `# [REPLACED]`** (C2812). A unit-removed tombstone that names its successor read `#
 [NO LONGER PRODUCED]` above "This page was replaced by ...": `publish._tombstone_body` heads it `# [REPLACED]` when
@@ -46805,7 +46808,20 @@ Reserved for round 46 lane RB of B13.
 
 ### 16.287 Round 46: a `~name` config value a configuration error and a refused skill copy a warning, the STUB_RENDER marker held for a page not rendered, and an inbox that is not a folder told as inbox_state tells it (2026-11-24, wave B13 round 46 lane B)
 
-Reserved for round 46 lane B of B13.
+**A `~name` value in sources.toml is a configuration error** (C3039; ruling 198; amends §16.282 C2822). Ruling 193's refusal in
+`paths.expand` reached the CLI's AccountHomeError arm for a value read from the file, so a source path, docs_repo or
+pandoc_path spelled `~name/...` exited 2 with the bare value and "run the command again", naming no file or key.
+`config._expand_value` turns that refusal into a plain ConfigError, `configuration error: <file>: <table>: '<key>'
+<value> names another account's home; give it as an absolute path`, exit 78 (Reason config); `--config`,
+AGENTSYNC_CONFIG and a CLI path argument keep C2822's exit 2. Test:
+`test_a_value_in_the_file_under_another_accounts_home_is_a_config_error_c3039`; the C2822 test is unchanged.
+
+**A refused CLAUDE_CONFIG_DIR is a left-out skill copy, never a failed sync** (C3038; ruling 198). skill_paths and
+write_skill expanded `$CLAUDE_CONFIG_DIR` outside any try, so a `~name` value failed every sync cycle, the loop's
+skill check and status. `skill._config_dir` catches AccountHomeError only: skill_paths leaves that copy out (so it is
+never reported missing), and write_skill logs one warning, `skill: no copy under $CLAUDE_CONFIG_DIR: <why>`, and
+never raises (§16.16). Test:
+`test_a_claude_config_dir_naming_another_home_leaves_its_copy_out_and_the_sync_ends_ok`.
 
 ### 16.288 Round 46: the converters: a kept Office answer read again only from the bytes and the fetch that were read, the container answers and the family parse corrected, and speech's CA words (2026-11-24, wave B13 round 46 lane E)
 

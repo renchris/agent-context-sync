@@ -4063,6 +4063,41 @@ def test_a_config_under_another_accounts_home_is_a_usage_error_c2822(
     assert paths.expand("~") == Path.home()
 
 
+@pytest.mark.parametrize("where", ["source", "docs_repo", "pandoc_path"])
+def test_a_value_in_the_file_under_another_accounts_home_is_a_config_error_c3039(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], where: str
+) -> None:
+    """B13 round 46 C3039 (ruling 198): a ``~name`` value read from sources.toml (a source path, docs_repo,
+    pandoc_path) reached the AccountHomeError arm, exit 2 with "run the command again" and no file or key
+    named, which running again cannot fix. It is a configuration error like any other bad value in the file:
+    exit 78, the file, table and key named; the --config and AGENTSYNC_CONFIG form stays exit 2 (C2822)."""
+    value = "~contosonosuchuserzz/x"
+    home = tmp_path / "home"
+    (home / "src").mkdir(parents=True)
+    docs = toml_string(value if where == "docs_repo" else str(home / "docs"))
+    src = toml_string(value if where == "source" else str(home / "src"))
+    text = (
+        f'[agentsync]\ndocs_repo = {docs}\n\n[[source]]\nid = "contoso-docs"\nkind = "local"\npath = {src}\n'
+    )
+    if where == "pandoc_path":
+        text += f"\n[convert]\npandoc_path = {toml_string(value)}\n"
+    cfg = home / "sources.toml"
+    cfg.write_text(text, encoding="utf-8")
+    monkeypatch.setenv(paths.CONFIG_ENV, str(cfg))
+    table, key = {
+        "source": ("[[source]] #1 (id='contoso-docs')", "'path'"),
+        "docs_repo": ("[agentsync]", "'docs_repo'"),
+        "pandoc_path": ("[convert]", "'pandoc_path'"),
+    }[where]
+    capsys.readouterr()
+    for argv in (["status"], ["sync"]):
+        assert cli.main(argv) == cli.EXIT_CONFIG, argv
+        out, err = capsys.readouterr()
+        want = f"configuration error: {cfg}: {table}: {key} {value} names another account's home; give it as "
+        assert want in err, err
+        assert "run the command again" not in out + err and "Traceback" not in out + err, err
+
+
 @pytest.mark.parametrize("entry", ["file", "dangling-link", "link-to-file"])
 def test_the_inbox_sources_fix_over_a_non_folder_is_the_persons_move_aside_c2809(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, entry: str
