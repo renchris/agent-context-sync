@@ -46880,8 +46880,9 @@ went out public with the login, full name, serial, host, organisations and folde
 stripped value in `_RawConfig.refused`; `_register_refused` cuts each one after the own folders, the inbox blocks
 and before the source ids, in reading order (the sources' paths, docs_repo, state_dir, cache_dir, log_dir, then
 pandoc_path): whole with `add_cut` as `~<user>/<path>` (`~<user>` with no folder after the head), its `~name` head
-to `~<user>`, the name registered as a `user` value unless it is one of the report's own words, and the folder
-parts after the head through `_own_folder_values`' filter, so the report stays public. `_build_report`'s fallback
+to `~<user>` (a head holding a blank names no account and is cut only inside the whole value), the name registered
+as a `user` value unless it is one of the report's own words, and the folder parts after the head, after a
+`Library/CloudStorage/<entry>` prefix, through `_own_folder_values`' filter, so the report stays public. `_build_report`'s fallback
 sets the new `Redactor.redactor_failed`, which `private_only` reads, with its own line (`Private only: redaction
 facts could not be read, so names may show in clear.`), and registers this Mac's identity through
 `_register_identity`, the helper `_build_redactor` opens with (with `_register_name_tail` for the bracketed words);
@@ -46896,8 +46897,9 @@ report's halves, lane RB's shell halves landed in the same run; amends §16.280 
 with its id, so `~/Development/KestrelAlder/notes` printed in clear under every header: `_scanned_sources` pairs each
 `[[source]]` table's id with its path (a dated line under §16.280 C2815's paragraph). The kept inbox's resolved target
 was agentsync's own wherever it lay, so doctor's FAIL on a link into `~/Locked Contoso/inner` printed it in a public
-report: the target is own only inside `~/agent-context`; one outside it, typed or the inbox source's stored path, is
-registered through `_own_folder_values` after the own folders and the C2430 block, in `_build_redactor` and for
+report: the target is own only inside `~/agent-context` (never beside a docs repo in a container such as
+`~/Documents` or at the home); one outside it, typed or the inbox source's stored path, is registered through
+`_own_folder_values` after the own folders and the C2430 block (a target under CloudStorage left to its parts), in `_build_redactor` and for
 `_unconfigured_roots`, never as a project (C3055, makes worse True for registering every source's resolved path
 through `_project_values`, which registered the bare `inbox` of a link to `~/Documents/inbox`, made the report
 private only and cut every `inbox` word). `_logged_cloud_folders` split install.log's args with an unanchored regex

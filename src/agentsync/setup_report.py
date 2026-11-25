@@ -6203,7 +6203,7 @@ def _scanned_sources(text: str) -> list[tuple[str, str | None]]:
         if table is not None and (table[0] or table[1]):
             out.append((table[0] or "", table[1]))
 
-    for line in text.split("\n"):
+    for line in (ln.removesuffix("\r") for ln in text.split("\n")):  # a CRLF file too, as the shell's awk
         if _SOURCE_HEADER_LINE_RE.match(line):
             close()
             table = [None, None]
@@ -6296,7 +6296,8 @@ def _register_refused(red: Redactor, refused: Sequence[str]) -> None:
     round 45 C2822), stripped as written (B13 round 46 C3099 with C3033, C3037 and C3110, ruling 198;
     privacy): whole with :meth:`Redactor.add_cut` as ``~<user>/<path>`` (``~<user>`` with no folder after
     the head), its ``~name`` head cut to ``~<user>`` the same way and, unless it is one of the report's own
-    words, registered as a ``user`` value, and the folder parts after the head through
+    words, registered as a ``user`` value (a head holding a blank names no account and is not cut alone), and
+    the folder parts after the head, after a ``Library/CloudStorage/<entry>`` prefix, through
     :func:`_own_folder_values`'s filter as this home's own would be, so the report stays public. A raise had
     dropped the whole redactor (C3099)."""
     home = Path.home()
@@ -6304,10 +6305,14 @@ def _register_refused(red: Redactor, refused: Sequence[str]) -> None:
         head, _sep, rest = raw.partition("/")
         rest = rest.strip("/")
         red.add_cut(raw, "~<user>/<path>" if rest else "~<user>")
-        red.add_cut(head, "~<user>")
         name = head[1:]
-        if name and name.lower() not in report_words():
-            red.add("user", name)
+        if name and not any(c.isspace() for c in name):  # `~ /x` names no account: its `~ ` would cut a word
+            red.add_cut(head, "~<user>")
+            if name.lower() not in report_words():
+                red.add("user", name)
+        # under Library/CloudStorage/<entry>, the folders after the entry: CloudStorage itself is no folder
+        cloud = re.match(r"Library/CloudStorage/[^/]+/?", rest)
+        rest = rest[cloud.end() :] if cloud else rest
         for value in _own_folder_values(home / rest, Path("/")) if rest else []:
             red.add("folder", value, ignore_case=True)
             _alias_escaped(red, value)
@@ -6456,7 +6461,10 @@ def _build_redactor(r: _Run) -> Redactor:
         # registered through _own_folder_values after the own folders (below), never as a project, so the
         # bare `inbox` of a link to ~/Documents/inbox is never registered, and a link into
         # ~/Locked Contoso/inner is cut where doctor's FAIL names it
-        insides = {beside, beside.resolve()}
+        # ~/agent-context only: beside a docs repo in a container (~/Documents) or at the home, a target there
+        # is the person's own folder, never agentsync's (the guard on own |= beside below)
+        generic = beside.name.casefold() in _GENERIC_HOME_DIRS or beside in (home, home.resolve())
+        insides = set() if generic else {beside, beside.resolve()}
         candidates = [(beside / "inbox").resolve()]
         candidates += [
             expand(src.path)
@@ -6464,6 +6472,8 @@ def _build_redactor(r: _Run) -> Redactor:
             if isinstance(src, SourceConfig) and src.kind is SourceKind.INBOX and src.path is not None
         ]
         for kept in candidates:
+            if _cloud_parts(kept) is not None:  # registered by its parts, as a cloud source or listed folder
+                continue
             if any(kept.is_relative_to(b) for b in insides):
                 own.add(kept)
             elif kept not in inbox_targets:

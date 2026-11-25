@@ -4153,6 +4153,10 @@ def test_an_unparsed_config_pairs_each_id_with_its_path_c3056() -> None:
         ("kestrel-birch", "~/Development/Kestrel\\Birch"),
         ("", "~/Development/KestrelCedar"),
     ]
+    crlf = '[[source]]\r\nid = "kestrel-alder"\r\npath = "~/Development/KestrelAlder"\r\nbad =\r\n'
+    assert setup_report._scanned_sources(crlf) == [
+        ("kestrel-alder", "~/Development/KestrelAlder")
+    ]  # review row
 
 
 _R199_HEADERS = {"bare": "[[source]]", "basic": '[[ "source" ]]', "literal": "[['source']]"}

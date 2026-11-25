@@ -30125,3 +30125,45 @@ def test_a_tilde_name_value_is_cut_and_the_redactor_kept_c3099(
     assert "Private only:" not in text and setup_report.issue_link(text) is not None, text
     red = setup_report._build_redactor(setup_report._Run(cfg, setup_report.ReportHooks(), 40.0))
     assert not red.redactor_failed and red._known(FOLDERS[1]) is not None and red._known("Zephyr Quarry")
+
+
+def test_a_refused_value_under_cloudstorage_or_with_a_blank_head_cuts_no_word_c3099() -> None:
+    """B13 round 46 C3099 (ruling 198), the review's rows: a refused `~name` path under
+    Library/CloudStorage/<entry> registered `CloudStorage` alone, cutting it out of every CloudStorage path,
+    and a head holding a blank (`~ /x`) cut the word after every `~ `. The folders after the entry are
+    registered, never CloudStorage, and a blank head is cut only inside the whole value."""
+    red = setup_report.Redactor()
+    red.add("home", str(Path.home()))
+    setup_report._register_refused(red, ["~bob/Library/CloudStorage/OneDrive-Contoso/Kestrel Plans", "~ /x"])
+    assert red._known("CloudStorage") is None and red._known("Kestrel Plans") is not None
+    assert red.redact("the CloudStorage listing finished") == "the CloudStorage listing finished"
+    assert red.redact("cd ~ and ~ then") == "cd ~ and ~ then"
+    assert red.redact("set ~ /x here") == "set ~<user>/<path> here"
+
+
+@pytest.mark.parametrize("case", ["cloud", "documents"])
+def test_an_inbox_target_is_judged_by_where_it_lies_c3055(case: str) -> None:
+    """B13 round 46 C3055 (ruling 199), the review's rows: an inbox linked into CloudStorage went through the
+    own-folder filter and registered `CloudStorage` alone; a docs repo in ~/Documents made every target
+    under ~/Documents agentsync's own, so ~/Documents/Kestrel Matters/inner printed in clear. A cloud target
+    is left to its parts, and only ~/agent-context holds agentsync's own."""
+    home = Path.home()
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    if case == "cloud":
+        drop = home / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Agent Drop"
+        drop.mkdir(parents=True)
+        (home / "agent-context" / "inbox").symlink_to(drop)
+        cfg.write_text(default_config_text(), encoding="utf-8")
+    else:
+        inner = home / "Documents" / "Kestrel Matters" / "inner"
+        inner.mkdir(parents=True)
+        (home / "Documents" / "inbox").symlink_to(inner)
+        cfg.write_text(
+            '[agentsync]\ndocs_repo = "~/Documents/docs"\n' + default_config_text(), encoding="utf-8"
+        )
+    red = setup_report._build_redactor(setup_report._Run(cfg, setup_report.ReportHooks(), 40.0))
+    assert red._known("CloudStorage") is None
+    if case == "documents":
+        assert red._known("Kestrel Matters") is not None and red._known("Documents") is None
+    assert not red.private_only
