@@ -7299,7 +7299,7 @@ local_work_counts() {
 	printf '%s|%s|%s\n' "$n" "$newest" "$b"
 }
 fallback_body() {
-	local rc="$1" why="$2" friction="$3" cs="$HOME/Library/CloudStorage" p v k n l o numbered
+	local rc="$1" why="$2" friction="$3" cs="$HOME/Library/CloudStorage" p v k n l o numbered reach
 	say "# agentsync setup report"
 	say ""
 	say "## Summary"
@@ -7516,10 +7516,13 @@ fallback_body() {
 		# count, as a read of it reads nothing (B13 round 46 C3019)
 		say "- config: $CONFIG (exists)"
 		say "- loads: no: it is a folder or something else that is not a file"
-	elif LC_ALL=C /usr/bin/stat -L "$CONFIG" 2>&1 >/dev/null | LC_ALL=C grep -q 'Permission denied'; then
+	elif reach="$(LC_ALL=C /usr/bin/stat -L "$CONFIG" 2>&1 >/dev/null || :)" && case "$reach" in *': Permission denied') true ;; *) false ;; esac; then
 		# a folder above it refuses this account a search: nobody can tell whether it is there, as
-		# setup_report._path_reached words it (C3019)
+		# setup_report._path_reached words it (C3019), nor whether it loads, as setup_report._configuration
+		# says it. stat's message is read as captured text, never through a pipe, which pipefail failed with
+		# stat's exit 1, and its reason at the end, as a path may hold the same words (B13 round 47 C3335)
 		say "- config: $CONFIG (not checked: this account cannot reach it: Permission denied)"
+		say "- loads: not checked (this account cannot reach it)"
 	else
 		say "- config: $CONFIG (missing)" # nothing there, or a link to nothing, as stat reads it
 	fi

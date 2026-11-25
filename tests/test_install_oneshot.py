@@ -27947,9 +27947,13 @@ def test_the_report_still_runs_over_a_config_path_step_2_refuses_c2816(
 
 
 _C3019_LOADS = "- loads: no: it is a folder or something else that is not a file"
+_C3335_UNREACHED = [
+    "- config: ~/<path> (not checked: this account cannot reach it: Permission denied)",
+    "- loads: not checked (this account cannot reach it)",
+]
 
 
-@pytest.mark.parametrize("kind", ["folder", "fifo", "dangling-link", "nothing"])
+@pytest.mark.parametrize("kind", ["folder", "fifo", "dangling-link", "nothing", "unreachable"])
 def test_the_shell_report_marks_a_config_that_is_not_a_file_as_the_agentsync_report_does_c3019(
     env: dict[str, str], kind: str
 ) -> None:
@@ -27957,37 +27961,62 @@ def test_the_shell_report_marks_a_config_that_is_not_a_file_as_the_agentsync_rep
     that is a folder or a fifo read `(missing)` where the agentsync report's stat reads `(exists)` and
     `loads: no:`. Something there that is not a file is `(exists)` with a `loads: no:` reason and no table
     count; a link to nothing and an empty path stay `(missing)`, as stat reads them; the agentsync report
-    gives the same mark (not run over the fifo, which its own config read waits on)."""
-    at = Path(env["HOME"]) / "Contoso-config"
+    gives the same mark (not run over the fifo, which its own config read waits on). B13 round 47 C3335: a
+    config behind a folder this account cannot search read `(missing)`, as pipefail failed the
+    `stat | grep` that looked for the refusal; it reads `not checked: this account cannot reach it` and
+    `loads: not checked`."""
+    if kind == "unreachable" and os.geteuid() == 0:
+        pytest.skip("root searches a mode-000 folder")
+    locked = Path(env["HOME"]) / "locked"
+    at = (locked if kind == "unreachable" else Path(env["HOME"])) / "Contoso-config"
     if kind == "folder":
         at.mkdir()
     elif kind == "fifo":
         os.mkfifo(at)
     elif kind == "dangling-link":
         at.symlink_to(Path(env["HOME"]) / "nowhere")
+    elif kind == "unreachable":
+        locked.mkdir()
+        at.write_text(default_config_text(), encoding="utf-8")
     run = {**env, "AGENTSYNC_CONFIG": str(at)}
-    cp = install_sh(run, "--report-only")
+    py_env = {**run, "AGENTSYNC_OCR": "0", "AGENTSYNC_TM_EXCLUDE": "0"}
+    out = Path(env["HOME"]) / "agentsync-report.md"
+    if kind == "unreachable":
+        locked.chmod(0o000)
+    try:
+        cp = install_sh(run, "--report-only")
+        py = None
+        if kind != "fifo":
+            py = subprocess.run(
+                [sys.executable, "-m", "agentsync", "setup-report", "--out", str(out)],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=120,
+                env=py_env,
+                stdin=subprocess.DEVNULL,
+            )
+    finally:
+        if kind == "unreachable":
+            locked.chmod(0o700)
     assert cp.returncode == 0 and "shell fallback" in cp.stdout, cp.stdout + cp.stderr
     section = report_path(env).read_text().split("\n## Configuration\n\n", 1)[1].split("\n\n", 1)[0]
     there = kind in ("folder", "fifo")
     mark = "exists" if there else "missing"
     want = [f"- config: ~/<path> ({mark})", *([_C3019_LOADS] if there else [])]
+    if kind == "unreachable":
+        want = _C3335_UNREACHED
     assert section.splitlines() == want, section
-    if kind == "fifo":
+    if py is None:
         return
-    out = Path(env["HOME"]) / "agentsync-report.md"
-    py = subprocess.run(
-        [sys.executable, "-m", "agentsync", "setup-report", "--out", str(out)],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=120,
-        env={**run, "AGENTSYNC_OCR": "0", "AGENTSYNC_TM_EXCLUDE": "0"},
-        stdin=subprocess.DEVNULL,
-    )
     assert py.returncode == 0, py.stdout + py.stderr
     lines = out.read_text(encoding="utf-8").split("\n## Configuration\n\n", 1)[1].splitlines()
     assert lines[0] == section.splitlines()[0], (lines[:2], section)
+    if kind == "unreachable":
+        # the agentsync report's loads line is setup_report.CONFIG_UNREACHED_LOADS, lane RA's half of C3335
+        if hasattr(setup_report, "CONFIG_UNREACHED_LOADS"):
+            assert lines[1] == _C3335_UNREACHED[1], lines[:2]
+        return
     assert lines[1].startswith("- loads: no: ") == there, lines[:2]
 
 
