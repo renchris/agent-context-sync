@@ -19,6 +19,7 @@ import pytest
 
 from agentsync import arm_local, cli, net, report_cuts, setup_report
 from agentsync.config import default_config_text, load_config, local_source_table, toml_string
+from agentsync.ops import doctor
 from agentsync.text import safe_text
 from test_install_oneshot import (  # noqa: F401  (fixture)
     _C1253_ROWS,
@@ -5400,7 +5401,8 @@ def test_both_reports_cut_a_folder_install_sh_logged_in_the_c_form_ruling_203(
     """B13 round 46 ruling 203 (C3080): install.log's args= wrote a --source-local folder holding U+3000, a
     CJK name or U+0085 with a lone lead byte under UTF-8, which the agentsync report read as U+FFFD and placed
     as another folder. q_word writes it in the C form, every byte past ASCII an octal escape: both reports
-    read the logged folder back to its name and cut it, under either locale, with one verdict."""
+    read the logged folder back to its name and cut it, under either locale, with one verdict. B13 round 47
+    C3330: the shell writer is asserted to have run, and each report's args= row is checked."""
     folder = _cloud(env) / "OneDrive-Contoso" / f"Kestrel{ch}Ledger"
     folder.mkdir(parents=True)
     rc, out, err = _install_bytes(
@@ -5410,7 +5412,10 @@ def test_both_reports_cut_a_folder_install_sh_logged_in_the_c_form_ruling_203(
     log = install_log_path(env).read_bytes().decode("utf-8")
     assert "Kestrel\\" in log, log
     texts = [report_path(env).read_text(encoding="utf-8")]
-    assert "shell fallback" in out.decode("utf-8") or "Setup report" in texts[0], texts[0][:400]
+    # B13 round 47 C3330: the shell writer ran (an `or` passed on the agentsync render alone), and each
+    # report's args= row is checked by its own writer's form
+    assert "- written by: scripts/install.sh shell fallback (" in texts[0], texts[0][:400]
+    assert "(shell fallback:" in out.decode("utf-8"), out
     for locale in ("C", "en_US.UTF-8"):
         dest = Path(env["HOME"]) / f"agentsync-report-{locale}.md"
         cp = subprocess.run(
@@ -5427,6 +5432,14 @@ def test_both_reports_cut_a_folder_install_sh_logged_in_the_c_form_ruling_203(
     for text in texts:
         leaks = [ln for ln in text.splitlines() if "Kestrel" in ln or "Ledger" in ln]
         assert not leaks, leaks
+    for n, text in enumerate(texts):
+        row = [ln for ln in text.splitlines() if " start install.sh " in ln and " args=" in ln]
+        assert len(row) == 1, (n, row)
+        if n == 0:
+            assert row[0].endswith(" --source-local <path>"), row
+        else:
+            shown = r' --source-local "~/Library/CloudStorage/OneDrive-<org-\d+>/<path>"$'
+            assert re.search(shown, row[0]), row
     assert len({"Private only:" in t for t in texts}) == 1, [t[-600:] for t in texts]
 
 
@@ -5441,18 +5454,26 @@ def test_both_reports_cut_a_folder_doctor_writes_unquoted_in_prose_c3008(
     folder unquoted (`search access to ~/Kestrel Vault, a folder above ~/Kestrel Vault/drop`) unless
     arm_local._LIST_ESCAPED_RE matches, then the `$'..'` form, where it wrote `~/'Kestrel Vault'`; command
     words keep the quote. Both reports still cut the folder in each form, a blank and a control character
-    among them, print the same rows and reach one verdict."""
+    among them, print the same rows and reach one verdict. B13 round 47 C3315: the words are doctor's own,
+    built by doctor._prose_path and _shell_path under the test HOME, where the row hand-spelled
+    `~/$'Kestrel\\001Vault'/drop`, a spelling doctor never writes (kept as a last row, an agent's own); the
+    rows are counted and the escaped form's are pinned."""
     home = Path(env["HOME"])
     drop = home / name / "drop"
     drop.mkdir(parents=True)
     body = default_config_text() + local_source_table("vault-drop", drop)
     escaped = arm_local._LIST_ESCAPED_RE.search(name) is not None
-    prose = "~/$'Kestrel\\001Vault'" if escaped else "~/" + name  # never a raw control character
-    quoted = prose if escaped else "~/'" + name + "'"  # a command word keeps its quote
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("HOME", env["HOME"])
+        above, root = doctor._prose_path(home / name), doctor._prose_path(drop)
+        quoted = doctor._shell_path(home / name)
+    if escaped:  # doctor's $'..' word holds the whole path below the home, never a raw control character
+        assert root == "~/$'Kestrel\\001Vault/drop'" and above == quoted == "~/$'Kestrel\\001Vault'", root
     said = [
-        f"the person gives this account search access to {prose}, a folder above {prose}/drop that refuses "
+        f"the person gives this account search access to {above}, a folder above {root} that refuses "
         f"it one, then run the same command again; chmod u+rwx {quoted} gives it",
-        f"if {prose}/drop is meant to be empty, set state = paused",
+        f"if {root} is meant to be empty, set state = paused",
+        *(["the agent wrote ~/$'Kestrel\\001Vault'/drop itself, not doctor"] if escaped else []),
     ]
     texts: list[str] = []
     shell, python, shell_private, python_private = _both_reports(
@@ -5467,4 +5488,7 @@ def test_both_reports_cut_a_folder_doctor_writes_unquoted_in_prose_c3008(
     for report, rows in (("shell", shell), ("agentsync", python)):
         leaks = [ln for ln in rows if "Kestrel" in ln or "Vault" in ln]
         assert not leaks, (report, leaks)
+    assert len(shell) == len(python) == len(said), (shell, python)
+    if escaped:
+        assert "if ~/<path> is meant to be empty, set state = paused" in python, python
     assert shell == python and shell_private == python_private, (shell, python)
