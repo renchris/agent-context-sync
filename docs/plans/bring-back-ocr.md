@@ -4162,6 +4162,112 @@ C3061 and C3062, the kit workflow, C2874's no-fetch guard, the worktrees and eve
 run, the lead reads trunk with `round47/tools/poll.sh` and `trunk.sh`, never a fetch in the operator checkout (C2874).
 The stop rule names Codex and Gemini: a clean round without Gemini goes to the operator before the loop closes.
 
+### B13 round 47: v43 rehearsal, cross-lane review, harvest, Codex beside Claude; Gemini not run (2026-11-25)
+
+Run `wf_f7fe088e-c9e` on `42ca57e0` (BASE `9e62806f`), codex-only, 154 agents. The first run, launched at 18:18Z on
+2026-11-25, hit the weekly limit on one account with 10 of its 78 agents done (rehearsals c and f, the core, convert and
+docs reviews and five Codex slots); a resume on another account, at 18:41Z, re-ran rehearsals a, b, d and e as attempt
+2, and the run ended at 20:02Z with 0 errors. 137 raw findings from 16 finders, 137 after dedupe, 130 confirmed (4
+turns, 46 wrongs and 80 small by the finders' classes, which the run's tally gives; the verifiers' headers class the
+same 4 turns, 33 wrongs and 93 small), 7 refuted (C3201, C3207, C3221, C3225, C3301, C3308, C3317); 14 of the confirmed
+carry "a fix makes things worse? True" (C3202, C3203, C3206, C3215, C3236, C3244, C3247, C3252, C3268, C3284, C3295,
+C3296, C3300, C3318), each with a corrected fix that does not, adopted. All six rehearsal scenarios passed on v43 at
+`42ca57e0`, d with one ruling 199 expectation failing (C3223). The stop rule is not met (4 turns and 46 wrongs by the
+finders' count; the same 4 turns and 33 wrongs by the verifiers'). The turns are C3226 (the land gate's restore advice),
+C3236 (a file at the docs repo's path), C3269 and C3332 (a paused or retired folder offered again). Twelve items are
+marked as needing prompt words and all twelve need them (C3205, C3240, C3269, C3273, C3274, C3280, C3325, C3326, C3331,
+C3332, C3334, C3336), and two not marked need them too (C3206, C3213): v43 spotted a usage error by a line opening
+`error:`, which argparse never prints first, read a background step 2 run only until its NEXT: line, required an
+unread-inbox warning a refused step 2 never prints, let the Finish say `none: this Mac syncs no folder` after a step 2
+that failed, offered a paused or retired folder again, double-quoted a `--source-local` template in which `$` expands
+and asked for a choice over a list cut at 200 rows, so the prompt goes to v44. 14 items are data integrity, 12 of them
+privacy (C3242, C3285 and C3288 in lane RA; C3243, C3302, C3244, C3245, C3246, C3247, C3289, C3303 and C3287 in lane RB;
+the other two C3310 and C3333, which head lane B), and the turns and wrongs share five root causes: a reader met an
+entry kind it was never tested with, a loop, a FIFO, a file where a folder belongs or a link through a file (rulings
+206, 210 and 211, C3307); a report read a value from one spelling, one record shape or one link hop and the other cut it
+(rulings 206 and 207, C3305, C3323, C3335); a claim kept for one route was made on another (rulings 213 and 214); the
+prompt told a run by a prefix or a stop the run does not give (ruling 216); and a fix stopped at its first twin (rulings
+209, 212 and 215, C3314, C3286). Codex gave 37 opinions, none disputed. Gemini did not run (the allow rule for
+`~/.claude/scripts/agy-review.sh` is the operator's, backlog `8ed9dae0fbc0`, now a ninth round without it). The lead's
+triage (`round47/triage.md`) placed every item once.
+
+Lead rulings for round 47 (in `lanes/COMMON46.md`, mirrored in `docs/lanes/COMMON.md`): (206) the kept inbox's link is
+resolved alike in both reports and never raises, a loop taking its first hop's target and every other entry its
+realpath, and every configured folder under a kept target is cut, completing rulings 199 and 204; (207) a value is
+registered in every spelling either report can print, from every `[[source]]` table that holds it (a TAB or LF path, an
+id-less table, a repeated key, a TOML escape, a short `~` head, a refused id and a refused value's parents), lanes RA
+and RB landing both halves of rulings 206 and 207 in one run; (208) C2060 is still gated on the operator under class C
+decision `c0777e12a523`, and the agentsync report cuts an escaped listed row's other readings fuzzily under that row's
+one number, Python only, rulings 150, 161, 174, 190 and 200 standing; (209) a reader keeps the bytes its writer wrote,
+git's output read raw and a stored path never stripped, a ConfigError naming both spellings when only the stripped one
+exists; (210) every reader decides the kept inbox's state by one check, spells it as typed and tells a non-folder in one
+phrase, `a file or a link that does not lead to a folder`, whose pointer names a line that gives the remedy, amending
+ruling 204; (211) a file where the docs repo belongs is the person's to move aside, and status, the report and step 2
+all say so; (212) the land gate's block names its fix and its owner, a sync whose commit it blocked never reads as
+landed, and a page it restores keeps mode 600; (213) the report, status and the guides credit step 3's question and the
+no-folder NEXT only on the route the attempt's own runs took; (214) a paused or retired folder is shown as already in
+sources.toml and the person's to set live, never offered or asked about again; (215) ruling 202's Office twins are
+closed, each answer that skips the cache, each decoder and each output change told and keyed once; (216) the setup
+prompt reads a run to its exit, keys an error on its exit code and offers only what step 2 can add, so it goes to v44 in
+lane D's one commit, after lane RB lands C3332's marks, as ruling 205 took it to v43. The triage's 14 calls, each
+drafted one way so nothing waits (convictions 60 to 85), are filed as one class B packet with their courses kept:
+decision `fa08bc28d854`. Call 1 takes a loop's first hop target in both reports, lane RB's resolved() recursing on
+physical folders to match, over C3210's plain realpath, which loses a two-link loop's partner, and C3284's one hop for
+every failure (65). Call 4 reads a `[[source]]` path literally and refuses, naming both spellings, a config whose
+literal path is absent while its stripped form exists, over keeping the strip (70). Call 14 keeps round 46's lessons
+word for word, the specs' base sha changed to `42ca57e03`, with one new lesson on entry kinds (80). Once every course is
+on origin/main, the packet is marked with `cc-decide action`, so its expiry fires nothing, and its evidence cites a sha
+only once `git merge-base --is-ancestor` puts it on origin/main (C2494).
+
+C3287 (C2060's shell half, C3057 again) is still gated on the operator's open class C decision `c0777e12a523` (ceiling
+permission): it needs install.sh to decode an escaped listed name, and sits in lane RB under ruling 208. Lane RB reads
+`cc-decide list --open` for it at start and before its last land and, only on "Allow", builds the port at C2667's three
+porting points (`round44/items/C2667.md`), registering every reading listed_name_decodings gives and mirroring C3082's
+row flags, C3114 with C3036's bounded readings and C3288's alias, then drops the shell half's strict xfail and
+test_deploy_pack.py's pin of its reason; a second refusal stops it. Otherwise the strict xfail stays with its one-line
+reason and §16.291 says so (ruling 208). Lane RA builds C3288 ungated, Python only: a placeholder-preserving fuzzy alias
+in Redactor, called for each other decoding of an escaped row, with SEPARATORS, _SEP_CLASS, LIST_ESC_AWK and esc()
+unchanged. C3303, which decodes sources.toml's basic-string escapes with the decoder config_path_values already has, not
+step 1's listed names, and C3245, which resolves links, are not that change and are built ungated in lane RB (85). The
+lead adds a dated line to `c0777e12a523`'s receipt naming C3288's fuzzy alias, which an Allow's port must mirror, and
+otherwise leaves both packets as they are; `1476293d00a3` stays superseded.
+
+Convergence: confirmed 126, 100, then 130; turns 2, 1, then 4; wrongs 38, 27, then 33 (the verifiers' counts in rounds
+45 to 47; this round the finders' are 4 turns and 46 wrongs).
+
+Lanes (`--account auto`, CONTRACTS §16.290 to §16.294, plain `scripts/ship-land.sh`, scratch under `round47/`): RA 21
+(the Python halves and shared rows of rulings 206 and 207, sent to lane RB as a branch sha; ruling 208's C3288 alias,
+ungated; ruling 213's step 3 and no-folder routes, its install-log parser module landed first; C3203's kept clause; the
+report clusters), RB 20 (both halves of rulings 206 and 207 landed in one run on lane RA's branch; C3236's
+docs_not_a_folder after lane B's C3238; ruling 214's marks, with C3206's rewrite and C3336's depth-1 cut, landed in a
+run of their own before lane D's v44; the shell installer clusters; C3287 only on the operator's word), B 34 (C3333 and
+C3310 first; rulings 209 to 212, ruling 210's phrase, alarm and note words sent to lanes RA, RB and D first; C3241's
+rule 2 after lane RA's parser module; the CLI clusters), E 19 (ruling 215 and the conversion clusters), D 23 (the v44
+commit after lane RB's marks run, CI's limit 125 and head 105 with round 46's jobs recorded (C3286), dated lines and the
+guides) and L 13, each id once (130). Lane B builds 27 after its merges, past about 25: the triage drafted a split into
+B1, the readers (25 ids, 20 builds), and B2, cycle, land gate and runs (9 ids, 7 builds, with C3292's cli.py hunk),
+whose files are disjoint but for cycle.py's _scan_and_classify, where B2 would rebase on B1's land (conviction 60); the
+lead keeps one lane B, whose area paragraph already orders the work, and reserves no §16.295. No other lane passes about
+25. C3223, C3224, C3208, and C3210 with C3284 are ordered with lane RA's privacy items though classified integrity
+false, since each leaves part of a name in clear in a public report or throws it onto its fallback (70). Moved in
+triage: C3329 from D to E, merged with C3262, since its CONTRACTS lines are lane E's own C3101 words and the C3096
+paragraph in §16.288, which ruling 186 moves in lane E's commit (70). Halves built by another lane, ids kept where
+classified: C3206's prompt rule and C3332's prompt half in lane D's v44, C3336's depth-1 cut and C3269's install pin in
+lane RB, C3241's parser module in lane RA and C3292's cli.py hunk in lane B. CI's numbers, not a test split (C3286, 70):
+`timeout-minutes` 125, 20:56 above `fbbc2d07`'s 104:04, and the head 105, since a split changes the job graph, doubles
+the macOS runner waits a run already pays (`cb4cc114` waited 26:28) and changes what ship-land's CI read waits on; the
+job grew 23 minutes in one round, so if round 47's slowest passes 110, round 48 splits the pytest step instead of
+raising the limit again. The corrected fixes the triage judged could still make things worse need no one: C3257's `inbox
+not a folder` word, after the builder greps install.sh, both reports and the guides (60, the zero-risk alternative a
+dated N22 line), C3333's ConfigError where only the stripped spelling exists, which turns a silently wrong sync into
+exit 78 (75), and C3226's mode backstop, bounded by the pages a sync already walks (80). The lead holds 13: round 48's
+kit (C3232, C3233, C3297), the brief (C3219, C3220, C3222, C3234), the workflow (C3235, C3295), the harvest (C3296, and
+C3297's section 5 counts), and the record (C3294: round 45's worktrees removed in the operator checkout and each round's
+own run logged; C3298: the CLOSES line; C3299: a correction line in `round29/lead-notes.md`, a resume counted as a
+launch; Codex-only review until backlog `8ed9dae0fbc0`'s allow rule, that backlog and decision `c0777e12a523` named in
+every close). The specs cite `42ca57e03`'s line numbers, and the kept lessons in `docs/lanes/COMMON.md` now say so.
+Round 48 rehearses v44, with v43's block (`ea3d2d0d`) as scenario C's first old copy.
+
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be

@@ -47443,6 +47443,26 @@ sentences keep the 105 they measured against. Tests:
 `tests/test_deploy_pack.py::test_claude_md_gives_cis_time_and_its_limit` and
 `::test_the_recording_tests_limit_names_cis_own_limit`.
 
+### 16.290 Round 47: the report: the kept inbox's link resolved alike and every folder under it cut, a refused id and a refused value's parents cut, an escaped listed row's other readings cut fuzzily, and step 3's question credited only on the route the attempt took (2026-11-25, wave B13 round 47 lane RA)
+
+Reserved for round 47 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 47").
+
+### 16.291 Round 47: the installer: the shell halves of rulings 206 and 207, a file at the docs repo's path the person's to move aside, paused and retired folders marked in step 1's list, and C2060 waits on the operator (2026-11-25, wave B13 round 47 lane RB)
+
+Reserved for round 47 lane RB of B13.
+
+### 16.292 Round 47: a reader keeps the bytes its writer wrote, the kept inbox's state decided by one check and told in one phrase, a file at the docs repo's path the person's, and the land gate's block naming its fix (2026-11-25, wave B13 round 47 lane B)
+
+Reserved for round 47 lane B of B13.
+
+### 16.293 Round 47: the converters: ruling 202's Office twins closed (UTF-32 text, a no-namespace `<Types>`, the container answers before the cache, xlsx's emitter 1.0.7) and one noun per family (2026-11-25, wave B13 round 47 lane E)
+
+Reserved for round 47 lane E of B13.
+
+### 16.294 Round 47: the prompt goes to v44 (a run read to its exit, an error keyed on its exit code, a paused or retired folder never offered again), CI's head and limit, dated lines, and the guides (2026-11-25, wave B13 round 47 lane D)
+
+Reserved for round 47 lane D of B13.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units
