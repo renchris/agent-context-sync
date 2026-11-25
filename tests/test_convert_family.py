@@ -2476,8 +2476,8 @@ def test_a_package_whose_content_types_have_no_namespace_is_still_not_the_type_i
 
 def test_a_real_workbook_whose_content_types_have_no_namespace_still_converts_c2854(tmp_path: Path) -> None:
     """B13 round 45 C2854's guard: a real workbook with no namespace on ``<Types>`` is its own family, and a
-    foreign-namespace decoy Override beside a deck's real one gives two families, so None: both convert or
-    reach their converter as before."""
+    deck with a foreign-namespace decoy Override beside its real one converts. B13 round 46 C3047: the decoy
+    is not read at all (it gave two families, so None, before), so the deck is its own family."""
     src = _without_types_namespace(_workbook(tmp_path / "Contoso book.xlsx"))
     assert common_mod._ooxml_family(src) == "spreadsheet"
     units = XlsxConverter(CFG).convert(src, name=src.name)
@@ -2488,7 +2488,81 @@ def test_a_real_workbook_whose_content_types_have_no_namespace_still_converts_c2
     decoy = f'<x:Override xmlns:x="urn:contoso" PartName="/w.xml" ContentType="{_WORD_MAIN}"/></Types>'
     parts["[Content_Types].xml"] = parts["[Content_Types].xml"].replace(b"</Types>", decoy.encode())
     deck.unlink()
-    assert common_mod._ooxml_family(make_zip(deck, parts)) is None
+    assert common_mod._ooxml_family(make_zip(deck, parts)) == "presentation"
+    assert PptxConverter(CFG).convert(deck, name=deck.name)
+
+
+_VISIO_MAIN = "application/vnd.ms-visio.drawing.main+xml"
+_FOREIGN_DECOYS = (
+    f'<x:Override xmlns:x="urn:contoso" PartName="/w.xml" ContentType="{_WORD_MAIN}"/>',
+    f'<Override xmlns="" PartName="/w.xml" ContentType="{_WORD_MAIN}"/>',
+)
+
+
+@pytest.mark.parametrize("decoy", _FOREIGN_DECOYS, ids=["foreign-namespace", "xmlns-empty"])
+def test_a_decoy_override_outside_the_types_namespace_is_not_read_c3047(tmp_path: Path, decoy: str) -> None:
+    """B13 round 46 C3047 (ruling 202): ``_ooxml_family`` read every Override and Default in any namespace,
+    and a Visio drawing's main type is no family, so a Word decoy in another namespace (or in ``xmlns=""``
+    under a namespaced ``<Types>``) beside a real ``.vsdx``'s Override was the one family read, and the
+    drawing was a ``not the type its name says`` stub. Only ``<Types>``' direct children in its own
+    namespace are read: the drawing has no family and converts, and a deck with the same decoy is a deck and
+    converts."""
+    from agentsync.convert.diagram import DiagramConverter  # noqa: PLC0415
+    from test_convert_builders import build_vsdx  # noqa: PLC0415
+
+    types = (
+        f'<?xml version="1.0" encoding="UTF-8"?><Types xmlns="{_TYPES}">'
+        f'<Override PartName="/visio/document.xml" ContentType="{_VISIO_MAIN}"/>{decoy}</Types>'
+    ).encode()
+    vsdx = build_vsdx(tmp_path / "Contoso Network.vsdx")
+    with zipfile.ZipFile(vsdx) as zin:
+        parts = {i.filename: zin.read(i) for i in zin.infolist()}
+    parts["[Content_Types].xml"] = types
+    vsdx.unlink()
+    make_zip(vsdx, parts)
+    assert common_mod._ooxml_family(vsdx) is None
+    [unit] = DiagramConverter(CFG).convert(vsdx, name=vsdx.name)
+    assert "## Site plan" in unit.body
+    deck = build_pptx_rich(tmp_path / "Contoso deck.pptx")
+    with zipfile.ZipFile(deck) as zin:
+        parts = {i.filename: zin.read(i) for i in zin.infolist()}
+    parts["[Content_Types].xml"] = parts["[Content_Types].xml"].replace(
+        b"</Types>", decoy.encode() + b"</Types>"
+    )
+    deck.unlink()
+    assert common_mod._ooxml_family(make_zip(deck, parts)) == "presentation"
+    assert PptxConverter(CFG).convert(deck, name=deck.name)
+
+
+@pytest.mark.parametrize("codec", ["utf-32-le", "utf-32-be"])
+def test_a_utf32_content_types_part_is_parsed_before_any_decode_c3098(tmp_path: Path, codec: str) -> None:
+    """B13 round 46 C3098 (ruling 202): ``_ooxml_family`` decoded a part that opens with a UTF-16 mark before
+    the parse, and UTF-32LE's mark opens with UTF-16LE's, so a UTF-32LE part holding a character past U+FFFF
+    (``00 D8 01 00`` is a lone high surrogate in UTF-16) failed the decode and was None, though it parses: a
+    Word package named ``.potx`` passed the family check. The part is parsed first and decoded only in the
+    fallback, UTF-32 marks told before UTF-16's: in both orders it is a Word document, not a deck."""
+    import codecs  # noqa: PLC0415
+
+    src = word_package(tmp_path / "Contoso notes.potx")
+    with zipfile.ZipFile(src) as zin:
+        parts = {i.filename: zin.read(i) for i in zin.infolist()}
+    text = parts["[Content_Types].xml"].decode("utf-8")
+    text = text.replace('<?xml version="1.0"?>', '<?xml version="1.0" encoding="UTF-32"?><!-- \U0001d800 -->')
+    assert "UTF-32" in text and "\U0001d800" in text
+    mark = codecs.BOM_UTF32_LE if codec == "utf-32-le" else codecs.BOM_UTF32_BE
+    parts["[Content_Types].xml"] = mark + text.encode(codec)
+    src.unlink()
+    make_zip(src, parts)
+    assert common_mod._ooxml_family(src) == "word"
+    with pytest.raises(
+        UnreadableSourceError, match=re.escape(_DECK_STUB.replace("a deck", "a PowerPoint deck"))
+    ):
+        common_mod._check_ooxml_family(src, "presentation", "a PowerPoint deck")
+    # a UTF-16 part that does not parse and does not decode (a lone surrogate) is still None, never a raise
+    bad = "<Types".encode("utf-16-le") + b"\x00\xd8" + f'ContentType="{_WORD_MAIN}"'.encode("utf-16-le")
+    parts["[Content_Types].xml"] = b"\xff\xfe" + bad
+    src.unlink()
+    assert common_mod._ooxml_family(make_zip(src, parts)) is None
 
 
 def _decoy_potx(path: Path) -> Path:

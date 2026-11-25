@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import codecs
 import csv
 import io
 import mmap
@@ -89,7 +90,9 @@ _CONTENT_TYPES_MAX = 1 << 20
 _CONTENT_TYPES_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
 """The namespace of ``[Content_Types].xml``'s Override and Default elements, the only ones that type a part:
 pptx's ``_decoded_deck_types`` retypes them (B13 round 43 C2517; one copy, here, since round 44 C2708).
-:func:`_ooxml_family` reads them in any namespace or none, as openpyxl does (B13 round 45 C2854)."""
+:func:`_ooxml_family` reads them as ``<Types>``' direct children in ``<Types>``' own namespace, or in none
+when it has none, as openpyxl reads a part with no ``xmlns`` (B13 round 45 C2854; round 46 C3047: in any
+namespace, a foreign or ``xmlns=""`` decoy beside a Visio drawing's real Override was the one family read)."""
 _MAIN_TYPE_RE = re.compile(
     # whitespace around the "=" is XML's too (B13 round 29 C222)
     rb"\bContentType\s*=\s*[\"']application/vnd\.(?:openxmlformats-officedocument\."
@@ -128,17 +131,24 @@ def _ooxml_family(src: Path) -> str | None:
     be told: no such part, one too large (the cap, :data:`_CONTENT_TYPES_MAX`, is on the part's own bytes
     before any decode: over 1 MiB uncompressed, in whichever encoding it is stored), a damaged package, no
     main type, or main types of two families.  Within that cap, a part that opens with a UTF-16 byte order
-    mark is decoded first and read as its UTF-8 twin is (B13 round 34 C827); near the cap the twins can
+    mark is read as its UTF-8 twin is when it does not parse (B13 round 34 C827); near the cap the twins can
     differ, in either direction, since UTF-16 takes 2 bytes for an ASCII character and UTF-8 takes 3 for a
-    CJK one (B13 round 35 C964).  One that does not decode is None.  The parse below reads the part's own
-    bytes, so it also tells a UTF-32 part and a mark-less UTF-16 part that opens with an XML declaration;
-    only the byte fallback cannot read either, so a mark-less UTF-16 part with no declaration, which lxml
-    does not parse, cannot be told (B13 round 45 C2855).
+    CJK one (B13 round 35 C964).  The parse reads the part's own bytes first, before any decode, so it
+    tells a UTF-32 part and a mark-less UTF-16 part that opens with an XML declaration; only the byte
+    fallback cannot read either, so a mark-less UTF-16 part with no declaration, which lxml does not parse,
+    cannot be told (B13 round 45 C2855).  Only a part that does not parse is decoded, for the fallback, its
+    UTF-32 marks told before UTF-16's (``FF FE 00 00`` opens with UTF-16LE's mark): a UTF-32 one is None, as
+    the byte read cannot read it, and so is a UTF-16 one that does not decode (B13 round 46 C3098: the
+    decode ran first, so a UTF-32LE part holding a character past U+FFFF failed it and was None, though it
+    parsed).
 
     The parse decides: the families are read from the decoded ContentType of each Override and Default
-    element (:func:`content_types_tree`), in any namespace or none, as openpyxl reads them by local name
-    (B13 round 45 C2854: read in the content-types namespace only, a Word package or a deck named ``.xlsx``
-    whose ``<Types>`` has no ``xmlns`` lost its ``not the type its name says`` stub to a failed conversion).
+    element (:func:`content_types_tree`) that is a direct child of ``<Types>`` in ``<Types>``' own namespace,
+    or in none when ``<Types>`` has none, as openpyxl reads a part with no ``xmlns`` (B13 round 45 C2854: read
+    in the content-types namespace only, a Word package or a deck named ``.xlsx`` whose ``<Types>`` has no
+    ``xmlns`` lost its ``not the type its name says`` stub to a failed conversion; round 46 C3047: read in
+    any namespace, a foreign or ``xmlns=""`` decoy beside a Visio drawing's real Override, whose type is no
+    family, was the one family read, so a real ``.vsdx`` was a ``not the type its name says`` stub).
     A main-type literal in a comment, a processing instruction or an element of another name never counts,
     and a type spelled with a character reference does.  The byte regex over the part is the fallback, only
     when the part does not parse (B13 round 44 C2708 with C2653, ruling 185: a Word literal in a comment told
@@ -150,17 +160,27 @@ def _ooxml_family(src: Path) -> str | None:
             if info.file_size > _CONTENT_TYPES_MAX:
                 return None
             raw = types = zf.read(info)
-            if types.startswith(_UTF16_BOMS):
-                types = types.decode("utf-16").encode("utf-8")
     except Exception:  # KeyError, BadZipFile, OSError, an encrypted member, a compression zipfile lacks
         return None
-    tree = content_types_tree(raw)  # its own bytes, which its declaration names
+    tree = content_types_tree(raw)  # its own bytes, which its declaration names, before any decode (C3098)
     if tree is None:  # unparseable (the cap returned None above): the byte read stands
+        if raw.startswith((codecs.BOM_UTF32_LE, codecs.BOM_UTF32_BE)):  # before UTF-16's, a prefix of one
+            return None  # the byte fallback cannot read UTF-32 (B13 round 46 C3098)
+        if raw.startswith(_UTF16_BOMS):
+            try:
+                types = raw.decode("utf-16").encode("utf-8")
+            except UnicodeError:
+                return None
         families = {_FAMILY_OF[m[1] or m[2]] for m in _MAIN_TYPE_RE.finditer(types)}
     else:  # decoded, and only the elements that type a part (B13 round 44 C2708 with C2653)
         families = set()
-        # any namespace or none: lxml's {*} matches both and no comment or processing instruction (C2854)
-        for el in tree.iter("{*}Override", "{*}Default"):
+        # <Types>' own namespace, or none when it has none (C2854), and only its direct children: a decoy of
+        # another namespace or in xmlns="" is not read at all (B13 round 46 C3047); iterchildren by tag never
+        # yields a comment or processing instruction
+        tag = tree.tag if isinstance(tree.tag, str) else ""
+        ns = tag[1:].partition("}")[0] if tag.startswith("{") else ""
+        names = (f"{{{ns}}}Override", f"{{{ns}}}Default") if ns else ("Override", "Default")
+        for el in tree.iterchildren(*names):
             if m := _MAIN_TYPE_VALUE_RE.fullmatch(el.get("ContentType") or ""):
                 families.add(_FAMILY_OF[(m[1] or m[2]).encode("ascii")])
     return families.pop() if len(families) == 1 else None

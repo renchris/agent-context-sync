@@ -45776,6 +45776,10 @@ Amended 2026-11-23, §16.283 C2925: the parse-first rule moved no key, so an old
 name says` stub was served to the bytes it now reads as their own family, and a published one was never read
 again; every Office name's key carries `family_parse` now, and a one-time pass reads each published
 family-mismatch stub once under it.
+Amended 2026-11-24, §16.288 C3047: Override and Default are read only as `<Types>`' direct children in its own
+namespace, or in none when it has none; a decoy of another namespace is not read at all, rather than read as a second
+family, and that is what lets a `.vsdx` convert, since a Visio main type is no family. `family_parse` stays 1, so a
+hand-built package's stub cached under the older rule stays until its bytes change.
 
 **The .potx retype reads the parse, a literal replace only for a part it cannot read** (C2722 with C2709, makes worse
 True for a parse-only rule; ruling 185; `agentsync.convert.pptx`; amends §16.221 C781 and §16.273 C2517).
@@ -46517,6 +46521,11 @@ loading it). Tests:
 (a Word package and a deck named `.xlsx`, a Word package named `.pptx`, each with no `xmlns` on `<Types>`) and
 `test_convert_family.py::test_a_real_workbook_whose_content_types_have_no_namespace_still_converts_c2854` (the
 workbook converts, a foreign-namespace decoy gives no family).
+Amended 2026-11-24, §16.288 C3047: a foreign decoy beside the real Override is not read at all, so the deck is its
+own family (not None) and a `.vsdx` with one converts; only `<Types>`' direct children in its own namespace, or in
+none when it has none, are read. A hand-built package's stub cached under the older rule stays until its bytes change.
+Amended 2026-11-24, §16.288 C3098: the parse runs before any decode, so a UTF-32 part is told even when it holds a
+character a UTF-16 decode refuses; only a part that does not parse is decoded, UTF-32 marks before UTF-16's.
 
 **The seed's summaries say a CA the shell sets for curl stays curl's** (C2930; `agentsync.convert.speech`; amends
 §16.54 Q52). `_CURL_FLAGS`', `_seed`'s and `_curl_env`'s one-line summaries said the seed's curl "trusts and
@@ -46825,6 +46834,32 @@ moves nothing on non-ZIP bytes, so nothing loops, and taking the junk away again
 stub. Tests: `test_convert_family.py::test_a_family_mismatch_stub_whose_bytes_gain_a_preamble_is_converted_once_c3096`
 (the stub, junk put before it, `NOT_OOXML_REASON` after one try, no try on the next sync, the stub back once the junk
 goes) and the C2924 no-move test's family-mismatch rows.
+
+**The family check reads only `<Types>`' own Override and Default children** (C3047; ruling 202;
+`agentsync.convert._common`; amends §16.278 C2708 and §16.283 C2854). `_ooxml_family` read every Override and
+Default in any namespace or none (`tree.iter("{*}Override", "{*}Default")`), and a Visio drawing's main type
+(`application/vnd.ms-visio.drawing.main+xml`) is no family, so a Word decoy in another namespace, or in `xmlns=""`
+under a namespaced `<Types>`, beside a real `.vsdx`'s Override was the one family read, and `_vsdx_pages`'
+`_check_ooxml_family(src, "visio", ...)` made the drawing a `not the type its name says` stub; "two families, so
+None" held only for a deck. It reads only `<Types>`' direct children in `<Types>`' own namespace, or in none when
+`<Types>` has none (C2854's rule kept), so such a decoy is not read at all: the drawing has no family and converts,
+and a deck with the same decoy is a deck and converts. A real type in an `xmlns=""` child under a namespaced
+`<Types>` is no longer read either, a hand-built case only. `family_parse` stays 1: only a hand-built package can
+carry a stub the old rule made, and such a cached stub stays until its bytes change (a new key would cost every
+Office file a cache miss). Tests:
+`test_convert_family.py::test_a_decoy_override_outside_the_types_namespace_is_not_read_c3047` (a `.vsdx` and a
+deck, each with a foreign-namespace and an `xmlns=""` decoy) and the C2854 workbook test, whose deck is now a deck.
+
+**The family check parses a part before it decodes it, UTF-32 marks before UTF-16's** (C3098; ruling 202;
+`agentsync.convert._common`; amends §16.283 C2855). `_ooxml_family` decoded a part that opens with a UTF-16 mark
+inside the zip read, before the parse, and UTF-32LE's mark `FF FE 00 00` opens with UTF-16LE's, so a UTF-32LE part
+holding a character past U+FFFF (`00 D8 01 00` is a lone high surrogate read as UTF-16) failed the decode and was
+None, though lxml parses it: a Word package named `.potx` passed the check as a failed conversion rather than the
+cached stub. The parse reads the part's own bytes first; only a part that does not parse is decoded, for the byte
+fallback, a UTF-32 mark (which the byte read cannot read) None before the UTF-16 test, and a UTF-16 part that does
+not decode None as before. Test: `test_convert_family.py::test_a_utf32_content_types_part_is_parsed_before_any_decode_c3098`
+(UTF-32LE and UTF-32BE parts with a U+1D800 comment, each a Word document, not a deck; a UTF-16 part with a lone
+surrogate that does not parse still None).
 
 ### 16.289 Round 46: the prompt goes to v43 (a none, an unread inbox and a step 2 or step 3 error told from how the run ended), CI's head and limit, the gate's ceiling comment, dated lines, and the guides (2026-11-24, wave B13 round 46 lane D)
 
