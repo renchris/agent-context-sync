@@ -47001,6 +47001,16 @@ needed a prompt bump; the prompt and the friction log are untouched). Tests: `te
 (`test_a_none_is_scored_only_for_a_no_folder_run_that_ended_clean_c2947`'s rows,
 `test_the_expected_turns_name_step_3s_at_most_folder_question_c3029`).
 
+**A config named `... exists` is never an earlier run's, and the outcome docstrings name the Stopped option**
+(C3115, C3035 with C3053; the report cluster). `_earlier_config` stripped a trailing ` exists` before it compared,
+so a config whose own name ends ` exists`, echoed bare by install.out's `config: <path>`, was labeled
+`EARLIER_CONFIG`: the line is compared both as written and without the suffix, either matching the report's own
+config keeps it, and a `~name` spelling `expand` refuses names no file this one is (C3115).
+`Outcome.title_label`'s and `compute_outcome`'s docstrings still said the issue form has no stopped option and
+gets the Failed one, which C2803 changed: both name `STOPPED_FORM_OPTION` (C3035 with C3053; one defect, built
+once). Tests: `tests/test_setup_report.py` (`test_a_config_named_with_a_trailing_exists_is_never_an_earlier_runs_c3115`,
+`test_the_outcome_docstrings_name_the_forms_stopped_option_c3035_c3053`).
+
 ### 16.286 Round 46: the installer: the shell halves of rulings 198 and 199, every word it writes valid UTF-8 that reads back as its path, an older build's inbox read, and C2060 waits on the operator (2026-11-24, wave B13 round 46 lane RB)
 
 Wave B13 round 46 lane RB builds install.sh's halves of the lead's rulings 198, 199, 200, 203 and 204 and the

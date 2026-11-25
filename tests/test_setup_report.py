@@ -30277,3 +30277,31 @@ def test_the_expected_turns_name_step_3s_at_most_folder_question_c3029(
     assert STEP_3_ASKS not in _line(section(text, "Summary"), "- expected turns: ")
     if mac == "synced":
         assert outcome.startswith("- **outcome: fully one command**"), outcome
+
+
+def test_a_config_named_with_a_trailing_exists_is_never_an_earlier_runs_c3115(tmp_path: Path) -> None:
+    """B13 round 46 C3115: `_earlier_config` stripped a trailing ` exists` before comparing, so a config whose
+    own name ends ` exists` (`sources exists`), echoed bare by `config: <path>`, was labeled EARLIER_CONFIG.
+    Both spellings are compared: the bare echo and the `exists` form of the same file stay as written, another
+    file still reads EARLIER_CONFIG, and a `~name` spelling never raises."""
+    home = Path.home()
+    cfg = home / "agent-context" / "sources exists"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text(default_config_text(), encoding="utf-8")
+    assert not setup_report._earlier_config(f"config: {cfg}", cfg)
+    assert not setup_report._earlier_config(f"config: {cfg} exists", cfg)
+    assert not setup_report._earlier_config("config: ~/agent-context/sources exists", cfg)
+    assert setup_report._earlier_config(f"config: {home}/Old Place/sources.toml exists", cfg)
+    assert setup_report._earlier_config("config: ~kestrel/sources.toml exists", cfg)
+
+
+def test_the_outcome_docstrings_name_the_forms_stopped_option_c3035_c3053() -> None:
+    """B13 round 46 C3035 with C3053: Outcome.title_label's and compute_outcome's docstrings still said the
+    issue form has no stopped option and gets the Failed one, which C2803 changed. Both name
+    STOPPED_FORM_OPTION, and the form label of a stopped outcome is that option."""
+    for doc in (setup_report.Outcome.title_label.__doc__ or "", setup_report.compute_outcome.__doc__ or ""):
+        flat = " ".join(doc.split())
+        assert ":data:`STOPPED_FORM_OPTION`" in flat and "no such option" not in flat, flat
+        assert 'as it has no "stopped"' not in flat, flat
+    stopped = setup_report.Outcome("stopped", 1, ("x",), 42)
+    assert stopped.form_label == setup_report.STOPPED_FORM_OPTION

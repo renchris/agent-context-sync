@@ -421,17 +421,28 @@ ticker's ``config: reading and updating ...`` lines, stay as written."""
 
 def _earlier_config(line: str, config_path: Path | None) -> bool:
     """Whether install.out's ``line`` is a ``config:`` line naming another file than ``config_path``
-    (:data:`EARLIER_CONFIG`, B13 round 45 C2823)."""
+    (:data:`EARLIER_CONFIG`, B13 round 45 C2823).
+
+    B13 round 46 C3115: both the line as written and without a trailing `` exists`` are compared, so a config
+    whose own name ends `` exists`` (``~/agent-context/sources exists``) is never labeled an earlier run's; a
+    spelling ``expand`` refuses (``~name``) names no file this one is."""
     if config_path is None or not line.startswith("config: ") or line.startswith("config: reading and "):
         return False
-    written = line[len("config: ") :].removesuffix(" exists")
-    if not written.strip():
+    rest = line[len("config: ") :]
+    candidates = [c for c in dict.fromkeys((rest, rest.removesuffix(" exists"))) if c.strip()]
+    if not candidates:
         return False
-    named, own = expand(written), expand(config_path)
-    if named == own:
-        return False
-    with contextlib.suppress(OSError, RuntimeError):
-        return named.resolve() != own.resolve()
+    own = expand(config_path)
+    for written in candidates:
+        try:
+            named = expand(written)
+        except ConfigError:
+            continue
+        if named == own:
+            return False
+        with contextlib.suppress(OSError, RuntimeError):
+            if named.resolve() == own.resolve():
+                return False
     return True
 
 
@@ -3484,9 +3495,10 @@ class Outcome:
         """The issue title's words: a failed step named as the attempt's own prompt names it (v14's step 3 is
         "sync loop and report"), where :attr:`form_label` keeps v6's option names for a step the form has no
         option of its own for, so every link's prefilled field stays a valid option (KISS K16b; B13 round 6
-        G12, round 7 H11). A stopped attempt's title says "Stopped",
-        as its Summary does, while the form, which has no such option, still gets the Failed one (B13 round 7
-        H42). Otherwise :attr:`form_label`."""
+        G12, round 7 H11). A stopped attempt's title says "Stopped at step N (<the step's own name>)", as its
+        Summary does (B13 round 7 H42); its form field is the form's one Stopped option,
+        :data:`STOPPED_FORM_OPTION` (B13 round 45 C2803; round 46 C3035 with C3053). Otherwise
+        :attr:`form_label`."""
         steps = prompt_layout(self.version).steps
         if self.kind in ("failed", "stopped") and self.step in steps:
             verb = "Failed" if self.kind == "failed" else "Stopped"
@@ -4039,8 +4051,8 @@ def compute_outcome(
       with no later end of that step (then the last error, then the last step logged);
     - stopped at step 1: no install run, no error and no end line, at least one step 1 deviation, and every
       other event a step 1 event of a kind in :data:`_WAIT_OK_KINDS` (B13 round 7 H40): the session stopped
-      where the prompt says to wait for the folder answer (B13 round 6 G23); the form's option for it is step
-      1's failure, as it has no "stopped".
+      where the prompt says to wait for the folder answer (B13 round 6 G23); the form's option for it is
+      :data:`STOPPED_FORM_OPTION` (B13 round 45 C2803; round 46 C3035).
 
     Deviation, prompt and error lines are agent friction (the Summary counts them on their own line): they
     never change the outcome by themselves, except an error that stopped the run, and an error of the report
