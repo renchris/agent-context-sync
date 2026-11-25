@@ -4234,3 +4234,28 @@ def test_both_reports_cut_where_the_inbox_links_outside_agent_context_c3055(
         assert python == said, python
     assert not python_private, texts[1]
     assert shell == python and shell_private == python_private, (shell, python)
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+def test_both_reports_read_the_folder_after_a_launcher_named_like_the_flag_c3104(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+) -> None:
+    """B13 round 46 C3104 (ruling 199; privacy): a launcher named `Project --source-local` is logged as
+    `~/Project\\ --source-local`; the agentsync report's unanchored match began at its escaped space, took the
+    real `--source-local` for its operand and printed the logged folder in clear, where the shell's `read -a`
+    reads it. Both read the folder after the real flag and print the same rows."""
+    log = install_log_path(env)
+    log.parent.mkdir(parents=True, exist_ok=True)
+    start = "2026-11-24T10:00:00Z run=20261124T100000Z-4242"
+    log.write_text(
+        f"{start} start install.sh compat=42 kind=checkout source=- args="
+        "--launcher ~/Project\\ --source-local --source-local "
+        "~/Library/CloudStorage/OneDrive-Contoso/Kestrel\\ Ledger\n"
+        f"{start} end rc=2 seconds=1\n",
+        encoding="utf-8",
+    )
+    said = ["picked the Kestrel Ledger folder"]
+    shell, python, shell_private, python_private = _both_reports(env, ["Project Alpha"], said, locale)
+    assert re.fullmatch(r"picked the <folder-\d+> folder", python[0]), python
+    assert shell == python and shell_private == python_private, (shell, python)

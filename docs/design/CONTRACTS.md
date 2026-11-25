@@ -46902,7 +46902,8 @@ splits them and the `$'..'` words come from install.sh's grep pattern (C3104; a 
 paragraph). Tests: `tests/test_report_redaction.py` (`test_an_unparsed_config_pairs_each_id_with_its_path_c3056`,
 `test_both_reports_cut_a_source_under_every_header_and_quote_c3056`,
 `test_both_reports_cut_where_the_inbox_links_outside_agent_context_c3055`,
-`test_a_logged_flag_word_inside_an_escaped_operand_is_no_flag_c3104`).
+`test_a_logged_flag_word_inside_an_escaped_operand_is_no_flag_c3104`,
+`test_both_reports_read_the_folder_after_a_launcher_named_like_the_flag_c3104`).
 
 ### 16.286 Round 46: the installer: the shell halves of rulings 198 and 199, every word it writes valid UTF-8 that reads back as its path, an older build's inbox read, and C2060 waits on the operator (2026-11-24, wave B13 round 46 lane RB)
 
