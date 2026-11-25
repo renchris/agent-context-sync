@@ -10001,6 +10001,7 @@ def test_a_sync_over_a_corrupt_heartbeat_warns_of_it_once_c3004(
         if r.levelno >= logging.WARNING and "heartbeat" in r.getMessage()
     ]
     assert len(warned) == 1 and "is corrupt" in warned[0] and "rewriting it" in warned[0], warned
+    assert warned[0].count(str(beat)) == 1, warned  # the path once, from read_heartbeat's error (C3216)
     debug = [r.levelno for r in caplog.records if "heartbeat unreadable" in r.getMessage()]
     assert debug and set(debug) == {logging.DEBUG}, debug
     assert isinstance(json.loads(beat.read_text(encoding="utf-8")), dict)
@@ -10021,6 +10022,8 @@ def test_a_sync_over_a_corrupt_heartbeat_warns_of_it_once_c3004(
         if r.levelno >= logging.WARNING and "heartbeat" in r.getMessage()
     ]
     assert len(warned) == 1 and "is corrupt" in warned[0], warned
+    assert warned[0].count(str(beat)) == 1, warned
+    assert "the next sync of a live source rewrites it" in warned[0], warned
 
 
 def test_fail_steps_docstring_gives_no_stale_count_of_the_persons_kinds() -> None:

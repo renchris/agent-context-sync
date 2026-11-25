@@ -47298,6 +47298,9 @@ WARNING, `heartbeat <path> is corrupt (...); the next sync of a live source rewr
 stderr passthrough is untouched: keeping a sync's warnings off its output would hide the lines its NEXT points to (the
 first sync's error, the configuration error, the lock holder's line) and a foreground sync's only copy (makes worse
 True). Test: `test_a_sync_over_a_corrupt_heartbeat_warns_of_it_once_c3004` (a live sync and an all-paused one).
+Amended 2026-11-25, §16.292 C3216: both WARNINGs drop their own copy of the path, since read_heartbeat's error already
+names it: `heartbeat is corrupt (<path>: ...); rewriting it` and `heartbeat is corrupt (<path>: ...); the next sync of
+a live source rewrites it`, the path once.
 
 **Step 2's sources line marks a paused or retired source** (C3002; amends §16.93 M13). `_ensure_setup` printed
 `sources: inbox, project-alpha` for a config whose only folder was paused or retired, beside a NEXT saying no folder
@@ -47857,6 +47860,12 @@ sync stops on such a path before it prints a NEXT, so only status prints these. 
 `test_rule_1_names_the_docs_fail_as_the_persons_c3238`, `test_a_docs_path_under_the_cloud_folder_reads_as_doctor_reads_it_c3238`,
 `test_a_file_at_the_docs_path_is_the_persons_in_status_c3238` and
 `test_a_link_to_a_real_docs_folder_beside_a_refused_remote_keeps_the_governance_next_c3238`.
+
+**A corrupt heartbeat's warning names its path once** (C3216). `write_heartbeat`'s and the cycle's `_after` WARNING
+read `heartbeat <path> is corrupt (<path>: not valid JSON: ...)`, the path twice, since read_heartbeat's ValueError
+already holds it; both now read `heartbeat is corrupt (<error>)` with their own tails (`; rewriting it`, `; the next
+sync of a live source rewrites it`), and read_heartbeat's messages, which doctor's [warn] builds on, are unchanged.
+Test: `test_a_sync_over_a_corrupt_heartbeat_warns_of_it_once_c3004` (the path once in each twin).
 
 ### 16.293 Round 47: the converters: ruling 202's Office twins closed (UTF-32 text, a no-namespace `<Types>`, the container answers before the cache, xlsx's emitter 1.0.7) and one noun per family (2026-11-25, wave B13 round 47 lane E)
 

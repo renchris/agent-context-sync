@@ -9703,9 +9703,11 @@ C3087 with C3105 (the stripped kind), C3003 (a bare run's own no-folder NEXT, am
 with C3089 and C3103 (q_word)."""
 _ROUND_47_B_PARAGRAPH_AMENDS = (
     ("14", "**STATE.md and INDEX.md name the next step (2026-10-05, KISS K08b).**", "§16.292 C3227"),
+    ("16.287", "**A sync says a corrupt heartbeat once** (C3004", "§16.292 C3216"),
 )
 """Round 47 lane B's dated lines: C3227's at §14's item 13, STATE.md's blocking-finding step, now
-``loop.land_gate_step``'s words (B13 round 47 C3227, ruling 212)."""
+``loop.land_gate_step``'s words (B13 round 47 C3227, ruling 212); C3216's under §16.287's C3004 paragraph, its
+two WARNINGs naming the path once."""
 _ROUND_45_RB_PARAGRAPH_AMENDS = (
     (
         "16.116",

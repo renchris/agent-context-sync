@@ -601,7 +601,7 @@ def write_heartbeat(
         current: dict[str, object] = {k: dict(v) for k, v in read_heartbeat(path).items()}
         record = _hold_record(path)
     except ValueError as exc:
-        log.warning("heartbeat %s is corrupt (%s); rewriting it", path, exc)
+        log.warning("heartbeat is corrupt (%s); rewriting it", exc)  # exc names the path (B13 round 47 C3216)
         current, record = {}, None
     if record is not None and not os.path.lexists(path.parent / HOLD_RECORD_NAME):
         # round 28's record of the holds, kept only until hold-record.json replaces it (B13 round 29 C199);

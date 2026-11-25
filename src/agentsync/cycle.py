@@ -4245,9 +4245,8 @@ class _Cycle:
             except PermissionError as exc:
                 self.heartbeat_refused = exc
             except ValueError as exc:
-                log.warning(
-                    "heartbeat %s is corrupt (%s); the next sync of a live source rewrites it", hb, exc
-                )
+                # exc names the path, so the line says it once (B13 round 47 C3216)
+                log.warning("heartbeat is corrupt (%s); the next sync of a live source rewrites it", exc)
             except OSError:
                 pass
         # hold-record.json keeps the state hold scopes, outside governance/ and apart from heartbeat.json, so
