@@ -1123,7 +1123,7 @@ class XlsxConverter:
     def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]:
         """Convert one staged file; see the Converter protocol for pre/postconditions and errors."""
         _check_ooxml_container(src)
-        _check_ooxml_family(src, "spreadsheet", "a workbook")
+        _check_ooxml_family(src, "spreadsheet")
         if src.stat().st_size > self._cfg.xlsx_stream_threshold_bytes:
             return self._convert_streaming(src)
         wb = _load(src, data_only=True, read_only=False)

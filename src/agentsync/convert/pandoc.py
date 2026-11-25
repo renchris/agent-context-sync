@@ -832,7 +832,7 @@ class PandocConverter:
             raise ConversionError(f"pandoc-gfm does not handle {suffix or 'files without an extension'}")
         if fmt == "docx":
             _check_ooxml_container(src)
-            _check_ooxml_family(src, "word", "a Word document")
+            _check_ooxml_family(src, "word")
         elif fmt == "odt":
             # zero bytes: one `empty` stub, never a failed conversion (B13 round 36 C1050); here only, not at
             # the top, where a zero-byte .rtf or .html is a page

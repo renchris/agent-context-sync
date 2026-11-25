@@ -119,13 +119,21 @@ _FAMILY_NOUN = {
     "spreadsheet": "an Excel workbook",
     "presentation": "a PowerPoint deck",
 }
+_EXPECTED_NOUN = {**_FAMILY_NOUN, "visio": "a Visio drawing"}
+"""The noun :func:`_check_ooxml_family` names the expected type by: a family's own :data:`_FAMILY_NOUN`, so
+a deck is ``a PowerPoint deck`` and a workbook ``an Excel workbook`` on both sides of a stub (B13 round 47
+C3230: the deck converter said ``a deck`` and the workbook one ``a workbook`` as the expected type), and
+Visio's, which is no family ``_ooxml_family`` finds, so it stays out of :data:`_FAMILY_NOUN` and the found
+side of :data:`FAMILY_MISMATCH_RE`."""
 FAMILY_MISMATCH_RE = re.compile(
     rf"not-ooxml: (?:{'|'.join(map(re.escape, _FAMILY_NOUN.values()))}), not .+ "
     r"\(not the type its name says\)"
 )
 """The whole reason :func:`_check_ooxml_family` raises (``not-ooxml: <noun>, not <noun> (not the type its name
 says)``), never ``policy.NOT_OOXML_REASON`` (bytes that are not a ZIP): the stubs
-``cycle._Cycle._reread_family_stubs`` reads once more after the family rule changed (B13 round 45 C2925)."""
+``cycle._Cycle._reread_family_stubs`` reads once more after the family rule changed (B13 round 45 C2925).  The
+expected side is any text, so a stub cached under an older noun (``not a deck``, ``not a workbook``) still
+matches (B13 round 47 C3230)."""
 
 
 def _ooxml_family(src: Path) -> str | None:
@@ -216,17 +224,17 @@ def content_types_tree(types: bytes) -> Any | None:
         return None
 
 
-def _check_ooxml_family(src: Path, family: str, noun: str) -> None:
+def _check_ooxml_family(src: Path, family: str) -> None:
     """Raise UnreadableSourceError when ``src``'s main part is of another Office family than ``family`` (a
     Word document named ``.potx``, B13 round 28 I39): one stub, cached and not retried, except the one re-read
     ``cycle._Cycle._reread_family_stubs`` gives after the family rule changed (B13 round 45 C2925; round 46
     C3048), which the setup report classes "not the type its name says".  Fixed words, the family noun
-    only.  A family that cannot be told, or the converter's own one under another main type (a template, a
-    macro deck), passes."""
+    only, one per family on both sides (:data:`_EXPECTED_NOUN`, B13 round 47 C3230).  A family that cannot be
+    told, or the converter's own one under another main type (a template, a macro deck), passes."""
     found = _ooxml_family(src)
     if found is not None and found != family:
         raise UnreadableSourceError(
-            f"not-ooxml: {_FAMILY_NOUN[found]}, not {noun} (not the type its name says)"
+            f"not-ooxml: {_FAMILY_NOUN[found]}, not {_EXPECTED_NOUN[family]} (not the type its name says)"
         )
 
 

@@ -525,7 +525,7 @@ class PptxConverter:
         With an OCR engine the helper works in a folder made beside ``src``, and OcrError (fixed wording)
         means the engine failed on a deck that converts without it."""
         _check_ooxml_container(src)
-        _check_ooxml_family(src, "presentation", "a deck")
+        _check_ooxml_family(src, "presentation")
         from pptx import Presentation  # noqa: PLC0415 - heavy import, only when a deck is converted
 
         try:

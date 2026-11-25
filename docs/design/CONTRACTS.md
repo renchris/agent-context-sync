@@ -32654,6 +32654,9 @@ marked part: one with no mark, and UTF-32, stay "cannot be told". No emitter bum
 not read again.
 Amended 2026-11-04, §16.233 C964: within the size cap, which is on the part's own bytes before any decode (over 1
 MiB uncompressed, in whichever encoding it is stored); near the cap the twins can differ either way.
+Amended 2026-11-25, §16.293 C3230: the expected side takes its family's own noun now, so this stub reads `not-ooxml:
+a Word document, not a PowerPoint deck (not the type its name says)`; one cached under the older words keeps them
+until it is read again, and `FAMILY_MISMATCH_RE` matches both.
 
 **A new start continues after the run STATE.md records (I22; `agentsync.cycle`).** Runs that change nothing commit
 nothing and write no CHANGELOG heading, so only `_sync/STATE.md`'s `run:` line records them, and a new start
@@ -45841,6 +45844,9 @@ Amended 2026-11-24, §16.288 C3047: Override and Default are read only as `<Type
 namespace, or in none when it has none; a decoy of another namespace is not read at all, rather than read as a second
 family, and that is what lets a `.vsdx` convert, since a Visio main type is no family. `family_parse` stays 1, so a
 hand-built package's stub cached under the older rule stays until its bytes change.
+Amended 2026-11-25, §16.293 C3230: the expected side takes its family's own noun now, so this stub reads `not-ooxml:
+a Word document, not a PowerPoint deck (not the type its name says)`; one cached under the older words keeps them
+until it is read again, and `FAMILY_MISMATCH_RE` matches both.
 
 **The .potx retype reads the parse, a literal replace only for a part it cannot read** (C2722 with C2709, makes worse
 True for a parse-only rule; ruling 185; `agentsync.convert.pptx`; amends §16.221 C781 and §16.273 C2517).
@@ -46722,6 +46728,9 @@ C2703 shape test, which now reads the shared loop.
 Amended 2026-11-24, §16.288 C3107 with C3097: "each row read is marked whatever the answer" holds for a row whose
 fetch returned; a row whose fetch fails (evicted or unreadable since the walk) is left unmarked, as a dataless row
 is, and holds the token unset until a pass reads it.
+Amended 2026-11-25, §16.293 C3230: the expected side takes its family's own noun now, so this stub reads `not-ooxml:
+a Word document, not a PowerPoint deck (not the type its name says)`; one cached under the older words keeps them
+until it is read again, and `FAMILY_MISMATCH_RE` matches both.
 
 **A source's own banner line never stands for the leading one** (C2929; ruling 196; `agentsync.policy`).
 `has_banner` took the banner anywhere in a body's first eight lines and `with_banner` returned such a body
@@ -47306,6 +47315,9 @@ goes) and the C2924 no-move test's family-mismatch rows.
 Amended 2026-11-25, §16.293 C3329: `NOT_OOXML_REASON` is the ordinary preamble's answer: a PDF header with
 `/Encrypt` in the first 1024 bytes gives `encrypted-pdf`, and under an active label rule a label refusal can come
 first; none of these moves anything on the same bytes, so nothing loops.
+Amended 2026-11-25, §16.293 C3230: the expected side takes its family's own noun now, so this stub reads `not-ooxml:
+a Word document, not a PowerPoint deck (not the type its name says)`; one cached under the older words keeps them
+until it is read again, and `FAMILY_MISMATCH_RE` matches both.
 
 **The family check reads only `<Types>`' own Override and Default children** (C3047; ruling 202;
 `agentsync.convert._common`; amends §16.278 C2708 and §16.283 C2854). `_ooxml_family` read every Override and
@@ -47607,6 +47619,22 @@ and cache.py were already right. Tests:
 phrases, the old ones gone, the tally's words) and
 `test_convert_family.py::test_an_encrypted_pdf_is_cached_only_under_a_name_outside_the_office_suffixes_c3320` (the
 same encrypted-PDF bytes under `.docx`: no get, no put; under `.pdf`: one each).
+
+**Each Office family takes one noun on both sides of a stub** (C3230; ruling 215; `agentsync.convert._common`,
+`agentsync.convert.pptx`, `agentsync.convert.xlsx`; amends §16.196 I39, §16.278 C2708, §16.283 C2925 and §16.288
+C3096). `_check_ooxml_family` named the found family by `_FAMILY_NOUN` (`a Word document`, `an Excel workbook`,
+`a PowerPoint deck`) and the expected one by each converter's own words, so a Word package named `.potx` read `not a
+deck` while a deck named `.vsdx` read `a PowerPoint deck, not a Visio drawing`, and a workbook was `a workbook` or `an
+Excel workbook` by side. The check takes the expected noun from `_EXPECTED_NOUN`, `_FAMILY_NOUN` with Visio's `a
+Visio drawing` beside it (Visio is no family `_ooxml_family` finds, so it stays out of `_FAMILY_NOUN`, which feeds
+`FAMILY_MISMATCH_RE`'s found side), and no converter passes a noun of its own: pptx's stub reads `not a PowerPoint
+deck` and xlsx's `not an Excel workbook`. `FAMILY_MISMATCH_RE`'s expected side stays `.+`, so a stub cached under
+`not a deck` or `not a workbook` still matches for the family re-read, `_container_moved` and the setup report's
+class; it keeps its words until it is read again, a cosmetic difference. pptx's emitter version does not move (its
+stub text is the only change, and a re-conversion of every deck would cost more than the words); xlsx's moves once,
+to 1.0.7, for C3025's note and this noun together (C3263 below). Test:
+`test_convert_family.py::test_each_family_takes_one_noun_on_both_sides_of_a_stub_c3230` (`.potx` and `.xlsx` stubs,
+the `.vsdx` deck, the older words still matched and classed), with the stub literals of every family test moved.
 
 ### 16.294 Round 47: the prompt goes to v44 (a run read to its exit, an error keyed on its exit code, a paused or retired folder never offered again), CI's head and limit, dated lines, and the guides (2026-11-25, wave B13 round 47 lane D)
 

@@ -74,9 +74,9 @@ def word_package(path: Path) -> Path:
 @pytest.mark.parametrize(
     ("name", "converter", "noun"),
     [
-        ("Contoso doc.potx", PptxConverter, "a deck"),
-        ("Contoso doc.pptx", PptxConverter, "a deck"),
-        ("Contoso doc.xlsx", XlsxConverter, "a workbook"),
+        ("Contoso doc.potx", PptxConverter, "a PowerPoint deck"),
+        ("Contoso doc.pptx", PptxConverter, "a PowerPoint deck"),
+        ("Contoso doc.xlsx", XlsxConverter, "an Excel workbook"),
     ],
 )
 def test_a_word_package_under_another_offices_name_is_not_the_type_its_name_says(
@@ -94,9 +94,9 @@ def test_a_word_package_under_another_offices_name_is_not_the_type_its_name_says
 @pytest.mark.parametrize(
     ("name", "converter", "noun"),
     [
-        ("Contoso doc.potx", PptxConverter, "a deck"),
-        ("Contoso doc.pptx", PptxConverter, "a deck"),
-        ("Contoso doc.xlsx", XlsxConverter, "a workbook"),
+        ("Contoso doc.potx", PptxConverter, "a PowerPoint deck"),
+        ("Contoso doc.pptx", PptxConverter, "a PowerPoint deck"),
+        ("Contoso doc.xlsx", XlsxConverter, "an Excel workbook"),
     ],
 )
 def test_a_content_type_with_whitespace_around_its_equals_sign_is_read(
@@ -114,6 +114,37 @@ def test_a_content_type_with_whitespace_around_its_equals_sign_is_read(
     with pytest.raises(UnreadableSourceError) as caught:
         converter(CFG).convert(src, name=name)
     assert str(caught.value) == f"not-ooxml: a Word document, not {noun} (not the type its name says)"
+
+
+def test_each_family_takes_one_noun_on_both_sides_of_a_stub_c3230(tmp_path: Path) -> None:
+    """B13 round 47 C3230 (ruling 215): the found side of a family-mismatch stub came from ``_FAMILY_NOUN``
+    (``a PowerPoint deck``, ``an Excel workbook``) and the expected side from each converter's own words
+    (``a deck``, ``a workbook``), so a ``.potx`` read ``not a deck`` and a ``.vsdx`` ``a PowerPoint deck,
+    not a Visio drawing``. The expected noun is ``_FAMILY_NOUN``'s too, Visio's kept apart (it is no family
+    the check finds), and ``FAMILY_MISMATCH_RE``'s expected side stays any text, so a stub cached under the
+    older noun still matches and is still re-read and classed."""
+    word = word_package(tmp_path / "made.docx").read_bytes()
+    for name, converter, family in (
+        ("Contoso doc.potx", PptxConverter, "presentation"),
+        ("Contoso doc.xlsx", XlsxConverter, "spreadsheet"),
+    ):
+        src = tmp_path / name
+        src.write_bytes(word)
+        with pytest.raises(UnreadableSourceError) as caught:
+            converter(CFG).convert(src, name=name)
+        noun = common_mod._FAMILY_NOUN[family]
+        assert str(caught.value) == f"not-ooxml: a Word document, not {noun} (not the type its name says)"
+    deck = tmp_path / "Contoso deck.vsdx"
+    deck.write_bytes(build_pptx_rich(tmp_path / "rich.pptx").read_bytes())
+    with pytest.raises(UnreadableSourceError) as caught:
+        common_mod._check_ooxml_family(deck, "visio")
+    visio = "not-ooxml: a PowerPoint deck, not a Visio drawing (not the type its name says)"
+    assert str(caught.value) == visio
+    assert "visio" not in common_mod._FAMILY_NOUN and common_mod._EXPECTED_NOUN["visio"] == "a Visio drawing"
+    for old in ("a Word document, not a deck", "a Word document, not a workbook"):
+        reason = f"not-ooxml: {old} (not the type its name says)"
+        assert common_mod.FAMILY_MISMATCH_RE.fullmatch(reason), "an older cached stub still matches"
+        assert quarantine_class(reason) == "not the type its name says"
 
 
 def test_a_deck_named_docx_is_not_the_type_its_name_says(tmp_path: Path) -> None:
@@ -140,9 +171,9 @@ def _types_in(src: Path, codec: str, edit: Callable[[str], str] = lambda t: t) -
 @pytest.mark.parametrize(
     ("name", "converter", "noun"),
     [
-        ("Contoso doc.potx", PptxConverter, "a deck"),
-        ("Contoso doc.pptx", PptxConverter, "a deck"),
-        ("Contoso doc.xlsx", XlsxConverter, "a workbook"),
+        ("Contoso doc.potx", PptxConverter, "a PowerPoint deck"),
+        ("Contoso doc.pptx", PptxConverter, "a PowerPoint deck"),
+        ("Contoso doc.xlsx", XlsxConverter, "an Excel workbook"),
     ],
 )
 def test_a_word_package_whose_content_types_are_utf_16_is_not_the_type_its_name_says(
@@ -1196,7 +1227,7 @@ def test_a_stub_an_older_build_wrote_a_staging_path_into_is_read_again_once(
     tries.clear()
     assert run(config).exit_code == 0
     assert tries == ["Contoso renamed doc.potx"], "past the retries: the one-shot re-read"
-    assert page_fm(config, page)["reason"].startswith("not-ooxml: a Word document, not a deck")
+    assert page_fm(config, page)["reason"].startswith("not-ooxml: a Word document, not a PowerPoint deck")
     assert str(config.state_paths.staging) not in git(config.docs_repo, "show", f"HEAD:{page}")
     assert _leaks(config) == []
     # B13 round 30 C319: on purpose, the older build's page stays in the docs history until compaction drops
@@ -1736,7 +1767,7 @@ def test_a_stub_with_a_path_needs_no_home_folder(monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setattr(Path, "home", staticmethod(no_home))
     assert _stub_with_a_path("file '/Volumes/x/agentsync/staging/ab12/a.pptx' is not")
-    assert not _stub_with_a_path("not-ooxml: a Word document, not a deck")
+    assert not _stub_with_a_path("not-ooxml: a Word document, not a PowerPoint deck")
 
 
 def _round29_build(mp: pytest.MonkeyPatch) -> None:
@@ -2479,9 +2510,9 @@ def _without_types_namespace(path: Path) -> Path:
 @pytest.mark.parametrize(
     ("make", "name", "converter", "message"),
     [
-        ("word", "Contoso doc.xlsx", XlsxConverter, "a Word document, not a workbook"),
-        ("deck", "Contoso doc.xlsx", XlsxConverter, "a PowerPoint deck, not a workbook"),
-        ("word", "Contoso doc.pptx", PptxConverter, "a Word document, not a deck"),
+        ("word", "Contoso doc.xlsx", XlsxConverter, "a Word document, not an Excel workbook"),
+        ("deck", "Contoso doc.xlsx", XlsxConverter, "a PowerPoint deck, not an Excel workbook"),
+        ("word", "Contoso doc.pptx", PptxConverter, "a Word document, not a PowerPoint deck"),
     ],
 )
 def test_a_package_whose_content_types_have_no_namespace_is_still_not_the_type_its_name_says_c2854(
@@ -2527,7 +2558,9 @@ def test_a_prefixed_content_types_child_under_a_no_namespace_types_is_read_c3264
     assert common_mod._ooxml_family(src) == "word"
     with pytest.raises(UnreadableSourceError) as caught:
         XlsxConverter(CFG).convert(src, name=src.name)
-    assert str(caught.value) == "not-ooxml: a Word document, not a workbook (not the type its name says)"
+    assert (
+        str(caught.value) == "not-ooxml: a Word document, not an Excel workbook (not the type its name says)"
+    )
     foreign = prefixed.replace(f'xmlns:ct="{_TYPES}"', 'xmlns:ct="urn:contoso:not-content-types"', 1)
     parts["[Content_Types].xml"] = foreign.encode("utf-8")
     src.unlink()
@@ -2600,7 +2633,8 @@ def test_a_utf32_content_types_part_is_parsed_before_any_decode_c3098(tmp_path: 
     the parse, and UTF-32LE's mark opens with UTF-16LE's, so a UTF-32LE part holding a character past U+FFFF
     (``00 D8 01 00`` is a lone high surrogate in UTF-16) failed the decode and was None, though it parses: a
     Word package named ``.potx`` passed the family check. The part is parsed first and decoded only in the
-    fallback, UTF-32 marks told before UTF-16's: in both orders it is a Word document, not a deck."""
+    fallback, UTF-32 marks told before UTF-16's: in both orders it is a Word document, not a PowerPoint
+    deck."""
     import codecs  # noqa: PLC0415
 
     src = word_package(tmp_path / "Contoso notes.potx")
@@ -2614,10 +2648,8 @@ def test_a_utf32_content_types_part_is_parsed_before_any_decode_c3098(tmp_path: 
     src.unlink()
     make_zip(src, parts)
     assert common_mod._ooxml_family(src) == "word"
-    with pytest.raises(
-        UnreadableSourceError, match=re.escape(_DECK_STUB.replace("a deck", "a PowerPoint deck"))
-    ):
-        common_mod._check_ooxml_family(src, "presentation", "a PowerPoint deck")
+    with pytest.raises(UnreadableSourceError, match=re.escape(_DECK_STUB)):
+        common_mod._check_ooxml_family(src, "presentation")
     # a UTF-16 part that does not parse and does not decode (a lone surrogate) is still None, never a raise
     bad = "<Types".encode("utf-16-le") + b"\x00\xd8" + f'ContentType="{_WORD_MAIN}"'.encode("utf-16-le")
     parts["[Content_Types].xml"] = b"\xff\xfe" + bad
@@ -2821,7 +2853,7 @@ def _older_family_rule(old: pytest.MonkeyPatch) -> None:
     old.setattr(convert_pkg, "effective_options_hash", older_hash)
 
 
-_DECK_STUB = "not-ooxml: a Word document, not a deck (not the type its name says)"
+_DECK_STUB = "not-ooxml: a Word document, not a PowerPoint deck (not the type its name says)"
 
 
 def test_an_older_family_answer_in_the_cache_is_not_served_under_the_new_key_c2925(

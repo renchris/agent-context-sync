@@ -451,7 +451,7 @@ def _vsdx_pages(src: Path) -> list[_Page]:
     _check_ooxml_container(src)
     # a Word, Excel or PowerPoint package named .vsdx is one settled stub, never a failure tried again (B13
     # round 36 C1033); a real drawing's main type is no family it tells, so it passes
-    _check_ooxml_family(src, "visio", "a Visio drawing")
+    _check_ooxml_family(src, "visio")
     budget = _Budget()
     try:
         with zipfile.ZipFile(src) as zf:
