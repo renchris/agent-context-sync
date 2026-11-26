@@ -181,6 +181,7 @@ from agentsync.paths import (
     default_docs_repo,
     default_log_dir,
     default_state_dir,
+    docs_repo_state,
     expand,
     is_temporary,
     provider_link_resolved,
@@ -8945,6 +8946,22 @@ loads was not checked either, as install.sh's shell report says it, where this r
 and the open's PermissionError."""
 
 
+def _docs_not_folder_words(docs: Path) -> bool | str:
+    """The Configuration section's words for a docs repo path that is no folder, by lane B's
+    :func:`paths.docs_repo_state`, the reading doctor's docs_repo.git check and the loop's rule 1 share (B13
+    round 47 C3238, ruling 211): something there that is not a folder (a file, a link to no folder) reads
+    ``not a folder``, a nearest existing path above it that is not a folder reads ``a folder above it is not
+    a folder``, each pointing at Doctor's docs_repo.git line, whose fix is the person's; never ``missing``,
+    which sent the agent to add-source. False (``missing``) where nothing is there and a folder is above."""
+    with contextlib.suppress(OSError):
+        state, anchor = docs_repo_state(docs)
+        if state == "not_a_folder":
+            return "not a folder; see Doctor's docs_repo.git line"
+        if state == "uncreatable" and not anchor.is_dir():
+            return "a folder above it is not a folder; see Doctor's docs_repo.git line"
+    return False
+
+
 def _configuration(r: _Run) -> list[str]:
     # B13 round 22 Z10, Z27: each check of a path costs only its own line when a folder above refuses a search
     out = [f"- config: {r.config_path} ({_reach_words(_path_reached(r.config_path), 'exists')})"]
@@ -8977,6 +8994,8 @@ def _configuration(r: _Run) -> list[str]:
     docs_there = _path_reached(docs, folder=True)
     git = _path_reached(docs / ".git")
     repo = _reach_words(git, "a git repo", "not a git repo yet")
+    if docs_there is False:  # B13 round 47 C3238 (ruling 211): by what is there, as doctor's check reads it
+        docs_there = _docs_not_folder_words(docs)
     out.append(f"- docs repo: {docs} ({_reach_words(docs_there, 'exists, ' + repo)})")
     try:
         out.append(_inbox_line(c))

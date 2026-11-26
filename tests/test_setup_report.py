@@ -30805,3 +30805,44 @@ def test_a_fifo_at_sources_toml_never_blocks_the_report_c3251(
     assert cp.returncode == 0, cp.stdout + cp.stderr
     assert "not a file" in section(out.read_text(encoding="utf-8"), "Configuration")
     assert setup_report._raw_pandoc_path(fifo) is None  # after the bounded run: an unfixed read would block
+
+
+@pytest.mark.parametrize("case", ["file", "dangling", "above", "missing", "linked"])
+def test_the_docs_repo_line_says_not_a_folder_never_missing_c3238(
+    fake_mac: dict[str, Path], tmp_path: Path, case: str
+) -> None:
+    """B13 round 47 C3238 (ruling 211; lane B's paths.docs_repo_state): a file where the docs repo
+    belongs read `(missing)` in the Configuration section, and status sent the agent to add-source. The line
+    reads by what is there, as doctor's docs_repo.git check reads it: `not a folder` for a file or a link to
+    no folder, `a folder above it is not a folder` when the nearest existing path above is a file, each
+    pointing at Doctor's docs_repo.git line; `missing` only where nothing is there under a folder, and a link
+    to a real docs folder still reads as a folder."""
+    home = Path.home()
+    cfg = fake_mac["config"]
+    docs = home / "Wombat Docs" / "docs"
+    if case == "file":
+        docs.parent.mkdir(parents=True)
+        docs.write_text("x", encoding="utf-8")
+    elif case == "dangling":
+        docs.parent.mkdir(parents=True)
+        docs.symlink_to(home / "nowhere")
+    elif case == "above":
+        (home / "Wombat Docs").write_text("x", encoding="utf-8")
+    elif case == "missing":
+        docs.parent.mkdir(parents=True)
+    else:
+        (home / "real-docs").mkdir()
+        docs.parent.mkdir(parents=True)
+        docs.symlink_to(home / "real-docs")
+    cfg.write_text(f'[agentsync]\ndocs_repo = "{docs}"\n' + cfg.read_text(encoding="utf-8"), encoding="utf-8")
+    rc, text, _secs = report(tmp_path, cfg)
+    assert rc == 0
+    [line] = [ln for ln in section(text, "Configuration").splitlines() if ln.startswith("- docs repo: ")]
+    want = {
+        "file": "(not a folder; see Doctor's docs_repo.git line)",
+        "dangling": "(not a folder; see Doctor's docs_repo.git line)",
+        "above": "(a folder above it is not a folder; see Doctor's docs_repo.git line)",
+        "missing": "(missing)",
+        "linked": "(exists, not a git repo yet)",
+    }[case]
+    assert line.endswith(want), line
