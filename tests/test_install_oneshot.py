@@ -482,6 +482,16 @@ def report_path(env: dict[str, str]) -> Path:
     return Path(env["HOME"]) / "agent-context" / "setup-report.md"
 
 
+def _script_in_no_checkout(tmp_path: Path) -> Path:
+    """A copy of install.sh in a folder that is no git checkout, for a shell report whose install source line
+    must read `no checkout at ~/src/agent-context-sync`: run from this repository's own checkout it names that
+    one, `checkout <path> (install.sh ran from it; ...)`, with its origin (B13 round 47 C3208)."""
+    script = tmp_path / "no-checkout" / "scripts" / "install.sh"
+    script.parent.mkdir(parents=True)
+    shutil.copy2(INSTALL_SH, script)
+    return script
+
+
 def install_log(env: dict[str, str]) -> list[str]:
     return (Path(env["HOME"]) / "agent-context" / "setup" / "install.log").read_text().splitlines()
 
@@ -3018,6 +3028,7 @@ def test_the_shell_reports_origin_label_is_the_agentsync_reports() -> None:
         "github",
         "no-url",
         "no-checkout",
+        "elsewhere",
         "rewrite-mirror",
         "rewrite-one-line",
         "rewrite-empty",
@@ -3027,7 +3038,7 @@ def test_the_shell_reports_origin_label_is_the_agentsync_reports() -> None:
     ],
 )
 def test_the_shell_report_has_the_install_source_line_the_git_quote_promises(
-    env: dict[str, str], origin: str
+    env: dict[str, str], tmp_path: Path, origin: str
 ) -> None:
     """B13 round 18 V29 (probes am, remsh): the setup prompt's git quote says the report's install source line
     says ``origin: other`` when the checkout's remote is not GitHub, and only the agentsync report had that
@@ -3036,11 +3047,28 @@ def test_the_shell_report_has_the_install_source_line_the_git_quote_promises(
 
     B13 round 19 W7, W23: a URL rewrite (insteadOf) that sends a GitHub origin to a mirror is said beside the
     label, as the agentsync report says it; one that keeps the label (git@github.com:) or only rewrites a
-    push says nothing; the mirror's host never shows."""
+    push says nothing; the mirror's host never shows.
+
+    B13 round 47 C3208: with no checkout at ~/src/agent-context-sync, a checkout install.sh ran from
+    elsewhere (here a folder named for Contoso holding U+3000 and a raw U+0085) is named ``checkout <path>``
+    with its own origin, never its folder name; a script in no checkout still says there is none."""
     home = Path(env["HOME"])
     dot = home / "src" / "agent-context-sync" / ".git"
+    # the script runs from a copy: in this repository's own checkout it would read as the one it ran from
+    where = (
+        tmp_path / ("Contoso\u3000\u5317\x85x" if origin == "elsewhere" else "plain") / "agent-context-sync"
+    )
+    (where / "scripts").mkdir(parents=True)
+    script = where / "scripts" / "install.sh"
+    shutil.copy2(INSTALL_SH, script)
+    if origin == "elsewhere":
+        # a committed checkout, as in the rehearsal: one git cannot read is named by --version's own line
+        if not _have_git():
+            pytest.skip("needs developer tools (git)")
+        _git_checkout(where)
     url = {
         "mirror": "https://git.contoso-mirror.invalid/contoso/agent-context-sync.git",
+        "elsewhere": "https://git.contoso-mirror.invalid/contoso/agent-context-sync.git",
         "github": "git@github.com:renchris/agent-context-sync.git",
     }.get(origin, "")
     if origin.startswith("rewrite") or origin == "push-rewrite":
@@ -3057,22 +3085,34 @@ def test_the_shell_report_has_the_install_source_line_the_git_quote_promises(
             "push-rewrite": '[url "https://git.contoso-mirror.invalid/"]\n\tpushInsteadOf = https://github.com/\n',
         }[origin]
         (home / ".gitconfig").write_text(rules, encoding="utf-8")
-    if origin != "no-checkout":
+    if origin == "elsewhere":
+        with (where / ".git" / "config").open("a", encoding="utf-8") as fh:
+            fh.write(f'[remote "origin"]\n\turl = {url}\n')
+    elif origin != "no-checkout":
         dot.mkdir(parents=True)
         remote = f'[remote "origin"]\n\turl = {url}\n' if url else ""
         (dot / "config").write_text(f"[core]\n\tbare = false\n{remote}", encoding="utf-8")
-    cp = install_sh(env, "--report-only")
+    cp = install_sh(env, "--report-only", script=script)
     assert cp.returncode == 0, cp.stdout + cp.stderr
     assert "(shell fallback: agentsync is not installed)" in cp.stdout
     text = report_path(env).read_text(encoding="utf-8")
     summary = text.split("\n## Summary\n", 1)[1].split("\n## ", 1)[0]
-    label = {"mirror": "other (redacted)", "github": "github.com/renchris/agent-context-sync"}.get(
-        origin, "github.com/renchris/agent-context-sync" if url else "none"
-    )
+    label = {
+        "mirror": "other (redacted)",
+        "elsewhere": "other (redacted)",
+        "github": "github.com/renchris/agent-context-sync",
+    }.get(origin, "github.com/renchris/agent-context-sync" if url else "none")
     if origin in ("rewrite-mirror", "rewrite-one-line", "rewrite-empty"):
         label += " (a URL rewrite sends it elsewhere)"
     if origin == "no-checkout":
         assert "- install source: no checkout at ~/src/agent-context-sync\n" in summary, text
+    elif origin == "elsewhere":
+        assert (
+            "- install source: checkout <path> (install.sh ran from it; no checkout at"
+            f" ~/src/agent-context-sync) · origin: {label}\n"
+        ) in summary, text
+        leaked = [line for line in text.splitlines() if re.search("[\x80-\x9f\u3000\u5317]", line)]
+        assert not leaked, leaked
     else:
         assert f"- install source: checkout ~/src/agent-context-sync · origin: {label}\n" in summary, text
     assert "contoso-mirror" not in text
@@ -5566,7 +5606,7 @@ def _legend_kinds(text: str) -> list[str]:
     return kinds
 
 
-def test_the_shell_legend_lists_only_the_kinds_its_report_shows(env: dict[str, str]) -> None:
+def test_the_shell_legend_lists_only_the_kinds_its_report_shows(env: dict[str, str], tmp_path: Path) -> None:
     """B13 round 10 L1: the legend listed all ten placeholder kinds, seven of which the plain report never
     showed, under a heading that read as a description of the shell's redaction. Like the Python report's
     "Placeholders used:" line it lists the kinds its body shows, read from the redacted body itself, since
@@ -5585,7 +5625,13 @@ def test_the_shell_legend_lists_only_the_kinds_its_report_shows(env: dict[str, s
     )
     # configured, so its args= word keeps <folder-1> (B13 round 39 C1601: one no source names is <path>)
     _write_config(env, local_source_table("s0", folder))
-    assert install_sh({k: v for k, v in env.items() if k != "TMPDIR"}, "--report-only").returncode == 0
+    # a copy in no checkout: run from this repository's, the install source line names it `checkout <path>`
+    # (B13 round 47 C3208), and the legend rightly lists <path>
+    script = _script_in_no_checkout(tmp_path)
+    assert (
+        install_sh({k: v for k, v in env.items() if k != "TMPDIR"}, "--report-only", script=script).returncode
+        == 0
+    )
     text = report_path(env).read_text()
     assert "<folder-1>" in text and "<org-1>" in text
     kinds = _legend_kinds(text)
@@ -26559,7 +26605,9 @@ def test_the_folder_legend_names_a_project_folder_only_where_one_is_shown(
     ), source
 
 
-def test_an_agent_name_inside_another_leaves_no_part_for_the_folder_legend(env: dict[str, str]) -> None:
+def test_an_agent_name_inside_another_leaves_no_part_for_the_folder_legend(
+    env: dict[str, str], tmp_path: Path
+) -> None:
     """B13 round 14 Q49 (round 13 O10's twin): the shell took Agent: values out in the order it read them, so
     "Copilot" first left "GitHub" of a later "GitHub Copilot", and a list-only folder named GitHub then gave
     the list-only agent clause, which the Python report, longest first, did not. Both leave no part of it."""
@@ -26578,7 +26626,10 @@ def test_an_agent_name_inside_another_leaves_no_part_for_the_folder_legend(env: 
     )
     friction_path(env).write_text(friction)
     assert "GitHub" not in setup_report._without_agents(friction)
-    assert install_sh(env, "--report-only").returncode == 0
+    # a copy in no checkout: run from this repository's, the install source line names its github.com origin
+    # (B13 round 47 C3208), whose word a list-only folder named GitHub would meet
+    script = _script_in_no_checkout(tmp_path)
+    assert install_sh(env, "--report-only", script=script).returncode == 0
     item = _folder_item(report_path(env).read_text())
     assert "coding-agent" not in item, item
     assert item.startswith("- <folder-N>: the names of the folders under CloudStorage"), item

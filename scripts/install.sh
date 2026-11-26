@@ -613,8 +613,10 @@ git_rewrite_bases() {
 # Each URL rewrite as "<insteadOf value> TAB <base>", one a line, from the same files: a [url "<base>"] section
 # can hold several insteadOf lines. fallback_install_source_line applies them as `git remote get-url` does,
 # with no git process (B13 round 19 W7, W23); pushInsteadOf is left out.
-git_rewrite_pairs() {
-	local g repo="" # the files `git -C ~/src/agent-context-sync` reads: not the clone running this script
+git_rewrite_pairs() { # [CHECKOUT]
+	# the files `git -C ~/src/agent-context-sync` reads: not the clone running this script, unless CHECKOUT names
+	# it (the install source line of a home with no ~/src/agent-context-sync checkout, B13 round 47 C3208)
+	local g repo="${1:-}"
 	git_config_files | while IFS= read -r g; do
 		[ ! -f "$g" ] || LC_ALL=C awk '
 			function pair(line,    v) { # an insteadOf key: its value after an "x", so an empty one (every URL) survives read
@@ -7086,11 +7088,21 @@ origin_label() { # URL
 # clears and fetches from its first non-empty key, which this shell cannot know without running git: when an
 # empty url follows a non-empty one, the line says so and keeps the label (B13 round 24 B101, the shell half;
 # the agentsync report asks its own git).
+# With no checkout there, the checkout install.sh ran from ($repo) when it is one, its origin read from its own
+# config files, as `checkout <path> (install.sh ran from it; no checkout at ~/src/agent-context-sync)`, never
+# $repo itself: a folder name may name a person or a company or hold a control character, and the line printed
+# no path before (B13 round 47 C3208, as setup_report._installed_from shows a checkout elsewhere).
 fallback_install_source_line() {
-	local dir="$HOME/src/agent-context-sync" g v url="" keys=0 had=0 cleared=0
+	local dir="$HOME/src/agent-context-sync" g v url="" keys=0 had=0 cleared=0 ran=""
+	# shellcheck disable=SC2088 # the ~ is printed
+	local where="~/src/agent-context-sync"
 	if [ ! -e "$dir/.git" ]; then
-		say "- install source: no checkout at ~/src/agent-context-sync"
-		return 0
+		if [ -z "${repo:-}" ] || [ ! -e "$repo/.git" ]; then
+			say "- install source: no checkout at ~/src/agent-context-sync"
+			return 0
+		fi
+		dir="$repo" ran="$repo"
+		where="<path> (install.sh ran from it; no checkout at ~/src/agent-context-sync)"
 	fi
 	while IFS= read -r g; do
 		[ -f "$g" ] || continue
@@ -7129,11 +7141,11 @@ fallback_install_source_line() {
 		while IFS=$'\t' read -r iv b; do
 			iv="${iv#x}" # an empty value matches every URL, as in git
 			case "$url" in "$iv"*) [ -n "$found" ] && [ "${#iv}" -le "${#best}" ] || best="$iv" base="$b" found=1 ;; esac
-		done < <(git_rewrite_pairs)
+		done < <(git_rewrite_pairs "$ran")
 		[ -z "$found" ] || [ "$(origin_label "$base${url#"$best"}")" = "$label" ] ||
 			said="${said:+$said; }a URL rewrite sends it elsewhere"
 	fi
-	say "- install source: checkout ~/src/agent-context-sync · origin: $label${said:+ ($said)}"
+	say "- install source: checkout $where · origin: $label${said:+ ($said)}"
 }
 # The NEXT line of the last install run in install.log (a run with a step= line), else of the last --list-folders
 # run, chosen as attempt_run_simulated chooses (B13 round 23 A47), from that run's block of install.out (B13 round
