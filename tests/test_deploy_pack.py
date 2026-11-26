@@ -959,6 +959,38 @@ def test_ruling_202_takes_ruling_215s_dated_line_with_lane_es_shas() -> None:
         assert f"({sha})" in dated, sha
 
 
+def test_rulings_199_and_205_take_round_47s_dated_lines_and_the_turns_row_reads_ruling_213() -> None:
+    """B13 round 47 (ruling 186): ruling 199 takes a dated line for rulings 206 and 207, ruling 205 one for
+    ruling 216 right after it and one for ruling 213 after that, each naming the trunk commits that made the
+    change; and setup-feedback.md's expected-turns row takes lane RA's ruling 213 words, held to
+    ``setup_report.STEP_3_ASKS_V41``, ``STEP_3_ASKS_ONCE`` and ``STEP_3_ASKS_FROM``."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    lanes = _page("docs/lanes/COMMON.md")
+    line199 = "(2026-11-25) Rulings 206 and 207 amend this one:"
+    assert lanes.index("named `Project --source-local`.") + len("named `Project --source-local`.") + 1 == (
+        lanes.index(line199)
+    )
+    assert lanes.index("(199) ") < lanes.index(line199) < lanes.index("(200) ")
+    dated = lanes[lanes.index(line199) : lanes.index("(200) ")]
+    for sha in ("0686952ce", "ae8f777c7", "b60c68535", "480c34c81", "fec8e517e", "7863bc4c2", "9def3fb9d"):
+        assert sha in dated, sha
+    words205 = "refused on AGENTSYNC_CONFIG among its plays."
+    line216 = "(2026-11-25) Ruling 216 amends this one: v44 keys"
+    line213 = "(2026-11-25) Ruling 213 amends this one too: the report credits step 3's question"
+    assert lanes.index(words205) + len(words205) + 1 == lanes.index(line216)
+    assert lanes.index(line216) < lanes.index(line213) < lanes.index("ROUND 47 RULINGS")
+    assert "fbb03dfe4" in lanes[lanes.index(line213) : lanes.index("ROUND 47 RULINGS")]
+    assert setup_report.STEP_3_ASKS_FROM == 41
+    page = " ".join(_feedback_page().split())
+    assert f"| `expected turns: ... · {setup_report.STEP_3_ASKS_ONCE} · ...` |" in page
+    assert (
+        "Once the attempt reached step 3's sync loop (prompt v41 or later, or a version not stated:"
+        " an install run of the attempt that ended 0 with no failed step"
+    ) in page
+    assert f"a v41 attempt reads `{setup_report.STEP_3_ASKS_V41}`, as v41 asked with no once limit" in page
+
+
 def test_the_guides_loop_line_rules_name_the_rule_2_next_and_not_live_clause_c3271() -> None:
     """B13 round 47 C3271 (ruling 213): section 2's Loop-line rules gave ``NO_FOLDER_NEXT`` only on the
     skill-missing NEXT, but since round 46 C3003 ``_install_sh_said_no_folder`` also gives it, with

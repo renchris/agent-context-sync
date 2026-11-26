@@ -2460,6 +2460,12 @@ one verdict: {bare, "source", 'source'} headers by {basic, literal} id and path 
 none}; a moved docs repo beside a leftover default of another host; an inbox linked into ~/Locked Contoso/inner (cut,
 public) and to ~/Documents/inbox (`inbox` not registered, public); a CRLF continuation; `kind = " inbox "`; a launcher
 named `Project --source-local`.
+(2026-11-25) Rulings 206 and 207 amend this one: both reports take the kept inbox's link target as its realpath, or a
+loop's first hop, and cut every configured folder under a kept target (lane RA's 0686952ce and 8937ef4c0, lane RB's
+ae8f777c7 and b60c68535), and a value is registered in every spelling either report can print, from every
+`[[source]]` table that holds it (lane RA's 0686952ce, lane RB's 480c34c81, 1db9845f3, 3da9bd740, fec8e517e,
+d0dc187b2, 01bcce7b5, fece24a69, 2cb7a3608 and cf438be60), the shared rows in 7863bc4c2 and 9def3fb9d (round 47,
+CONTRACTS §16.290 and §16.291).
 (200) C2060 is still gated on the operator under class C decision c0777e12a523, and the agentsync report reads an
 escaped listed row by row and in every reading the row allows (privacy; data integrity: lane RA ungated, C3082, C3114
 with C3036; lane RB GATED, C3081 with C3057). Rulings 150, 161, 174 and 190 stand. Lane RA, Python only: _add_listed
@@ -2578,6 +2584,9 @@ line the run's last, reads step 2's background run to its exit, shows step 2's i
 one, adds `step 2 ended with an error (exit <code>)` to the Finish, single-quotes every `--source-local` form, tells a
 `(N more)` list without `--all`, and never offers a folder step 1 marks `[paused]` or `[retired]` (ruling 214); the
 same commit moves the version and its pins, as this ruling's did (round 47, CONTRACTS §16.294).
+(2026-11-25) Ruling 213 amends this one too: the report credits step 3's question and the no-folder NEXT only on the
+route the attempt's own runs took, a v41 attempt reading `step 3 asks whether to add a folder (not logged)` (lane RA's
+fbb03dfe4, CONTRACTS §16.290).
 
 ROUND 47 RULINGS (lead; every lane builds to them; the prompt goes to v44 in lane D's one commit, ruling 216):
 (206) The kept inbox's link is resolved alike in both reports and never raises, and every configured folder under a

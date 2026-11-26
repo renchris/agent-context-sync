@@ -48438,6 +48438,16 @@ folder. Both now say `a file or a link that does not lead to a folder`, the phra
 the prompt's parenthetical takes it in v44. Test:
 `tests/test_deploy_pack.py::test_both_readmes_name_the_unread_inbox_forms_and_the_no_folder_exit_c2865_c2869`.
 
+**COMMON.md's rulings 199, 202 and 205 take round 47's dated lines, and the guide reads ruling 213** (ruling 186;
+`docs/lanes/COMMON.md`, `docs/deploy/setup-feedback.md`). Each ruling keeps its words and takes a dated line right after
+its last sentence, naming the trunk commits of the lanes that made the change: ruling 199 for rulings 206 and 207
+(lanes RA and RB's joint run, 0686952ce to 9def3fb9d, §16.290 and §16.291), ruling 202 for ruling 215 (lane E,
+cc31a5022 to feb72b65a, §16.293), and ruling 205 for ruling 216 (this section's v44) and then ruling 213 (lane RA's
+fbb03dfe4). Setup-feedback.md's expected-turns row takes lane RA's words: the part is credited once the attempt
+reached step 3's sync loop, never after a last install run that chose no folder, and a v41 attempt reads
+`setup_report.STEP_3_ASKS_V41`. Tests: `tests/test_deploy_pack.py::test_ruling_202_takes_ruling_215s_dated_line_with_lane_es_shas`
+and `::test_rulings_199_and_205_take_round_47s_dated_lines_and_the_turns_row_reads_ruling_213`.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units
