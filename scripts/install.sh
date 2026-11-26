@@ -3300,12 +3300,21 @@ SOURCE_HEADER_ERE='^[[:space:]]*\[\[[[:space:]]*(source|"source"|'"'"'source'"'"
 # double- or single-quoted, each value the text inside its quotes trimmed as config._str trims it (py_strip; a
 # TOML escape stays unread, so a "\tinbox" only tomllib resolves). At each table's end it calls the caller's
 # src_table(kind, id, state, path); non_inbox_sources and held_sources_clause read through it alone, so the two
-# cannot read a table apart (B13 round 47 C3305 with C3323 and C3249).
+# cannot read a table apart (B13 round 47 C3305 with C3323 and C3249). The path keeps its end as written, only a
+# leading blank of that set dropped, as config._path_str reads it (src_pv; lane B's C3333 rule: a folder whose name
+# ends in a blank is that folder, never its sibling without it).
 # shellcheck disable=SC2016 # an awk program: awk reads its $ fields
-SOURCE_TABLES_AWK="$PY_STRIP_AWK"'function src_v(s) {
+SOURCE_TABLES_AWK="$PY_STRIP_AWK"'function src_q(s) {
 	sub(/^[^=]*=[[:space:]]*["\047]/, "", s)
 	sub(/["\047][[:space:]]*(#.*)?$/, "", s)
-	return py_strip(s)
+	return s
+}
+function src_v(s) { return py_strip(src_q(s)) }
+function src_pv(s,    w) {
+	s = src_q(s)
+	w = ENVIRON["PY_SPACE_ERE"]
+	if (w != "") while (match(s, "^" w)) s = substr(s, RLENGTH + 1)
+	return s
 }
 function src_end() {
 	if (src_t) src_table(src_kind, src_id, src_state, src_path)
@@ -3316,7 +3325,7 @@ function src_end() {
 src_t && /^[[:space:]]*(kind|"kind"|\047kind\047)[[:space:]]*=[[:space:]]*["\047]/ { src_kind = src_v($0) }
 src_t && /^[[:space:]]*(id|"id"|\047id\047)[[:space:]]*=[[:space:]]*["\047]/ { src_id = src_v($0) }
 src_t && /^[[:space:]]*(state|"state"|\047state\047)[[:space:]]*=[[:space:]]*["\047]/ { src_state = src_v($0) }
-src_t && /^[[:space:]]*(path|"path"|\047path\047)[[:space:]]*=[[:space:]]*["\047]/ { src_path = src_v($0) }
+src_t && /^[[:space:]]*(path|"path"|\047path\047)[[:space:]]*=[[:space:]]*["\047]/ { src_path = src_pv($0) }
 END { src_end() }
 '
 # Each legal or records hold's reason and owner as agentsync reads them, as setup_report._hold_values gives them
@@ -14268,8 +14277,10 @@ o = []
 for t in s if isinstance(s, list) else []:
     if isinstance(t, dict) and w(t.get("kind")) != "inbox" and w(t.get("state")) in ("paused", "retired") and w(t.get("id")):
         item = w(t.get("id")) + " (" + w(t.get("state")) + ")"
-        if w(t.get("kind")) == "local" and w(t.get("path")):
-            p = Path(w(t.get("path"))).expanduser()
+        pv = t.get("path")  # its end as written, a leading blank dropped, as config._path_str reads it (C3333)
+        pv = pv.lstrip() if isinstance(pv, str) and pv.strip() else ""
+        if w(t.get("kind")) == "local" and pv:
+            p = Path(pv).expanduser()
             p = p if p.is_absolute() else Path.cwd() / p
             item += "\x1f" + str(canonical_source_root(p)).replace("\n", "\x1e")
         o.append(item)

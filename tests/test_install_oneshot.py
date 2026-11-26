@@ -28795,6 +28795,49 @@ def test_the_report_names_each_held_folder_as_install_sh_does_c3332() -> None:
     assert said.format(**shown).removeprefix(own) == cp.stdout
 
 
+@pytest.mark.parametrize("tool_py", ["tomllib", "none"])
+def test_both_held_folder_readers_keep_a_paths_trailing_blank_as_the_loader_does_c3333(tool_py: str) -> None:
+    """B13 round 47 C3333 (ruling 209; lane B's config._path_str): load_config keeps a source path's end as
+    written and drops only a leading blank, so a folder whose name ends in U+3000 or a space is that folder,
+    never its sibling without it. held_sources_clause stripped both ends in both readers and named the
+    sibling; its tomllib reader and its line reader now read the path as _path_str does, and the report's
+    twin (setup_report._install_sh_said_no_folder) builds the same clause."""
+    home = Path.home()
+    ctx = home / "agent-context"
+    (ctx / "setup").mkdir(parents=True, mode=0o700)
+    cfg = ctx / "sources.toml"
+    cfg.write_text(
+        default_config_text()
+        + inbox_source_table("inbox", ctx / "inbox")
+        + '\n[[source]]\nid = "kestrel-plans"\nkind = "local"\npath = "  ~/Kestrel Plans\u3000"\n'
+        + 'state = "paused"\n'
+        + '\n[[source]]\nid = "wombat-notes"\nkind = "local"\npath = "~/Wombat Notes "\nstate = "retired"\n'
+        + 'retired_reason = "made-up"\n',
+        encoding="utf-8",
+    )
+    cp = _held_clause(cfg, home, sys.executable if tool_py == "tomllib" else "")
+    assert (cp.returncode, cp.stderr) == (0, ""), cp
+    assert [str(s.path) for s in load_config(cfg).sources if s.id != "inbox"] == [
+        f"{home}/Kestrel Plans\u3000",
+        f"{home}/Wombat Notes ",
+    ]
+    assert cp.stdout == (
+        f"; not live: kestrel-plans (paused) at {home}/Kestrel Plans\\343\\200\\200, wombat-notes (retired) "
+        f"at {home}/Wombat Notes {_HELD_TAIL}"
+    ), cp.stdout
+    rule2 = "NEXT: no folder is synced yet: ask the operator which folders to sync (made up)"
+    (ctx / "setup" / "install.log").write_text(
+        "2026-11-25T10:00:00Z run=20261125T100000Z-7 start install.sh compat=43 commit=0123456789ab "
+        "kind=checkout source=- args=\n2026-11-25T10:00:00Z run=20261125T100000Z-7 end rc=0\n",
+        encoding="utf-8",
+    )
+    r = setup_report._Run(cfg, setup_report.ReportHooks(loop_next=lambda _config: [rule2]), 60.0)
+    said = setup_report._install_sh_said_no_folder(r, load_config(cfg), rule2)
+    shown = {"install_sh": setup_report.INSTALL_SH, "rerun": setup_report.INSTALL_SH}
+    own = setup_report.NO_FOLDER_NEXT.format(**shown)
+    assert said is not None and said.format(**shown).removeprefix(own) == cp.stdout, said
+
+
 def test_step_2_over_a_paused_folder_says_already_configured_and_the_held_clause_c3269(
     real_env: dict[str, str], wheel: Path
 ) -> None:
