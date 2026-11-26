@@ -1524,21 +1524,37 @@ def _q_escape(text: str) -> str:
     return _Q_ESCAPE_RE.sub(lambda m: r"\\?" + re.escape(m.group()), text)
 
 
+@functools.cache
+def _nfc_singletons() -> dict[str, tuple[str, ...]]:
+    """Each character NFC writes for another single one (U+2002 for U+2000, U+2003 for U+2001, Å for U+212B),
+    mapped to those others: :func:`_word_pattern` builds from the NFC form, so a value written with one of
+    them matched no line that kept it as written (B13 round 47, ruling 126's row for U+2000 and U+2001)."""
+    out: dict[str, list[str]] = {}
+    for code in range(0x10000):
+        c = chr(code)
+        n = unicodedata.normalize("NFC", c)
+        if n != c and len(n) == 1:
+            out.setdefault(n, []).append(c)
+    return {k: tuple(v) for k, v in out.items()}
+
+
 def _word_pattern(word: str, *, shell: bool = True) -> str:
     """A regex for one word of a fuzzy value, or for a whole value, also as ``printf %q`` writes it (``R&D``
     and ``R\\&D``; ``Old Plans/in tray`` and ``Old\\ Plans/in\\ tray``; not for an exact value, ``shell``
     False), and with each accented letter in NFC, in NFD or without its accent, so an NFC, NFD, mixed or
     unaccented spelling matches (B13 R115). The bare letter never matches the front of an accented one: NFD
-    "Cafés" is not cut to a placeholder, a stray accent and "s"."""
+    "Cafés" is not cut to a placeholder, a stray accent and "s". A character NFC writes for another single
+    one matches that one too (:func:`_nfc_singletons`)."""
     esc, opt = (_q_escape, r"\\?") if shell else (re.escape, "")
     out: list[str] = []
     for ch in _nfc(word):
         nfd = unicodedata.normalize("NFD", ch)
         base = _bare(ch)
+        alts = "".join(f"|{esc(c)}" for c in _nfc_singletons().get(ch, ()))
         if nfd == ch or not base:
-            out.append(esc(ch))
+            out.append(f"(?:{esc(ch)}{alts})" if alts else esc(ch))
         else:
-            out.append(f"(?:{esc(ch)}|{esc(nfd)}|{esc(base)}(?!{opt}{_MARK}))")
+            out.append(f"(?:{esc(ch)}|{esc(nfd)}{alts}|{esc(base)}(?!{opt}{_MARK}))")
     return "".join(out)
 
 
