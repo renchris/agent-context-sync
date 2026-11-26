@@ -157,6 +157,8 @@ from agentsync.config import (
     ConvertConfig,
     inbox_state,
     load_config,
+    read_config_bytes,
+    read_config_text,
     toml_string,
 )
 from agentsync.errors import AccountHomeError, ConfigError
@@ -6096,11 +6098,13 @@ def _unloaded_config(r: _Run, red: Redactor) -> _RawConfig | None:
             return None
 
     try:
-        data = tomllib.loads(expand(r.config_path).read_text(encoding="utf-8"))
+        # B13 round 47 C3251 with C3307: read so a FIFO, a socket or a device never blocks the report
+        data = tomllib.loads(read_config_text(expand(r.config_path)))
     except (tomllib.TOMLDecodeError, UnicodeDecodeError, ValueError):
         red.config_unparsed = True
         try:
-            scanned = _scanned_sources(expand(r.config_path).read_text(encoding="utf-8", errors="replace"))
+            raw = read_config_bytes(expand(r.config_path)).decode("utf-8", errors="replace")
+            scanned = _scanned_sources(raw.replace("\r\n", "\n").replace("\r", "\n"))  # as read_text read it
         except OSError:
             return None
         return _RawConfig(
@@ -6966,7 +6970,7 @@ def _raw_pandoc_path(config_path: Path | None) -> str | None:
         return None
     with contextlib.suppress(Exception):
         value = (
-            tomllib.loads(expand(config_path).read_text(encoding="utf-8"))
+            tomllib.loads(read_config_text(expand(config_path)))  # B13 round 47 C3251: never blocks
             .get("convert", {})
             .get("pandoc_path")
         )

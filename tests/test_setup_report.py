@@ -30781,3 +30781,27 @@ def test_a_config_this_account_cannot_reach_reads_loads_not_checked_c3335(tmp_pa
     conf = section(text, "Configuration")
     assert "(not checked: this account cannot reach it: Permission denied)" in conf, conf
     assert setup_report.CONFIG_UNREACHED_LOADS in conf.splitlines() and "- loads: no:" not in conf, conf
+
+
+def test_a_fifo_at_sources_toml_never_blocks_the_report_c3251(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 47 C3251 with C3307 (lane B's config.read_config_bytes): a FIFO at sources.toml held every
+    command, the report's raw readers too (_unloaded_config's two reads and _raw_pandoc_path's), so
+    `setup-report` waited forever. Each raw read goes through read_config_bytes, which refuses a FIFO as not a
+    file: the report is written, in bounded time, and the raw pandoc read answers None."""
+    fifo = tmp_path / "sources.toml"
+    os.mkfifo(fifo)
+    out = tmp_path / "r.md"
+    cp = subprocess.run(
+        [sys.executable, "-m", "agentsync", "setup-report", "--out", str(out), "--config", str(fifo)],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=90,
+        env={**os.environ, "AGENTSYNC_OCR": "0", "AGENTSYNC_TM_EXCLUDE": "0"},
+        stdin=subprocess.DEVNULL,
+    )
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert "not a file" in section(out.read_text(encoding="utf-8"), "Configuration")
+    assert setup_report._raw_pandoc_path(fifo) is None  # after the bounded run: an unfixed read would block
