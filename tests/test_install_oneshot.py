@@ -28028,7 +28028,7 @@ def test_the_shell_report_marks_a_config_that_is_not_a_file_as_the_agentsync_rep
     that is a folder or a fifo read `(missing)` where the agentsync report's stat reads `(exists)` and
     `loads: no:`. Something there that is not a file is `(exists)` with a `loads: no:` reason and no table
     count; a link to nothing and an empty path stay `(missing)`, as stat reads them; the agentsync report
-    gives the same mark (not run over the fifo, which its own config read waits on). B13 round 47 C3335: a
+    gives the same mark (over the fifo too since B13 round 47 C3251). B13 round 47 C3335: a
     config behind a folder this account cannot search read `(missing)`, as pipefail failed the
     `stat | grep` that looked for the refusal; it reads `not checked: this account cannot reach it` and
     `loads: not checked`."""
@@ -28052,17 +28052,17 @@ def test_the_shell_report_marks_a_config_that_is_not_a_file_as_the_agentsync_rep
         locked.chmod(0o000)
     try:
         cp = install_sh(run, "--report-only")
-        py = None
-        if kind != "fifo":
-            py = subprocess.run(
-                [sys.executable, "-m", "agentsync", "setup-report", "--out", str(out)],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=120,
-                env=py_env,
-                stdin=subprocess.DEVNULL,
-            )
+        # the fifo too since B13 round 47 C3251: the report's raw config reads no longer wait on it, and a
+        # short timeout keeps a read that waits again from hanging the suite
+        py = subprocess.run(
+            [sys.executable, "-m", "agentsync", "setup-report", "--out", str(out)],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=60,
+            env=py_env,
+            stdin=subprocess.DEVNULL,
+        )
     finally:
         if kind == "unreachable":
             locked.chmod(0o700)
@@ -28074,8 +28074,6 @@ def test_the_shell_report_marks_a_config_that_is_not_a_file_as_the_agentsync_rep
     if kind == "unreachable":
         want = _C3335_UNREACHED
     assert section.splitlines() == want, section
-    if py is None:
-        return
     assert py.returncode == 0, py.stdout + py.stderr
     lines = out.read_text(encoding="utf-8").split("\n## Configuration\n\n", 1)[1].splitlines()
     assert lines[0] == section.splitlines()[0], (lines[:2], section)
