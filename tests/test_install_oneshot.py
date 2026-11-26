@@ -16881,14 +16881,14 @@ def test_every_config_failed_next_that_waits_for_a_fix_names_the_stop_that_follo
     body = text.split("\nconfig_failed() {", 1)[1].split("\n}\n", 1)[0]
     assert "once it is fixed, the next run is" not in body
     nexts = [ln for ln in body.splitlines() if 'FAIL_NEXT="' in ln and "$ONCE, the next run is: " in ln]
-    assert len(nexts) == 9, nexts
+    assert len(nexts) == 10, nexts  # B13 round 47 C3236: the docs repo that is not a folder
     assert (
         "$once, the next run is: " in body
         and "once it is settled" in body
         and "once both are settled" in body
     )
     assert all("$SECOND)" in ln for ln in nexts), nexts
-    assert body.count('second_stop_words "') == 10, "each branch asks, once, before its words"
+    assert body.count('second_stop_words "') == 11, "each branch asks, once, before its words"
     hbmode = next(ln for ln in body.splitlines() if "so the fix is the agent's first" in ln)
     assert "$SECOND)" in hbmode and "$ONCE" not in hbmode, hbmode
 
@@ -17564,6 +17564,70 @@ def test_something_not_a_folder_where_the_state_folder_belongs_is_the_persons_at
     assert one_next(cp)
     assert last_line(cp).startswith(STATE_NOTDIR_NEXT.format(rerun=rerun)), last_line(cp)
     assert "chmod" not in last_line(cp) and "chown" not in last_line(cp), last_line(cp)
+
+
+DOCS_NOTDIR_NEXT = (
+    "NEXT: agentsync's docs repo, {docs}, is not a folder (a file or something else is where it or a folder "
+    "above it belongs; the error above names it, and ~/.local/bin/agentsync status prints it and its fix on "
+    "its docs_repo.git line): fixing it is the person's (keeping a copy, they move it aside), not a step for "
+    "the agent, so show them the error and go on to the report; once it is fixed, the next run is: {rerun}"
+)
+"""Step 2's NEXT for something that is not a folder where the docs repo belongs (B13 round 47 ruling 211,
+C3236)."""
+
+
+@pytest.mark.parametrize("case", ["file", "above", "loop", "link-refused-remote", "cloud"])
+def test_something_not_a_folder_where_the_docs_repo_belongs_is_the_persons_at_step_2(
+    env: dict[str, str], wheel: Path, case: str
+) -> None:
+    """B13 round 47 C3236 (ruling 211): a file where the docs repo belongs stopped init in ensure_repo
+    (``exists and is not a directory``) and step 2's NEXT read ``fix the error above, then re-run``, with no
+    word of whose fix it is, while status's docs_repo.git line gives the person the move. It is the person's
+    now, keeping a copy, for a file there, a file where a folder above it belongs and a link loop there.
+    Judged as ensure_repo judges it, following links: a link to a real docs folder whose remote [governance]
+    refuses keeps the governance NEXT; under ~/Library/CloudStorage ensure_repo stops on the cloud first, so
+    the generic NEXT stays."""
+    _tool_python(env)
+    home = Path(env["HOME"])
+    _config_step_2_stops_on(env, "GR" if case == "link-refused-remote" else "clean")
+    cfg = home / "agent-context" / "sources.toml"
+    docs = home / "agent-context" / "docs"
+    shown = "~/agent-context/docs"
+    if case == "file":
+        docs.parent.mkdir(parents=True, exist_ok=True)
+        docs.write_bytes(b"a Wombat note\n")
+    elif case == "loop":
+        docs.parent.mkdir(parents=True, exist_ok=True)
+        docs.symlink_to(docs)
+    elif case == "link-refused-remote":
+        real = docs.with_name("docs.real")
+        docs.rename(real)
+        docs.symlink_to(real)
+    else:
+        if case == "above":
+            (home / "Kestrel").write_bytes(b"a Kestrel note\n")
+            docs, shown = home / "Kestrel" / "docs", "~/Kestrel/docs"
+        else:
+            docs = _cloud(env) / "OneDrive-Contoso" / "Quokka docs"
+            docs.parent.mkdir(parents=True, exist_ok=True)
+            docs.write_bytes(b"a Quokka note\n")
+        table = f"[agentsync]\ndocs_repo = {json.dumps(str(docs))}\n\n"
+        cfg.write_text(table + cfg.read_text(encoding="utf-8"), encoding="utf-8")
+    cp = install_sh({**env, "STUB_INIT_RC": "1", "AGENTSYNC_OCR": "0"}, str(wheel))
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert one_next(cp)
+    rerun = f"{INSTALL_SH} {wheel}"
+    if case == "link-refused-remote":
+        assert last_line(cp).startswith("NEXT: the docs repo has a git remote the [governance] policy"), (
+            last_line(cp)
+        )
+    elif case == "cloud":
+        assert last_line(cp).startswith(f"NEXT: fix the error above, then re-run: {rerun}"), last_line(cp)
+    else:
+        assert last_line(cp).startswith(DOCS_NOTDIR_NEXT.format(docs=shown, rerun=rerun)), last_line(cp)
+        assert "fix the error above" not in last_line(cp)
+    if case == "file":
+        assert docs.read_bytes() == b"a Wombat note\n", "the file is left as it was"
 
 
 @pytest.mark.parametrize("spot", ["state folder", "folder above"])

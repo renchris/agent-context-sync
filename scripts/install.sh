@@ -13589,6 +13589,43 @@ except OSError as exc:  # a symlink loop where the folder belongs is no folder e
 	fi
 	[ "$n" = 1 ]
 }
+# Whether something that is not a folder is where the config's docs repo or a folder above it belongs, judged as
+# gitops.ensure_repo judges it, which init runs before it makes the state folder: outside ~/Library/CloudStorage
+# (the path and its resolved form; there ensure_repo stops on the cloud first), there and not a folder, following
+# links, so a link to a real docs folder is one; or a stat that finds a file above it, or a link loop. Its fix,
+# moving it aside, is the person's (B13 round 47 ruling 211, C3236; an lstat test called a working linked docs
+# repo not a folder). Sets DOCS_SHOWN, the path as ~/... under the home. False when it cannot say. -I: nothing
+# from the folder this runs in is imported.
+DOCS_SHOWN=""
+docs_not_a_folder() {
+	local n=""
+	DOCS_SHOWN=""
+	if [ "$DRY_RUN" -eq 0 ] && [ -x "$TOOL_PY" ] && [ -f "$CONFIG" ]; then
+		n="$(with_timeout 10 "$TOOL_PY" -I -c '
+import errno, sys
+from pathlib import Path
+from agentsync.config import load_config
+from agentsync.paths import expand, is_cloud_path
+
+p = expand(load_config(Path(sys.argv[1])).docs_repo)
+shown = str(p).replace("\n", "\\n")
+try:
+    p.stat()
+except NotADirectoryError:
+    print("1\t" + shown)
+    sys.exit(0)
+except OSError as exc:  # a link loop where the folder belongs is no folder either; anything else says nothing
+    print(("1\t" if exc.errno == errno.ELOOP else "0\t") + shown)
+    sys.exit(0)
+cloud = is_cloud_path(p) or is_cloud_path(p.resolve())
+print(("1\t" if not cloud and p.exists() and not p.is_dir() else "0\t") + shown)
+' "$CONFIG" 2>/dev/null | head -n 1 || true)"
+	fi
+	[ "${n%%$'\t'*}" = 1 ] || return 1
+	DOCS_SHOWN="${n#*$'\t'}"
+	# shellcheck disable=SC2088 # the ~ is printed
+	case "$DOCS_SHOWN" in "$HOME"/*) DOCS_SHOWN='~/'"${DOCS_SHOWN#"$HOME"/}" ;; esac
+}
 # Whether the -wal or the -shm of the manifest is there and is no file (a folder, a socket, a fifo, or any link
 # beside a manifest that is no link), as doctor.side_not_a_file_at judges it: init exits 1 on it, and its fix,
 # moving it aside, is the person's, as doctor's state_dir.files line gives it; state_open_fix gave the agent's
@@ -13873,7 +13910,12 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 			FAIL_NEXT="the config $CONFIG does not load with this agentsync (the configuration error above; ~/.local/bin/agentsync status prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it loads, the next run is: $SELF$RERUN_ARGS"
 		fi
 	fi
-	if [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && state_not_a_folder; then
+	# the docs repo first: init's ensure_repo runs before it makes the state folder or opens the manifest, and
+	# after its not-a-file guard, which state_misplaced reads (B13 round 47 ruling 211, C3236)
+	if [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && docs_not_a_folder && ! state_misplaced; then
+		second_stop_words ""
+		FAIL_NEXT="agentsync's docs repo, $DOCS_SHOWN, is not a folder (a file or something else is where it or a folder above it belongs; the error above names it, and ~/.local/bin/agentsync status prints it and its fix on its docs_repo.git line$SECOND): fixing it is the person's (keeping a copy, they move it aside), not a step for the agent, so show them the error and go on to the report; $ONCE, the next run is: $SELF$RERUN_ARGS"
+	elif [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && state_not_a_folder; then
 		second_stop_words ""
 		FAIL_NEXT="agentsync's state folder is not a folder (a file or something else is where it or a folder above it belongs; the error above names it, and ~/.local/bin/agentsync status prints it on its state_dir line$SECOND): fixing it is the person's (they move it aside, keeping a copy), not a step for the agent, so show them the error and go on to the report; $ONCE, the next run is: $SELF$RERUN_ARGS"
 	elif [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && state_misplaced && misplaced_words "$STATE_MISPLACED" "$STATE_MISPLACED_KIND"; then
