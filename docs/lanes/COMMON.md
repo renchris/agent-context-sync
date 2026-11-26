@@ -2507,6 +2507,13 @@ before the cache and never stored, while an encrypted PDF and a family-mismatch 
 Rows: the decoy .potx with its fetch raising BudgetExhaustedError once (token None, then one try, LIVE, done); a clean,
 polyglot, clean run; junk put before a family-mismatch .potx and taken away, with no loop; foreign-namespace and
 xmlns="" decoys in a deck and a .vsdx; UTF-32LE and UTF-32BE parts.
+(2026-11-25) Ruling 215 amends this one: its Office twins are closed. The text decoder tells a UTF-32 mark after
+UTF-8's and before UTF-16's and raises `invalid UTF-32 text: ...` on a bad body (cc31a5022), the family check drops
+C3098's no-op UTF-32 return (da48ab484), a no-namespace `<Types>` reads its content-types children too (e01857e32),
+a container stub on non-ZIP bytes moves when its sniffed answer changes (ff0dc9079), every Office name's container
+answer is told before the cache and never stored (49705fd02), one noun per family names both sides of a mismatch
+(98b6751a0), and xlsx's emitter moves to 1.0.7 once with no published page read again (feb72b65a) (round 47 lane E,
+CONTRACTS §16.293).
 (203) Every word install.sh writes or prints is valid UTF-8 and reads back as its path, completing ruling 193's C2944
 (lane RB; C3080 with C3089 and C3103). One helper before ALL_ARGS, q_word, gives printf %q's word and re-quotes a
 `$'..'` result under LC_ALL=C exported in a subshell; shown_arg calls it and keeps its double-quote and `!` branches.

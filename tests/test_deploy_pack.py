@@ -945,6 +945,20 @@ def test_rulings_130_and_194_take_ruling_204s_dated_lines_c3255() -> None:
     assert lanes.index("(194) Every reader tells") < lanes.index(words194)
 
 
+def test_ruling_202_takes_ruling_215s_dated_line_with_lane_es_shas() -> None:
+    """B13 round 47 (ruling 186; lane D adds the dated line beside ruling 202 for ruling 215): ruling 202
+    keeps its words and a dated line right after its last sentence says how ruling 215 closed its Office
+    twins, each change by the trunk commit that made it."""
+    lanes = _page("docs/lanes/COMMON.md")
+    words = 'xmlns="" decoys in a deck and a .vsdx; UTF-32LE and UTF-32BE parts.'
+    line = "(2026-11-25) Ruling 215 amends this one: its Office twins are closed."
+    assert lanes.index("(202) ") < lanes.index(words) < lanes.index(line) < lanes.index("(203) ")
+    assert lanes.index(words) + len(words) + 1 == lanes.index(line), "right after ruling 202's last sentence"
+    dated = lanes[lanes.index(line) : lanes.index("(203) ")]
+    for sha in ("cc31a5022", "da48ab484", "e01857e32", "ff0dc9079", "49705fd02", "98b6751a0", "feb72b65a"):
+        assert f"({sha})" in dated, sha
+
+
 def test_the_guides_loop_line_rules_name_the_rule_2_next_and_not_live_clause_c3271() -> None:
     """B13 round 47 C3271 (ruling 213): section 2's Loop-line rules gave ``NO_FOLDER_NEXT`` only on the
     skill-missing NEXT, but since round 46 C3003 ``_install_sh_said_no_folder`` also gives it, with
