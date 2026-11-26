@@ -25039,6 +25039,10 @@ checkout), `test_setup_report.py::test_install_source_reads_the_configured_origi
 `test_a_copy_newer_than_the_checkout_is_told_what_fixes_it` (the rewrite case).
 Amended 2026-10-22, §16.165 A24: the label is the first `url` after the last empty one, the one git fetches from,
 not the last, in both reports.
+Amended 2026-11-25, §16.291 C3208: with no checkout at ~/src/agent-context-sync but install.sh run from one ($repo),
+the shell line reads `- install source: checkout <path> (install.sh ran from it; no checkout at
+~/src/agent-context-sync) · origin: <label>`, the origin and any rewrite read from $repo's own config files, never
+$repo itself.
 
 Amended 2026-10-22, §16.164 A24: the agentsync report's label is the first
 `remote.origin.url` key after the last empty one (`config --get-all`), the one git fetches from, with ` (N url
@@ -47889,6 +47893,52 @@ str.isspace() names (U+0085, U+00A0, U+1680, U+2000 to U+200A, U+2028, U+2029, U
 `Project<U+3000>` is an escaped row beside `Project`; step 1's synced set reads each path through load_config, so it
 takes the loader's literal path. Tests: `test_install_list.py::test_a_folder_ending_in_a_non_ascii_blank_lists_escaped_c3333`
 and `test_the_list_escapes_every_non_ascii_blank_as_its_python_twin_does_c3333`.
+The held-folder clause reads a path as config._path_str does, its end as written and only a leading blank dropped:
+the tomllib reader takes `lstrip()`, and SOURCE_TABLES_AWK reads the path through src_pv over PY_SPACE_ERE's set
+(kind, id and state keep py_strip), so a folder whose name ends in U+3000 or a space is named, never its sibling
+without it, as setup_report._install_sh_said_no_folder names it. Test:
+`test_install_oneshot.py::test_both_held_folder_readers_keep_a_paths_trailing_blank_as_the_loader_does_c3333`.
+
+**A file where the docs repo belongs is the person's to move aside at step 2** (C3236; ruling 211; makes worse True
+for an lstat test or a land before lane B's C3238, which landed first). docs_not_a_folder, shaped like
+state_not_a_folder (dry run off, the installed interpreter, `-I`, with_timeout 10), is true only where
+gitops.ensure_repo raises `exists and is not a directory`: outside ~/Library/CloudStorage (the path and its resolved
+form), there and not a folder with links followed, or NotADirectoryError or ELOOP on stat. config_failed's branch,
+guarded by `! state_misplaced` (init's not-a-file guard runs first) and ahead of the state branches (ensure_repo runs
+before the state folder is made), gives `agentsync's docs repo, <path as ~/...>, is not a folder (a file or something
+else is where it or a folder above it belongs; the error above names it, and ~/.local/bin/agentsync status prints it
+and its fix on its docs_repo.git line): fixing it is the person's (keeping a copy, they move it aside), not a step
+for the agent, ...`. A link to a real docs folder beside a refused remote keeps the governance NEXT, and a docs path
+under the cloud folder the generic one. Test:
+`test_install_oneshot.py::test_something_not_a_folder_where_the_docs_repo_belongs_is_the_persons_at_step_2`.
+
+**The install source line names a checkout elsewhere as `checkout <path>`** (C3208's shell half; lane RA's report half
+in §16.290; dated line under §16.136's V29 paragraph). With no checkout at ~/src/agent-context-sync and $repo one,
+fallback_install_source_line reads $repo's config files (git_rewrite_pairs takes the checkout) and prints `checkout
+<path> (install.sh ran from it; no checkout at ~/src/agent-context-sync)`, never the folder's name. Test:
+`test_install_oneshot.py::test_the_shell_report_has_the_install_source_line_the_git_quote_promises` (its `elsewhere`
+case, a Contoso folder holding U+3000 and U+0085; every case runs a copy of the script).
+
+**A config that is a FIFO gets the shell report without asking agentsync** (C3251's installer half; lane B's
+config.read_config_bytes and lane RA's raw readers are the other halves). write_report skips the installed agentsync,
+which may predate the non-blocking read and wait on the FIFO for 120 s, when `[ -p "$CONFIG" ]`, and the shell
+fallback (`the config is a FIFO, which an installed agentsync's report can wait on`) marks it as C3019 does; a folder
+config still asks agentsync. Test:
+`test_install_oneshot.py::test_a_config_that_is_a_fifo_gets_the_shell_report_without_asking_agentsync_c3251`.
+
+**A first sync the land gate blocked names its first BLOCKING line** (C3227's installer half; ruling 212; lane B's
+lints wording and loop.land_gate_step in §16.292). The first sync's exit-1 NEXT, `fix what the first sync printed
+above (failed)`, gains `: the land gate blocked its commit, first on its BLOCKING line <page>: <fix>` from the first
+`  BLOCKING <code> ` line of its output, its `, then sync again` dropped for the re-run; with no BLOCKING line the
+words are unchanged. Test:
+`test_install_oneshot.py::test_a_first_sync_the_land_gate_blocked_names_its_first_blocking_line_c3227`.
+
+**Three halves need no installer change** (measured). C3241's `:14780` case passes the person's-choice NEXT through:
+it matches only `no folder is synced yet: ask the operator*`, and NO_FOLDER_CHOSEN_NEXT opens `the person chose no
+folder`. C3209: fallback_outcome_line computes no outcome for an attempt with an install run (`outcome: not
+computed`), never `fully one command`. Ruling 210's phrase: inbox_not_added and inbox_not_read key on the `inbox: not
+read` prefix, which lane B's words leave as they were. C3203's recut half landed with lane RA's CUT_SOURCE_LOCAL_KEPT
+row (§16.290).
 
 **C2060's shell half waits on the operator** (C3287; ruling 208). Class C decision c0777e12a523, whether a lane may
 port round 41's refused install.sh edit so the shell report decodes a listed name step 1 printed with escapes, is

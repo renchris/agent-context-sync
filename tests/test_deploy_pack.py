@@ -9737,11 +9737,13 @@ _ROUND_47_RB_PARAGRAPH_AMENDS = (
     ),
     ("16.286", "**The shell report marks a config path that is not a file `(exists)`**", "§16.291 C3335"),
     ("16.244", "**The guides name every mark a folder row opens with**", "§16.291 C3333"),
+    ("16.136", "**Both reports' install source line reads the configured origin**", "§16.291 C3208"),
 )
 """Round 47 lane RB's dated lines: C3332's and C3336's under §16.29's list bullet (the paused and retired
 marks, every top folder past the cap), C3336's under §16.300.18's list options, C3332 with C3206 under
-§16.281's ruling 191 paragraph (the held folder's path, step 2's own nothing-to-draft NEXT) and C3332 under
-§16.286's C3003 paragraph."""
+§16.281's ruling 191 paragraph (the held folder's path, step 2's own nothing-to-draft NEXT), C3332 under
+§16.286's C3003 paragraph, and C3208 under §16.136's V29 paragraph (a checkout install.sh ran from
+elsewhere)."""
 _ROUND_46_RB_PARAGRAPH_AMENDS = (
     (
         "16.67",
