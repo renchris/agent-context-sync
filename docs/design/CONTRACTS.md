@@ -47762,6 +47762,20 @@ report says whether it loads was not checked: `_configuration` prints `CONFIG_UN
 checked (this account cannot reach it)`. Test: `tests/test_setup_report.py`
 (`test_a_config_this_account_cannot_reach_reads_loads_not_checked_c3335`).
 
+**The raw config reads never block, and a docs repo path that is no folder reads not a folder** (C3251 with
+C3307's report half, C3238's report half; rulings 210 and 211; lane B's `config.read_config_bytes` and
+`paths.docs_repo_state`). A FIFO at sources.toml held setup-report forever in `_unloaded_config`'s two raw reads and
+`_raw_pandoc_path`'s: each reads through `read_config_text` or `read_config_bytes`, which refuse a FIFO, a socket or
+a device as not a file, an OSError those readers already take as unreadable (C3251). A file where the docs repo
+belongs read `(missing)` in the Configuration section: it reads `(not a folder; see Doctor's docs_repo.git line)`
+for a file or a link to no folder, and `(a folder above it is not a folder; see Doctor's docs_repo.git line)` when
+the nearest existing path above it is a file, by the one reading doctor's docs_repo.git check and the loop's rule 1
+share (`_docs_not_folder_words`; C3238). C3215's report half needs no change: no report reader keys on the
+source-root alarm or doctor's listable words lane B changes (the state folder's `is not a directory` reader,
+`_STATE_NOT_FOLDER_RE`, reads state_dir's line, and the person's-fix count reads doctor's own `PERSONS_FIX_RE`).
+Tests: `tests/test_setup_report.py` (`test_a_fifo_at_sources_toml_never_blocks_the_report_c3251`,
+`test_the_docs_repo_line_says_not_a_folder_never_missing_c3238`).
+
 ### 16.291 Round 47: the installer: the shell halves of rulings 206 and 207, a file at the docs repo's path the person's to move aside, paused and retired folders marked in step 1's list, and C2060 waits on the operator (2026-11-25, wave B13 round 47 lane RB)
 
 Wave B13 round 47 lane RB builds install.sh's halves of the lead's rulings 206 to 216 and the installer items of round
