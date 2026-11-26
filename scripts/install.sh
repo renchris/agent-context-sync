@@ -9042,7 +9042,15 @@ write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2
 		return 2
 	fi
 	step_start report
-	bin="$(report_agentsync || true)"
+	bin=""
+	# a config that is a FIFO: the installed build, which may predate lane B's non-blocking config read, waits
+	# on it for the full 120 s; the shell fallback reports it as it is (B13 round 47 C3251), and only a FIFO is
+	# skipped, so a config that is a folder still gets the agentsync report
+	if [ -p "$CONFIG" ]; then
+		why="the config is a FIFO, which an installed agentsync's report can wait on"
+	else
+		bin="$(report_agentsync || true)"
+	fi
 	if [ -n "$bin" ]; then
 		# section 1's unread count by section 3's rule (B13 round 16 T24); an older agentsync counts by mode.
 		# AGENTSYNC_REPORT_RUN: the run's NEXT: line comes after the report, which counts it as still to come.

@@ -27961,6 +27961,38 @@ def test_the_shell_report_marks_a_config_that_is_not_a_file_as_the_agentsync_rep
     assert lines[1].startswith("- loads: no: ") == there, lines[:2]
 
 
+@pytest.mark.parametrize("kind", ["fifo", "folder"])
+def test_a_config_that_is_a_fifo_gets_the_shell_report_without_asking_agentsync_c3251(
+    env: dict[str, str], kind: str
+) -> None:
+    """B13 round 47 C3251: the installed agentsync's report read a config that is a FIFO and waited on it,
+    so install.sh waited its full 120 s before the shell fallback wrote the report. A FIFO config now goes
+    straight to the shell fallback, which reports it as it is; the installed build is not asked (the stub's
+    report would sleep, as such a build waits). Only a FIFO: a config that is a folder still gets the
+    agentsync report."""
+    home = Path(env["HOME"])
+    (home / ".local" / "bin").mkdir(parents=True)
+    exec_stub.copy(env["STUB_AGENTSYNC"], home / ".local" / "bin" / "agentsync")
+    at = home / "Contoso-config"
+    if kind == "fifo":
+        os.mkfifo(at)
+    else:
+        at.mkdir()
+    run = {**env, "AGENTSYNC_CONFIG": str(at), "STUB_REPORT_SLEEP": "200" if kind == "fifo" else "0"}
+    cp = install_sh(run, "--report-only", timeout=60)
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    asked = Path(env["STUB_LOG"] + ".reporting").exists()
+    if kind == "folder":
+        # asked (its render is then replaced as another build's, which may print this config path in clear)
+        assert asked, cp.stdout
+        return
+    assert not asked, "the installed agentsync was asked for the report"
+    said = "the config is a FIFO, which an installed agentsync's report can wait on"
+    assert f"(shell fallback: {said})" in cp.stdout, cp.stdout
+    section = report_path(env).read_text().split("\n## Configuration\n\n", 1)[1].split("\n\n", 1)[0]
+    assert section.splitlines() == ["- config: ~/<path> (exists)", _C3019_LOADS], section
+
+
 @pytest.mark.parametrize(
     ("rows", "step"),
     [
