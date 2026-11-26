@@ -1223,6 +1223,36 @@ def test_first_sync_failure_fails_the_run_before_the_agent(
     ]
 
 
+def test_a_first_sync_the_land_gate_blocked_names_its_first_blocking_line_c3227(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """B13 round 47 C3227 (ruling 212): a first sync whose commit the land gate held exits 1, and step 2's
+    NEXT read `fix what the first sync printed above (failed)`, naming no fix, while the sync's own BLOCKING
+    line holds it. The NEXT quotes the first BLOCKING line's page and fix, as sync's NEXT quotes them, its
+    `then sync again` left for the re-run; a failed first sync with no BLOCKING line keeps the bare words."""
+    fix = (
+        "the page cannot be read (permission denied): agentsync wrote it; restore its read bit with "
+        "`chmod 600 ~/agent-context/docs/alpha/Wombat.md` (the person's or the agent's step; the content is "
+        "untouched)"
+    )
+    out = "\n".join(
+        [
+            "  alpha: converted 1, deferred 0 online-only",
+            f"  BLOCKING FRONTMATTER alpha/Wombat.md: {fix}, then sync again",
+            "  BLOCKING SECRET alpha/Kestrel.md: a made-up second finding, then sync again",
+        ]
+    )
+    cp = install_sh(
+        {**env, "STUB_SYNC_RC": "1", "STUB_SYNC_OUT": out}, str(wheel), "--source-local", str(folder)
+    )
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert last_line(cp) == (
+        "NEXT: fix what the first sync printed above (failed): the land gate blocked its commit, first on "
+        f"its BLOCKING line alpha/Wombat.md: {fix}, then re-run: {INSTALL_SH} {wheel} "
+        f"[setup report: {report_path(env)}]"
+    ), last_line(cp)
+
+
 def test_a_rerun_on_a_configured_mac_says_sync_and_that_background_sync_is_installed(
     env: dict[str, str], folder: Path, wheel: Path
 ) -> None:

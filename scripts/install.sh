@@ -14768,7 +14768,11 @@ else
 		step_end failed "$SYNC_RC"
 		LAST_ERROR="the first sync (agentsync sync --once) exited $SYNC_RC$(rc_aside "$SYNC_RC")"
 		printf 'error: %s\n' "$LAST_ERROR" >&2
-		NEXT_MSG="fix what the first sync printed above ($(rc_meaning "$SYNC_RC")), then re-run: $SELF$RERUN_ARGS"
+		# a commit the land gate held: its first BLOCKING line's page and fix, quoted as sync's own NEXT quotes
+		# them (loop.land_gate_step, its ", then sync again" left for this re-run), so the fix is named where
+		# "fix what the first sync printed above" named none (B13 round 47 C3227, ruling 212)
+		BLOCKED_LINE="$(LC_ALL=C sed -n 's/^  BLOCKING [^ ][^ ]* //p' "$SYNC_OUT" 2>/dev/null | LC_ALL=C sed -n '1{s/, then sync again$//;p;}')"
+		NEXT_MSG="fix what the first sync printed above ($(rc_meaning "$SYNC_RC"))${BLOCKED_LINE:+: the land gate blocked its commit, first on its BLOCKING line $BLOCKED_LINE}, then re-run: $SELF$RERUN_ARGS"
 		exit 1
 	fi
 fi
