@@ -47058,6 +47058,16 @@ answer as a question line, which counted a question the prompt asks as a turn, d
 needed a prompt bump; the prompt and the friction log are untouched). Tests: `tests/test_setup_report.py`
 (`test_a_none_is_scored_only_for_a_no_folder_run_that_ended_clean_c2947`'s rows,
 `test_the_expected_turns_name_step_3s_at_most_folder_question_c3029`).
+Amended 2026-11-25, §16.290 C3237, C3204, C3306, C3337, C3272, C3248 and C3328: step 3's question is credited
+only on the route the attempt's own runs took (ruling 213). `_reached_step_3` returns False when the attempt's
+last install run chose no folder, completed or failed, unless an earlier run without `--no-folder` went on to the
+loop; a run counts only when it ended 0 with no failed step, no blocking status note and no first sync skipped
+for no sources (`_loop_run`), never `rc == 0` alone; a logged line at step 3 or later is read only for an attempt
+with no `--no-folder` run, since the report step alone can write one; and the attempt's own version must be
+unstated or v41 or later (`STEP_3_ASKS_FROM`), not "a prompt from v7 on": v41's part reads `step 3 asks whether to
+add a folder (not logged)` (`STEP_3_ASKS_V41`, no once limit) and v42 on, or unstated, `step 3 asks at most once
+whether to add a folder (not logged)` (`STEP_3_ASKS_ONCE`). Test:
+`test_step_3s_question_is_credited_only_on_the_route_the_attempt_took_ruling_213`.
 
 **A config named `... exists` is never an earlier run's, and the outcome docstrings name the Stopped option**
 (C3115, C3035 with C3053; the report cluster). `_earlier_config` stripped a trailing ` exists` before it compared,
@@ -47596,6 +47606,91 @@ and lane RB's items' rows: `test_both_reports_keep_a_source_whose_path_holds_a_t
 `test_both_reports_decode_a_basic_string_escape_in_a_refused_head_c3303`,
 `test_both_reports_judge_a_unicode_blank_in_a_refused_head_alike_c3304`,
 `test_both_reports_cut_a_project_folders_fuzzy_spellings_alike_c3289`).
+
+**An escaped listed row's other readings are cut fuzzily under its one number** (C3288; ruling 208, the Python
+half, ungated; privacy; C2060's shell half stays gated under decision c0777e12a523, §16.291). A `\n` row of step
+1's list registered its LF reading, LF being no separator (`report_cuts.SEPARATORS` and `_SEP_CLASS` unchanged),
+so its blank-joined and slug forms (`Wombat Ledger`, `WombatLedger`, `wombat-ledger`) printed in clear.
+`Redactor.add` gains `of`, a placeholder-preserving alias: the value takes the placeholder `of` already has, never
+a new number and nothing when `of` is not registered, through `add`'s own choice of joined, context, fuzzy (a norm
+of 3 or more with tokens) or literal, so a name made of report words stays joined; `_add_listed` calls it, after
+the loop, for each other decoding of an escaped row with the row's kind. `LIST_ESC_AWK` and `esc()` are unchanged.
+Test: `tests/test_report_redaction.py`
+(`test_the_agentsync_report_cuts_a_folder_step_1_listed_but_not_configured_c2873`'s blank-joined and slug rows,
+compared case-blind).
+
+**The install.log parser is a module of its own** (C3241's report half; ruling 213; `agentsync.install_log`). `InstallRun`,
+`install_runs_only`, `read_install_runs`, `parse_time` and their helpers move to `agentsync.install_log`, which
+imports no report, and `setup_report` re-exports each under its old name, one object, so lane B's
+`loop.next_step` rule 2 reads a completed `--no-folder` run as the report reads it; `_install_sh_said_no_folder`
+keeps status's own choice NEXT (an opener of `NEXT: the person chose no folder`, lane B's
+`loop.NO_FOLDER_CHOSEN_LOOP_NEXT`) as status says it. Tests: `tests/test_setup_report.py`
+(`test_the_install_log_parser_is_a_module_of_its_own_c3241`,
+`test_status_own_choice_next_after_a_completed_none_is_kept_c3241`).
+
+**Step 3's question and the no-folder NEXT are credited only on the route the attempt took** (C3237, C3204,
+C3306, C3337, C3272, C3248 and C3328; ruling 213; amends §16.285 C3029). `_reached_step_3` credited step 3's
+question after the person's none, after a run that ended 0 with a failed status and on prompts from v7, though the
+question exists since v41. Its route rules and words are the dated line under §16.285's C3029 paragraph; the
+constants are `STEP_3_ASKS_FROM` (41), `STEP_3_ASKS_ONCE` and `STEP_3_ASKS_V41`, and `_loop_run` is the one test
+of a run that went on to the loop. Test:
+`test_step_3s_question_is_credited_only_on_the_route_the_attempt_took_ruling_213`.
+
+**A none that did not finish says its own NEXT says what to do, and a bare run over no live folder is never fully
+one command** (C3202, makes worse True for reading the NEXT from install.out; C3209; ruling 213). After a
+`--no-folder` run that failed, timed out or never ended, the Loop line kept status's skill-missing, rule-2 or
+no-folder NEXT, a sync, add-source or the folder question the prompt forbids after a none. It reads
+`NO_FOLDER_UNFINISHED_NEXT`, `the --no-folder run did not finish (<cause>): its own NEXT: line says what to do; a
+re-run keeps --no-folder; the folder question is not asked again and no sync starts`, its cause from install.log
+alone (`_no_folder_cause`, which `_no_folder_failure_words` shares: the failed step and its rc or signal, else the
+status step's blocking note, else the exit status or no end line), the doctor [FAIL] return kept first; never a
+NEXT read from install.out, which the run writing the report has not printed yet and where the latest NEXT can be an
+earlier run's completed none. `compute_outcome`'s new `not_live` (the caller's, `_not_live_folders`, read from
+today's sources.toml for the latest attempt only) scores a last bare run (no `--source-local`, no `--no-folder`)
+that ended 0 and completed over a config with no live folder but the inbox `stopped` at step 1
+(`NO_FOLDER_UNANSWERED`) when a step 1 deviation follows it, else `worked with help` with `NO_LIVE_FOLDER_WHY`,
+`install.sh ended 0 with no folder synced (its NEXT: sends the agent back to the folder question)`, and the held
+folders in `NOT_LIVE_CLAUSE`'s words, never fully one command; a run that named an answer is scored as before and
+so is an earlier attempt. Tests: `tests/test_setup_report.py`
+(`test_a_none_that_did_not_finish_says_its_own_next_says_what_to_do_c3202`,
+`test_the_loop_line_says_the_next_install_sh_printed_for_a_none_c2946`'s failed-none row,
+`test_a_bare_run_that_ended_0_with_no_live_folder_is_never_fully_one_command_c3209`,
+`test_only_the_latest_attempt_reads_todays_config_for_its_outcome_c3209`).
+
+**install.sh's `per folder)` is kept whole after `--source-local`** (C3203; ruling 214; makes worse True for
+skipping `per` or cutting only path-shaped words; lane RB's recut mirrors it, §16.291). The quoted-head span rule
+(ruling 173) ran the NEXT's `"<folder>"` quote on to the line's end, so `(one --source-local per folder)` read `(one
+--source-local <path>` and C3003's `not live:` clause was cut with it. `report_cuts.SOURCE_LOCAL_KEPT` holds the
+phrase, `CUT_SOURCE_LOCAL_KEPT` in the generated block, and `_quoted_value_end` keeps the one-word read after
+`--source-local ` where the phrase ends (the line's end, a blank, `;`, `,` or `.`), as `_CWD_KEPT` keeps --cwd's
+words; `_SOURCE_LOCAL_RE` is unchanged, and `per diem/Wombat` and `per folder)/Wombat Ledger` are still cut. Test:
+`test_install_shs_per_folder_phrase_is_kept_after_source_local_c3203`.
+
+**The report's own readers** (C3208, C3292, C3315, C3330; the report cluster). A checkout other than
+~/src/agent-context-sync, as written or resolved, is `checkout <path>` in the install-source line, its
+`(editable)`, commit and origin facts kept, and a wheel whose name holds a character that is not printable is
+`wheel <path>`: the line carried most of a folder name and a raw U+0085 (C3208; lane RB's shell line,
+§16.291). One resolver, `_env_log`, reads AGENTSYNC_FRICTION_LOG and AGENTSYNC_SETUP_LOG (their defaults
+`FRICTION_DEFAULT` and `SETUP_LOG_DEFAULT`): a `~name` value
+`paths.expand` refuses comes back unexpanded with its raw value, never the default file, is registered as a refused
+value, and the friction section, the install.sh line and the installer output name the variable as a log not read
+(`$<VAR> names another account's home; export it as an absolute path (not read)`); every other reader takes the
+report's path and reads nothing beside a refused log, setup-report exits 0 with its `--out` file (it exited 2 and
+wrote none), and AGENTSYNC_CONFIG and `--config` keep their exit 2 (C3292; lane B's cli.py hunk in its own
+commit). The C3008 row is built from `doctor._prose_path` and `_shell_path` under the test HOME, its escaped form
+pinned and its rows counted (C3315); the ruling 203 C-form row asserts the shell writer ran and checks each report's
+args= row (C3330). Tests: `tests/test_setup_report.py`
+(`test_a_checkout_outside_src_agent_context_sync_is_shown_as_its_path_c3208`,
+`test_a_tilde_name_log_variable_is_named_as_a_log_not_read_and_the_report_written_c3292`),
+`tests/test_report_redaction.py` (`test_both_reports_cut_a_folder_doctor_writes_unquoted_in_prose_c3008`,
+`test_both_reports_cut_a_folder_install_sh_logged_in_the_c_form_ruling_203`).
+
+**A config this account cannot reach reads loads not checked** (C3335's report half; lane RB's shell half reads
+the same, §16.291). A sources.toml behind a folder this account cannot search printed `not checked: this account
+cannot reach it: Permission denied` on its config line, then `loads: no: PermissionError: ...`, where the shell
+report says whether it loads was not checked: `_configuration` prints `CONFIG_UNREACHED_LOADS`, `- loads: not
+checked (this account cannot reach it)`. Test: `tests/test_setup_report.py`
+(`test_a_config_this_account_cannot_reach_reads_loads_not_checked_c3335`).
 
 ### 16.291 Round 47: the installer: the shell halves of rulings 206 and 207, a file at the docs repo's path the person's to move aside, paused and retired folders marked in step 1's list, and C2060 waits on the operator (2026-11-25, wave B13 round 47 lane RB)
 
