@@ -47810,9 +47810,12 @@ Test: `test_install_oneshot.py::test_the_no_folder_swaps_comment_names_c3003s_re
 **A stored path keeps its blanks** (C3333; ruling 209; data integrity). add-source writes the folder it validated
 as chosen, but the loader read every value through `config._str`, which strips, so a source path ending in U+3000,
 U+00A0 or a space loaded as its sibling without the blank, and a sync published the sibling's files. Every key
-holding a filesystem path (a `[[source]]` path, docs_repo, state_dir, cache_dir, log_dir and pandoc_path) is now
-read by `config._path_str`, which strips nothing and reads an empty or blank-only string as missing; every other key
-keeps `_str`. A config written while the loader stripped may hold a blank its writer never meant: when the path as
+holding a folder (a `[[source]]` path, docs_repo, state_dir, cache_dir and log_dir) is now read by
+`config._path_str`, which keeps the value's end as written, drops a leading blank (no absolute or home path begins
+with one: kept, `  ~kestrel/x` loaded as a folder under the current one, past ruling 198's refusal) and reads an empty
+or blank-only string as missing; every other key keeps `_str`. pandoc_path keeps `_str` too, measured at the land
+gate: a literal read broke ruling 171's padded and multi-line pandoc_path rows in both reports (the configured pandoc
+unfound, its cut missed), and an executable is no folder whose sibling a sync publishes. A config written while the loader stripped may hold a blank its writer never meant: when the path as
 written does not exist and its stripped spelling does, the load stops on `configuration error: <file>: <table>:
 '<key>' '<as written>' does not exist but '<stripped>' does; edit sources.toml to the spelling you mean`, both
 spellings in repr so the blank shows, never picking one; only a value carrying an outer blank is looked up. The

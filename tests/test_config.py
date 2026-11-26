@@ -515,8 +515,9 @@ _C3333_BLANKS = pytest.mark.parametrize("blank", ["\u3000", " ", "\u00a0"], ids=
 def test_a_stored_path_keeps_the_blank_its_writer_wrote_c3333(tmp_path: Path, blank: str) -> None:
     """B13 round 47 C3333 (ruling 209; data integrity): the loader read every path through ``_str``, which
     strips, so a source path ending in U+3000, U+00A0 or a space loaded as its sibling without the blank and a
-    sync mirrored the sibling's files. A path key keeps the bytes its writer wrote, both siblings present; a
-    blank-only value still counts as missing."""
+    sync mirrored the sibling's files. A path key keeps the end its writer wrote, both siblings present; a
+    blank-only value still counts as missing, a leading blank is dropped (no absolute or home path begins
+    with one), and pandoc_path keeps the strip ruling 171's padded and multi-line spellings rely on."""
     work = tmp_path / "w"
     for name in ("Project", "docs", "state", "cache"):
         (work / name).mkdir(parents=True)
@@ -535,7 +536,13 @@ def test_a_stored_path_keeps_the_blank_its_writer_wrote_c3333(tmp_path: Path, bl
     assert cfg.docs_repo == work / f"docs{blank}"
     assert cfg.state_dir == work / f"state{blank}"
     assert cfg.cache_dir == work / f"cache{blank}"
-    assert cfg.convert.pandoc_path == work / f"pandoc{blank}"
+    assert cfg.convert.pandoc_path == work / "pandoc"  # stripped, as both reports and install.sh read it
+    led_path = f"{blank}  {work / f'Project{blank}'}"
+    led = parse(f"[[source]]\nid = 'p'\nkind = 'local'\npath = {toml_string(led_path)}\n", tmp_path)
+    assert led.sources[0].path == canonical_source_root(work / f"Project{blank}"), "the leading blank dropped"
+    other_home = f"{blank} ~kestrel/Zephyr Quarry {blank}"
+    with pytest.raises(ConfigError, match="names another account's home"):
+        parse(f"[[source]]\nid = 'p'\nkind = 'local'\npath = {toml_string(other_home)}\n", tmp_path)
     blank_only = parse(
         f"[agentsync]\ndocs_repo = '{blank}'\n[convert]\npandoc_path = '{blank}{blank}'\n", tmp_path
     )
@@ -552,7 +559,6 @@ def test_a_stored_path_keeps_the_blank_its_writer_wrote_c3333(tmp_path: Path, bl
         ("[[source]]\nid = 'p'\nkind = 'local'\n", "path", "dir"),
         ("[agentsync]\n", "docs_repo", "dir"),
         ("[agentsync]\n", "state_dir", "dir"),
-        ("[convert]\n", "pandoc_path", "file"),
     ],
 )
 def test_a_stored_path_absent_whose_stripped_spelling_exists_names_both_c3333(

@@ -479,16 +479,18 @@ def _expand_value(v: str, key: str, where: str) -> Path:
 
 
 def _path_str(t: Mapping[str, Any], key: str, where: str) -> str | None:
-    """A filesystem path value as its writer wrote it: nothing stripped, an empty or blank-only string read as
-    missing. :func:`_str` strips, so a source path ending in U+3000, U+00A0 or a space, which add-source
-    writes as chosen, loaded as its sibling without the blank and a sync published the sibling's files (B13
-    round 47 C3333, ruling 209). Every other key keeps :func:`_str`."""
+    """A filesystem path value with its end as its writer wrote it: an empty or blank-only string read as
+    missing, a trailing blank kept. :func:`_str` strips, so a source path ending in U+3000, U+00A0 or a space,
+    which add-source writes as chosen, loaded as its sibling without the blank and a sync published the
+    sibling's files (B13 round 47 C3333, ruling 209). A leading blank is dropped: no absolute or home path
+    begins with one, and kept it made ``  ~name/x`` a folder under the current one, past ruling 198's refusal
+    of another account's home. ``pandoc_path`` and every key that is no path keep :func:`_str`."""
     v = t.get(key)
     if v is None:
         return None
     if not isinstance(v, str):
         raise ConfigError(f"{where}: {key!r} must be a string, got {type(v).__name__}")
-    return v if v.strip() else None
+    return v.lstrip() if v.strip() else None
 
 
 def _literal_path(v: str, key: str, where: str) -> Path:
@@ -669,14 +671,17 @@ def parse_config(text: str, *, config_path: Path) -> Config:
     c = _table(doc, "convert", where)
     cw = f"{where}: [convert]"
     _check_keys(c, _CONVERT_KEYS, cw)
-    pandoc = _path_str(c, "pandoc_path", cw)
+    # read stripped, as before C3333: ruling 171's padded and multi-line pandoc_path spellings are read so by
+    # both reports and install.sh, and an executable is no folder whose sibling a sync would publish (B13
+    # round 47 C3333, measured: a literal read left those rows' pandoc unfound and the report's cut missed)
+    pandoc = _str(c, "pandoc_path", cw)
     convert = ConvertConfig(
         xlsx_stream_threshold_bytes=parse_size(
             c.get("xlsx_stream_threshold_bytes", 20 * 1000**2), where=f"{cw}: xlsx_stream_threshold_bytes"
         ),
         max_rows_per_sheet=_int(c, "max_rows_per_sheet", cw, 5000, minimum=1),
         max_page_bytes=_page_cap(c, cw),
-        pandoc_path=_literal_path(pandoc, "pandoc_path", cw) if pandoc else None,
+        pandoc_path=_expand_value(pandoc, "pandoc_path", cw) if pandoc else None,
         ocr=_bool(c, "ocr", cw, True),
         recordings=_bool(c, "recordings", cw, True),
     )
