@@ -40996,6 +40996,9 @@ Amended 2026-11-13, §16.249 C1455: the escaped form also writes the C1 controls
 U+2066-U+2069, U+061C) and the zero-width characters (U+200B-U+200D, U+2060, U+FEFF), and a name holding the record
 separator 0x1E shows it as `\n`, as install.sh's LIST_ESC_AWK and `arm_local._LIST_ESCAPES` do on purpose (C1492);
 both guides name them, and lane RB's C1447 words the marks `hidden or control character`.
+Amended 2026-11-25, §16.291 C3333: the escaped form also writes every non-ASCII blank str.isspace() names (U+00A0,
+U+1680, U+2000-U+200A, U+202F, U+205F, U+3000, beside U+0085, U+2028 and U+2029 already written), and each guide's
+parenthetical names `a blank that is not an ASCII space`.
 
 **The `$'...'` sentences say a refusal offers no such spelling, and the installer's own commands do** (C1307; amends
 §16.236 C1001 and §16.239 C1072; docs only). §16.236 said "No escaped spelling is taken and no `$'...'` form offered",
@@ -46245,6 +46248,11 @@ Amended 2026-11-24, §16.286 C3087, C3105: both readers strip the kind as config
 so `kind = " inbox "` is the inbox: the interpreter compares `kind.strip()` (a kind that is no string counts as a
 folder, as the loader refuses it), and the line reader allows blanks inside the quotes but reads no TOML escape. Test:
 `test_install_oneshot.py::test_the_line_reader_strips_the_kind_as_config_str_does_c3087_c3105`.
+Amended 2026-11-25, §16.291 C3305, C3323, C3249: the line reader is one LC_ALL=C awk, SOURCE_TABLES_AWK, which
+non_inbox_sources and held_sources_clause both read through: a trailing CR stripped, the header bare, spaced, double-
+or single-quoted and anchored at its end (SOURCE_HEADER_ERE, so `[[source.x]]` is none), kind, id, state and path
+bare or quoted, each value trimmed with py_strip's one set; the report's header count and source_excludes_line read
+the same header and keys.
 
 **A listed name is read whole, and a pandoc path's true value is cut** (C2877, C2880 with C2914; ruling 189; privacy).
 listed_folder_lines wrote each row with bash 3.2's builtin printf, which a SIGCHLD broke with EINTR while -e stopped
@@ -47155,6 +47163,8 @@ Tests: `tests/test_install_oneshot.py`
 `test_a_crlf_multi_line_value_reads_its_newline_as_tomllib_does_c3085`,
 `test_the_line_reader_strips_the_kind_as_config_str_does_c3087_c3105`), `tests/test_report_redaction.py`
 (`test_both_reports_read_the_configured_docs_repos_remote_c3054`, and §16.285's shared rows).
+Amended 2026-11-25, §16.291 C3243, C3302: a record whose path holds a TAB or LF is kept, each one space, and a
+record is dropped only for an id holding one, so that id keeps its `<source-N>` and every later number its place.
 
 **Every word install.sh writes or prints is valid UTF-8 and reads back as its path** (C3080 with C3089 and C3103;
 ruling 203). q_word gives `printf %q`'s word and writes a `$'..'` result again under LC_ALL=C; every word install.sh
@@ -47179,6 +47189,9 @@ is not a file reads `(exists)` with `- loads: no: it is a folder or something el
 count, a path a folder above refuses reads `(not checked: this account cannot reach it: Permission denied)`, and a
 link to nothing stays `(missing)`, each as setup_report._path_reached reads it. Test:
 `test_the_shell_report_marks_a_config_that_is_not_a_file_as_the_agentsync_report_does_c3019`.
+Amended 2026-11-25, §16.291 C3335: stat's message is read as captured text outside the pipe, so an unreachable
+config reads `(not checked: this account cannot reach it: Permission denied)` and `- loads: not checked (this
+account cannot reach it)`, setup_report.CONFIG_UNREACHED_LOADS's words, never `(missing)`.
 
 **An older build reads a denied inbox as inbox_state does** (C3088; ruling 204). The older-build fallback inlines
 config.inbox_entry with stdlib errno, stat, lstat and stat: a denied entry is `not read (<strerror>)`, never absent
@@ -47818,6 +47831,69 @@ NEXT's `past the first M` count from the rows shown. Tests:
 **The --no-folder swap's comment names C3003's rewrite** (C3282 with C3309). The comment over the swap no longer says a
 bare run keeps status's rule-2 NEXT; COMMON.md's ruling 191 text stays as its dated line amends it (ruling 213).
 Test: `test_install_oneshot.py::test_the_no_folder_swaps_comment_names_c3003s_rewrite_above_it_c3282`.
+
+**The shell halves of rulings 206 and 207: the kept inbox's link read alike, and every spelling registered** (C3245,
+C3242's and C3324's shell halves, C3243 with C3302, C3244, C3246, C3303, C3304, C3247, C3285's and C3224's shell
+halves, C3289; privacy; landed in one run with §16.290's halves). resolved() walks a link with `cd -P` on its folder,
+a relative target against the link's own resolved folder, at most 40 hops, and on a loop gives the first hop's target,
+that hop's folder resolved and its last part kept, as os.path.realpath reads it (C3245). inbox_targets never takes
+the home, its physical path or a generic container, and a configured or vanished folder strictly below a kept target
+registers through own_folder_values at its place, the inbox itself skipped (C3242). For a file that does not parse one
+eff_docs, the default, feeds the remotes, beside and the C2430 block, and the four own folders register after the
+inbox targets (C3324). The tomllib records keep a TAB or LF path (C3243 with C3302); the refused-path loop alone reads
+a path-only mode of config_source_records, one path per table whatever its id (C3244, makes worse True for id-less
+records); the structural check resets its keys at each header, calls a repeated whole key unparsed and accepts a
+number or boolean id tomllib reads, and the records take each table's first value (C3246); one TOML_BASIC_AWK decoder,
+held to config_path_values', decodes a basic-string value, and a `~name` head is tested after py_strip (C3303); one
+PY_SPACE_ERE set feeds py_strip and py_has_space under LC_ALL=C through ENVIRON (C3304); a one- or two-character head
+registers with add_forms anchored on its `~`, a two-letter name only past report_word and two_letter_word, which gains
+`me` (C3247, makes worse True for a 3-character floor); a refused value's parent prefixes are cut to
+`~<user>/<path>`, longest first (C3285); foreign_home_cut cuts an unconfigured `~login/...` head, a placeholder head
+too, whole like `/Users/`, with one legend line (C3224); and the configured-sources loop registers a folder's rel and
+first parts with fuzzy_flag's flag, i for a joined name, a value holding `/` and the vanished loop left at i, the
+legend's project-folder clause kept by a tagged mark (C3289). Measured: with an LF in a source path the shell's line
+reader gives a space, so the folder's fuzzy key is the id's and the id takes that folder's number where python's
+fuzzy add skips a value holding a line break; the id is cut in both and only that row's number differs. Tests:
+`test_report_redaction.py`'s ruling 206 and 207 rows (§16.290) with
+`test_the_shell_report_cuts_a_looped_inbox_links_target_c3245`,
+`test_the_shell_report_cuts_a_project_under_the_inbox_links_target_c3242`,
+`test_both_reports_cut_an_id_whose_path_holds_a_tab_or_lf_c3243_c3302`,
+`test_both_reports_cut_a_tilde_name_path_of_a_source_with_no_string_id_c3244`,
+`test_both_reports_read_the_first_of_a_repeated_id_and_go_private_c3246` and
+`test_both_reports_cut_a_refused_source_path_written_with_an_escape_c3303`; `test_install_oneshot.py`'s
+`test_install_resolves_the_inbox_link_as_realpath_reads_it_c3245`,
+`test_a_source_path_holding_a_tab_or_lf_keeps_its_id_record_c3243_c3302`,
+`test_the_paths_mode_reads_every_source_path_whatever_its_id_c3244`,
+`test_the_structural_check_calls_a_repeated_key_unparsed_and_the_records_take_the_first_c3246` and
+`test_one_basic_string_decoder_reads_a_source_path_as_the_path_reader_does_c3303`.
+
+**A config this account cannot reach reads not checked** (C3335; dated line under §16.286's C3019 paragraph). stat's
+message is read as captured text, never through a pipe pipefail hides, and matched at its end: `- config: <path> (not
+checked: this account cannot reach it: Permission denied)` then `- loads: not checked (this account cannot reach
+it)`, as the agentsync report prints them. Test:
+`test_install_oneshot.py::test_the_shell_report_marks_a_config_that_is_not_a_file_as_the_agentsync_report_does_c3019`
+(its `unreachable` case).
+
+**The line readers of sources.toml read every spelling tomllib reads** (C3305 with C3323 and C3249; dated line under
+§16.281's C2934 paragraph). With no interpreter, non_inbox_sources, held_sources_clause, the report's header count
+and source_excludes_line read one header pattern and bare or quoted keys, strip a trailing CR and trim each value as
+str.strip does, so each count equals load_config's under TOOL_PY set and empty. A TOML escape stays unread by the
+line reader, which only tomllib resolves. Tests: `test_install_oneshot.py`'s
+`test_install_sh_counts_sources_as_the_report_reads_them_c2934` (over both interpreters and CRLF),
+`test_both_held_folder_readers_read_every_spelling_as_the_loader_does_c3305` and
+`test_the_shell_report_counts_every_header_spelling_with_no_interpreter_c3249`.
+
+**A folder name holding a non-ASCII blank is listed escaped** (C3333's installer half; ruling 209). The list's escape
+(LIST_ESC_AWK's escd and esc) and its Python twin arm_local._LIST_ESCAPED_RE mark every non-ASCII character
+str.isspace() names (U+0085, U+00A0, U+1680, U+2000 to U+200A, U+2028, U+2029, U+202F, U+205F, U+3000), so
+`Project<U+3000>` is an escaped row beside `Project`; step 1's synced set reads each path through load_config, so it
+takes the loader's literal path. Tests: `test_install_list.py::test_a_folder_ending_in_a_non_ascii_blank_lists_escaped_c3333`
+and `test_the_list_escapes_every_non_ascii_blank_as_its_python_twin_does_c3333`.
+
+**C2060's shell half waits on the operator** (C3287; ruling 208). Class C decision c0777e12a523, whether a lane may
+port round 41's refused install.sh edit so the shell report decodes a listed name step 1 printed with escapes, is
+open, so the port at C2667's three porting points is not built and the shell half's strict xfail stays with its
+one-line reason; ruling 207's TOML_BASIC_AWK (C3303), which reads sources.toml's escapes, is not that change.
 
 ### 16.292 Round 47: a reader keeps the bytes its writer wrote, the kept inbox's state decided by one check and told in one phrase, a file at the docs repo's path the person's, and the land gate's block naming its fix (2026-11-25, wave B13 round 47 lane B)
 

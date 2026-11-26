@@ -6154,18 +6154,22 @@ def test_the_guides_name_every_character_the_list_escapes_c1455() -> None:
     paragraph takes a dated line with the code points."""
     script = SCRIPTS[0].read_text(encoding="utf-8")
     [escd] = re.findall(r"^function escd\(s\) \{ return s ~ /(.*)/ \}$", script, flags=re.MULTILINE)
-    for part in (
-        r"\302[\200-\237]",
-        r"\342\200[\213-\217\250-\256]",
-        r"\342\201[\240\246-\251]",
+    for part in (  # since B13 round 47 C3333 the non-ASCII blanks too (U+00A0, U+1680, U+2000-U+200A, U+202F,
+        # U+205F, U+3000)
+        r"\302[\200-\240]",
+        r"\342\200[\200-\217\250-\257]",
+        r"\342\201[\237\240\246-\251]",
+        r"\341\232\200",
+        r"\343\200\200",
         r"\357\273\277",
         r"\330\234",
     ):
         assert part in escd, part
     assert r'if (c == "\036") o = o "\\n"' in script
     said = (
-        r"a carriage return as `\r`, and any other control character, a line or paragraph separator, or an"
-        r" invisible bidi or zero-width character as a backslash and three octal digits for each of its"
+        r"a carriage return as `\r`, and any other control character, a line or paragraph separator, an"
+        r" invisible bidi or zero-width character, or a blank that is not an ASCII space as a backslash and"
+        r" three octal digits for each of its"
         r" bytes, DEL as `\177`; a name holding the record separator, 0x1E, shows it"
         r" as `\n` too), so the row is not the folder's own name"
     )
@@ -9721,6 +9725,18 @@ _ROUND_47_RB_PARAGRAPH_AMENDS = (
         "§16.291 C3332, C3206",
     ),
     ("16.286", "**A bare run's no-folder NEXT is install.sh's own**", "§16.291 C3332"),
+    (
+        "16.286",
+        "**The shell reads the sources, the docs repo and a `~name` value as the agentsync report does**",
+        "§16.291 C3243, C3302",
+    ),
+    (
+        "16.281",
+        "**The shell's TOML readers read a value and count a source as tomllib does**",
+        "§16.291 C3305, C3323, C3249",
+    ),
+    ("16.286", "**The shell report marks a config path that is not a file `(exists)`**", "§16.291 C3335"),
+    ("16.244", "**The guides name every mark a folder row opens with**", "§16.291 C3333"),
 )
 """Round 47 lane RB's dated lines: C3332's and C3336's under §16.29's list bullet (the paused and retired
 marks, every top folder past the cap), C3336's under §16.300.18's list options, C3332 with C3206 under

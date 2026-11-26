@@ -77,8 +77,8 @@ would be read twice. A synced folder the list does not reach (deeper than two le
 another reason than a double read. A row that opens with
 `[name holds a hidden or control character: rename it to sync it]` names a folder whose name holds a hidden or
 control character, shown escaped (a newline as `\n`, a tab as `\t`, a carriage return as `\r`, and any other control
-character, a line or paragraph separator, or an invisible bidi or zero-width character as a backslash and three
-octal digits for each of its bytes, DEL as `\177`; a name holding the record separator, 0x1E, shows it as `\n`
+character, a line or paragraph separator, an invisible bidi or zero-width character, or a blank that is not an ASCII
+space as a backslash and three octal digits for each of its bytes, DEL as `\177`; a name holding the record separator, 0x1E, shows it as `\n`
 too), so the row is not the folder's own name; one that opens with
 `[name reads as another folder there: rename one of them to sync it]` is a plain name that reads as such a folder's
 escaped form in the same parent. Neither can be added as shown, and `--source-local` refuses both: rename the folder
