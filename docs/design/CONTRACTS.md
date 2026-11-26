@@ -47472,6 +47472,13 @@ C's first old copy, a step 2 refused on AGENTSYNC_CONFIG among its plays. Tests:
 `test_the_v43_not_used_rule_covers_a_step2_refused_before_agentsync_ran_c3018`,
 `test_prompt_routes_changes_to_the_source_not_the_checkout`,
 `test_the_prompt_text_changes_only_with_its_version`, `test_readme_prompt_compat_matches_the_installer`.
+Amended 2026-11-25, §16.294 C3205: v44 (ruling 216) keys step 3's usage or configuration error on exit 2 or 78 and
+names its error line as the run's last, since argparse prints `usage:` and then `agentsync: error: ...` or
+`agentsync <command>: error: ...`, never a line opening `error:` (C3205 with C3280 and C3331); step 2 reads a
+background run to its exit (C3273, C3325); the opener says an inbox state: line also follows, before any source is
+matched, a name that is not a folder or cannot be read (C3274); and each branch shows step 2's `inbox: not read:` or
+`inbox: not added` line only if step 2 printed one, since a refused add-source stops before it reads the inbox
+(C3326). §16.294's v44 paragraph says the rest.
 **Amended 2026-11-25, §16.294 C3276:** install.sh's dry run ends exit 0, not 1: its branch, the chain's first (`if [
 "$DRY_RUN" -eq 1 ]`), sets only its own NEXT, `re-run without AGENTSYNC_INSTALL_DRY_RUN=1 to apply the steps above`,
 and leaves EXIT_RC at 0; the status timeout and the six blocking status-note branches after it each end exit 1 on
@@ -47999,6 +48006,54 @@ C3044 gives step 2's remedy to the kept inbox's source alone; CONTRACTS had the 
 Each ruling keeps its words and takes a `(2026-11-25) Ruling 204 amends this one:` line right after its last sentence,
 as rulings 181, 191, 195 and 197 did (ruling 186), dated with this commit's round, not round 46's. Test:
 `tests/test_deploy_pack.py::test_rulings_130_and_194_take_ruling_204s_dated_lines_c3255`.
+
+**Setup prompt v44: a run read to its exit, an error keyed on its exit code, a paused or retired folder never
+offered again** (C3205, C3280, C3331, C3273, C3325, C3274, C3326, C3240, C3334, C3336, C3269, C3332, C3206, C3213;
+rulings 214 and 216; amends §16.289 C3116). v43 told a run by a prefix or a stop the run does not give. Step 3
+spotted a usage error by a line opening `error:`, but argparse's own error for sync and curate prints a `usage:` line
+and then `agentsync: error: ...` (an unknown option) or `agentsync <command>: error: ...` (a missing value): the exit
+code, 2 or 78, now decides, and the error line is named as the run's last, in each form, shown, logged with its exit
+code, not followed, then the report (C3205 with C3280 and C3331; reproduced through `cli.main`). Step 2 read a
+background run only until its NEXT: line, which can come before the error, WAITING ON YOU: and note: lines and always
+comes before the exit status: it reads both streams until the run exits and notes its status, as step 3 already said
+it did (C3273 with C3325). Its opener said an inbox state: line follows only when no live inbox source sits on the
+folder, while `config.inbox_state` returns `not added (<folder> is not a folder)` and `not read (<why>)` before it
+matches any source: the opener names both (C3274), and each state branch shows step 2's warning line only if step 2
+printed one, since a refused add-source (no such folder, not a folder, a config that would not load) exits 2 before
+`_ensure_inbox` while install.sh still prints the state line (C3326; a refused add-source over an inbox linked into a
+locked folder exits 2 with no warning while the state reads `not read`). The Finish said `none: this Mac syncs no
+folder` after a step 2 that failed; it adds `step 2 ended with an error (exit <code>): see the NEXT: line below` when
+step 2's last run this session exited other than 0 and was not a bare first run ending on `no folder to sync yet`,
+which exits 2 by design (C3240). The `--source-local` template was double-quoted, so `$` and a backquote expanded in a
+folder's name: every form the agent writes is single-quoted, `'\''` for an apostrophe, and the prompt's two examples
+reach bash's argv byte for byte; a printed NEXT or fix is still run as given (C3334). Step 1 asked for a choice over
+a list cut at 200 rows: a `(N more)` line is told as N folders not shown that the person can still name by path, and
+the `--all` command the NEXT ends with is never run, since thousands of rows would be cut again by the agent's own
+output limit (C3336; lane RB keeps every depth-1 row when it cuts). Step 1 offered a paused or retired folder, which
+step 2's `--source-local` leaves as it is (`already configured: source '<id>' (local, paused) ...`), and the folder
+question came back over it (turns C3269 and C3332; ruling 214): a row lane RB's list marks `[paused]` or `[retired]` is
+never offered, and with no unmarked row left no folder question is asked and step 3's report follows; a NEXT carrying
+`; not live: ...` is shown in its own words before any question; and step 2's `already configured` line for a chosen
+paused or retired folder is told, that folder not asked about again, and with no other folder chosen the report
+follows as after a none, never through `--no-folder` and never recorded as a none. Two unmarked items take words too:
+step 3's `nothing to draft yet` rule names step 2's `--source-local` run in place of the add-source loop.py's words
+name, as lane RB's step 2 NEXT now does (C3206), and the not-a-folder parenthetical takes lane B's one phrase, `a file
+or a link that does not lead to a folder`, which a looping link and a link through a file fit (C3213). No step moves,
+so v44 is read with v7's layout. Version 44 everywhere the bump list names it (the block and its digest in `PROMPT`,
+`prompt v44` in step 1's `--log-start`, `SETUP_PROMPT_COMPAT`, `setup_report.PROMPT_VERSION`, its docstring's list and
+its v43 mentions, the form's placeholder, the version pins, setup-feedback.md's version lines and its old-copy list,
+which v43 joins, and a K68 row); `CUT_OFF_TOLD` names no version and is unchanged. §16.289's v43 paragraph takes a
+dated line and `docs/lanes/COMMON.md` one beside ruling 205. Round 48 rehearses v44 with v43's block (ea3d2d0d1) as
+scenario C's first old copy. Tests:
+`test_the_v44_step3_keys_a_usage_error_on_its_exit_code_c3205_c3280_c3331`,
+`test_the_v44_step2_reads_a_background_run_to_its_exit_c3273_c3325`,
+`test_the_v44_source_local_form_is_single_quoted_c3334`,
+`test_the_v44_list_cut_is_told_never_followed_by_all_c3336`,
+`test_the_v44_prompt_never_offers_a_paused_or_retired_folder_c3269_c3332`,
+`test_the_v44_inbox_branches_show_step_2s_line_only_if_it_printed_one_c3274_c3326`,
+`test_the_v44_step3_nothing_to_draft_rule_names_step_2s_source_local_run_c3206`,
+`test_the_v44_finish_names_a_step_2_that_ended_with_an_error_c3240`,
+`test_the_prompt_text_changes_only_with_its_version`, `test_readme_prompt_compat_matches_the_installer`.
 
 **Both READMEs name a not-a-folder inbox in lane B's one phrase** (C3213; ruling 210; `README.md`,
 `docs/deploy/README.md`). Both said `not added (<folder> is not a folder)` comes from "a file, a link to a file or a

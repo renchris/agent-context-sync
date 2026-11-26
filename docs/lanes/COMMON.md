@@ -2573,6 +2573,11 @@ joins), a new K row, test_deploy_pack.py's INBOX_NOT_READ pin and every other pi
 H26's and §16.289's dated lines and one beside ruling 197; CUT_OFF_TOLD stays. v43 quotes only lines already on trunk,
 so it waits on no lane. Round 47 rehearses v43 with v42's block (97049c792) as scenario C's first old copy, a step 2
 refused on AGENTSYNC_CONFIG among its plays.
+(2026-11-25) Ruling 216 amends this one: v44 keys step 3's usage or configuration error on exit 2 or 78, its error
+line the run's last, reads step 2's background run to its exit, shows step 2's inbox warning only if step 2 printed
+one, adds `step 2 ended with an error (exit <code>)` to the Finish, single-quotes every `--source-local` form, tells a
+`(N more)` list without `--all`, and never offers a folder step 1 marks `[paused]` or `[retired]` (ruling 214); the
+same commit moves the version and its pins, as this ruling's did (round 47, CONTRACTS §16.294).
 
 ROUND 47 RULINGS (lead; every lane builds to them; the prompt goes to v44 in lane D's one commit, ruling 216):
 (206) The kept inbox's link is resolved alike in both reports and never raises, and every configured folder under a

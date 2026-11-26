@@ -356,7 +356,7 @@ first; once you say you have, it lists the folders again. When it cannot ask you
 left unanswered), it does not wait for that sign-in and logs nothing for it: it goes to step 3's report (since v21).
 
 ```text
-Set up agentsync on this Mac (setup prompt v43). agentsync keeps a local, agent-readable git repo
+Set up agentsync on this Mac (setup prompt v44). agentsync keeps a local, agent-readable git repo
 (~/agent-context/docs) in sync with the OneDrive and SharePoint folders this Mac syncs. Source:
 https://github.com/renchris/agent-context-sync (docs/deploy/README.md there explains every step). Run each command
 yourself and show me its output. Rules: no sudo; never push, upload or email anything; do not edit my shell profile;
@@ -394,7 +394,7 @@ the name in fix-request.md.
 
 1. Preflight, code and folders, in one command (replace <agent> with your tool and model id; its first part, which
    each git recovery below repeats, keeps git from using a repository above ~/src):
-   `export GIT_CEILING_DIRECTORIES="$HOME/src" && sw_vers -productVersion && xcode-select -p && { if [ -f ~/src/agent-context-sync/.git/HEAD ] || [ -f ~/src/agent-context-sync/.git ]; then git -C ~/src/agent-context-sync pull --ff-only; else git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; } && ~/src/agent-context-sync/scripts/install.sh --version && ~/src/agent-context-sync/scripts/install.sh --log-start 'prompt v43, <agent>' && ~/src/agent-context-sync/scripts/install.sh --list-folders`
+   `export GIT_CEILING_DIRECTORIES="$HOME/src" && sw_vers -productVersion && xcode-select -p && { if [ -f ~/src/agent-context-sync/.git/HEAD ] || [ -f ~/src/agent-context-sync/.git ]; then git -C ~/src/agent-context-sync pull --ff-only; else git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; } && ~/src/agent-context-sync/scripts/install.sh --version && ~/src/agent-context-sync/scripts/install.sh --log-start 'prompt v44, <agent>' && ~/src/agent-context-sync/scripts/install.sh --list-folders`
    Before running it, tell me macOS may ask whether this terminal app can access files managed by OneDrive, and
    that I should click Allow. If xcode-select printed no path, tell me: "Install the Xcode Command Line Tools with
    `xcode-select --install`, or request them from IT through Self Service if that asks for an admin password; then
@@ -457,11 +457,11 @@ the name in fix-request.md.
    step 3's report. Before going to the report from the Xcode stop or the other-git-failure stop above, if
    ~/src/agent-context-sync/scripts/install.sh exists, run `~/src/agent-context-sync/scripts/install.sh --version`:
    step 1 did not update that copy (its pull did not run, or failed), so it may be older than this prompt. If
-   it exists and its output ends with "setup-prompt-compat 43", log the command that failed (git's pull or clone, or
+   it exists and its output ends with "setup-prompt-compat 44", log the command that failed (git's pull or clone, or
    xcode-select -p; not step 1's whole command) and its error as the command printed it, host names included (the
    report replaces the host of a proxy, of a URL rewrite, of a git remote and of a "Could not resolve" or "Failed to
    connect to" message, but keeps a public host such as github.com; the role rule is for your own words), as a step 1
-   error, starting its what-text with prompt v43, <agent> and a colon (the same words as in step 1's command; write
+   error, starting its what-text with prompt v44, <agent> and a colon (the same words as in step 1's command; write
    no colon inside <agent>), and go to the report. If it exists and its output does not end so (or the command
    fails), that stop has no report either: tell me that the code on this Mac is not this prompt's version and that
    setup stopped before it could be updated, and
@@ -471,9 +471,9 @@ the name in fix-request.md.
    (step 3's last no-report case): tell me that setup stopped before the code was downloaded, and that once the cause
    of this stop is fixed, the next paste of this prompt downloads it (say only this stop's cause: at the Xcode stop,
    the Command Line Tools installed; at the other-git-failure stop, git able to reach GitHub). If the --version
-   inside step 1's one command does not end with "setup-prompt-compat 43", or the command says the pasted prompt is
-   not the installer's, stop and run no other step: this prompt is v43, and a copy that does not match the installer
-   must not be used. But if the error says this installer is for v43, this prompt's own number, the copy matches and
+   inside step 1's one command does not end with "setup-prompt-compat 44", or the command says the pasted prompt is
+   not the installer's, stop and run no other step: this prompt is v44, and a copy that does not match the installer
+   must not be used. But if the error says this installer is for v44, this prompt's own number, the copy matches and
    only step 1's command was changed: run it again once, exactly as written here, and stop as above if it stops the
    same way again. When step 1 stops here, if the command's error says what to
    tell me, tell me that, in its words; otherwise (--version printed another number and no such error), tell me to
@@ -492,7 +492,12 @@ the name in fix-request.md.
    is not a click: only the first exception below waits for a sign-in). Otherwise show me the folders and ask which
    to sync, suggesting project folders rather than a whole library, and tell me that online-only files in them are
    downloaded by each sync, up to
-   1 GiB per folder per run. A row that opens with [name holds a hidden or control character: rename it to sync it]
+   1 GiB per folder per run. A row marked [paused] or [retired] is a folder already in sources.toml but not synced:
+   tell me so, and never offer it or pass it to --source-local (step 2 leaves it as it is); setting it live is my own
+   edit of sources.toml, never yours. With no unmarked row left to offer, ask no folder question and go to step 3's
+   report. If the list ends with a "(N more)" line, tell me N folders are not shown and that I can still name one by
+   its full path; do not run the --all command its NEXT: line ends with.
+   A row that opens with [name holds a hidden or control character: rename it to sync it]
    or [name reads as another folder there: rename one of them to sync it] cannot be chosen: if I want that folder,
    tell me to rename it in its sync app (for the second mark, it or the other folder it reads as); once I say it is
    renamed, run ~/src/agent-context-sync/scripts/install.sh --list-folders again (not step 1's whole command, which
@@ -537,8 +542,12 @@ the name in fix-request.md.
    your final message says I gave no answer, so no folder was added.
    Whatever happened above, if step 2, or a sync of step 3, says no folder is synced yet or no folder to sync yet,
    this Mac syncs no folder, so the folder question above applies as on a new Mac: ask me which folders from the
-   list to sync. If earlier this session I answered this question, which folders to sync, with none (my answer to the
-   exceptions' question whether to add a folder does not count), do not ask again: run step 2's --no-folder command
+   list to sync. If that NEXT: line carries a "; not live: ..." clause, show me that clause in its own words before
+   any question: those folders are in sources.toml but paused or retired, and setting one live is my edit of
+   sources.toml, never yours. Never offer a row the list marked [paused] or [retired]; with no unmarked row left, ask
+   nothing and go to step 3's report (that is no none: run no --no-folder). If earlier this session I answered this
+   question, which folders to sync, with none (my answer to the exceptions' question whether to add a folder does not
+   count), do not ask again: run step 2's --no-folder command
    as step 2 says (its exit status and NEXT: line first), then go to step 3's report. If you cannot ask me, do not
    choose them for me: log a deviation at step 1, stop and wait for my answer exactly as in step 1. Run no
    --report-only and add no "## Not used" section. Your final message says "none: waiting for your folder answer"
@@ -548,7 +557,10 @@ the name in fix-request.md.
    add-source that its NEXT: line names: no step 2 line reports those folders as added.
 2. Install and start. Run, with one --source-local per folder I chose (full paths), using the longest command
    timeout your tool allows (30 minutes if you can set it: the speech helper's build alone can take up to 20 minutes):
-   `~/src/agent-context-sync/scripts/install.sh --source-local "<folder>"`
+   `~/src/agent-context-sync/scripts/install.sh --source-local '<folder>'`
+   Put each full path in single quotes, writing each ' in it as '\'', so the shell changes nothing in it:
+   --source-local '/Users/me/OneDrive - Contoso/Budget $2026' or --source-local '/Users/me/Dana'\''s Plans'. A
+   command a NEXT: line or a [FAIL] fix prints is run as given.
    On a Mac that already syncs folders, name only the folders I chose to add. With none to add, run it with no
    --source-local, which keeps the folders already synced:
    `~/src/agent-context-sync/scripts/install.sh`
@@ -558,7 +570,10 @@ the name in fix-request.md.
    If it exits 0 and its NEXT: line says I chose no folder, tell me this Mac syncs no folder and, once this step is
    done, go to step 3's report, not its sync loop. Any other result is handled by this step's rules below: a re-run
    it names keeps --no-folder, and do not ask the folder question again. After my none, never start step 3's sync
-   loop: once this step is done, go to step 3's report.
+   loop: once this step is done, go to step 3's report. If it prints "already configured: source ... (<kind>,
+   paused)" or "(<kind>, retired)" for a folder I chose, tell me that line: that folder is in sources.toml but not
+   synced, and setting it live is my edit; do not ask me about it again, and if I chose no other folder, go to step
+   3's report as after a none, with no --no-folder (I did not answer none).
    It installs, runs doctor and the first sync. It starts no background job and asks for no second Allow click:
    background sync is mine to turn on later, so add no other option to this command. It is safe to re-run: if your
    tool stopped it early, run the same command again. If another sync is running when it reinstalls agentsync,
@@ -586,7 +601,8 @@ the name in fix-request.md.
    such chmod its [FAIL] lines name; then run the same install.sh command again. If the re-run names a chmod you
    already ran, show me, log it and go to step 3's report; a new one it names is yours the same way. A sudo or a
    chown stays mine. If your tool cannot wait
-   that long in the foreground, run it in the background and read its output until the NEXT: line appears; that is
+   that long in the foreground, run it in the background and read its output, stdout and stderr, until it exits,
+   noting its exit status (its NEXT: line can come before its error, WAITING ON YOU: and note: lines); that is
    expected, not a deviation. If step 2 printed no inbox: line (it stopped before its config step, as a usage error or
    a failed install does, or its config does not load), say nothing of the inbox now: go by its NEXT: line as below,
    and the inbox comes from the run that later prints one. If it printed no NEXT: line either (a usage error it found
@@ -595,32 +611,37 @@ the name in fix-request.md.
    exited non-zero, read its inbox state: line first, before the config its config: lines name (each names the same
    file; ~/agent-context/sources.toml unless AGENTSYNC_CONFIG is set): the folder its inbox: line names, the line
    right after its docs repo: line, is the folder named inbox beside the docs repo, and an inbox state: line follows
-   the inbox: line only when no live kind = "inbox" source sits on that folder, matched as that folder, never by how
+   the inbox: line unless a live kind = "inbox" source is matched on that folder, matched as that folder, never by how
    its path is spelled (a path may be stored resolved, such as /private/tmp for /tmp; while that source syncs, the
-   inbox line of AGENTS.md in that docs repo names it). If no inbox state: line follows it, a live kind = "inbox"
-   source is on that folder: tell me about my inbox: it is that folder, one of the kind = "inbox" sources in that
+   inbox line of AGENTS.md in that docs repo names it); it also follows, before any source is matched, when that name
+   is not a folder or cannot be read, whatever that config lists there. If no inbox state: line follows it, a live
+   kind = "inbox" source is on that folder: tell me about my inbox: it is that folder, one of the kind = "inbox"
+   sources in that
    config; any other kind = "inbox" source there is a folder I added myself, not my inbox. I drop files there by hand:
    Outlook mail dragged out as .eml, a meeting transcript as .docx or .vtt. Only .eml (or a .msg saved as MIME text),
    .pdf and Office files such as .docx carry a sensitivity label, so .eml and .docx are better than .vtt or pasted
    text. Files stay in the inbox: never empty it by hand, because removing a file turns its page into a deletion
    notice and by default queues a purge. If it reads "inbox state: paused <folder>" or "inbox state: retired
    <folder>", tell me instead that files I drop there do not sync until I set its state back to live, an edit of that
-   config that is mine, not yours. If it reads "inbox state: not added (<folder> is not a folder)" (a file, a link to
-   a file or a dangling link has the folder's name), tell me my inbox could not be added, whatever source that config
-   lists on that folder, and
-   show me that line and step 2's "inbox: not added:" line; moving that file or link aside is mine, not yours; say
-   nothing of dropping files there. If it reads "inbox state: not added (<folder> is source '<id>' (<kind>, <state>),
+   config that is mine, not yours. If it reads "inbox state: not added (<folder> is not a folder)" (a file or a link
+   that does not lead to a folder has the folder's name), tell me my inbox could not be added, whatever source that
+   config lists on that folder, and
+   show me that line, and step 2's "inbox: not added:" line if step 2 printed one; moving that file or link aside is
+   mine, not yours; say nothing of dropping files there. If it reads "inbox state: not added (<folder> is source
+   '<id>' (<kind>, <state>),
    not an inbox source)", tell me that agentsync kept no inbox there: that folder is that source, shown by its id,
    kind and state, synced as an ordinary folder while it is live, not as my inbox, so agentsync keeps no inbox for me
    there; changing its kind is an edit of that config that is mine, not yours. If it reads "inbox state: not added (no
-   source on <folder>)", tell me my inbox could not be added and show me that line and step 2's "inbox: not added"
-   line. In each of these cases but a live one, if another kind = "inbox" source in that config is not paused or
-   retired, name each by its path and say it is a folder I added myself, where files I drop are still converted by
+   source on <folder>)", tell me my inbox could not be added and show me that line, and step 2's "inbox: not added"
+   line if step 2 printed one. In each of these cases but a live one, if another kind = "inbox" source in that config
+   is not paused or retired, name each by its path and say it is a folder I added myself, where files I drop are
+   still converted by
    the next sync (the inbox line of AGENTS.md in that docs repo names them); if none is, tell me I have no drop
    folder. If it reads "inbox state: not checked (<why>)", tell me agentsync did not tell whether my inbox is live,
    show me that line, and say that ~/.local/bin/agentsync status tells it; say nothing of dropping files there. If it
    reads "inbox state: not read (<why>)", tell me agentsync could not read what is on my inbox folder, so whether
-   files I drop there sync is unknown, and show me that line and step 2's "inbox: not read:" line. Name each kind =
+   files I drop there sync is unknown, and show me that line, and step 2's "inbox: not read:" line if step 2 printed
+   one (a refused step 2 stops before it reads the inbox). Name each kind =
    "inbox" source in that config that is not paused or retired, by its path, as a folder that may take files I drop,
    never as one I added myself (one may be my inbox under its stored spelling); say that ~/.local/bin/agentsync status
    tells it again once that folder can be read, and never tell me I have no drop folder.
@@ -637,8 +658,9 @@ the name in fix-request.md.
 3. Sync loop and report. Whenever a sync of this step prints a NEXT: line saying no folder is synced yet, whatever
    happened in step 1, do as step 1's last sentences say, not its add-source, and run no more of this loop until
    step 2 has run again (after a none, they send you to the report). If a sync of this step prints a NEXT: line
-   starting "nothing to draft yet" whose move it says is mine, show it to me; choose no folder, move or make no file
-   and run no add-source yourself: ask me, once this session, whether to add a folder from step 1's list (my none to
+   starting "nothing to draft yet" whose move it says is mine, show it to me, saying that a folder is added by the
+   --source-local run of step 2, not by the add-source it names; choose no folder, move or make no file and run
+   neither yourself: ask me, once this session, whether to add a folder from step 1's list (my none to
    step 1's exceptions' question does not answer it), and if I name folders, run step 2 again with one --source-local
    per folder I name, then this loop again; if I say none, or you cannot ask me, or you already asked it this session,
    log nothing and go on to the report syncs below. Run `~/.local/bin/agentsync sync` and do what its NEXT: line
@@ -669,10 +691,12 @@ the name in fix-request.md.
    going to the report; if that one is skipped too, log it as a step 3 error and go to the report. Otherwise a sync
    prints nothing until its report; if it seems stuck, a macOS prompt may be waiting for me, so tell me and keep
    waiting. sync and curate print a NEXT: line even when most failures make them exit non-zero (curate exits 1
-   while it lists errors for you to fix): follow it. A usage or configuration error (exit 2 or 78, a line starting
-   "error:" or "configuration error:") prints none: log it as a step 3 error with its exit code, show me that line,
-   do not do what it says, and go to the report. Any other run that printed no NEXT: line, but the "skipped: lock
-   held" one above, goes to the report too. Repeat until the NEXT: line itself says
+   while it lists errors for you to fix): follow it. A usage or configuration error (exit 2 or 78: the exit code
+   decides) prints none: its error line is its last line, containing "error:" ("error: ...", or "agentsync: error:
+   ..." or "agentsync <command>: error: ..." after a "usage:" line) or starting "configuration error:"; show me that
+   line, log it as a step 3 error with its exit code, do not do what it says, and go to the report. Any other run
+   that printed no NEXT: line, but the "skipped: lock held" one above, goes to the report too. Repeat until the NEXT:
+   line itself says
    "session done". Step 2's NEXT: line does not count, even when it already said "session done": step 2's
    sync downloaded nothing, so run this loop's sync at least once. WAITING ON YOU: lines are mine: show them
    to me, but keep doing what NEXT: says. If a sync stops on "click Allow", a macOS prompt is waiting for me
@@ -723,8 +747,10 @@ the name in fix-request.md.
    it), saying which of them this session added: those for which a run of step 2 this
    session printed an "added source" line; or, if the report's config: line marks that config (missing), or it has
    no such kind = "local" source, "none: this Mac syncs no folder" (if setup stopped before step 2, say at which step;
-   a config: line marked (exists) whose loads: line says yes gives none only when that file, read as above, has no
-   kind = "local" source that is neither paused nor retired, as after --no-folder, never because a path could not be
+   if step 2's last run this session exited other than 0 and was not a bare run that ended on "no folder to sync
+   yet", add "step 2 ended with an error (exit <code>): see the NEXT: line below"; a config: line marked (exists)
+   whose loads: line says yes gives none only when that file, read as above, has no kind = "local" source that is
+   neither paused nor retired, as after --no-folder, never because a path could not be
    opened or a report path held <path>: then say "unknown: <that config's path> could not be read"); or, if
    the report's Configuration section says "loads: not checked" (the shell report, when agentsync could not run),
    then whatever the file holds, list no folders and do not parse it yourself: say "unknown: <that config's path> was
@@ -1164,8 +1190,9 @@ its app is signed out, even if other folders are listed, and otherwise exits 0, 
 It exits 4, before any of these checks, when macOS denied this terminal access or is still
 asking, and its `NEXT:` line says which click it needs. Repeat `--source-local` for each folder. On a Mac that
 already has `sources.toml`, it adds only the folders not yet in it (`agentsync add-source FOLDER` does the same for
-one folder), `--list-folders` writes `[synced]` before each folder already synced (and a mark of its own before a
-folder inside one or around one: add only an unmarked folder), and `install.sh` with no
+one folder), `--list-folders` writes `[synced]` before each folder already synced, `[paused]` or `[retired]` before one sources.toml
+holds but does not sync (setting it live is your own edit of `sources.toml`), and a mark of its own before a
+folder inside one or around one (add only an unmarked folder), and `install.sh` with no
 `--source-local` keeps them all. It ends with one `NEXT:` line (the loop's, or install.sh's own `--source-local` form when no
 folder is synced yet): do what it says. Every work session then starts with
 `~/.local/bin/agentsync sync` and does what its `NEXT:` line says. Background sync is optional and yours to turn on, never part of setup:

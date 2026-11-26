@@ -1970,11 +1970,12 @@ them onto the form's Failed-at options, which keep v6's four names)."""
 INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 """The installer as the prompt names it. Alone it is step 2's command on a Mac with no folder to add."""
 
-INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
+INSTALL_WITH_FOLDER = f"{INSTALL_SH} --source-local '<folder>'"
 INSTALL_NO_FOLDER = f"{INSTALL_SH} --no-folder"
-"""Step 2's command with a folder to sync (a new Mac) or to add."""
+"""Step 2's command with a folder to sync (a new Mac) or to add. v44 (B13 round 47 C3334, ruling 216): the
+folder in single quotes, since ``$`` and a backquote expand inside double quotes."""
 
-PROMPT = (43, "d7e2a6768e22798f5596e80ab161b627c49805f60f74fe981380e608e337df7b")
+PROMPT = (44, "f2568a036af42766f7d22f508aa90b96153d474ccbfa14e96114047dadeaa933")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -3847,7 +3848,8 @@ def test_readme_step2_is_the_one_install_command() -> None:
     assert "NEXT:" in step2
     assert (
         "If your tool cannot wait that long in the foreground, run it in the background and read its output"
-        " until the NEXT: line appears; that is expected, not a deviation." in step2
+        ", stdout and stderr, until it exits, noting its exit status (its NEXT: line can come before its"
+        " error, WAITING ON YOU: and note: lines); that is expected, not a deviation." in step2
     ), "a background run is blessed, so it is not logged as a deviation"
     # B13 round 2 R40: a re-run's reinstall waits for a sync that holds the writer lock and prints "still
     # running" lines; the friction rule ("not in this prompt") and the kind list pulled two ways on it, so one
@@ -4307,8 +4309,8 @@ INBOX_WHEN = (
     "Otherwise, when it ends, whether or not it exited non-zero, read its inbox state: line first, before"
     " the config its config: lines name (each names the same file; ~/agent-context/sources.toml unless"
     " AGENTSYNC_CONFIG is set): the folder its inbox: line names, the line right after its docs repo: line,"
-    " is the folder named inbox beside the docs repo, and an inbox state: line follows the inbox: line only"
-    ' when no live kind = "inbox" source sits on that folder, matched as that folder, never by how its path'
+    " is the folder named inbox beside the docs repo, and an inbox state: line follows the inbox: line unless"
+    ' a live kind = "inbox" source is matched on that folder, matched as that folder, never by how its path'
     " is spelled"
 )
 """When step 2 tells the agent to explain the inbox, since v23 (B13 round 14 Q8): before the non-zero clause,
@@ -4364,29 +4366,33 @@ stopped earlier, or a config that does not load, has none."""
 
 INBOX_NOT_ADDED = (
     'If it reads "inbox state: not added (no source on <folder>)", tell me my inbox could not be added '
-    'and show me that line and step 2\'s "inbox: not added" line.'
+    'and show me that line, and step 2\'s "inbox: not added" line if step 2 printed one.'
 )
 """Step 2's v38 words for an inbox ``cli._ensure_inbox`` could not add (C2092). v41: keyed on the ``inbox
 state:`` line's no-source words."""
 
 
 INBOX_NOT_A_FOLDER = (
-    'If it reads "inbox state: not added (<folder> is not a folder)" (a file, a link to a file or a dangling'
-    " link has the folder's name), tell me my inbox could not be added, whatever source that config lists on"
-    " that folder, and "
-    'show me that line and step 2\'s "inbox: not added:" line; moving that file or link aside is mine, '
-    "not yours; say nothing of dropping files there."
+    'If it reads "inbox state: not added (<folder> is not a folder)" (a file or a link that does not lead to'
+    " a folder has the folder's name), tell me my inbox could not be added, whatever source that config lists"
+    " on that folder, and "
+    'show me that line, and step 2\'s "inbox: not added:" line if step 2 printed one; moving that file or'
+    " link aside is mine, not yours; say nothing of dropping files there."
 )
 """Step 2's v41 words for a file or a link on the inbox's name (B13 round 44 ruling 180, C2718 with C2731 and
 C2657):
 ``inbox_state`` says ``not added (<folder> is not a folder)`` whatever sources.toml lists, and lane B's C2611
 prints ``inbox: not added: <typed> is not a folder; move it aside and run step 2 again``. v42 (B13 round 45
-C2869, ruling 194): "a file, a link to a file or a dangling link", since a link to a folder reads live."""
+C2869, ruling 194): "a file, a link to a file or a dangling link", since a link to a folder reads live.
+v44 (B13 round 47, ruling 216): lane B's one phrase, "a file or a link that does not lead to a folder",
+which a looping link and a link through a file fit too (C3213), and step 2's line only if step 2 printed one,
+since a refused add-source stops before it reads the inbox (C3326)."""
 
 INBOX_NOT_READ = (
     'If it reads "inbox state: not read (<why>)", tell me agentsync could not read what is on my inbox '
-    "folder, so whether files I drop there sync is unknown, and show me that line and step 2's \"inbox: not "
-    'read:" line. Name each kind = "inbox" source in that config that is not paused or retired, by its path, '
+    "folder, so whether files I drop there sync is unknown, and show me that line, and step 2's \"inbox: not "
+    'read:" line if step 2 printed one (a refused step 2 stops before it reads the inbox). Name each kind ='
+    ' "inbox" source in that config that is not paused or retired, by its path, '
     "as a folder that may take files I drop, never as one I added myself (one may be my inbox under its"
     " stored spelling); say that ~/.local/bin/agentsync status tells it again once that folder can be read,"
     " and never tell me I have no drop folder."
@@ -4435,14 +4441,19 @@ and it stands after step 1's exceptions' none; an already-answered guard makes t
 
 STEP3_NO_NEXT = (
     "sync and curate print a NEXT: line even when most failures make them exit non-zero (curate exits 1 while"
-    " it lists errors for you to fix): follow it. A usage or configuration error (exit 2 or 78, a line"
-    ' starting "error:" or "configuration error:") prints none: log it as a step 3 error with its exit code,'
-    " show me that line, do not do what it says, and go to the report. Any other run that printed no NEXT:"
-    ' line, but the "skipped: lock held" one above, goes to the report too.'
+    " it lists errors for you to fix): follow it. A usage or configuration error (exit 2 or 78: the exit code"
+    ' decides) prints none: its error line is its last line, containing "error:" ("error: ...", or'
+    ' "agentsync: error: ..." or "agentsync <command>: error: ..." after a "usage:" line) or starting'
+    ' "configuration error:"; show me that line, log it as a step 3 error with its exit code, do not do what'
+    ' it says, and go to the report. Any other run that printed no NEXT: line, but the "skipped: lock held"'
+    " one above, goes to the report too."
 )
 """Step 3's v43 words for a sync or curate run that printed no NEXT: line (B13 round 46 C3116, ruling 205):
 v42 said both print their NEXT: line even when they exit non-zero, but ``cli._refused`` (exit 2) and a
-configuration error (exit 78) print only their error line, so step 3 reads a run until it exits."""
+configuration error (exit 78) print only their error line, so step 3 reads a run until it exits. v44 (B13
+round 47 C3205 with C3280 and C3331, ruling 216): argparse's own usage error prints a ``usage:`` line, then
+``agentsync: error: ...`` or ``agentsync <command>: error: ...``, never a line opening ``error:``, so the
+exit code decides and the error line is named as the last line."""
 
 NO_FOLDER_TOLD = (
     "If it exits 0 and its NEXT: line says I chose no folder, tell me this Mac syncs no folder and, once this"
@@ -4613,7 +4624,8 @@ def test_the_v41_prompt_reads_what_setup_prints_c2727_c2718_c2608_c2604_c2659() 
     sentence = (
         'If a sync of this step prints a NEXT: line starting "nothing to draft yet" whose move it'
         " says is mine,"
-        " show it to me; choose no folder, move or make no file and run no add-source yourself: "
+        " show it to me, saying that a folder is added by the --source-local run of step 2, not by the"
+        " add-source it names; choose no folder, move or make no file and run neither yourself: "
         f"{STEP3_ASK_ONCE}"
     )
     assert sentence in step3 and step3.index(sentence) < step3.index(
@@ -4671,7 +4683,9 @@ def _live_local_folders(config: Path) -> list[str]:
 
 
 FINISH_NONE_GUARD = (
-    "(if setup stopped before step 2, say at which step; a config: line marked (exists) whose loads: line"
+    "(if setup stopped before step 2, say at which step; if step 2's last run this session exited other than"
+    ' 0 and was not a bare run that ended on "no folder to sync yet", add "step 2 ended with an error (exit'
+    ' <code>): see the NEXT: line below"; a config: line marked (exists) whose loads: line'
     " says"
     ' yes gives none only when that file, read as above, has no kind = "local" source that is neither paused'
     " nor retired, as after --no-folder, never because a path could not be opened or a report path held"
@@ -4888,7 +4902,8 @@ def test_the_v43_step3_reads_a_run_to_its_exit_and_logs_an_error_with_no_next_c3
     assert (cli.EXIT_USAGE, cli.EXIT_CONFIG) == (2, 78)
     flat = " ".join(_prompt_steps()[3].split())
     assert STEP3_NO_NEXT in flat and "until the NEXT: line appears" not in flat
-    assert '(exit 2 or 78, a line starting "error:" or "configuration error:")' in STEP3_NO_NEXT
+    assert "(exit 2 or 78: the exit code decides)" in STEP3_NO_NEXT
+    assert 'a line starting "error:"' not in flat
     assert "reading its output until it exits (the NEXT: line comes before its WAITING ON YOU: and" in flat
     retry = flat.index('ends "skipped: lock held" with no NEXT: line, run the same sync once more')
     assert retry < flat.index(STEP3_NO_NEXT)
@@ -4995,6 +5010,273 @@ def test_the_v43_not_used_rule_covers_a_step2_refused_before_agentsync_ran_c3018
         " refusal of AGENTSYNC_CONFIG, no part was used: one line saying so and naming the step it stopped at"
         " is enough)"
     ) in step3
+
+
+def test_the_v44_step3_keys_a_usage_error_on_its_exit_code_c3205_c3280_c3331(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 47 C3205 with C3280 and C3331 (ruling 216): v43's step 3 spotted a usage error by a line
+    starting ``error:``, but argparse's own error for sync and curate prints a ``usage:`` line and then
+    ``agentsync: error: ...`` (an unknown option) or ``agentsync <command>: error: ...`` (an option's missing
+    value), never a line opening ``error:``. v44 lets exit 2 or 78 decide and names the error line as the
+    run's last line, in each of the forms the CLI prints."""
+    from agentsync import cli  # noqa: PLC0415
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    forms = re.compile(r"^(error: |agentsync: error: |agentsync (?:sync|curate): error: )")
+    seen: set[str] = set()
+    for args in (
+        ["sync", "--contoso-bogus"],
+        ["curate", "--contoso-bogus"],
+        ["sync", "--materialise-budget"],
+        ["sync", "--config", "~contoso/sources.toml"],
+    ):
+        capsys.readouterr()
+        assert cli.main(args) == cli.EXIT_USAGE, args
+        out, err = capsys.readouterr()
+        lines = [ln for ln in (out + err).splitlines() if ln.strip()]
+        assert lines and not any(ln.startswith("NEXT:") for ln in lines), (args, lines)
+        found = forms.match(lines[-1])
+        assert found is not None, (args, lines)
+        seen.add(found.group(1))
+        if not lines[-1].startswith("error: "):
+            assert lines[0].startswith("usage: "), (args, lines)
+    assert seen == {"error: ", "agentsync: error: ", "agentsync sync: error: "}, seen
+    flat = " ".join(_prompt_steps()[3].split())
+    assert STEP3_NO_NEXT in flat
+    assert (
+        "(exit 2 or 78: the exit code decides) prints none: its error line is its last line, containing"
+        ' "error:"'
+        ' ("error: ...", or "agentsync: error: ..." or "agentsync <command>: error: ..." after a "usage:"'
+        " line)"
+        ' or starting "configuration error:"'
+    ) in flat
+
+
+def test_the_v44_step2_reads_a_background_run_to_its_exit_c3273_c3325() -> None:
+    """B13 round 47 C3273 with C3325 (ruling 216): v43's step 2 read a background run only until its NEXT:
+    line, while install.sh prints a usage error, WAITING ON YOU: and note: lines after it and the exit
+    status comes last, and step 3 already said to run each sync like step 2's command, until it exits. Step 2
+    reads both streams to the exit and notes its status."""
+    step2 = " ".join(_prompt_steps()[2].split())
+    assert "until the NEXT: line appears" not in step2
+    assert (
+        "run it in the background and read its output, stdout and stderr, until it exits, noting its exit"
+        " status (its NEXT: line can come before its error, WAITING ON YOU: and note: lines); that is"
+        " expected, not a deviation."
+    ) in step2
+    step3 = " ".join(_prompt_steps()[3].split())
+    assert "Run each sync like step 2's command:" in step3 and "reading its output until it exits" in step3
+
+
+def test_the_v44_source_local_form_is_single_quoted_c3334(tmp_path: Path) -> None:
+    """B13 round 47 C3334 (ruling 216): v43 gave ``--source-local "<folder>"``, inside which ``$`` and a
+    backquote expand, so a folder named ``Budget $2026`` reached install.sh as ``Budget 026``. Every
+    ``--source-local`` form the agent writes is single-quoted, ``'\\''`` for an apostrophe; a printed NEXT or
+    fix is still run as given. The prompt's own examples, run through bash, arrive byte for byte."""
+    block = _one_prompt_block()
+    assert '--source-local "' not in block
+    step2 = " ".join(_prompt_steps()[2].split())
+    assert INSTALL_WITH_FOLDER in step2
+    assert (
+        "Put each full path in single quotes, writing each ' in it as '\\'', so the shell changes nothing in"
+        " it: --source-local '/Users/me/OneDrive - Contoso/Budget $2026' or --source-local"
+        " '/Users/me/Dana'\\''s Plans'. A command a NEXT: line or a [FAIL] fix prints is run as given."
+    ) in step2
+    examples = step2.split("changes nothing in it: ", 1)[1].split(". A command", 1)[0]
+    script = tmp_path / "argv.sh"
+    script.write_text('for a in "$@"; do printf \'%s\\0\' "$a"; done\n', encoding="utf-8")
+    words = examples.replace(" or --source-local ", " --source-local ")
+    cp = subprocess.run(
+        ["/bin/bash", "-c", f"bash {shlex.quote(str(script))} {words}"],
+        capture_output=True, check=True, timeout=30,
+    )  # fmt: skip
+    assert cp.stdout.split(b"\0")[:-1] == [
+        b"--source-local",
+        b"/Users/me/OneDrive - Contoso/Budget $2026",
+        b"--source-local",
+        b"/Users/me/Dana's Plans",
+    ], cp.stdout
+
+
+def test_the_v44_list_cut_is_told_never_followed_by_all_c3336(tmp_path: Path) -> None:
+    """B13 round 47 C3336 (ruling 216): step 1's list stops at 200 rows with ``(N more)`` and a NEXT ending
+    with the ``--all`` command, and v43 asked for a choice over it. v44 tells N folders are not shown that
+    the person can still name by path, and never runs ``--all`` (thousands of rows, cut again by the agent's
+    own output limit). Held to a real cut list in a throwaway home."""
+    home = tmp_path / "home"
+    cloud = home / "Library" / "CloudStorage" / "OneDrive-Contoso"
+    for top in ("Alpha", "Beta"):
+        for sub in ("North", "South", "East"):
+            (cloud / top / sub).mkdir(parents=True)
+    env = tmp_home_env(home) | {"PATH": "/usr/bin:/bin"}
+    cp = subprocess.run(
+        ["bash", str(SCRIPTS[0]), "--list-folders", "--limit", "3"], env=env, capture_output=True,
+        text=True, check=False, timeout=120,
+    )  # fmt: skip
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    lines = cp.stdout.splitlines()
+    [more] = [ln for ln in lines if re.fullmatch(r"\(\d+ more\)", ln)]
+    [nxt] = [ln for ln in lines if ln.startswith("NEXT:")]
+    assert int(more[1:].split()[0]) > 0 and nxt.endswith(f"{SCRIPTS[0]} --list-folders --all"), (more, nxt)
+    step1 = " ".join(_prompt_steps()[1].split())
+    assert (
+        'If the list ends with a "(N more)" line, tell me N folders are not shown and that I can still name'
+        " one"
+        " by its full path; do not run the --all command its NEXT: line ends with."
+    ) in step1
+    assert "--list-folders --all" not in _one_prompt_block()
+
+
+def test_the_v44_prompt_never_offers_a_paused_or_retired_folder_c3269_c3332(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 47 turns C3269 and C3332 (ruling 214): over a config whose only folder is paused, step 1
+    offered that folder, step 2's ``--source-local`` left it paused (``already configured``) and the folder
+    question came back, and v43 had no words for C3003's ``; not live:`` clause. Step 1 never offers a row
+    install.sh marks ``[paused]`` or ``[retired]`` and with no unmarked row asks nothing and goes to the
+    report; the clause is shown in its own words first; and step 2's ``already configured`` line for a
+    chosen folder is told, not asked about again, the report following as after a none, never through
+    ``--no-folder``. Held to add-source's own line over a paused-only config."""
+    from agentsync import cli, loop  # noqa: PLC0415
+    from agentsync import config as agentsync_config  # noqa: PLC0415
+
+    home = tmp_path / "home"
+    folder = home / "Kestrel Plans"
+    folder.mkdir(parents=True)
+    cfg = home / "sources.toml"
+    cfg.write_text(
+        f"[agentsync]\ndocs_repo = {agentsync_config.toml_string(str(home / 'docs'))}\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTSYNC_CONFIG", str(cfg))
+    assert cli.main(["init"]) == cli.EXIT_OK
+    assert cli.main(["add-source", str(folder)]) == cli.EXIT_OK
+    text = cfg.read_text(encoding="utf-8")
+    assert text.count('state = "live"') == 1 or 'state = "' not in text.split('kind = "local"')[1]
+    cfg.write_text(text.replace('kind = "local"', 'kind = "local"\nstate = "paused"', 1), encoding="utf-8")
+    capsys.readouterr()
+    assert cli.main(["add-source", str(folder)]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    [told] = [ln for ln in out.splitlines() if ln.startswith("already configured: source ")]
+    assert re.match(r"already configured: source '[^']+' \(local, paused\) has path ", told), told
+    assert "no folder is synced yet" in inspect.getsource(loop)
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    assert 'PAUSED_MARK="[paused]"' in script and 'RETIRED_MARK="[retired]"' in script, "lane RB's marks"
+    assert "is in sources.toml but not synced, and --source-local leaves it so" in script
+    step1 = " ".join(_prompt_steps()[1].split())
+    step2 = " ".join(_prompt_steps()[2].split())
+    assert (
+        "A row marked [paused] or [retired] is a folder already in sources.toml but not synced: tell me so,"
+        " and"
+        " never offer it or pass it to --source-local (step 2 leaves it as it is); setting it live is my own"
+        " edit of sources.toml, never yours. With no unmarked row left to offer, ask no folder question and"
+        " go"
+        " to step 3's report."
+    ) in step1
+    assert (
+        'If that NEXT: line carries a "; not live: ..." clause, show me that clause in its own words before'
+        " any"
+        " question"
+    ) in step1
+    told = "with no unmarked row left, ask nothing and go to step 3's report (that is no none: run no"
+    assert f"{told} --no-folder)" in step1
+    assert (
+        'If it prints "already configured: source ... (<kind>, paused)" or "(<kind>, retired)" for a folder I'
+        " chose, tell me that line: that folder is in sources.toml but not synced, and setting it live is my"
+        " edit; do not ask me about it again, and if I chose no other folder, go to step 3's report as after"
+        " a"
+        " none, with no --no-folder (I did not answer none)."
+    ) in step2
+    from agentsync import setup_report  # noqa: PLC0415
+
+    assert setup_report.NOT_LIVE_CLAUSE.startswith("; not live: ")
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a mode-000 folder")
+def test_the_v44_inbox_branches_show_step_2s_line_only_if_it_printed_one_c3274_c3326(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 47 C3274 and C3326 (ruling 216): v43's opener said an inbox state: line means no live inbox
+    source sits on the folder, against its own not-read and not-a-folder branches, which
+    ``config.inbox_state`` returns before it matches any source; and each branch required step 2's
+    ``inbox: not read:`` or ``inbox: not added`` line, which a refused add-source never prints, since it
+    stops before ``_ensure_inbox``. Held to a refused add-source over an inbox linked into a locked folder:
+    exit 2, no inbox warning, while the state reads ``not read``."""
+    from agentsync import cli  # noqa: PLC0415
+    from agentsync import config as agentsync_config  # noqa: PLC0415
+
+    home = tmp_path / "home"
+    home.mkdir()
+    cfg = home / "sources.toml"
+    cfg.write_text(
+        f"[agentsync]\ndocs_repo = {agentsync_config.toml_string(str(home / 'docs'))}\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTSYNC_CONFIG", str(cfg))
+    assert cli.main(["init"]) == cli.EXIT_OK
+    inbox = home / "inbox"
+    inbox.rename(tmp_path / "inbox-moved")  # moved aside, never removed
+    locked = tmp_path / "contoso-locked"
+    (locked / "drop").mkdir(parents=True)
+    inbox.symlink_to(locked / "drop")
+    locked.chmod(0)
+    try:
+        capsys.readouterr()
+        rc = cli.main(["add-source", str(tmp_path / "no such folder")])
+        out, err = capsys.readouterr()
+        state = inbox_state(agentsync_config.load_config(cfg))[1]
+    finally:
+        locked.chmod(0o700)
+    assert rc == cli.EXIT_USAGE, out + err
+    assert cli.INBOX_NOT_READ not in out + err and "inbox: not added" not in out + err, out + err
+    assert state.startswith("not read ("), state
+    step2 = " ".join(_prompt_steps()[2].split())
+    assert INBOX_WHEN in step2 and "only when no live kind" not in step2
+    assert (
+        "names it); it also follows, before any source is matched, when that name is not a folder or cannot"
+        " be"
+        " read, whatever that config lists there. If no inbox state: line follows it"
+    ) in step2
+    assert INBOX_NOT_A_FOLDER in step2 and INBOX_NOT_ADDED in step2 and INBOX_NOT_READ in step2
+    assert step2.count("line if step 2 printed one") == 3, step2
+
+
+def test_the_v44_step3_nothing_to_draft_rule_names_step_2s_source_local_run_c3206() -> None:
+    """B13 round 47 C3206 (ruling 216, makes worse True for changing loop.py's words): lane RB's install.sh
+    swaps loop.py's add-source for its own ``--source-local`` run in step 2's ``nothing to draft yet`` NEXT,
+    while a plain sync's NEXT keeps add-source. Step 3's rule names step 2's ``--source-local`` run in place
+    of the add-source either names, and the agent runs neither."""
+    from agentsync import loop  # noqa: PLC0415
+
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    assert r"""DRAFT_ADD_FROM='(`~/.local/bin/agentsync add-source "<folder>"`)'""" in script
+    assert r"--source-local \"<folder>\", one --source-local per folder)" in script
+    assert loop.BIN == "~/.local/bin/agentsync"
+    assert '(`{BIN} add-source "<folder>"`)' in inspect.getsource(loop), "loop.py's words, unchanged"
+    step3 = " ".join(_prompt_steps()[3].split())
+    assert (
+        'starting "nothing to draft yet" whose move it says is mine, show it to me, saying that a folder is'
+        " added by the --source-local run of step 2, not by the add-source it names; choose no folder, move"
+        " or make no file and run neither yourself:"
+    ) in step3
+    assert "run no add-source yourself" not in step3
+
+
+def test_the_v44_finish_names_a_step_2_that_ended_with_an_error_c3240() -> None:
+    """B13 round 47 C3240 (ruling 216): after a step 2 that failed, v43's Finish still said ``none: this Mac
+    syncs no folder``. It adds ``step 2 ended with an error (exit <code>): see the NEXT: line below`` when
+    step 2's last run this session exited other than 0 and was not a bare first run ending on install.sh's
+    ``no folder to sync yet`` (exit 2 by design)."""
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    assert 'next="no folder to sync yet: list them with $SELF --list-folders,' in script
+    finish = " ".join(_prompt_steps()[3].split()).split("Finish with:", 1)[1]
+    assert FINISH_NONE_GUARD in finish
+    assert (
+        "if step 2's last run this session exited other than 0 and was not a bare run that ended on \"no"
+        " folder"
+        ' to sync yet", add "step 2 ended with an error (exit <code>): see the NEXT: line below"'
+    ) in finish
 
 
 def test_the_v40_prompt_reads_only_lines_setup_prints_in_every_branch_c2406_c2408_c2419_c2523() -> None:
@@ -5709,7 +5991,15 @@ def test_every_mark_the_prompt_quotes_sits_whole_on_one_block_line_c1402() -> No
     marks = dict(re.findall(r'^([A-Z_]+_MARK)="(\[[^"]*\])"', script, flags=re.MULTILINE))
     assert {"SYNCED_MARK", "INSIDE_MARK", "ESCAPED_MARK", "TWIN_MARK", "ESCAPED_KEPT_MARK"} <= set(marks)
     quoted = {name for name, mark in marks.items() if mark in joined}
-    assert quoted == {"SYNCED_MARK", "INSIDE_MARK", "ESCAPED_MARK", "TWIN_MARK", "ESCAPED_KEPT_MARK"}
+    assert quoted == {
+        "SYNCED_MARK",
+        "INSIDE_MARK",
+        "ESCAPED_MARK",
+        "TWIN_MARK",
+        "ESCAPED_KEPT_MARK",
+        "PAUSED_MARK",
+        "RETIRED_MARK",
+    }, quoted  # B13 round 47 C3332: lane RB's marks for a folder sources.toml holds paused or retired
     for name in sorted(quoted):
         assert any(marks[name] in line for line in lines), f"{name} is split across the block's lines"
     for line in lines:
@@ -6188,7 +6478,13 @@ there and show the person the list's own line."""
 NO_FOLDER_RECOVERY = (
     "Whatever happened above, if step 2, or a sync of step 3, says no folder is synced yet or no folder"
     " to sync yet, this Mac syncs no folder, so the folder question above applies as on a new Mac: ask me"
-    " which folders from the list to sync. If earlier this session I answered this question, which"
+    ' which folders from the list to sync. If that NEXT: line carries a "; not live: ..." clause, show me'
+    " that clause in its own words before any question: those folders are in sources.toml but paused or"
+    " retired, and setting one live is my edit of sources.toml, never yours. Never offer a row the list"
+    " marked"
+    " [paused] or [retired]; with no unmarked row left, ask nothing and go to step 3's report (that is no"
+    " none:"
+    " run no --no-folder). If earlier this session I answered this question, which"
     " folders to sync, with none (my answer to the exceptions' question whether to add a folder does not"
     " count), do not ask again: run step 2's --no-folder command as step 2 says (its exit status and NEXT:"
     " line first), then go to step 3's report. If you cannot ask me, do not choose them for me: log a"
