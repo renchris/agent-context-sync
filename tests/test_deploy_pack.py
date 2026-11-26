@@ -991,6 +991,27 @@ def test_rulings_199_and_205_take_round_47s_dated_lines_and_the_turns_row_reads_
     assert f"a v41 attempt reads `{setup_report.STEP_3_ASKS_V41}`, as v41 asked with no once limit" in page
 
 
+def test_ruling_204_takes_ruling_210s_dated_line_and_the_guides_take_lane_bs_phrase() -> None:
+    """B13 round 47 (ruling 186; C3213, ruling 210): ruling 204 keeps its words and a dated line right after
+    its last sentence says how ruling 210 amended it, each change by lane B's trunk commit; the phrase both
+    READMEs and the prompt now give is the one lane B's alarm prints."""
+    from agentsync import arm_local  # noqa: PLC0415
+
+    phrase = "a file or a link that does not lead to a folder"
+    assert phrase in inspect.getsource(arm_local.LocalArm._not_a_folder_alarm)
+    for page in ("README.md", "docs/deploy/README.md"):
+        assert f"when {phrase} has the inbox's name" in _page(page), page
+    assert f"({phrase} has the folder's name)" in " ".join(_prompt_steps()[2].split())
+    lanes = _page("docs/lanes/COMMON.md")
+    words = "take dated lines in lane B's commits."
+    line = "(2026-11-25) Ruling 210 amends this one: every reader decides the kept inbox's state by one check"
+    assert lanes.index("(204) ") < lanes.index(line) < lanes.index("(205) ")
+    assert lanes.index(line) - len(words) - 1 == lanes.rindex(words, 0, lanes.index(line))
+    dated = lanes[lanes.index(line) : lanes.index("(205) ")]
+    for sha in ("9cc1f3a06", "54c3c1cbc", "61688281a", "2f45bd7cc", "a3897e070", "08a1b2b21", "58dd22d62"):
+        assert f"{sha}" in dated, sha
+
+
 def test_the_guides_loop_line_rules_name_the_rule_2_next_and_not_live_clause_c3271() -> None:
     """B13 round 47 C3271 (ruling 213): section 2's Loop-line rules gave ``NO_FOLDER_NEXT`` only on the
     skill-missing NEXT, but since round 46 C3003 ``_install_sh_said_no_folder`` also gives it, with
