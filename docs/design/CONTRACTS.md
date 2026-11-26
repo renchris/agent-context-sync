@@ -48248,6 +48248,20 @@ Graph and local sources and any other inbox keep their fixes. Test:
 `test_the_inbox_heartbeat_warn_points_at_the_listable_row_when_not_a_folder_c3218` (eleven kinds of entry, status's and
 install's paths, under a timeout).
 
+**Status and sync honor the person's none** (C3241; ruling 213). After install.sh's completed `--no-folder` run,
+a plain `status` or `sync` reached rule 2 and asked the folder question again: only install.sh's own NEXT and the
+report's Loop line knew the choice. `loop.next_step`'s rule 2 now gives `loop.NO_FOLDER_CHOSEN_LOOP_NEXT`, `the
+person chose no folder, so this Mac syncs none of their folders: go on to the report; if they choose one later, the
+run is: `~/.local/bin/agentsync add-source "<folder>"` for each, then `~/.local/bin/agentsync sync``, worded as
+`setup_report.NO_FOLDER_CHOSEN_NEXT` up to its command (agentsync's own, since status knows no install.sh
+arguments), only when sources.toml holds no source but the inbox in any state and install.log's latest install run
+(`install_log.install_runs_only`, the parser lane RA moved out of the report) chose no folder and completed its
+none; never a config marker, which would outlive a source added by hand or a later run. A log that is no regular
+file is never opened. Otherwise rule 2's words stay byte for byte. Tests:
+`test_rule_2_gives_the_persons_choice_only_after_a_completed_none_c3241` (11 rows: a completed none, rc 1, a failed
+step, a blocking status note, a bare run, a later `--source-local` or bare run, a later `--list-folders` run, a
+paused or retired source added by hand, no log) and `test_rule_2_reads_no_choice_from_an_install_log_that_is_no_file_c3241`.
+
 ### 16.293 Round 47: the converters: ruling 202's Office twins closed (UTF-32 text, a no-namespace `<Types>`, the container answers before the cache, xlsx's emitter 1.0.7) and one noun per family (2026-11-25, wave B13 round 47 lane E)
 
 Round 47's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 47"; specs `round47/items/C<n>.md`, the

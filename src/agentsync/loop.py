@@ -102,7 +102,8 @@ from agentsync.cycle import (
     RECORDING_WAITS,
     _reread_records,
 )
-from agentsync.errors import AgentSyncError, ConfigError
+from agentsync.errors import AccountHomeError, AgentSyncError, ConfigError
+from agentsync.install_log import install_runs_only, read_install_runs
 from agentsync.manifest import Manifest, ManifestBusyError, ManifestNotCurrentError
 from agentsync.model import LintFinding, PassKind, RowState, SourceKind, Verdict
 from agentsync.ops import launchd
@@ -147,6 +148,39 @@ def land_gate_step(findings: Sequence[LintFinding], *, where: str = "above") -> 
         f"the land gate blocked this sync's commit ({count}, the BLOCKING lines {where}): {first.path}: "
         f"{fix}; then run `{BIN} sync`"
     )
+
+
+NO_FOLDER_CHOSEN_LOOP_NEXT = (
+    "the person chose no folder, so this Mac syncs none of their folders: go on to the report; if they "
+    f'choose one later, the run is: `{BIN} add-source "<folder>"` for each, then `{BIN} sync`'
+)
+"""Rule 2's step after the person's none: worded as ``setup_report.NO_FOLDER_CHOSEN_NEXT`` (install.sh's own
+NEXT for that run), the command that adds a folder later being agentsync's own, since status and sync know no
+install.sh path or arguments (B13 round 47 C3241, ruling 213: a plain status or sync after a completed
+``--no-folder`` run asked the folder question again). Rule 2's other text is unchanged byte for byte, which
+install.sh's case match and the report's opener keys read."""
+SETUP_LOG_ENV = "AGENTSYNC_SETUP_LOG"
+"""Where install.sh appends install.log, as ``setup_report.SETUP_LOG_ENV`` names it."""
+
+
+def _person_chose_no_folder(config: Config) -> bool:
+    """Whether rule 2 gives the person's choice: sources.toml holds no source but the inbox, in any state
+    (paused and retired ones count, as install.sh's own count does), and install.log's latest install run
+    (``install_log.install_runs_only``: a ``--list-folders`` run skipped) chose no folder and completed its
+    none (``chose_no_folder`` and ``completed_none``), the parser the report reads with, so the two never
+    drift. Never a marker in the config, which would outlive a source added by hand or a later run. A log
+    that cannot be read, or a value naming another account's home, is no choice: rule 2's own words (B13
+    round 47 C3241, ruling 213)."""
+    if any(s.kind is not SourceKind.INBOX for s in config.sources):
+        return False
+    try:
+        log = expand(os.environ.get(SETUP_LOG_ENV) or "~/agent-context/setup/install.log")
+        if not log.is_file():  # stat follows a link; a FIFO or folder is no log, and is never opened
+            return False
+        runs = install_runs_only(read_install_runs(log))
+    except (AccountHomeError, OSError, ValueError):
+        return False
+    return bool(runs) and runs[-1].chose_no_folder and runs[-1].completed_none
 
 
 ROWS_PER_SESSION = 10
@@ -1898,6 +1932,8 @@ def next_step(
 
     # Rule 2: something to sync.
     if not any(s.kind is not SourceKind.INBOX for s in live):
+        if _person_chose_no_folder(config):
+            return done(NO_FOLDER_CHOSEN_LOOP_NEXT, 2)
         return done(
             f"no folder is synced yet: ask the operator which folders to sync (`{INSTALL_SH} --list-folders` "
             f'lists them), then run `{BIN} add-source "<folder>"` for each, then `{BIN} sync`',

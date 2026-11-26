@@ -328,6 +328,112 @@ def test_rule_2_no_folder_source(tmp_path: Path) -> None:
     assert _lines(load_config(config.config_path)) == want, "the inbox alone is not a folder source"
 
 
+_NONE_CLEAN = (
+    "2026-11-25T10:00:00Z run=20261125T100000Z-4242 start args=--no-folder\n"
+    "2026-11-25T10:00:01Z run=20261125T100000Z-4242 step=config result=done note=created\n"
+    "2026-11-25T10:00:02Z run=20261125T100000Z-4242 step=status result=done\n"
+    "2026-11-25T10:00:03Z run=20261125T100000Z-4242 end rc=0 seconds=3\n"
+)
+
+
+def _later_run(args: str, rc: int = 0) -> str:
+    listing = (
+        "2026-11-25T11:00:01Z run=20261125T110000Z-4343 step=list-folders result=done\n"
+        if args == "--list-folders"
+        else ""
+    )
+    return (
+        f"2026-11-25T11:00:00Z run=20261125T110000Z-4343 start args={args}\n{listing}"
+        f"2026-11-25T11:00:03Z run=20261125T110000Z-4343 end rc={rc} seconds=3\n"
+    )
+
+
+@pytest.mark.parametrize(
+    ("log", "extra", "chosen"),
+    [
+        (_NONE_CLEAN, "", True),
+        (_NONE_CLEAN.replace("end rc=0", "end rc=1"), "", False),  # a none that did not complete
+        (_NONE_CLEAN.replace("step=status result=done", "step=status result=failed"), "", False),
+        (
+            _NONE_CLEAN.replace(
+                "result=done\n2026-11-25T10:00:03Z", "result=done note=timeout\n2026-11-25T10:00:03Z"
+            ),
+            "",
+            False,
+        ),
+        (_NONE_CLEAN.replace("args=--no-folder", "args="), "", False),  # a bare run
+        (_NONE_CLEAN + _later_run("--source-local /x"), "", False),  # a later run chose a folder
+        (_NONE_CLEAN + _later_run(""), "", False),  # a later bare run
+        (_NONE_CLEAN + _later_run("--list-folders"), "", True),  # a listing run is not an install run
+        (_NONE_CLEAN, "paused", False),  # a source added by hand, in any state
+        (_NONE_CLEAN, "retired", False),
+        ("", "", False),  # no install.log
+    ],
+    ids=[
+        "completed-none",
+        "rc-1",
+        "failed-step",
+        "blocking-note",
+        "bare",
+        "later-source-local",
+        "later-bare",
+        "later-list-folders",
+        "hand-added-paused",
+        "hand-added-retired",
+        "no-log",
+    ],
+)
+def test_rule_2_gives_the_persons_choice_only_after_a_completed_none_c3241(
+    tmp_path: Path, folder: Path, monkeypatch: pytest.MonkeyPatch, log: str, extra: str, chosen: bool
+) -> None:
+    """B13 round 47 C3241 (ruling 213): after install.sh's completed --no-folder run, a plain status or sync
+    reached rule 2 and asked the folder question again. Rule 2 gives the person's choice, worded as
+    NO_FOLDER_CHOSEN_NEXT, only when sources.toml holds no source but the inbox in any state and install.log's
+    latest install run is a completed none; otherwise rule 2's words byte for byte."""
+    table = ""
+    if extra:
+        reason = "\nretired_reason = 'done'" if extra == "retired" else ""
+        table = local_source_table("work", folder) + f"state = '{extra}'{reason}\n"
+    config = _setup(tmp_path, table)
+    skill.write_skill(config.docs_repo)
+    ensure_inbox(config.config_path)
+    config = load_config(config.config_path)
+    setup_log = tmp_path / "setup" / "install.log"
+    setup_log.parent.mkdir(parents=True, exist_ok=True)
+    if log:
+        setup_log.write_text(log, encoding="utf-8")
+    monkeypatch.setenv(loop.SETUP_LOG_ENV, str(setup_log))
+    rule_2 = (
+        "NEXT: no folder is synced yet: ask the operator which folders to sync "
+        "(`~/src/agent-context-sync/scripts/install.sh --list-folders` lists them), then run "
+        f'`{BIN} add-source "<folder>"` for each, then `{BIN} sync`'
+    )
+    assert _lines(config) == [f"NEXT: {loop.NO_FOLDER_CHOSEN_LOOP_NEXT}" if chosen else rule_2]
+    # the twins: install.sh's own NEXT for that run, in the report's one copy, says the same up to its command
+    said = setup_report.NO_FOLDER_CHOSEN_NEXT.partition("the run is: ")[0]
+    assert loop.NO_FOLDER_CHOSEN_LOOP_NEXT.partition("the run is: ")[0] == said
+    assert loop.SETUP_LOG_ENV == setup_report.SETUP_LOG_ENV
+
+
+def test_rule_2_reads_no_choice_from_an_install_log_that_is_no_file_c3241(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 47 C3241 (round 47's entry-kind rule): a FIFO, a folder or a dangling link at install.log is
+    no choice and is never opened, so status never waits on it."""
+    config = _setup(tmp_path)
+    skill.write_skill(config.docs_repo)
+    for kind in ("fifo", "folder", "dangling"):
+        at = tmp_path / f"log-{kind}"
+        if kind == "fifo":
+            os.mkfifo(at)
+        elif kind == "folder":
+            at.mkdir()
+        else:
+            at.symlink_to(tmp_path / "gone.log")
+        monkeypatch.setenv(loop.SETUP_LOG_ENV, str(at))
+        assert _lines(config)[0].startswith("NEXT: no folder is synced yet"), kind
+
+
 # ---- rule 3: the sync has not caught up --------------------------------------------------------------------
 
 
