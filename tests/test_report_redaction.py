@@ -5521,7 +5521,6 @@ _C3289_SPELLINGS = ("Kestrel Alder", "Kestrel_Alder", "KESTREL ALDER", "kestrel-
 _C3471_SHELL = pytest.param(
     "vanished-shell",
     id="vanished-shell",
-    marks=pytest.mark.xfail(strict=True, reason="lane RB's C3471 shell half"),
 )
 
 
