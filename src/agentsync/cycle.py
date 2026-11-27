@@ -2573,6 +2573,9 @@ class _Cycle:
         self._carried_runs: list[int] = []
         self._carried_failed: list[MirrorChange] = []  # of those, a failed (not blocked) run's (C3444)
         self._carried_failed_runs: list[int] = []
+        # each carried change with the runs it passed through, and each run's cause (C3444, C3445)
+        self._carried_through: list[tuple[MirrorChange, frozenset[int]]] = []
+        self._carried_causes: dict[int, str] = {}
         self._commit_view: list[MirrorChange] = []  # the subject's changes, netted against HEAD (C3443)
         self._gate_blocked = False  # the land gate held this run's commit (B13 round 47 C3227)
         self._cycle_failed = False  # the cycle raised and committed nothing (B13 round 48 C3416, ruling 222)
@@ -4162,9 +4165,11 @@ class _Cycle:
         kept = [(c, through) for c, through in loose if _touches(c, dirty)]
         self._carried = [c for c, _ in kept]
         self._carried_runs = sorted({run for _, through in kept for run in through})
-        # a page's cause is its latest run's: the run whose change the commit holds last (C3444)
-        self._carried_failed = [c for c, through in kept if causes[max(through)] == "failed"]
+        # each run under its own cause, a page under each cause of a run it passed through (C3444, C3445)
+        self._carried_failed = [c for c, through in kept if any(causes[r] == "failed" for r in through)]
         self._carried_failed_runs = [run for run in self._carried_runs if causes[run] == "failed"]
+        self._carried_through = kept
+        self._carried_causes = causes
         held = [c for c, _ in pairs if _touches(c, own) or _touches(c, dirty)]
         self._commit_view = _net_changes([*held, *self.changes])
 
@@ -4919,9 +4924,7 @@ class _Cycle:
             f"{sid}: {plural(n, 'deletion notice')} removed ({notice_gone_why(n)})"
             for sid, n in sorted(by_source.items())
         ]
-        notes += _carried_notes(
-            self._carried, self._carried_runs, self._carried_failed, self._carried_failed_runs
-        )
+        notes += _carried_notes(self._carried_through, self._carried_causes)
         notes += [
             f"{sid}: {plural(len(pages), 'mirror page')} deleted by hand "
             f"{'was' if len(pages) == 1 else 'were'} restored; to drop a page, exclude its source file"
@@ -8870,37 +8873,28 @@ def _commit_holds_mirror(repo: Path, sha: str) -> bool:
 
 
 def _carried_notes(
-    carried: Sequence[MirrorChange],
-    runs: Sequence[int],
-    failed: Sequence[MirrorChange] = (),
-    failed_runs: Sequence[int] = (),
+    carried: Sequence[tuple[MirrorChange, Collection[int]]], causes: Mapping[int, str]
 ) -> list[str]:
     """The commit body's line per cause and source for the earlier failed runs' changes it carries, ``carried
     from blocked runs 4-5: <source> 0a 2m 0r 0d`` for runs the land gate blocked and ``carried from failed run
-    6: ...`` for runs that failed otherwise (``failed`` and ``failed_runs``, of ``carried`` and ``runs``; B13
-    round 48 C3444, ruling 222): never an ``Agentsync-Run`` trailer, whose readers would take those runs for
-    this commit's (B13 round 47 C3228)."""
-    gone = Counter(failed)
-    blocked: list[MirrorChange] = []
-    for c in carried:
-        if gone[c]:
-            gone[c] -= 1
-        else:
-            blocked.append(c)
+    6: ...`` for runs that failed otherwise (``causes``; B13 round 48 C3444, ruling 222): never an
+    ``Agentsync-Run`` trailer, whose readers would take those runs for this commit's (B13 round 47 C3228).
+    Each net change in ``carried`` comes with every run it passed through (C3445), and each run is named under
+    its own cause beside the pages it touched: a page a blocked run changed and a failed run changed again is
+    counted in both lines, and a run is never named on a line holding no page of its."""
     lines: list[str] = []
-    for cause, changes, named in (
-        ("blocked", blocked, [r for r in runs if r not in set(failed_runs)]),
-        ("failed", list(failed), list(failed_runs)),
-    ):
-        if not changes or not named:
-            continue
-        per_source: dict[str, Counter[ChangeOp]] = {}
-        for c in changes:
-            per_source.setdefault(c.source_id, Counter())[counted_op(c)] += 1
+    for cause in ("blocked", "failed"):
+        per_source: dict[str, tuple[Counter[ChangeOp], set[int]]] = {}
+        for c, through in carried:
+            runs = {r for r in through if causes.get(r, "failed") == cause}
+            if runs:
+                n, named = per_source.setdefault(c.source_id, (Counter(), set()))
+                n[counted_op(c)] += 1
+                named |= runs
         lines += [
-            f"carried from {cause} {run_span(named)}: {sid} {n[ChangeOp.ADDED]}a {n[ChangeOp.MODIFIED]}m "
-            f"{n[ChangeOp.RENAMED]}r {n[ChangeOp.DELETED]}d"
-            for sid, n in sorted(per_source.items())
+            f"carried from {cause} {run_span(sorted(named))}: {sid} {n[ChangeOp.ADDED]}a "
+            f"{n[ChangeOp.MODIFIED]}m {n[ChangeOp.RENAMED]}r {n[ChangeOp.DELETED]}d"
+            for sid, (n, named) in sorted(per_source.items())
         ]
     return lines
 

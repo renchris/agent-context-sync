@@ -1123,22 +1123,20 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     counted = plural(len(report.changes), "change")  # a known count needs no "(s)" (B13 round 16 T32, T36)
     if report.commit_sha and report.carried:
         # earlier failed runs' pages land here: never "no source changed a mirror page" (B13 round 47 C3228),
-        # each cause said apart, blocked by the land gate or failed (B13 round 48 C3444)
+        # each run said under its own cause, blocked by the land gate or failed (B13 round 48 C3444); the
+        # pages counted once, as a page can pass through runs of both causes (C3445)
         failed_runs = set(report.carried_failed_runs)
         parts = [
-            f"{plural(n, 'mirror page')} from {cause} {run_span(runs)}"
-            for cause, n, runs in (
-                (
-                    "blocked",
-                    len(report.carried) - len(report.carried_failed),
-                    [r for r in report.carried_runs if r not in failed_runs],
-                ),
-                ("failed", len(report.carried_failed), sorted(failed_runs)),
+            f"{cause} {run_span(runs)}"
+            for cause, runs in (
+                ("blocked", [r for r in report.carried_runs if r not in failed_runs]),
+                ("failed", sorted(failed_runs)),
             )
-            if n and runs
+            if runs
         ]
         land = "lands" if len(report.carried) == 1 else "land"
-        counted += f" this run; {' and '.join(parts)} {land} in this commit"
+        pages = plural(len(report.carried), "mirror page")
+        counted += f" this run; {pages} from {' and '.join(parts)} {land} in this commit"
     elif report.commit_sha and not report.changes and not report.commit_holds_mirror:
         counted += " (no source changed a mirror page; the commit holds other docs-repo files)"
     # its own line, never on the summary install.sh's awk sums (B13 round 24 B37)

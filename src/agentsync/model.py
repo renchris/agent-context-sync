@@ -588,8 +588,9 @@ class CycleReport:
     # the mirror changes of earlier failed runs (the land gate blocked them, or the cycle failed) that this
     # run's commit holds, net per page and only those still uncommitted, and those runs: counted in the commit
     # subject and named in its body, never written to the CHANGELOG again, which those runs did (B13 round 47
-    # C3228, ruling 212); of them, the changes whose latest run failed rather than was blocked, and the runs
-    # that failed, said apart (B13 round 48 C3444, ruling 222)
+    # C3228, ruling 212); of them, the changes that passed through a run that failed rather than was blocked
+    # (one may have passed through a blocked run too), and the runs that failed, said apart (B13 round 48
+    # C3444, ruling 222)
     carried: tuple[MirrorChange, ...] = ()
     carried_runs: tuple[int, ...] = ()
     carried_failed: tuple[MirrorChange, ...] = ()

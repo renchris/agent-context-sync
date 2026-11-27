@@ -1611,9 +1611,20 @@ def test_a_run_that_failed_after_the_gate_is_carried_as_failed_never_as_blocked_
 def test_the_carried_notes_say_each_cause_apart_c3444() -> None:
     """C3444: with blocked and failed runs both carried, one line per cause and source, never one span."""
     a, b, c = (_net_row("M", p) for p in ("a", "b", "c"))
-    assert cycle_mod._carried_notes([a, b, c], [4, 5, 6], [c], [6]) == [
+    causes = {4: "blocked", 5: "blocked", 6: "failed"}
+    assert cycle_mod._carried_notes([(a, {4}), (b, {5}), (c, {6})], causes) == [
         "carried from blocked runs 4-5: contoso 0a 2m 0r 0d",
         "carried from failed run 6: contoso 0a 1m 0r 0d",
+    ]
+
+
+def test_a_blocked_run_whose_only_page_a_failed_run_changed_again_is_still_named_c3444() -> None:
+    """C3444 with C3445: blocked run 4 changed x, failed run 5 changed x again; the page took run 5's cause,
+    so run 4, whose change this commit lands, was named on no line. Each run is named under its own cause."""
+    x = _net_row("M", "x")
+    assert cycle_mod._carried_notes([(x, {4, 5})], {4: "blocked", 5: "failed"}) == [
+        "carried from blocked run 4: contoso 0a 1m 0r 0d",
+        "carried from failed run 5: contoso 0a 1m 0r 0d",
     ]
 
 
@@ -1704,6 +1715,52 @@ def test_a_blocked_add_a_landed_crashed_commit_held_is_not_netted_again_c3443(
     assert report.commit_sha is not None
     assert _mirror_name_status(repo) == [f"M\t{page}"]
     assert git(repo, "log", "-1", "--format=%s").strip() == f"sync: 0a 1m 0r 0d {SID}"
+
+
+def test_every_run_a_carried_page_passed_through_is_named_under_its_own_cause_c3444(
+    sample_config: Config,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 48 C3444 with C3445: a page took its latest run's cause, so blocked run 4, whose page failed
+    run 5 changed again, was named only beside blocked run 6's page, which it never touched. Each cause's line
+    counts the pages that passed through its runs and names those runs; the console counts each page once."""
+    repo = sample_config.docs_repo
+    for _ in range(3):
+        run(sample_config)
+    src = local_source_dir / "projects"
+    hand = _hand_edit(repo)
+    (src / "sample.txt").write_text("changed in blocked run 4\n", encoding="utf-8")
+    assert run(sample_config).run_id == 4
+    _undo(repo, hand)
+    (src / "sample.txt").write_text("changed again in failed run 5\n", encoding="utf-8")
+
+    def refuse(*_a: object, **_k: object) -> None:
+        raise OSError("the commit could not be made")
+
+    with monkeypatch.context() as m:
+        m.setattr(cycle_mod.gitops, "commit_cycle", refuse)
+        failed = run(sample_config)
+    assert failed.run_id == 5 and failed.commit_sha is None and not failed.land_gate_blocked
+    hand = _hand_edit(repo)
+    (src / "sample.md").write_text("changed in blocked run 6\n", encoding="utf-8")
+    assert run(sample_config).land_gate_blocked
+    _undo(repo, hand)
+    report = run(sample_config)
+    assert report.run_id == 7 and report.commit_sha is not None
+    body = git(repo, "log", "-1", "--format=%b").splitlines()
+    assert [x for x in body if x.startswith("carried from")] == [
+        "carried from blocked runs 4, 6: local-fixture 0a 2m 0r 0d",
+        "carried from failed run 5: local-fixture 0a 1m 0r 0d",
+    ], body
+    assert git(repo, "log", "-1", "--format=%s").strip() == "sync: 0a 2m 0r 0d local-fixture"
+    capsys.readouterr()
+    cli._print_report(report)
+    line = capsys.readouterr().out.splitlines()[0]
+    assert line.endswith(
+        "0 changes this run; 2 mirror pages from blocked runs 4, 6 and failed run 5 land in this commit"
+    ), line
 
 
 INBOX_SOURCE = """
