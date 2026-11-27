@@ -2854,7 +2854,7 @@ CUT_HOME='applications|code|desktop|dev|development|documents|downloads|git|libr
 # agent_protect's two delimiters \004 and \005, so a run never crosses a protected word, which always opens
 # with \004; built from the block, never typed (B13 round 40 C1890 with C1837). Its nibble bytes \016 to \035
 # stay: ESC is one, and leaving them out printed q3<ESC>plans in clear, which the agentsync report cuts.
-SEP_RUN_AWK='function seprun(    k, c, o, d) {
+SEP_RUN_AWK='function seprun(    k, c, o, d, m) {
 	o = ""
 	d = ""
 	for (k = 1; k < 128; k++) {
@@ -2864,8 +2864,18 @@ SEP_RUN_AWK='function seprun(    k, c, o, d) {
 		else if (c == "\\" || c == "]" || c == "^") o = o "\\" c
 		else o = o c
 	}
-	return "[" o d "]"
+	m = sepmb()
+	return (m == "") ? "[" o d "]" : "([" o d "]|" m ")"
 }
+# B13 round 48 ruling 217 (C3405; privacy): the non-line-breaking blanks report_cuts.NONASCII_BLANKS adds to the
+# separators, the multibyte alternatives of the block\047s CUT_SEP_ERE after its byte class (empty without it),
+# and sepere() the one separator as an ERE, the block\047s CUT_SEP_ERE, else CUT_SEP\047s class
+function sepmb(    e, k) {
+	e = ENVIRON["CUT_SEP_ERE"]
+	if (e == "" || !(k = index(e, "]|"))) return ""
+	return substr(e, k + 2, length(e) - k - 2)
+}
+function sepere() { return (ENVIRON["CUT_SEP_ERE"] != "") ? ENVIRON["CUT_SEP_ERE"] : ENVIRON["CUT_SEP"] }
 '
 # No process substitution: bash 3.2 crashes once one command substitution has opened about 255 of them,
 # and this runs once per listed folder inside redaction_pairs' (B13 round 40 C1836). The words split as
@@ -2876,7 +2886,7 @@ agent_words_name() {
 	# in lower case, every CUT_SEP byte a blank, so the words split where setup_report._agent_words splits them
 	# (report_cuts.SEPARATORS: every C0 control but LF and CR, and DEL, beside the blank, tab, "_", "\" and "-"; B13
 	# round 40 C1890 with C1837)
-	low="$(CUT_SEP="$CUT_SEP" WORDS_NAME="$1" LC_ALL=C awk 'BEGIN { s = tolower(ENVIRON["WORDS_NAME"]); gsub(ENVIRON["CUT_SEP"], " ", s); printf "%s", s }'
+	low="$(CUT_SEP="$CUT_SEP" CUT_SEP_ERE="${CUT_SEP_ERE:-}" WORDS_NAME="$1" LC_ALL=C awk "$SEP_RUN_AWK"'BEGIN { s = tolower(ENVIRON["WORDS_NAME"]); gsub(sepere(), " ", s); printf "%s", s }'
 		printf x)"
 	low="${low%x}"
 	case $- in *f*) f=1 ;; esac
@@ -3941,8 +3951,13 @@ redaction_pairs() {
 	fuzzy_flag() { # VALUE
 		local low
 		FUZZY=f
-		case "$1" in *[\ _-]* | *[[:lower:]][[:upper:]]* | *[[:digit:]][[:upper:]]*) ;; *) return 0 ;; esac
-		low="$(printf '%s' "$1" | LC_ALL=C tr -d ' \t_\\-' | LC_ALL=C tr '[:upper:]' '[:lower:]')"
+		case "$1" in
+		*[\ _-]* | *[[:lower:]][[:upper:]]* | *[[:digit:]][[:upper:]]*) ;;
+		*) V="$1" CUT_SEP_ERE="${CUT_SEP_ERE:-}" LC_ALL=C awk "$SEP_RUN_AWK"'BEGIN { m = sepmb(); exit !(m != "" && match(ENVIRON["V"], m)) }' || return 0 ;; # a multibyte blank (C3405)
+		esac
+		low="$(V="$1" CUT_SEP_ERE="${CUT_SEP_ERE:-}" LC_ALL=C awk 'BEGIN { v = ENVIRON["V"]; e = ENVIRON["CUT_SEP_ERE"]
+			if (e != "" && (k = index(e, "]|"))) gsub(substr(e, k + 2, length(e) - k - 2), "", v); printf "%s", v }' |
+			LC_ALL=C tr -d ' \t_\\-' | LC_ALL=C tr '[:upper:]' '[:lower:]')"
 		! report_word "$low" || FUZZY=j
 	}
 	recase() { # upper|lower TEXT, as Python's str.upper and str.lower write it ("ÅL" for "Ål"): tr in UTF-8,
@@ -4188,7 +4203,7 @@ redaction_pairs() {
 	# with 3 or more characters, a two-letter word in capitals neither (it is matched as written, C2071)
 	# VALUE: its fuzzy key as setup_report._norm reads it, every CUT_SEP byte (a control byte too) dropped
 	fuzzy_key() {
-		id_key "$(V="$1" CUT_SEP="$CUT_SEP" LC_ALL=C awk 'BEGIN { v = ENVIRON["V"]; gsub(ENVIRON["CUT_SEP"], "", v); printf "%s", v }')"
+		id_key "$(V="$1" CUT_SEP="$CUT_SEP" CUT_SEP_ERE="${CUT_SEP_ERE:-}" LC_ALL=C awk "$SEP_RUN_AWK"'BEGIN { v = ENVIRON["V"]; gsub(sepere(), "", v); printf "%s", v }')"
 	}
 	# PLACEHOLDER KEY: a two-letter word that is no library but lands on a <library-N> (a folder part `it` or
 	# `IT` under library IT, a source id `it`) is a short value there, as setup_report.Redactor.add marks it:
@@ -5243,9 +5258,9 @@ agent_protect() {
 		return 0
 		;;
 	esac
-	VALS="$vals" CUT_SEP="$CUT_SEP" LC_ALL=C awk "$SEP_RUN_AWK"'
+	VALS="$vals" CUT_SEP="$CUT_SEP" CUT_SEP_ERE="${CUT_SEP_ERE:-}" LC_ALL=C awk "$SEP_RUN_AWK"'
 		function rx(v,    m, j, r) { # its words in lower case, any run of CUT_SEP but the markers, or none, between them
-			m = split(tolower(v), W, ENVIRON["CUT_SEP"] "+"); r = ""
+			m = split(tolower(v), W, sepere() "+"); r = ""
 			for (j = 1; j <= m; j++) if (W[j] != "") r = r (r == "" ? "" : sep) W[j]
 			return r
 		}
@@ -5447,7 +5462,7 @@ redact_stream() {
 		cat >/dev/null
 		return 1
 	}
-	[ -z "$raw" ] || pairs="$(printf '%s\n' "$raw" | CUT_SEP="$CUT_SEP" LC_ALL=C awk -F '\t' '{ k = $1; if ($3 == "f" || $3 == "j" || $3 == "o") gsub(ENVIRON["CUT_SEP"], "", k); print length(k) "\t" $0 }' |
+	[ -z "$raw" ] || pairs="$(printf '%s\n' "$raw" | CUT_SEP="$CUT_SEP" CUT_SEP_ERE="${CUT_SEP_ERE:-}" LC_ALL=C awk -F '\t' "$SEP_RUN_AWK"'{ k = $1; if ($3 == "f" || $3 == "j" || $3 == "o") gsub(sepere(), "", k); print length(k) "\t" $0 }' |
 		LC_ALL=C sort -t "$(printf '\t')" -k1,1nr -s | LC_ALL=C cut -f 2-)"
 	cfg="$({ [ -f "$CONFIG" ] && config_path_values; } </dev/null 2>/dev/null | LC_ALL=C sed -n 's#^.*/Library/CloudStorage/[^/]*/##p')" || cfg=""
 	# the names step 1's list gave and every configured path, so the cut tells a listed-only placeholder (C2062)
@@ -5465,7 +5480,7 @@ redact_stream() {
 		LC_ALL=C sed -E "s/(^|[^A-Za-z0-9_-])(purge (--queue --forget )?id=)[^<[:space:]\`'\"][^[:space:]\`'\"]*/\\1\\2<its id>/g" |
 		LC_ALL=C sed -E -f <(gov_value_sed) | hold_cut |
 		REDACT_PAIRS="$pairs" REPO_SLUG="$(repo_slug)" \
-		FIXED_PHRASES="$FIXED_CAPS_PHRASES|$FIXED_VALUE_PHRASES" AGENTSYNC_VERBS="$AGENTSYNC_VERBS" CUT_SEP="$CUT_SEP" LC_ALL=C awk "$SEP_RUN_AWK"'
+		FIXED_PHRASES="$FIXED_CAPS_PHRASES|$FIXED_VALUE_PHRASES" AGENTSYNC_VERBS="$AGENTSYNC_VERBS" CUT_SEP="$CUT_SEP" CUT_SEP_ERE="${CUT_SEP_ERE:-}" LC_ALL=C awk "$SEP_RUN_AWK"'
 	function tsp(x) { gsub(/\t/, " ", x); return x } # each TAB a space, one byte for one (C2671)
 	# The line is kept as pieces, plain text or a placeholder (held): a later pair never matches inside a
 	# placeholder an earlier one wrote ("<name>" stays whole beside a folder named "name"), as in the Python
@@ -5505,6 +5520,8 @@ redact_stream() {
 		for (i = 1; i <= length(v); i++) { # its words: split at separators and at CamelCase boundaries (_tokens)
 			c = substr(v, i, 1)
 			if (c ~ SEPC) { if (cur != "") tok[++nt] = cur; cur = ""; continue } # CUT_SEP (C1890)
+			# a non-line-breaking blank, several bytes, splits too (C3405)
+			if (SEPM != "" && match(substr(v, i), "^(" SEPM ")")) { if (cur != "") tok[++nt] = cur; cur = ""; i += RLENGTH - 1; continue }
 			p = substr(v, i - 1, 1); q = substr(v, i + 1, 1)
 			# a byte outside ASCII before the capital is read as a small letter ("CaféPlans")
 			if (cur != "" && c ~ /[A-Z]/ && (p ~ /[a-z0-9]/ || p ~ "[\200-\377]" || (p ~ /[A-Z]/ && q ~ /[a-z]/))) { tok[++nt] = cur; cur = "" }
@@ -5664,6 +5681,8 @@ redact_stream() {
 	BEGIN {
 		SEPC = ENVIRON["CUT_SEP"] # a separator byte, the block\047s class (B13 round 40 C1890 with C1837)
 		SEPR = seprun() # the run between a value\047s words: CUT_SEP but agent_protect\047s delimiters
+		SEPM = sepmb() # and the multibyte blanks, each a separator (C3405)
+		SEPE = sepere() # one separator of either kind, for a value\047s key
 		STOP = " \t\r\f\v\"\047`()[]{},;" # foreign_home_cut\047s: setup_report._CUT_BYTES less the newline (ruling 112)
 		slug = tolower(ENVIRON["REPO_SLUG"])
 		n = split(ENVIRON["FIXED_PHRASES"], fp, "|"); nfp = 0
@@ -5684,11 +5703,11 @@ redact_stream() {
 			if ((index(f[2], "<proxy-") || index(f[2], "<link-")) && !(f[3] == "f" || f[3] == "j" || f[3] == "o")) lv[k] = tolower(f[1]) # a link: ignore_case (B13 round 17 U61)
 			if (f[3] == "i" || f[3] == "h") lv[k] = tolower(f[1]) # a project folder: ignore_case, a whole word (B13 round 18 V46)
 			if (f[3] == "f" || f[3] == "j" || f[3] == "o") { fz[k] = 1; fuzzy(k, f[1], f[3] == "j"); og[k] = f[3] == "o" }
-			if (og[k]) { okey[k] = tolower(f[1]); gsub(SEPC, "", okey[k]) }
+			if (og[k]) { okey[k] = tolower(f[1]); gsub(SEPE, "", okey[k]) }
 		}
 		nv = split(ENVIRON["AGENTSYNC_VERBS"], verb, "|") # longest first, as setup_report.agentsync_verbs
 		for (k = 1; k <= np; k++) { # the pairs whose value begins with any verb, as keep_verb\047s verb_longer
-			pn = tolower(val[k]); gsub(SEPC, "", pn)
+			pn = tolower(val[k]); gsub(SEPE, "", pn)
 			for (x = 1; x <= nv; x++) { vn = verb[x]; gsub(/-/, "", vn); if (index(pn, vn) == 1) { vpair[k] = 1; break } }
 		}
 		nh = split("# agentsync setup report|## Summary|## Agent friction log|## Environment|## Installer|" \

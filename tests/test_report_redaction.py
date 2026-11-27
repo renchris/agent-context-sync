@@ -2395,7 +2395,6 @@ def test_the_shell_blocks_separator_ere_reads_what_python_splits_at_c3405() -> N
 _C3405_SHELL = pytest.param(
     True,
     id="shell",
-    marks=pytest.mark.xfail(strict=True, reason="lane RB's C3405 shell half"),
 )
 
 

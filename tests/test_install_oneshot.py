@@ -24685,6 +24685,8 @@ SHELL_HELPER_FNS = re.compile(
     + r"^CLOUD_ORDER_AWK='.*?'$|"
     # B13 round 47 ruling 207 (C3303): the decoder config_path_values and config_source_records share
     + r"^TOML_BASIC_AWK='.*?'$|"
+    # B13 round 48 ruling 217 (C3405's shell half): sepere(), the separator agent_words_name and id_key read
+    + r"^SEP_RUN_AWK='.*?^'$|"
     + _REPORT_CUTS_BLOCK
 )
 
@@ -25419,7 +25421,10 @@ def test_agent_words_split_as_the_agentsync_report_splits_them_c1837() -> None:
         "Copilot\nCursor",
     ]
     names += ["github-copilot", "Copilot", "Copilot\tCursor", "Copilot\\Cursor", "", "Copilot\r"]
-    script = "\n".join([block, func, 'for n in "$@"; do agent_words_name "$n" && echo yes || echo no; done'])
+    [seprun] = re.findall(r"(?ms)^SEP_RUN_AWK='.*?^'$", code)  # sepere(), B13 round 48 C3405's shell half
+    script = "\n".join(
+        [block, seprun, func, 'for n in "$@"; do agent_words_name "$n" && echo yes || echo no; done']
+    )
     cp = _bash_run(
         [BASH32, "-c", script, "x", *names], capture_output=True, text=True, check=True, env={"LC_ALL": "C"}
     )
@@ -26693,8 +26698,10 @@ def test_the_shell_agent_words_test_is_the_python_reports(name: str) -> None:
     fn = _shell_function("agent_words_name")
     block = re.search(r"(?ms)" + _REPORT_CUTS_BLOCK, INSTALL_SH.read_text(encoding="utf-8"))
     assert block is not None
+    # sepere(), the separator agent_words_name reads (B13 round 48 C3405's shell half)
+    [seprun] = re.findall(r"(?ms)^SEP_RUN_AWK='.*?^'$", INSTALL_SH.read_text(encoding="utf-8"))
     cp = _bash_run(
-        [BASH32, "-c", f'{block.group(0)}\n{fn}\nagent_words_name "$1"', "-", name],
+        [BASH32, "-c", f'{block.group(0)}\n{seprun}\n{fn}\nagent_words_name "$1"', "-", name],
         capture_output=True,
         text=True,
         check=False,
