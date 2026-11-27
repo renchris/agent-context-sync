@@ -1038,20 +1038,34 @@ def test_the_c3004_dated_lines_are_in_date_order_and_name_the_all_paused_warning
     corrupt heartbeat, but when no source writes one (every one paused, retired or unselected) the pass's own
     read in ``cycle._after`` logs it; and Y43's C3004 line read ahead of the 2026-11-03 C832 line. Each
     paragraph's dated lines run in date order, the C3004 words kept, and a round 47 line quotes the cycle's
-    own warning."""
+    own warning.
+
+    B13 round 48 C3425 with C3412 and C3461 (ruling 230): those lines, and §16.294's C3278 paragraph, quoted
+    ``heartbeat <path> is corrupt (...)``, while lane B's C3216 had moved the path inside the parenthesis, and
+    this test held only the tail both spellings share. Each keeps its words and takes a round 48 line after it
+    quoting cycle.py's whole warning, with no stale prefix after that line."""
     from agentsync import cycle  # noqa: PLC0415
 
-    words = "is corrupt (%s); the next sync of a live source rewrites it"
+    words = "heartbeat is corrupt (%s); the next sync of a live source rewrites it"
     assert words in inspect.getsource(cycle)
-    told = words.replace("%s", "...")
+    told = words.replace("%s", "<path>: ...")
+    stale = "heartbeat <path> is corrupt (...); the next sync of a live source rewrites it"
+    c3425_line = "Amended 2026-11-27, §16.299 C3425 (by §16.292 C3216):"
     for heading in ("**Y43: a lock or heartbeat", "**A1, A34, A84: a heartbeat this account"):
         para = " ".join(_contracts_section(heading, "\n\n").split())
         dates = re.findall(r"Amended (\d{4}-\d\d-\d\d), §16\.\d+ C\d+", para)
-        assert dates == sorted(dates) and dates[-2:] == ["2026-11-24", "2026-11-25"], dates
+        assert dates == sorted(dates) and dates[-3:] == ["2026-11-24", "2026-11-25", "2026-11-27"], dates
         c3004 = para.index("Amended 2026-11-24, §16.287 C3004:")
         c3278 = para.index("Amended 2026-11-25, §16.294 C3278:")
-        assert c3004 < c3278 and told in para[c3278:], para[c3278:]
-        assert "(every one paused, retired or unselected)" in para[c3278:]
+        c3425 = para.index(c3425_line)
+        assert c3004 < c3278 < c3425 and stale in para[c3278:c3425], para[c3278:]
+        assert told in para[c3425:] and "heartbeat <path> is corrupt" not in para[c3425:], para[c3425:]
+        assert "(every one paused, retired or unselected)" in para[c3278:c3425]
+    s294 = " ".join(_contracts_section("**The C3004 dated lines name the all-paused", "\n\n").split())
+    c3425 = s294.index(c3425_line)
+    assert (
+        stale in s294[:c3425] and told in s294[c3425:] and "heartbeat <path> is corrupt" not in s294[c3425:]
+    )
     y43 = " ".join(_contracts_section("**Y43: a lock or heartbeat", "\n\n").split())
     assert (
         "Amended 2026-11-24, §16.287 C3004: the cycle's own read (`refused_said=True`) of a corrupt heartbeat"

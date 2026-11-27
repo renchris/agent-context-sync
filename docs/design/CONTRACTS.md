@@ -27526,6 +27526,9 @@ Amended 2026-11-25, §16.294 C3278: when no source writes the heartbeat (every o
 write_heartbeat runs, and the pass's own read in `_after` is the sync's one line for a corrupt one: `heartbeat <path>
 is corrupt (...); the next sync of a live source rewrites it`, as §16.287's C3004 paragraph says. The C3004 line above
 is kept and now follows the 2026-11-03 line it had read ahead of.
+Amended 2026-11-27, §16.299 C3425 (by §16.292 C3216): the warning drops its own copy of the path, since
+read_heartbeat's error already names it: `heartbeat is corrupt (<path>: ...); the next sync of a live source rewrites
+it`, the path once. The C3278 line above keeps its words.
 
 **Y44: a config hold shows over a state folder status cannot open (`agentsync.governance`, `agentsync.cli`; amends
 §16.149 X73).** With the state folder shut, status printed only governance.hold's not-checked line and hid a legal
@@ -29201,6 +29204,9 @@ Amended 2026-11-24, §16.287 C3004: a corrupt heartbeat keeps one warning, write
 it`; the cycle's own read of it is DEBUG, as its read of a refused one is.
 Amended 2026-11-25, §16.294 C3278: or, when no source writes one (every one paused, retired or unselected), the pass's
 own read's `heartbeat <path> is corrupt (...); the next sync of a live source rewrites it`, its one WARNING.
+Amended 2026-11-27, §16.299 C3425 (by §16.292 C3216): the warning drops its own copy of the path, since
+read_heartbeat's error already names it: `heartbeat is corrupt (<path>: ...); the next sync of a live source rewrites
+it`, the path once. The C3278 line above keeps its words.
 
 **A9: a foreground sync that stops on a state file records it beside the setup log (`agentsync.cli`; the report's
 half is lane RA's, §16.164).** A step-3 sync stop the agent's chmod fixed left no trace, so the report said "fully
@@ -48500,6 +48506,9 @@ test_cli's all-paused half say. Each paragraph takes a dated line for that case,
 moves after the 2026-11-03 C832 line it had read ahead of, since bb92e1b01 took over C832's leading `Amended`. Tests:
 `tests/test_deploy_pack.py::test_every_dated_line_from_round_11_on_is_held_by_a_test` and
 `::test_the_c3004_dated_lines_are_in_date_order_and_name_the_all_paused_warning_c3278`.
+Amended 2026-11-27, §16.299 C3425 (by §16.292 C3216): the warning this paragraph quotes drops its own copy of the
+path, since read_heartbeat's error already names it: `heartbeat is corrupt (<path>: ...); the next sync of a live
+source rewrites it`, the path once. The words above are kept.
 
 **The shell's CloudStorage listing dates from round 44** (C3279; amends §16.43 N44 and §16.289 C3050). C3050's dated
 line under N44 said the shell numbers the listing before step 1's list "since round 42's C2202", and §16.289's C3050
@@ -48692,7 +48701,20 @@ and a two-link loop: the sync's alarm is a file's, the note agrees, no `is a sym
 
 ### 16.299 Round 48: the prompt goes to v45 (the land gate's fix run once per page, step 1's stop only with no synced line, a chosen folder that came back paused, a failed step 2 outside the none), dated lines, and the guides (2026-11-27, wave B13 round 48 lane D)
 
-Reserved for round 48 lane D of B13.
+Round 48's lane D items (`docs/plans/bring-back-ocr.md`, "B13 round 48"; specs `round48/items/C<n>.md`, the verifier's
+corrected fix built, as the lead's rulings 217 to 231 settle it). A dated line this round writes reads
+`Amended 2026-11-27, §16.299 C<n>`, or `Amended 2026-11-27, §16.299 C<n> (by §16.NN C<m>)` where it records an
+earlier round's change.
+
+**The C3278 dated lines take C3216's warning, their words kept** (C3425 with C3412 and C3461, one defect; ruling 230;
+amends §16.155 Y43, §16.167 A84 and §16.294 C3278). Lane D's 6f8d70a01 quoted the all-paused sync's warning as
+`heartbeat <path> is corrupt (...); the next sync of a live source rewrites it` in Y43's and A84's C3278 lines and in
+§16.294's C3278 paragraph, and 24 minutes later lane B's d1e0af385 (C3216) moved the path inside the parenthesis,
+dating only §16.287's paragraph; the test held only the tail both spellings share. Each of the three keeps its words
+(ruling 186; the verifiers' edit in place is not taken) and takes a dated line quoting `heartbeat is corrupt (<path>:
+...); the next sync of a live source rewrites it`, as §16.287's C3216 line does; the test holds cycle.py's whole
+warning, the new line after the C3278 one, its quote, and no `heartbeat <path> is corrupt` after it. Test:
+`tests/test_deploy_pack.py::test_the_c3004_dated_lines_are_in_date_order_and_name_the_all_paused_warning_c3278`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
