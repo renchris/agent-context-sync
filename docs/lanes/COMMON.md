@@ -1431,6 +1431,11 @@ requires identical lines, the same private-only verdict and no fragment of a nam
 running Python knows equal to safe_text. Lane RA builds the table and its reader first and sends lane RB its branch
 sha; lane RB builds the shell half, the harnesses and the proof on that branch and lands both halves in one
 scripts/ship-land.sh run, so trunk never carries one half.
+(2026-11-27) Ruling 217 amends this one: the table's separators take the non-line-breaking Unicode blanks,
+`report_cuts.NONASCII_BLANKS` (U+00A0, U+1680, U+2000 to U+200A, U+202F, U+205F and U+3000, never U+0085, U+2028 or
+U+2029), which `sep_class()` appends and the generated `CUT_SEP_ERE` gives the shell, so a folder named with one is cut in
+its blank, slug, joined and underscore spellings in both reports (C3405: 474bded9a, the shell's c4fd13d0d; round 48,
+CONTRACTS §16.295 and §16.296).
 (134) The report knows what macOS bash 3.2's `printf %q` writes, measured with /bin/bash 3.2.57 on this Mac,
 completing ruling 126's `$'...'` spellings (lanes RA and RB; C1670 data integrity, with C1636 and C1649, and C1648).
 Under en_US.UTF-8, %q tests each byte, writes 0x80 to 0x9F and 0xAD as `\ooo` and every other byte raw, and
@@ -2646,6 +2651,11 @@ leaf source path; `I set ~dana/Kestrel Notes`, `HEAD~1` and `~/x` unconfigured; 
 underscored, upper and hyphenated, with a joined control and a vanished source; `id = 'Contoso Quarry'` parsed and
 unparsed, and `'Status'` still not registered. Lane RA builds its halves and the shared rows first and sends lane RB its
 branch sha; lane RB lands rulings 206 and 207 in one scripts/ship-land.sh run.
+(2026-11-27) Ruling 217 amends this one: a vanished source's root, synced and then removed from sources.toml, is
+registered fuzzily as a configured project folder is, a joined report word and a value holding `/` kept literal, and the
+shell learns it from the manifest's scope_root rows too, so its spaced, underscored, upper and hyphenated spellings are cut
+in both reports, reversing this ruling's carve-out (C3471: cf55e371c, the shell's b75679342; round 48, CONTRACTS §16.295
+and §16.296).
 (208) C2060 is still gated on the operator under class C decision c0777e12a523, and the agentsync report cuts an escaped
 listed row's other readings fuzzily under that row's one number (privacy; data integrity: lane RB GATED, C3287; lane RA
 ungated, C3288). Rulings 150, 161, 174, 190 and 200 stand. Lane RA, Python only: Redactor gains a placeholder-preserving

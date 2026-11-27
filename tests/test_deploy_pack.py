@@ -1122,6 +1122,42 @@ def test_the_guides_say_what_source_local_refuses_of_an_escaped_or_held_row_c341
         ) in flat
 
 
+def test_rulings_133_and_207_take_ruling_217s_dated_lines_for_c3405_and_c3471() -> None:
+    """B13 round 48 (ruling 186; ruling 217's ask of lane D): ruling 133 keeps its words and a dated line
+    right after it names C3405's non-line-breaking blanks as separators in both reports, held to
+    ``report_cuts.NONASCII_BLANKS``; ruling 207 keeps its words and a dated line names C3471's fuzzy vanished
+    root, reversing its carve-out; each cites the trunk commits that made the change."""
+    from agentsync import report_cuts  # noqa: PLC0415
+
+    blanks = report_cuts.NONASCII_BLANKS
+    assert blanks == (0x00A0, 0x1680, *range(0x2000, 0x200B), 0x202F, 0x205F, 0x3000)
+    lanes = _page("docs/lanes/COMMON.md")
+    for words, line, nxt, shas in (
+        (
+            "scripts/ship-land.sh run, so trunk never carries one half.",
+            "(2026-11-27) Ruling 217 amends this one: the table's separators take the non-line-breaking",
+            "(134) ",
+            ("474bded9a", "c4fd13d0d"),
+        ),
+        (
+            "branch sha; lane RB lands rulings 206 and 207 in one scripts/ship-land.sh run.",
+            "(2026-11-27) Ruling 217 amends this one: a vanished source's root, synced and then removed",
+            "(208) ",
+            ("cf55e371c", "b75679342"),
+        ),
+    ):
+        assert lanes.index(words) + len(words) + 1 == lanes.index(line) < lanes.index(nxt), line
+        dated = " ".join(lanes[lanes.index(line) : lanes.index(nxt)].split())
+        for sha in shas:
+            assert sha in dated, sha
+        assert "CONTRACTS §16.295 and §16.296)." in dated
+    line133 = lanes[lanes.index("(2026-11-27) Ruling 217 amends this one: the table's") :]
+    assert (
+        "(U+00A0, U+1680, U+2000 to U+200A, U+202F, U+205F and U+3000, never U+0085, U+2028 or"
+        in " ".join(line133[:600].split())
+    )
+
+
 def test_ruling_210_takes_a_dated_line_for_c3211s_alarm_and_root_probe_c3520_c3479() -> None:
     """B13 round 48 C3520 with C3479's root_probe half (ruling 230): ruling 210 quoted C3211's alarm as ending
     ``agentsync doctor says what to do)`` and rulings 204 and 210 named ``LocalArm.shown_root``, while lane
