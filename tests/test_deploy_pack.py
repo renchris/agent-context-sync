@@ -13998,7 +13998,10 @@ def test_the_guide_names_both_private_only_causes_and_the_user_cut_c3281_c3293_c
     # the `~<user>` cut, both reports: whole, its head, the name; uncounted as add_cut is
     refused = inspect.getsource(setup_report._register_refused)
     assert 'red.add_cut(raw, "~<user>/<path>" if rest else "~<user>")' in refused
-    assert 'red.add_cut(head, "~<user>")' in refused and 'red.add("user", name)' in refused
+    # B13 round 48 C3402 (ruling 217): the head is cut alone only at a path end, and the name is a foreign
+    # `user` value, kept out of Redactor._logins, so `~name/...` and `/Users/name/...` are cut whole
+    assert 'red.add_cut(head, "~<user>", at_end=True)' in refused
+    assert 'red.add("user", name, foreign=True)' in refused
     assert 'add_pair "$v" "~<user>${rest:+/<path>}" c' in installer
     assert "uncounted" in (setup_report.Redactor.add_cut.__doc__ or "")
     assert (
