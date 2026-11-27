@@ -446,12 +446,13 @@ def test_a_folder_ending_in_a_non_ascii_blank_lists_escaped_c3333(env: dict[str,
     ), got
 
 
-def test_the_list_escapes_every_non_ascii_blank_as_its_python_twin_does_c3333() -> None:
-    """B13 round 47 C3333: LIST_ESC_AWK's escd and esc mark every blank outside ASCII str.isspace names, each
-    as its octal bytes, and arm_local's ``_LIST_ESCAPED_RE`` (list_shown_name, doctor.list_spelling) holds the
-    same set; the characters next to each range, and U+200B (escaped since U-B11), read as before."""
+_ANYWHERE_BLANKS = ("\u0085", "\u2028", "\u2029")
+"""The blanks escaped wherever they stand: line breaks to the report's splitlines (U+0085, U+2028, U+2029)."""
+
+
+def _awk_rows(names: list[str]) -> list[str]:
+    """Each of ``names`` as LIST_ESC_AWK prints it, ``E `` or ``P `` first by its escd, under /usr/bin/awk."""
     [awk] = re.findall(r"^LIST_ESC_AWK='(.*?)^'$", INSTALL_SH.read_text(encoding="utf-8"), flags=re.M | re.S)
-    names = [f"Project{ch}" for ch in (*_NON_ASCII_BLANKS, *_BLANK_NEAR_MISSES, "\u200b")]
     shown = subprocess.run(
         ["/usr/bin/awk", "-v", "mark=", awk + '{ print (escd($0) ? "E " : "P ") shown($0) }'],
         input="".join(n + "\n" for n in names).encode(),
@@ -459,16 +460,61 @@ def test_the_list_escapes_every_non_ascii_blank_as_its_python_twin_does_c3333() 
         check=True,
         env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
     ).stdout.decode()
+    return shown.split("\n")[:-1]
+
+
+def _py_rows(names: list[str]) -> list[str]:
+    """Each of ``names`` as arm_local's twin of the awk spells it, ``E `` or ``P `` first."""
+    return [
+        ("E " if arm_local._LIST_ESCAPED_RE.search(n) else "P ")
+        + arm_local._LIST_ESCAPED_RE.sub(arm_local.list_escaped_char, n)
+        for n in names
+    ]
+
+
+def test_the_list_escapes_every_non_ascii_blank_as_its_python_twin_does_c3333() -> None:
+    """B13 round 47 C3333: LIST_ESC_AWK's escd and esc mark every blank outside ASCII str.isspace names, each
+    as its octal bytes, and arm_local's ``_LIST_ESCAPED_RE`` (list_shown_name, doctor.list_spelling) holds the
+    same set; the characters next to each range, and U+200B (escaped since U-B11), read as before. Since B13
+    round 48 ruling 220 (C3419, C3527) one rule in both: a blank, U+0020 too (as ``\\040``), only at a path
+    part's start or end, every blank of that run, a line break and a control, bidi or zero-width character
+    anywhere: a blank inside a name lists plain, the folder step 2 adds by its path."""
+    names = [f"Project{ch}" for ch in (*_NON_ASCII_BLANKS, *_BLANK_NEAR_MISSES, "\u200b")]
     want = [
         *(f"E Project{_octal(ch)}" for ch in _NON_ASCII_BLANKS),
         *(f"P Project{ch}" for ch in _BLANK_NEAR_MISSES),
         "E Project\\342\\200\\213",
     ]
     assert len(_NON_ASCII_BLANKS) == 19 and "\u0085" in _NON_ASCII_BLANKS and "\u2029" in _NON_ASCII_BLANKS
-    assert shown.split("\n")[:-1] == want
-    py = [
-        ("E " if arm_local._LIST_ESCAPED_RE.search(n) else "P ")
-        + arm_local._LIST_ESCAPED_RE.sub(arm_local.list_escaped_char, n)
-        for n in names
+    assert _awk_rows(names) == want
+    assert _py_rows(names) == want
+    # mid-name, leading, a run, a part's end inside a path, and the ASCII space
+    rows = [
+        *(f"Pro{ch}ject" for ch in _NON_ASCII_BLANKS),
+        *(f"{ch}Project" for ch in _NON_ASCII_BLANKS),
+        "Project\u3000\u00a0",
+        "~/Kestrel/Plans\u3000/Sub",
+        "~/Kestrel/\u202fPlans/Sub",
+        "Project ",
+        " Notes",
+        "Project Alpha",
+        "~/Kestrel Plans /Sub Folder",
+        "Mid\u3000\u3000name",
     ]
-    assert py == want
+    want = [
+        *(
+            (f"E Pro{_octal(ch)}ject" if ch in _ANYWHERE_BLANKS else f"P Pro{ch}ject")
+            for ch in _NON_ASCII_BLANKS
+        ),
+        *(f"E {_octal(ch)}Project" for ch in _NON_ASCII_BLANKS),
+        "E Project\\343\\200\\200\\302\\240",
+        "E ~/Kestrel/Plans\\343\\200\\200/Sub",
+        "E ~/Kestrel/\\342\\200\\257Plans/Sub",
+        "E Project\\040",
+        "E \\040Notes",
+        "P Project Alpha",
+        "E ~/Kestrel Plans\\040/Sub Folder",
+        "P Mid\u3000\u3000name",
+    ]
+    assert _awk_rows(rows) == want
+    assert _py_rows(rows) == want

@@ -151,16 +151,26 @@ escaped form also covers the line separators and, since 8528ea2a4, bidi and zero
 them a control character."""
 
 _LIST_ESCAPES = {"\n": "\\n", "\x1e": "\\n", "\t": "\\t", "\r": "\\r"}
-_LIST_ESCAPED_RE = re.compile(
+_LIST_ESCAPED_ANY = "[\x00-\x1f\x7f-\x9f\u200b-\u200f\u2028-\u202e\u2060\u2066-\u2069\ufeff\u061c]"
+_LIST_BLANK = "[ \xa0\u1680\u2000-\u200a\u202f\u205f\u3000]"
+_LIST_ESCAPED_RE = re.compile(f"{_LIST_ESCAPED_ANY}|(?<![^/]){_LIST_BLANK}+|{_LIST_BLANK}+(?![^/])")
+"""What install.sh's ``LIST_ESC_AWK`` escapes (its ``escd``): anywhere, a control character (``[[:cntrl:]]``
+under LC_ALL=C), a C1 control, U+2028 and U+2029, and the bidi and zero-width ones U+200B-U+200F,
+U+202A-U+202E, U+2060, U+2066-U+2069, U+FEFF and U+061C (U-B11); and a blank ``str.strip`` trims (U+0020,
+U+00A0, U+1680, U+2000-U+200A, U+202F, U+205F and U+3000) only at a path part's start or end, next to ``/`` or
+either end of the text, every blank of that run, so a folder ending in one never shows as the folder without
+it (B13 round 47 C3333) and a blank inside a name shows plain (B13 round 48 ruling 220, C3419 and C3527: one
+rule, the awk's twin). Match it over a whole name or path, never one character: :data:`LIST_ESCAPED_CHAR_RE`
+is the per-character class. A change to that awk changes this with it:
+``test_list_shown_name_spells_a_folder_as_install_shs_list_does_c1244`` and
+``test_the_list_escapes_every_non_ascii_blank_as_its_python_twin_does_c3333`` run the awk too, so a
+commit that changes one and not the other is red."""
+LIST_ESCAPED_CHAR_RE = re.compile(
     "[\x00-\x1f\x7f-\xa0\u1680\u2000-\u200f\u2028-\u202f\u205f\u2060\u2066-\u2069\u3000\ufeff\u061c]"
 )
-"""What install.sh's ``LIST_ESC_AWK`` escapes (its ``escd``): a control character (``[[:cntrl:]]`` under
-LC_ALL=C), a C1 control, U+2028 and U+2029, every other character outside ASCII ``str.isspace`` is true for
-(U+00A0, U+1680, U+2000-U+200A, U+202F, U+205F and U+3000, so a folder ending in one never shows as the folder
-without it: B13 round 47 C3333), and the bidi and zero-width ones U+200B-U+200F, U+202A-U+202E,
-U+2060, U+2066-U+2069, U+FEFF and U+061C (U-B11). A change to that awk changes this with it:
-``test_list_shown_name_spells_a_folder_as_install_shs_list_does_c1244`` runs the awk over bidi and zero-width
-names too, so a commit that widens one and not the other is red."""
+"""One character a ``$'...'`` word writes in octal (doctor's ``ansi_c_word``, the setup report's ``%q``
+bodies): every character :data:`_LIST_ESCAPED_RE` can escape but the ASCII space, wherever it stands, since a
+word, unlike step 1's list, escapes by character (ruling 220 left these words as they were)."""
 
 
 def list_escaped_char(m: re.Match[str]) -> str:

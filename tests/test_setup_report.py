@@ -5144,7 +5144,7 @@ def _doctor_word(name: str) -> str:
             out.append("\\t")
         elif ch in "\\'":
             out.append("\\" + ch)
-        elif arm_local._LIST_ESCAPED_RE.fullmatch(ch):
+        elif arm_local.LIST_ESCAPED_CHAR_RE.fullmatch(ch):  # per character, as doctor (B13 round 48 C3419)
             out.append("".join(f"\\{b:03o}" for b in ch.encode("utf-8")))
         else:
             out.append(ch)
@@ -29049,6 +29049,32 @@ def test_folder_spellings_walks_its_own_order_and_keeps_the_old_list_form_c1889_
         new, old = setup_report.folder_spellings(name)[:2]
         assert red.redact(f"saw {new} x") == f"saw <folder-{n}> x", new
         assert re.fullmatch(r"saw <folder-\d> x", red.redact(f"saw {old} x")), old  # one ? for both: either
+
+
+@pytest.mark.parametrize(
+    ("name", "round47"),
+    [
+        ("Wombat\xa0Ledger", "Wombat\\302\\240Ledger"),
+        ("Wombat" + chr(0x3000) + "Ledger", "Wombat\\343\\200\\200Ledger"),
+    ],
+)
+def test_a_mid_name_blank_keeps_round_47s_list_spelling_and_the_old_one_c3419_c3527(
+    name: str, round47: str
+) -> None:
+    """B13 round 48 ruling 220 (C3419, C3527; lane E's review): step 1 now lists a blank inside a name
+    plain, so folder_spellings gated on the run rule returned nothing for a name whose only blank is
+    mid-name, and an older install.out or friction log, where round 47's list (C3333) wrote it in octal,
+    kept the name in clear. Both older spellings are registered, per character, and redact to the folder's
+    placeholder."""
+    spellings = setup_report.folder_spellings(name)
+    assert round47 in spellings and "Wombat?Ledger" in spellings, spellings
+    red = setup_report.Redactor()
+    red.add("folder", name, fuzzy=True)
+    setup_report._alias_escaped(red, name)
+    for old in (round47, "Wombat?Ledger"):
+        assert red.redact(f"saw {old} x") == "saw <folder-1> x", old
+    # an edge ASCII space is round 48's \\040 only: no older build wrote it, so no `?` spelling is made up
+    assert setup_report.folder_spellings("Contoso ")[:2] == ["Contoso\\040", "Contoso "]
 
 
 def test_the_format_ranges_docstring_tells_the_unicode_history_c1838_c1858() -> None:

@@ -881,7 +881,7 @@ def ansi_c_word(text: str) -> str:
             out.append("\\e")
         elif ch == "\t":
             out.append("\\t")
-        elif arm_local._LIST_ESCAPED_RE.match(ch):
+        elif arm_local.LIST_ESCAPED_CHAR_RE.match(ch):
             out.append("".join(f"\\{b:03o}" for b in ch.encode("utf-8")))
         else:
             out.append(ch)

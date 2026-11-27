@@ -541,8 +541,9 @@ _ODD_NAMES = (
         "Join\u2060",
     ),
     *("BOM\ufeffhere", "Arabic\u061cmark", "C1\u009bhere"),
-    # a hair space and a no-break space, escaped since B13 round 47 C3333 as blanks str.strip trims
-    *("Hair\u200ahere", "No\u00a0break", "Ideo\u3000space"),
+    # a hair space and a no-break space inside a name, escaped in B13 round 47 C3333 and plain again since
+    # round 48 ruling 220 (C3419), and the same blanks at a name's end, still escaped
+    *("Hair\u200ahere", "No\u00a0break", "Ideo\u3000space", "Hair\u200a", "\u00a0Lead", "Ideo\u3000"),
     # near each escaped range, never escaped: per mille, the euro sign
     *("Per\u2030mille", "Euro\u20ac", "Caf\u00e9", "Why?", "Back\\slash"),
     *("Bob's notes", "Project Alpha"),

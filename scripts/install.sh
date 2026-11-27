@@ -11730,10 +11730,33 @@ list_real() { # ROW: sets LIST_REAL
 	local nl=$'\n'
 	LIST_REAL="${1//$LIST_RS/$nl}"
 }
-LIST_ESC_AWK='function esc(s,    o, i, c) {
+LIST_ESC_AWK='function blank(s, i,    c, t) { # the bytes of a blank str.isspace() names at I (a space too), else 0
+	c = substr(s, i, 1)
+	if (c == " ") return 1
+	if (c == "\302") return (substr(s, i + 1, 1) == "\240") ? 2 : 0
+	t = substr(s, i + 1, 2)
+	if (c == "\341") return (t == "\232\200") ? 3 : 0
+	if (c == "\342") return (t ~ /^\200[\200-\212\257]$/ || t == "\201\237") ? 3 : 0
+	if (c == "\343") return (t == "\200\200") ? 3 : 0
+	return 0
+}
+function esc(s,    o, i, c, j, k, e) {
 	o = ""
 	for (i = 1; i <= length(s); i++) {
 		c = substr(s, i, 1)
+		# B13 round 48 ruling 220 (C3419, C3527): a blank Python\047s strip trims (U+0020, U+00A0, U+1680,
+		# U+2000-U+200A, U+202F, U+205F, U+3000) only at a path part\047s start or end, next to a slash or either end
+		# of the text, where a trim or the eye can drop it, every blank of that run, a space as \040: so a folder
+		# ending in one is never listed as the folder without it (C3333), and a blank inside a name is listed
+		# plain, the folder step 2 adds by its path
+		if (blank(s, i)) {
+			j = i
+			while ((k = blank(s, j)) > 0) j += k
+			e = (i == 1 || substr(s, i - 1, 1) == "/" || j > length(s) || substr(s, j, 1) == "/")
+			while (i < j) { k = blank(s, i); o = o (e ? oct(s, i, k) : substr(s, i, k)); i += k }
+			i--
+			continue
+		}
 		if (c == "\036") o = o "\\n"
 		else if (c == "\t") o = o "\\t"
 		else if (c == "\r") o = o "\\r"
@@ -11741,15 +11764,11 @@ LIST_ESC_AWK='function esc(s,    o, i, c) {
 		# one "?" (B13 round 40 C1802); escq set gives the "?" form of rounds 36 to 39, an alias only
 		else if (c ~ /[[:cntrl:]]/) o = o oct(s, i, 1)
 		# a C1 control (U+0080-U+009F, NEL among them) and U+2028, U+2029: line breaks to Python\047s
-		# splitlines, which the report reads install.out with, though not to LC_ALL=C (C932 review)
-		# and every other character outside ASCII str.isspace() is true for, a blank Python\047s strip trims:
-		# U+00A0, U+1680, U+2000-U+200A, U+202F, U+205F and U+3000, so a folder ending in one is never
-		# listed as the folder without it (B13 round 47 C3333)
-		else if (c == "\302" && substr(s, i + 1, 1) ~ /[\200-\240]/) { o = o oct(s, i, 2); i++ }
+		# splitlines, which the report reads install.out with, though not to LC_ALL=C (C932 review), anywhere
+		else if (c == "\302" && substr(s, i + 1, 1) ~ /[\200-\237]/) { o = o oct(s, i, 2); i++ }
 		# and the bidi and zero-width ones, which reorder or hide what a path reads as: U+200B-U+200F,
-		# U+202A-U+202E, U+2060, U+2066-U+2069, U+FEFF and U+061C (U-B11)
-		else if (c == "\342" && substr(s, i + 1, 2) ~ /^(\200[\200-\217\250-\257]|\201[\237\240\246-\251])$/) { o = o oct(s, i, 3); i += 2 }
-		else if ((c == "\341" && substr(s, i + 1, 2) == "\232\200") || (c == "\343" && substr(s, i + 1, 2) == "\200\200")) { o = o oct(s, i, 3); i += 2 }
+		# U+202A-U+202E, U+2060, U+2066-U+2069, U+FEFF and U+061C (U-B11), anywhere
+		else if (c == "\342" && substr(s, i + 1, 2) ~ /^(\200[\213-\217\250-\256]|\201[\240\246-\251])$/) { o = o oct(s, i, 3); i += 2 }
 		else if (c == "\357" && substr(s, i + 1, 2) == "\273\277") { o = o oct(s, i, 3); i += 2 }
 		else if (c == "\330" && substr(s, i + 1, 1) == "\234") { o = o oct(s, i, 2); i++ }
 		else o = o c
@@ -11763,7 +11782,8 @@ function oct(s, i, n,    k, o) { # the N bytes of S from I, each \ooo; one "?" u
 	for (k = 0; k < n; k++) o = o octb[substr(s, i + k, 1)]
 	return o
 }
-function escd(s) { return s ~ /[[:cntrl:]]|\302[\200-\240]|\342\200[\200-\217\250-\257]|\342\201[\237\240\246-\251]|\341\232\200|\343\200\200|\357\273\277|\330\234/ }
+# what esc escapes anything in: a quick test for the bytes it can escape first, then esc itself (ruling 220)
+function escd(s) { return s ~ /[[:cntrl:] \302\330\341\342\343\357]/ && esc(s) != s }
 function kept(s) { return (synced != "" && index(s, synced) == 1) || (inside != "" && index(s, inside) == 1) }
 function bare(s) {
 	if (synced != "" && index(s, synced) == 1) return substr(s, length(synced) + 1)
@@ -11773,8 +11793,9 @@ function bare(s) {
 	if (retired != "" && index(s, retired) == 1) return substr(s, length(retired) + 1)
 	return s
 }
-function shown(s) {
-	if (escd(s)) return ((keptmark != "" && kept(s)) ? keptmark : mark) esc(s)
+function shown(s,    b) {
+	b = bare(s)
+	if (escd(b)) return ((keptmark != "" && kept(s)) ? keptmark : mark) substr(s, 1, length(s) - length(b)) esc(b)
 	return (twinmark != "" && !kept(s) && (bare(s) in twin)) ? twinmark s : s
 }
 '

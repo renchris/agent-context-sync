@@ -29009,7 +29009,7 @@ def test_both_held_folder_readers_keep_a_paths_trailing_blank_as_the_loader_does
     ]
     assert cp.stdout == (
         f"; not live: kestrel-plans (paused) at {home}/Kestrel Plans\\343\\200\\200, wombat-notes (retired) "
-        f"at {home}/Wombat Notes {_HELD_TAIL}"
+        f"at {home}/Wombat Notes\\040{_HELD_TAIL}"  # B13 round 48 ruling 220: an edge space as \\040
     ), cp.stdout
     rule2 = "NEXT: no folder is synced yet: ask the operator which folders to sync (made up)"
     (ctx / "setup" / "install.log").write_text(

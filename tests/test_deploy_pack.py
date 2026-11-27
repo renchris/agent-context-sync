@@ -6256,7 +6256,12 @@ def test_k59_gives_each_escape_step_1_shows_c1281() -> None:
     too, so a reader told only `?` would take a `\\t` row for a real backslash. K59 names all three, and the
     look-alike can hold any of them. The forms are read from the installer's own escape."""
     script = SCRIPTS[0].read_text(encoding="utf-8")
-    awk = script.split("LIST_ESC_AWK='function esc(", 1)[1].split("function escd(", 1)[0]
+    # since B13 round 48 ruling 220 (C3419) LIST_ESC_AWK opens with blank(), esc() after it
+    awk = (
+        script.split("LIST_ESC_AWK='function blank(", 1)[1]
+        .split("function esc(", 1)[1]
+        .split("function escd(", 1)[0]
+    )
     shows = dict(re.findall(r'if \(c == "(\\036|\\t|\\r)"\) o = o "\\\\(\w)"', awk))
     assert shows == {"\\036": "n", "\\t": "t", "\\r": "r"}
     assert "else if (c ~ /[[:cntrl:]]/) o = o oct(s, i, 1)" in awk  # B13 round 40 C1802: \\ooo a byte
@@ -6299,23 +6304,30 @@ def test_the_guides_name_every_character_the_list_escapes_c1455() -> None:
     0x1E to a backslash-n. The guides name them, gated on the installer still escaping them, and C1280's
     paragraph takes a dated line with the code points."""
     script = SCRIPTS[0].read_text(encoding="utf-8")
-    [escd] = re.findall(r"^function escd\(s\) \{ return s ~ /(.*)/ \}$", script, flags=re.MULTILINE)
-    for part in (  # since B13 round 47 C3333 the non-ASCII blanks too (U+00A0, U+1680, U+2000-U+200A, U+202F,
-        # U+205F, U+3000)
-        r"\302[\200-\240]",
-        r"\342\200[\200-\217\250-\257]",
-        r"\342\201[\237\240\246-\251]",
-        r"\341\232\200",
-        r"\343\200\200",
-        r"\357\273\277",
-        r"\330\234",
+    # since B13 round 48 ruling 220 (C3419, C3527) escd is esc's own test, and esc writes the blanks blank()
+    # names (a space too) only at a path part's edge, every other character below anywhere
+    awk = script.split("LIST_ESC_AWK='function blank(", 1)[1].split("function oct(", 1)[0]
+    assert (
+        "function escd(s) { return s ~ /[[:cntrl:] \\302\\330\\341\\342\\343\\357]/ && esc(s) != s }"
+        in script
+    )
+    for part in (
+        r'if (c == " ") return 1',
+        r'(substr(s, i + 1, 1) == "\240")',
+        r'(t ~ /^\200[\200-\212\257]$/ || t == "\201\237")',
+        r'(t == "\232\200")',
+        r'(t == "\200\200")',
+        r"~ /[\200-\237]/",
+        r"/^(\200[\213-\217\250-\256]|\201[\240\246-\251])$/",
+        r'"\273\277"',
+        r'"\234"',
     ):
-        assert part in escd, part
+        assert part in awk, part
     assert r'if (c == "\036") o = o "\\n"' in script
     said = (
         r"a carriage return as `\r`, and any other control character, a line or paragraph separator, an"
-        r" invisible bidi or zero-width character, or a blank that is not an ASCII space as a backslash and"
-        r" three octal digits for each of its"
+        r" invisible bidi or zero-width character, or a blank at the start or end of a part of its path (an"
+        r" ASCII space too, as `\040`) as a backslash and three octal digits for each of its"
         r" bytes, DEL as `\177`; a name holding the record separator, 0x1E, shows it"
         r" as `\n` too), so the row is not the folder's own name"
     )

@@ -41044,6 +41044,9 @@ both guides name them, and lane RB's C1447 words the marks `hidden or control ch
 Amended 2026-11-25, §16.291 C3333: the escaped form also writes every non-ASCII blank str.isspace() names (U+00A0,
 U+1680, U+2000-U+200A, U+202F, U+205F, U+3000, beside U+0085, U+2028 and U+2029 already written), and each guide's
 parenthetical names `a blank that is not an ASCII space`.
+Amended 2026-11-27, §16.296 C3419: a blank, an ASCII space too (as `\040`), is escaped only at the start or end of a
+part of the path, every blank of that run, a blank inside a name shown plain, and each guide's parenthetical names `a
+blank at the start or end of a part of its path (an ASCII space too, as \040)`.
 
 **The `$'...'` sentences say a refusal offers no such spelling, and the installer's own commands do** (C1307; amends
 §16.236 C1001 and §16.239 C1072; docs only). §16.236 said "No escaped spelling is taken and no `$'...'` form offered",

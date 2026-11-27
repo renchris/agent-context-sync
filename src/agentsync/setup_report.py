@@ -147,7 +147,13 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar, cast
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlsplit
 
 from agentsync import __version__, gitops, net, report_cuts
-from agentsync.arm_local import _LIST_ESCAPED_RE, CallTimedOutError, call_with_timeout, list_escaped_char
+from agentsync.arm_local import (
+    _LIST_ESCAPED_RE,
+    LIST_ESCAPED_CHAR_RE,
+    CallTimedOutError,
+    call_with_timeout,
+    list_escaped_char,
+)
 from agentsync.config import (
     DEFAULT_EXCLUDES,
     INBOX_IGNORES,
@@ -6017,7 +6023,7 @@ def _ansi_c_body(value: str, letters: Mapping[str, str], *, ascii_only: bool = F
             out.append("\\" + letters[ch])
         elif ch in "'\\":
             out.append("\\" + ch)
-        elif _LIST_ESCAPED_RE.fullmatch(ch) or (ascii_only and not ch.isascii()):
+        elif LIST_ESCAPED_CHAR_RE.fullmatch(ch) or (ascii_only and not ch.isascii()):
             out.append("".join(f"\\{b:03o}" for b in ch.encode("utf-8")))
         else:
             out.append(ch)
@@ -6039,7 +6045,7 @@ def _bash32_body(value: str, letters: Mapping[str, str]) -> str:
         elif ch in "'\\":
             raw += ("\\" + ch).encode("ascii")
         elif ch.isascii():
-            escaped = _LIST_ESCAPED_RE.fullmatch(ch) is not None
+            escaped = LIST_ESCAPED_CHAR_RE.fullmatch(ch) is not None
             raw += f"\\{ord(ch):03o}".encode("ascii") if escaped else ch.encode("ascii")
         else:
             for b in ch.encode("utf-8", errors="surrogateescape"):
@@ -6055,9 +6061,11 @@ def folder_spellings(value: str) -> list[str]:
     round 41 C2035: ``\\t``, ``\\n`` (0x1E too), ``\\r``, and
     every other character :data:`_LIST_ESCAPED_RE` matches as a backslash and three octal digits per UTF-8
     byte, B13 round 40 C1802), which install.sh's ``source-local:`` line and doctor's ``source.<id>.listable``
-    details print, then the older list spelling, ``?`` for each such character (``\\n`` for 0x1E), kept so an
-    older install.out or friction log is still cut (C1802); then the body of the ``$'...'`` word doctor's fix
-    commands write (:data:`_DOCTOR_LETTERS`); then the bodies of the one install.sh's ``printf %q`` writes
+    details print, then round 47's (C3333), which escaped a non-ASCII blank wherever it stood (B13 round 48
+    ruling 220 escapes one only at a path part's edge), then the older list spelling, ``?`` for each such
+    character (``\\n`` for 0x1E), both kept so an older install.out or friction log is still cut (C1802);
+    then the body of the ``$'...'`` word doctor's fix commands write (:data:`_DOCTOR_LETTERS`); then the
+    bodies of the one install.sh's ``printf %q`` writes
     (:data:`_PRINTF_LETTERS`), each with ``\\E`` and then ``\\e`` for an ESC: under ``LC_ALL=C``, where every
     non-ASCII byte is octal, which matches any name; as bash 3.2 writes it under UTF-8, a non-ASCII character
     byte by byte (:func:`_bash32_body`, B13 round 39 C1670 with C1636, ruling 134), which matches a name with
@@ -6066,13 +6074,19 @@ def folder_spellings(value: str) -> list[str]:
     like ``Café`` with an ESC or a BEL as a later bash writes it under UTF-8, so it stays (C1649). A name
     whose UTF-8 word no body matches is still safe: install.sh writes a folder through ``%q`` only after
     ``--source-local ``, which the report cuts by structure, and every ``$'...'`` word left after the aliases
-    is cut whole to ``<path>`` (:data:`_ANSI_C_WORD_RE`, C1656). None for a name :data:`_LIST_ESCAPED_RE`
-    finds nothing in. ``safe_text``'s spelling, which drops a format character, is registered by
+    is cut whole to ``<path>`` (:data:`_ANSI_C_WORD_RE`, C1656). None for a name neither
+    :data:`_LIST_ESCAPED_RE` nor :data:`LIST_ESCAPED_CHAR_RE` finds anything in. ``safe_text``'s spelling,
+    which drops a format character, is registered by
     :func:`_alias_escaped` with its own guard."""
-    if not _LIST_ESCAPED_RE.search(value):
+    # B13 round 48 ruling 220 (C3419, C3527): step 1's list escapes a blank only at a path part's edge, but
+    # round 47's list (C3333) escaped every non-ASCII blank anywhere and the pre-C1802 one wrote `?` for each
+    # character, so an older install.out or friction log keeps a mid-name U+00A0 or U+3000 escaped: those
+    # spellings are built per character (LIST_ESCAPED_CHAR_RE), the current one by run (_LIST_ESCAPED_RE)
+    if not (_LIST_ESCAPED_RE.search(value) or LIST_ESCAPED_CHAR_RE.search(value)):
         return []
     listed = _LIST_ESCAPED_RE.sub(list_escaped_char, value)
-    listed_old = _LIST_ESCAPED_RE.sub(lambda m: _LIST_ESCAPES_OLD.get(m.group(), "?"), value)
+    listed_47 = LIST_ESCAPED_CHAR_RE.sub(list_escaped_char, value)
+    listed_old = LIST_ESCAPED_CHAR_RE.sub(lambda m: _LIST_ESCAPES_OLD.get(m.group(), "?"), value)
     escs = ("E", "e")
     bodies = [
         _ansi_c_body(value, _DOCTOR_LETTERS),
@@ -6080,7 +6094,7 @@ def folder_spellings(value: str) -> list[str]:
         *(_bash32_body(value, {**_PRINTF_LETTERS, "\x1b": esc}) for esc in escs),
         *(_ansi_c_body(value, {**_PRINTF_LETTERS, "\x1b": esc}) for esc in escs),
     ]
-    return list(dict.fromkeys([listed, listed_old, *bodies]))
+    return list(dict.fromkeys([listed, listed_47, listed_old, *bodies]))
 
 
 _LIST_ESCAPES_OLD = {"\n": "\\n", "\x1e": "\\n", "\t": "\\t", "\r": "\\r"}
