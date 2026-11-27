@@ -1,16 +1,16 @@
-## Common brief for every B13 round 47 lane (agent-context-sync)
+## Common brief for every B13 round 48 lane (agent-context-sync)
 
 Read `~/.cache/agentsync-bring-back/b13/lanes/COMMON.md` first: its rules (including the ones on `git stash`
 and the words check-names flags), method, land and finish steps all apply unchanged. This file states only what
-differs in round 47.
+differs in round 48.
 
-Context: plan `docs/plans/bring-back-ocr.md`, sections "B13 round 46 landed" and "B13 round 47" (the v43 rehearsal,
+Context: plan `docs/plans/bring-back-ocr.md`, sections "B13 round 47 landed" and "B13 round 48" (the v44 rehearsal,
 cross-lane review and harvest whose confirmed findings you build). Main is at or after the commit that reserved
-CONTRACTS §16.290 to §16.294.
+CONTRACTS §16.295 to §16.299.
 
-Specs: each item is `~/.cache/agentsync-bring-back/b13/round47/items/<id>.md`. It holds the finder's evidence and
+Specs: each item is `~/.cache/agentsync-bring-back/b13/round48/items/<id>.md`. It holds the finder's evidence and
 fix, then an adversarial verifier's evidence and corrected fix. Build the verifier's corrected fix. The finder's
-full report is the file named under "Source" (`~/.cache/agentsync-bring-back/b13/round47/*.md`): read the part
+full report is the file named under "Source" (`~/.cache/agentsync-bring-back/b13/round48/*.md`): read the part
 about your item. Items that describe one defect from several finders are built once; say so. Round 23's:
 
 THE OWNERSHIP RULE (lead ruling, round 21; every lane builds to it): a state file or folder THIS account owns but
@@ -2594,7 +2594,7 @@ same commit moves the version and its pins, as this ruling's did (round 47, CONT
 route the attempt's own runs took, a v41 attempt reading `step 3 asks whether to add a folder (not logged)` (lane RA's
 fbb03dfe4, CONTRACTS §16.290).
 
-ROUND 47 RULINGS (lead; every lane builds to them; the prompt goes to v44 in lane D's one commit, ruling 216):
+ROUND 47 RULINGS (lead; still binding, as extended below):
 (206) The kept inbox's link is resolved alike in both reports and never raises, and every configured folder under a
 target that is kept is cut, completing rulings 199 and 204 (privacy; data integrity: lanes RA and RB in one joint run
 with ruling 207; C3210 with C3284, C3245, C3242, C3324, and C3300's report half). Both reports take the target as the
@@ -2800,135 +2800,302 @@ every pin, behavior tests for each new branch (a paused-only config, a refused a
 argparse errors for sync and curate, a folder named with `$`, a cut list), §16.294's dated lines and one beside ruling
 205; CUT_OFF_TOLD stays. Round 48 rehearses v44 with v43's block (ea3d2d0d1) as scenario C's first old copy.
 
-Clusters: the report (a checkout outside ~/src/agent-context-sync printed as `checkout <path>` with its `(editable)`,
-commit and origin facts and no byte in U+0080 to U+009F, lane RB's shell line reading `checkout <path> (install.sh ran
-from it; no checkout at ~/src/agent-context-sync)` with the origin from `$repo`'s config files, never `$repo` itself,
-C3208; one _env_log resolver for AGENTSYNC_FRICTION_LOG and AGENTSYNC_SETUP_LOG returning the raw value unexpanded on a
-`~name`, registered refused and named as a log not read, setup-report exiting 0 with its --out file, every other reader
-taking the Report's path, AGENTSYNC_CONFIG and --config kept at exit 2, lane B's cli.py:4151 hunk in its own commit,
-C3292; the C3008 row built from doctor._prose_path and _shell_path under the test HOME, the escaped form pinned and the
-row counts equal, C3315; the C-form row asserting the shell writer ran and each report's own args= row, C3330; lane RA);
-the shell installer (one LC_ALL=C awk reader for non_inbox_sources and held_sources_clause, a trailing CR stripped,
-bare, double- and single-quoted headers and keys anchored at the end, values trimmed as str.strip trims, and the header
-count at :7331 and source_excludes_line on the same header and key patterns, each count equal to load_config's under
-TOOL_PY set and empty, C3305 with C3323 and C3249; a config this account cannot reach reading `(not checked: this
-account cannot reach it: Permission denied)` and `- loads: not checked (this account cannot reach it)`, stat's message
-read outside the pipe, setup_report._configuration's loads line the same, C3335; step 2's own `nothing to draft yet`
-NEXT naming add-source rewritten to its `--source-local` form under EXIT_RC 0 and never under --no-folder, loop.py's
-words unchanged, the prompt's step 3 rule in lane D's v44, C3206, makes worse True; the :14775 comment naming C3003's
-rewrite, C3282 with C3309; lane RB); the CLI (the settle-window note's `note: ` head dropped so it prints `alarm: 1
-inbox item named by materialise ...`, kept in acc.alarms, only row-backed named paths counted so a rowless new file gets
-_forced_ids' one line, the two CONTRACTS quotes moving in the same commit, C3214 with C3229 and C3259; the
-corrupt-heartbeat warnings in lock.py and cycle.py naming the path once, C3216; the sentinel row giving _parent_fix only
-when a folder above refuses a search and otherwise naming the sentinel and `chmod -N`, C3252, makes worse True;
-_stub_again reading its page once through a _page_bytes_intact helper _pages_intact shares, an OSError holding the key
-for a retry, C3314; one config.read_config_bytes, an O_NONBLOCK and O_CLOEXEC open then fstat S_ISREG, links followed,
-for load_config, append_to_config, the exclude editor, governance.load_governance and policy's _policy_from_file, a FIFO
-refused as not a file at exit 78 and a folder keeping its words, lane RA's raw readers at 6145, 6149 and 6940 and lane
-RB's write_report `-p` guard and C3019 test without its FIFO return in their own commits, each test under its own
-timeout, C3251 with C3254, C3290 and C3307; lane B); conversion (one noun per family from _FAMILY_NOUN in both
-directions, Visio's expected noun kept apart, FAMILY_MISMATCH_RE's expected side `.+` so cached stubs still match,
-pptx's version unmoved, C3230; the family re-read's one-sync wait for a row the walk queued documented in
-_reread_family_stubs, C3231; the speech test's git-config case asserted before the shell's bundle is set, C3319; the
-banner constant's docstring naming the two older page kinds, C3322; lane E); docs and tooling (§16.289's dry run ending
-exit 0 on its own NEXT in a dated line and the C3102 docstring, EXIT_RC untouched, C3276; §16.286's q_word claim
-narrowed to the %q words but debug_path's, C3277; the C3004 dated lines in date order with the all-paused case, C3278;
-dated lines giving the shell's CloudStorage listing to round 44's C2669, C3279; setup-feedback.md section 2's two
-Private-only causes and its `~<user>` row, the redaction-facts line the agentsync report's alone, the cut uncounted,
-each quoted line held to its source literal by a test, C3281 with C3293 and C3250; dated lines under rulings 130 and 194
-naming ruling 204's C3008 and C3044, C3255; ci.yml's round 46 jobs note (006e48a6 to 42ca57e0, 80:39 to 104:04,
-fbbc2d07's pytest 103:20 at 9904 tests, cb4cc114's 26:28 runner wait) with timeout-minutes 125, CLAUDE.md's and
-COMMON.md's head 105 with round 46's bracket, test_convert_recording.py:57's docstring, §16.144 W70's chain and every
-pin in one commit, numbers over a test split, C3286; lane D). Lead: round 48's kit (step2.sh's two trace rows from the
-psroot log's last line, C3232; statusread.sh refusing a wrapper whose home differs from its home argument, C3233;
-kit/run.sh logging a /dev/null stdout or stderr to conduct.log and running on, C3297), the brief (P205_B and its kit
-check matched to v43's step 2, C3219; every kit call to logs/<name>.out 2>&1 and its exit echoed, C3220; a resumed
-return writing nothing, checks printed to the tool, C3222; ops/materialise* as the bare-glob rule's second example,
-C3234), the workflow (args.done skipping finished slots, the audit naming them, C3235; the resume comment saying a
-resume replays only the longest unchanged prefix, the rehearsals last in finders, a fresh run for a few slots, C3295,
-makes worse True), the harvest (no new RULES prose, the C3066 tool-result scan recording a C2885 regression with the
-operands lost, C3296, makes worse True; section 5's counts and a scan that strips quoted payloads, C3297), and the
-record (round 45's worktrees removed in the operator checkout and each round's own run logged, C3294; the CLOSES line
-covering every lead-written turn end but the usage-limit notice and the recycle line, C3298; a correction line in
-round29/lead-notes.md, a resume counted as a launch after `trunk.sh --launch`, times to the second, C3299; Codex-only
-review until backlog 8ed9dae0fbc0's allow rule, Gemini not run for a ninth round, and decision c0777e12a523 named in
-every close). Earlier rounds are in COMMON5.md to COMMON45.md.
+ROUND 48 RULINGS (lead; every lane builds to them; the prompt goes to v45 in lane D's one commit, ruling 231):
+(217) A name is cut in every spelling either report can print, whatever its blanks, its quote, its account or its state,
+completing ruling 207 (privacy; data integrity: lanes RA and RB in one joint run; C3405, C3402, C3406, C3435, C3439,
+C3471, C3526). Ruling 133's separator table gains the non-line-breaking Unicode spaces (U+00A0, U+1680, U+2000-U+200A,
+U+202F, U+205F, U+3000; never U+0085, U+2028 or U+2029) in report_cuts, and install.sh's word-run becomes an ERE
+alternation generated from that block for seprun's consumers, fuzzy_key and fuzzy_flag (C3405). A refused name stays out
+of Redactor._logins and out of the shell's `<user>` pair before the awk pass, so `~name/...` and `/Users/name/...` are
+cut whole and the bare head only at a path end, a non-ASCII head by `_home_rest` (C3402, makes worse True for cutting
+the head only where no `/` follows); one report_cuts.TILDE_QUANTITY_WORDS spares `~twenty` and its kin from the
+bare-login cut in both reports, held equal by a test (C3406, makes worse True for cutting registered logins only). Lane
+RB alone: qend() closes a quote only at an unescaped one at both quoted call sites (C3435); config_path_values trims
+leading PY_SPACE_ERE blanks, never trailing (C3439); the vanished roots come from the manifest's scope_root rows under
+MANIFEST_RO_PY's read-only rule, a -wal with frames and no -shm never read (C3471); a listed folder's escaped aliases
+are added after every name, an equal spelling keeping the earlier folder's number (C3526). A vanished project root
+registers fuzzily in both reports as a configured one does, a joined name and a value holding `/` literal, reversing
+ruling 207's carve-out by a dated line (C3471). Lane RA builds its halves and the shared rows (both locales, shell ==
+python) first and sends lane RB its branch sha; lane RB lands both halves in one scripts/ship-land.sh run.
+(218) The shell side prints no value it could not register and says what it could not read (privacy; data integrity:
+lane RB; C3401, C3470, C3509, C3460). While c0777e12a523 is open, fallback_redaction goes private only, with one
+`Private only:` line, when a listed row that no CloudStorage folder spells holds a list escape (`\` and three octal
+digits, `\t`, `\n` or `\r`), never while the folder is on disk; the ruling-142 strict xfail gains names whose blank sits
+at a part's edge, the blanks ruling 220 still escapes, so it stays XFAIL (C3401). One checkout_shown names only
+~/src/agent-context-sync and every other checkout in path-free words, in unread_reason, commit_shown, the
+INSTALLER_COMMIT branch and --version, the `unknown (` prefix kept (C3470). Every print of --launcher's path, and the
+`source:` line, goes through q_word (C3509). src_q strips a one-line `"""` or `'''` pair, a value opened and not closed
+on its line sets src_unread so its callers say could not read, and CONTRACTS:47881 names that subset exactly (C3460).
+Lane RA's both-reports row checks the agentsync report beside C3470's.
+(219) C2060 is still gated on the operator under class C decision c0777e12a523, and nothing this round decodes a listed
+name in install.sh (privacy; data integrity: lane RB GATED; C3474). Rulings 150, 161, 174, 190, 200 and 208 stand. Lane
+RB reads `cc-decide list --open` for c0777e12a523 at start and right before the scripts/ship-land.sh call of its last
+land, never after that land has started, and logs each read's time in its note (C3474); only on "Allow" it builds the
+port at C2667's three porting points (round44/items/C2667.md), mirroring C3082, C3114 with C3036 and C3288 and keeping
+ruling 217's alias order (C3526), then drops the strict xfail, C3401's private-only line and test_deploy_pack.py's pin
+of the reason; a second refusal stops it, and it messages the lead. Otherwise the strict xfail keeps its one-line reason
+and §16.296 says so. C3401's private-only line, C3405's separators, ruling 220's edge rule and marks (C3419, C3527,
+C3426, C3506) and C3526's alias order decode no listed name and are not that change; no lane writes an equivalent
+install.sh change another way, and a refused command is never re-run or reworded. The lead adds a dated line to the
+packet's receipt: its scope is every listed name holding a control, bidi or zero-width character or a blank at a part's
+edge, and an Allow's port keeps C3526's order.
+(220) Step 1's list escapes only what a trim or the eye can drop, and every mark it prints says what step 2 does with
+that row (lane RB, with lane E's twin and lane D's v45; turn C3419, C3527, C3426, C3506 data integrity). escd, esc and
+arm_local._LIST_ESCAPED_RE escape a blank, ASCII as `\040` or not, only at a path part's start or end, every blank of
+that run, and a control, bidi or zero-width character anywhere: one rule in lane RB's commit, its Python twin held by
+the C3333 twin test, a mid-name blank listed plain again (C3419, C3527). Such a row keeps ESCAPED_MARK, and
+--source-local's refusals stay as they are, a row pasted as shown or a folder with a look-alike sibling (which now
+catches `Project\040` beside `Project `); the guides and v45 say exactly that, never `refuses both` (C3419, C3527's
+option a). An escaped paused or retired row takes the kept escaped mark, no twin mark, its JSON mark alike and the held
+refusal when pasted (C3426). A row inside a paused or retired folder takes `[inside a paused folder]` or `[inside a
+retired folder]`, ranked below [synced], [inside a synced folder], [paused] and [retired] and above [contains a synced
+folder], counted in heldn and refused when pasted, every mark reader (the sed and awk lists, the paste refusal, --json,
+setup_report._LIST_MARKS and listed_folder_lines) in the same commit (C3506). Lane RB sends lane D the marks word for
+word and lands them before v45.
+(221) The held-folder clause and install.sh's own --source-local phrases survive every cut and every list branch,
+completing ruling 214 (lanes RA and RB; C3499, C3434, C3504, C3441). report_cuts.SOURCE_LOCAL_KEPT holds `per folder)`
+and `leaves it so:`, the phrase-end check kept, install.sh's CUT_SOURCE_LOCAL_KEPT regenerated in lane RA's commit, and
+a contract test holds every `--source-local <word>` clause install.sh writes to a kept row or a placeholder (C3499,
+makes worse True for cutting path-shaped words only or skipping by first word). Lane RB's typed_note_cut reads the kept
+rows through ENVIRON, empty ones skipped, and skips one at a word boundary in qheads' non-adjacent branch only, held to
+setup_report._quoted_heads_cut by one test in both locales (C3434). The Loop line keeps a held folder's path whole and
+home-relative, cut only by the report's normal pass as the install.out excerpt is (C3504). list_folders adds $heldtail
+in its no-provider, empty, denied, asking and missing branches, the exit-0 clause order unchanged (C3441).
+(222) A sync that failed after the land gate passed reads as failed, never as blocked or landed, in every output and in
+the next commit (lanes B and RB; C3447 with C3416, C3409, C3444, C3455 with C3465). CycleReport gains cycle_failed, set
+where the CYCLE finding is appended, never inferred from a blocking finding (C3416); the run line reads `commit none
+(the cycle failed)` and sync --json's outcome `failed` with its findings, the enum `committed | blocked | failed |
+unchanged`, accept-deletions alike (C3447 with C3416). One loop.failed_cycle_step gives STATE.md's Next, the screen's
+NEXT and --json's next `this sync failed before its commit landed (the BLOCKING CYCLE line <where>): <message>; once
+that is fixed, run ~/.local/bin/agentsync sync`, and with ruling 223's held_lines it is one choice: blocked takes the
+gate step, failed this one, otherwise the loop's (C3409). A gate block is stored as a `land_gate_blocked: 1` key in the
+run's counts, no column, and the next commit and cli group carried runs by cause, `blocked` or `failed`, the docstrings
+that equate failed with blocked corrected (C3444). install.sh sets BLOCKED_LINE only when the run line reads `commit
+none (blocked by the land gate)` and skips CYCLE lines (C3455 with C3465). Lane B sends lane RB the run-line words
+first.
+(223) A sync the land gate blocked gives one NEXT in its text, its JSON, STATE.md and status, each naming the fix's
+owner, and the prompt lets the agent run that fix once (lanes B, RB and D; turn C3530, C3421 and C3448 data integrity,
+C3446 with C3410, C3531 with C3457, C3539, C3422). One loop.held_lines puts land_gate_step ahead of every loop rule in
+all three sync outputs, the WAITING ON YOU and note lines kept; the JSON step names `in this document's findings` and is
+built by hand, argv `['/bin/sh', '-c', <command>]` with the sync as a second step, the text NEXT unchanged byte for byte
+(C3446 with C3410, makes worse True for _step's argv). The block is kept in a manifest meta row (run, count, first
+finding), cleared by the next run that commits or ends unblocked; while it stands status FAILs `last_run.land_gate`, not
+install-blocking, exit 1, its fix land_gate_step's words for the last sync with `where` naming STATE.md's `## Lint
+findings` (C3531 with C3457, over C3422's rewording). The checkout restore is the agent's step and says so, `(the
+agent's step: it puts back agentsync's own page and discards only the hand edit)`, through `git --literal-pathspecs`; a
+finding with no command in backticks says to show the BLOCKING lines and go to the report (C3421, C3448). install.sh's
+NEXT reads `(1 blocking finding, ...)` or `(<n> blocking findings, the BLOCKING lines above); the first: <path>: <fix>;
+then re-run: ...`, as loop's plural() counts (C3539). v45 lets the agent run the gate's chmod 600 and its checkout once
+per page (turn C3530, C3421; ruling 231).
+(224) The commit that lands carried changes counts and names them right, and a mirror page agentsync owns is put back,
+never deleted in silence (lane B; C3534 data integrity, C3411, C3443, C3445, C3536, C3540). Before the land gate, a
+mirror page deleted in the worktree that no change of the run accounts for (deletes, renames, notices, orphans,
+tombstones, retention, purge) is restored from HEAD by gitops.restore_from_head, with a WARNING and a commit-body note
+per source, and commit_cycle refuses a staged unaccounted mirror deletion, the subject counting every staged one (C3534,
+over blocking or a forced fetch). _carry_crashed_changes clears only the crashed run's rows, through a new
+clear_run_changes_of (C3411); the subject nets the kept blocked rows and this run's changes against HEAD in a
+_commit_view, the report and CHANGELOG per run as now (C3443); a run set kept beside _net_changes names every run a
+chain passes through (C3445). _tighten_own_paths walks mirror/ under _OWN_WALK, so a 644 page is 600 after any sync and
+status's fix names the sync, the C3226 paragraph amended by a dated line (C3536). A hand commit's trailer keeps moving
+the tag and the numbering, and the console names that commit and trailer, the E9 path left at DEBUG (C3540, makes worse
+True for changing either rule).
+(225) Every reader of the kept inbox reads it once, bounded, and words its note from the live entry, and no command
+writes over a config link it cannot read (lane B; C3469 data integrity, C3414 with C3442, C3415, C3510, C3514).
+config.kept_inbox_read runs canonical_source_root and inbox_entry once under bounded_inbox_read, cached per process with
+a timeout cached as unread, and status_line, inbox_state, live_inbox, kept_inbox_entry, loop._inbox_root_not_a_folder
+and doctor's _check_local_source and heartbeat reads take it, a timeout printing `inbox ?` with no WARNING (C3414 with
+C3442). status_line matches the kept folder first and reads its entry only when a live inbox source is on it (C3415). A
+root-unlisted inbox's partial note is gated by _inbox_root_readable_again's live listing (C3510, makes worse True for a
+stat), and a root the account cannot read gets its own note naming the typed entry and its strerror and pointing at the
+listable line, none once a folder is back (C3514). add-source writes its template only when lstat finds nothing at the
+name, and load_config tells a dangling link `a link to <target>, which is missing; restore its target or move the link
+aside`, never add-source (C3469, makes worse True for the not-found advice).
+(226) A fix only the person can make is the person's in doctor, status, step 2 and the report alike, keyed on disk, and
+no fix names a step that stops on the same entry (lanes B, RA, RB and E; C3545 with C3449, C3529, C3466, C3513, C3515,
+C3511, C3479's doctor half). doctor's docs_repo.git fixes open `the person `: `moves <repo> aside, keeping a copy`, and
+for a path that cannot be made, by its anchor, `moves <anchor> aside, keeping a copy, or sets [agentsync] docs_repo to
+another path` for a file, `runs chmod u+wx <anchor>` for a folder this account owns, otherwise `sets [agentsync]
+docs_repo to a folder this account can write`, never mkdir -p and never delete (C3545 with C3449, C3479). PERSONS_KINDS
+gains `a docs-repo path that is not a folder or cannot be created`, install.sh's PERSONS_FAILS and
+setup_report._PERSONS_KINDS_COPY moving in that one lane B commit; _check_permissions and _time_machine_checks give `not
+checked: the docs repo path is not a folder (see docs_repo.git)` (C3545, C3529). A kept inbox that is not a folder gets
+an [ok] volume row pointing at the listable line (C3515), and a second inbox source that loops gets the not-a-folder
+words and the person's fix, lane E's _walk_scan branch alike, a link to a real folder keeping its symlink alarm (C3511).
+Lane RA's _sort_doctor files those FAILs in the person's buckets by its own disk read (C3529, C3513). Lane RB's
+docs_not_a_folder keeps its inline probe and adds a dangling link at or above the path (C3466, makes worse True for
+calling docs_repo_state from an older build); lane B's docs_repo_state calls a dangling ancestor not a folder and
+ensure_repo raises a PublishError naming it.
+(227) The report and status credit a route only from the attempt's own runs, completing ruling 213 (lanes RA, B, RB and
+D; C3437 with C3496 and C3512, C3508, C3438 with C3467 and C3503, C3497, C3498, C3546, C3505, C3424, C3423). _summary
+and _issue_link's fallback pass not_live through one helper _attempt_outcome shares, and the Items list names
+NO_LIVE_FOLDER_WHY (C3437 with C3496 and C3512); compute_outcome's no-live-folder branch takes any last run without
+--no-folder (C3508). _loop_run reads the run's own record first, lane RB's `next=no-folder` end-line key and then its
+config step's `kept=0 added=0`, and today's not_live only for the latest attempt's last run that carries neither (C3438
+with C3467 and C3503, over today's config for every run). The unfinished-none branch runs above the doctor-FAIL guard, a
+FAIL-led or sign-in NEXT kept (C3497), and a completed none never reads `may still be waiting` (C3498). next_step's
+skill rule yields to a completed none (C3546). loop.NO_FOLDER_CHOSEN_LOOP_NEXT keeps its words and v45 says to rerun
+step 2 for a folder named later (C3505, makes worse True for loop's words). Lane D's guides take lane RA's final words
+(C3424, C3423).
+(228) The report reads only the logs it can name, through one resolver and one regular-file reader (lanes RA, RB and B;
+C3436 with C3403, C3468, C3404, C3408). With a refused log every fact reader names the refusal and reads nothing,
+`Install log not read: <why>.`, `(install log not read)` and an outcome reason naming the unread log, while the
+redactor's cut-only _logged_cloud_folders read stays, commented (C3436 with C3403, makes worse True for gating the
+redactor). One paths helper in lane B's commit trims CONFIG_BLANKS, expands `~` and `~/` and refuses `~name`;
+setup_report._env_log and loop._person_chose_no_folder call it, and lane RB's SETUP_LOG and friction_file trim the same
+set (C3468). install_log gains one O_NONBLOCK reader that refuses a non-regular file by fstat, for every read of either
+log and the files beside them, the report naming it `not a regular file (not read)` (C3404). default_friction_path goes,
+CONTRACTS' signature becoming a dated SUPERSEDED comment (C3408).
+(229) A message's every text part reaches its page as text (data integrity: lane E; C3533, C3532). The body is collected
+from the MIME tree: one child of a multipart/alternative, plain first, and every non-attachment child of a mixed or
+related part in order, each part after the first under `### Part <n> (<type>)`, any other text leaf a row in Attachments
+(C3533). Every return of _decode_part replaces `[\x00-\x08\x0b\x0e-\x1f\x7f]` (C3532). eml's _EMITTER_VERSION moves
+once, to 1.1.5, for both, msg's composed versions following. Rows: two text/plain parts in mixed, plain and html
+alternatives rendered once, an alternative then a plain part, the C3268 part and a charset=utf-16 part with no control
+byte left, and git's numstat counting lines.
+(230) A contract or COMMON.md line that quotes another round's words takes a dated line beside it, and a §15 mirror
+moves word for word with its source (lanes D and E; ruling 186 stands; C3425 with C3412 and C3461, C3452 with C3462,
+C3417, C3431, C3520, C3479's root_probe line, C3453, C3454, C3418). The C3278 lines in Y43, A84 and §16.294 keep their
+words and take `Amended <date>, §16.292 C3216:` lines quoting `heartbeat is corrupt (<path>: ...); the next sync of a
+live source rewrites it`, the test's words, dates and holders moved with them and the stale prefix refused after the new
+line (C3425 over C3412's and C3461's edit in place). The C3329 lines (C3452 with C3462), §16.293's pptx paragraph and
+its four copies, pptx's version unmoved (C3417), ruling 215's line for 5262647cd (C3431, makes worse True for a
+rewrite), and ruling 210's C3211 alarm and shown_root (C3520, C3479) take dated lines. §15's policy stub takes
+policy.py's sentence (C3453), text.py's NUL sentence and its §15 copy move together in lane E's commit, the decode-order
+phrase untouched (C3454), and _decode_text's docstring says a U+0000 opening may read as UTF-32 (C3418).
+(231) The setup prompt goes to v45 in lane D's one commit, as ruling 216 took it to v44 (lane D, after lanes RB and B
+land the words it quotes; turn C3530, the prompt halves of turn C3419, C3426, C3506 and C3421, C3420 with C3456 and
+C3464, C3433, C3500, C3505, C3458, C3428 with C3463). Step 1 asks no folder question with no unmarked row left only when
+the list printed no `already synced on this Mac:` line, telling a `(N more)` line first as folders I can name by full
+path, a decline being no none; a set-up Mac follows the first exception to step 2 with no --source-local; a
+rename-marked row still lets me ask to rename (C3420, C3456, C3464). A row escaped as ruling 220 says cannot be pasted
+as shown, and the held and inside-held marks are never offered, an escaped held row under the paused rule (C3419, C3426,
+C3506). When I chose at least one folder and each came back `already configured ... paused` or `retired`, step 1's last
+sentences and step 2's no-folder rule send you to step 3's report, never --no-folder (C3433, C3500, makes worse True for
+a bare "every"). After a none, a folder I name later this session reruns step 2, never its add-source (C3505). Step 2
+and step 3 run the land gate's chmod 600 of one page and its checkout once per page, then the same command again, a
+repeat or a NEXT with no command going to the report (C3530, C3421). The Finish names a failed step 2 outside the none,
+with its NEXT: or usage line (C3458), and `loads: not checked` from either report (C3428 with C3463). The same commit
+moves the version line and digest, `prompt v45` in --log-start, SETUP_PROMPT_COMPAT, setup_report.PROMPT_VERSION with
+its docstring list and setup_report.py's v44 mentions, the issue form, setup-feedback.md's version lines and the
+old-copy refusal list (v44 joins), a new K row, every pin, behavior tests for each new branch, §16.299's dated lines and
+one beside ruling 216; CUT_OFF_TOLD stays. Round 49 rehearses v45 with v44's block (5c2398fda) as scenario C's first old
+copy.
+
+Clusters: the report (C3473's loop row whose first hop's own folder is a link, failing without ae8f777c7 and kept out of
+`_C3245_ROWS`, and C3288's rows written as literals, each line's one `<folder-N>` held to its own listed row's; C3535's
+`fetch of <path> failed` keeping the cycle's fixed words before the whole-segment fallback, the next segment's path
+still cut; lane RA); the shell installer (every `--source-local` placeholder single-quoted, `'<folder>'`, in the
+template NEXTs and json_step's display string, setup_report's NO_FOLDER_* constants and every pin in the same commit,
+the concrete-folder form, cycle's shown_arg and DRAFT_ADD_FROM unchanged, a whole-tree test refusing `--source-local "<`
+and the fallback redactor keeping the new form as a placeholder, C3544 with C3501, C3521, C3525 and C3538; the sync's
+per-item `error:` lines printed after the first sync's converted line, SYNC_SUMMARY_RE untouched, C3537; the legend's
+fuzzy words in place of `as a whole word, in any letter case`, C3479; lane RB); the CLI (a converter-cache serve counted
+from result.from_cache in a `cache_served` counts key with no schema change, record_cache still run for every keyed
+result and a stored conversion overwriting an uncached rejection's row, the report reading the key and an earlier
+build's runs as before, C3450, makes worse True; one in-process status and sync test over a moved-aside folder for
+C3333's two-spelling error, nothing published from its sibling, C3475, makes worse True; exclude-empty worded by what
+the last sync stored and by the stop pointer, a Q71 dated line, C3547, makes worse True; lane B); conversion (rulings
+229 and 230 hold all four of lane E's ids, with C3511's _walk_scan branch built from lane B's words and C3419's twin
+reviewed; lane E); docs and tooling (docs/deploy/README.md's NEXT sentence naming its three exceptions, C3206's `nothing
+to draft yet` swap among them, and the [paused] and [retired] marks, README.md:1196's parenthesis, the sentence held to
+DRAFT_ADD_FROM and its replacement, C3427 with C3459; setup-feedback.md's inbox row taking `a file or a link that does
+not lead to a folder`, pinned beside the two READMEs, C3429 with C3478; the `<path>` row and the uncounted paragraph
+naming C3224's `~<user>/<path>` cut in lane RA's final words, C3430; a lane deleting only its own proven-merged
+throwaway b13/r<n>-* branches, each noted with its old sha and proof, a refused delete never re-issued in another form,
+C3491; lane D). Lead: round 49's kit (names-all.sh stripping the legend's `as a /Users/ path is` phrase before it
+re-matches, C3541 with C3549; kitcheck failing an act opened after the end sweep or final logs older than an act's end,
+C3543; clonepin's loop in /bin/bash and fixreq.sh's form for a drafting third session, C3550; one front-matter strip
+with a body-line check and every log read through the kit, C3542), the brief (a redirect target and a sibling only
+inside the slot's own mktemp folder, never `$S/..`, and no rm, C3484; the lead's re-briefs under the round folder and
+the scratch rule over every file the lead writes, C3488; a SIGKILLed loop sync logged as a step 3 error and gone to the
+report, its stale lock named, C3522; the fix-request heading from a date -u read just before the Write, C3523; the C3211
+quote corrected in round49-workflow.js, C3520's kit half), the workflow (the Gemini slots and AGY prefix back only once
+the operator's agy-review.sh allow rule exists, backlog 8ed9dae0fbc0, C3493), the harvest (the six rehearsal reports and
+conduct.log read, and only the not-built reasons whose cited files changed re-checked, C3495; a bare-glob grep loss
+recorded as a seventh C2885 regression, recovered, no new rule text, C3485; fifteen ci jobs, not sixteen, C3480), and
+the record (a dated correction in round29/lead-notes.md making the Workflow tool_use timestamp the launch time, C3486; a
+launch read before every args.head call, local git log in place of gh api compare and poll.sh's one gh run list with
+attempt and updatedAt, C3487, makes worse True; remove-worktrees.sh echoing each lane-noted deletion and the harvest's
+counts corrected, C3491's kit half; Codex-only review until backlog 8ed9dae0fbc0's allow rule, Gemini not run for a
+tenth round, and decision c0777e12a523 named in every close). Earlier rounds are in COMMON5.md to COMMON46.md.
 
 Some sit in two lanes: the lane that owns the primary file builds it, and the other cites the sha. In
 `scripts/install.sh` and its tests (test_install_oneshot.py, test_install_help.py, test_install_bounds.py,
 test_install_next_line.py, test_install_list.py, test_install_json.py, test_install_signals.py) and test_launcher.py's
-install.sh pins, lane RB owns everything this round, the other lanes' install.sh halves included (rulings 206 and 207's
-shell halves, C3208's install-source line, C3209's shell-fallback outcome if it scores a bare rc 0 run alike, C3203's
-recut row if the recut carries the span rule, C3218's note branch, C3227's BLOCKING quote, C3241's :14780 pass-through,
-C3251's write_report `-p` guard and the C3019 test, C3333's escd and esc marks, C3336's depth-1 cut), except
-SETUP_PROMPT_COMPAT's line and the version pins, which lane D's v44 commit moves. In `setup_report.py`,
-`report_cuts.py`, `tests/test_setup_report.py` and `tests/test_report_redaction.py`, lane RA owns everything, the other
-lanes' report halves included (C3215's `not a directory` reader, C3238's docs repo line, C3241's install-log parser
-module, C3251's raw readers, C3300's fallback, C3335's loads line), except the shell halves and both-reports rows lane
-RB's items need (rulings 206 and 207's shared rows), in lane RB's commits, and PROMPT_VERSION, its docstring list and
-setup_report.py's v43 mentions, which lane D's v44 commit moves. `cli.py`, `cycle.py` and `publish.py` outside lane E's
-parts, `loop.py`, `gitops.py`, `paths.py`, `config.py` (but its max_page_bytes comment), `governance.py`, ops/lock.py,
-doctor's inbox, listable, volume, sentinel, heartbeat and docs-repo rows, arm_local.py's _walk_scan root branches and
-LocalArm's shown_root, and policy.py's _policy_from_file read are lane B's; C3292's cli.py:4151 hunk rides lane B's
-commit from lane RA's resolver. Lane E owns convert/, policy.py but that read (container_reason, the module doc, the
-banner docstring), cycle.py's family re-read, its container check (_CONTAINER_REASONS, _container_moved) and the
-converted_unreadable docstring (C3265); lane B's cycle.py work (_scan_and_classify's shown_root probe and withheld pass,
-_withheld_lines, _commit, the run readers, _stub_again, the heartbeat warning) touches none of those functions, and each
-lane rebases on the other's land. ci.yml, CLAUDE.md, scripts/ship-land.sh and tests/test_convert_recording.py:57's
-docstring are lane D's (C3286). Only lane D touches docs/deploy, the README and .github, each line written once from the
-lanes' final words, except a doc line a test holds to a lane's own words, which moves in that lane's commit. Only lane D
-touches the README prompt block, its version and its digest (ruling 216). Who sends first: lane RA sends lane RB its
-branch sha with the Python halves and shared rows of rulings 206 and 207, and lane RB lands both halves in one
-scripts/ship-land.sh run on that branch, which never waits on ruling 208; lane RA lands C3241's parser module before
-lane B's rule 2; lane B lands C3238 before lane RB's C3236; lane B sends lanes RA, RB and D ruling 210's phrase, alarm
-and note words and lanes RA and RB the FIFO helper's name; lane RB sends lane D C3332's mark words and lands C3332,
-C3206 and C3336's installer half before lane D's v44 commit; lane RA sends lane D ruling 213's expected-turns words;
-lane E sends lane D its final words. A CONTRACTS line that quotes words a lane changes, and a test that pins them, move
-in that lane's own commit as a dated line (ruling 186), and lane D cites the sha. COMMON.md's rulings 198 to 205 stay as
-written; rulings 206 to 216 amend them, each by its CONTRACTS dated line, and lane D adds dated lines beside ruling 199
-(rulings 206 and 207), beside ruling 202 (ruling 215), beside ruling 204 (ruling 210), beside ruling 205 (rulings 213
-and 216) and beside rulings 130 and 194 (C3255). The lead reserves §16.290 to §16.294 on origin/main before any lane
-starts: RA §16.290, RB §16.291, B §16.292, E §16.293, D §16.294. Lanes land with plain `scripts/ship-land.sh`, the
-repo's default lock; no lane names a lock of its own, and no lane runs git fetch, pull or remote update, in the operator
-checkout or any worktree (C2486, C2874): trunk reads go through round47/tools/trunk.sh. docs/plans and the kit are the
-lead's.
+install.sh pins, lane RB owns everything this round, the other lanes' install.sh halves included (ruling 217's shell
+halves, C3405's consumers of the generated alternation, C3455 with C3465's BLOCKED_LINE guard, C3466's probe, C3467's
+`next=no-folder` end-line key, C3468's SETUP_LOG and friction_file trim, C3546's NO_FOLDER case arm and comment), except
+SETUP_PROMPT_COMPAT's line and the version pins, which lane D's v45 commit moves, the generated report_cuts blocks
+(C3405's alternation, C3499's CUT_SOURCE_LOCAL_KEPT), which lane RA regenerates in its commits, and PERSONS_FAILS's
+kinds, which move in lane B's C3545 commit with PERSONS_KINDS. In `setup_report.py`, `report_cuts.py`, `install_log.py`,
+`tests/test_setup_report.py` and `tests/test_report_redaction.py`, lane RA owns everything, the other lanes' report
+halves included (C3531's Loop line on `last_run.land_gate`, C3545's docs bucket as C3529's, _env_log on lane B's C3468
+resolver), except the shell halves and both-reports rows lane RB's items need (rulings 217 and 218's rows, C3470's), in
+lane RB's commits; `_LIST_MARKS` and listed_folder_lines (C3506) and the NO_FOLDER_* constants (C3544 with C3501, C3521,
+C3525 and C3538), which move in lane RB's commits because their tests hold them equal to install.sh's;
+`_PERSONS_KINDS_COPY` in lane B's C3545 commit; the converter-reuse query in lane B's C3450 commit, one cycle-to-report
+test feeding both; and PROMPT_VERSION, its docstring list and setup_report.py's v44 mentions, which lane D's v45 commit
+moves. `cli.py`, `cycle.py` and `publish.py` outside lane E's parts, `loop.py`, `gitops.py`, `paths.py` (C3468's
+resolver, C3466's docs_repo_state), `config.py` (but its max_page_bytes comment), `manifest.py`, `model.py`, `lints.py`
+but lane E's rule, `ops/doctor.py` but lane E's parts, `governance.py` and ops/lock.py are lane B's. Lane E owns
+convert/ and arm_local.py: C3419's `_LIST_ESCAPED_RE` moves in lane RB's commit, held to the awk by the C3333 twin test,
+and lane E reviews it; lane E builds C3511's `_walk_scan` S_ISLNK branch from lane B's words. Only lane D touches
+docs/deploy, the README and .github, each line written once from the lanes' final words, except a doc line a test holds
+to a lane's own words, which moves in that lane's commit; only lane D touches the README prompt block, its version and
+its digest (ruling 231). Who sends first: lane RA sends lane RB its branch sha with ruling 217's Python halves and
+shared rows, and lane RB lands both halves in one scripts/ship-land.sh run on that branch, which never waits on ruling
+219; lane RB sends lane D ruling 220's marks, C3539's NEXT words and the single-quoted placeholder and lands them in a
+run of their own before lane D's v45 commit; lane B sends lane D C3421's owner words and lands them before v45, sends
+lane RB C3416's and C3447's run-line words before lane RB's C3455, sends lanes RA and RB C3468's resolver name and the
+sha of its C3545 commit, and sends lane RA the `last_run.land_gate` check's name; lane RA sends lane D ruling 227's
+scoring and Loop-rule words and C3402's and C3406's cut words (C3430); lane E sends lane D its final words. A CONTRACTS
+line that quotes words a lane changes, and a test that pins them, move in that lane's own commit as a dated line (ruling
+186), and lane D cites the sha. COMMON.md's rulings 206 to 216 stay as written; rulings 217 to 231 amend them, each by
+its CONTRACTS dated line, and lane D adds dated lines beside ruling 133 (C3405's separators), ruling 207 (C3471's
+vanished root), ruling 210 (C3520's alarm, C3479's root_probe), ruling 213 (ruling 227), ruling 215 (C3431) and ruling
+216 (ruling 231). The lead reserves §16.295 to §16.299 on origin/main before any lane starts: RA §16.295, RB §16.296, B
+§16.297, E §16.298, D §16.299. Lanes land with plain `scripts/ship-land.sh`, the repo's default lock; no lane names a
+lock of its own, and no lane runs git fetch, pull or remote update, in the operator checkout or any worktree (C2486,
+C2874): trunk reads go through round48/tools/trunk.sh. docs/plans and the kit are the lead's.
 
 Where the item says "a fix makes things worse? True": first look for a fix that does not (the verifier's
 corrected fix often is one). Build it if you find one. Otherwise record the measured reason in your note, and
 that item is done as not-built. "Cosmetic" or "small" is not a reason.
 
 Scope (frozen): every item id your lane lists is built (a test that fails without it) or carries a measured
-reason a build makes things worse; CONTRACTS text in your lane's reserved section (§16.290 to §16.294); gate green;
+reason a build makes things worse; CONTRACTS text in your lane's reserved section (§16.295 to §16.299); gate green;
 landed through `scripts/ship-land.sh`; CI read back green.
 
-Prompt text: C3205, C3240, C3269, C3273, C3274, C3280, C3325, C3326, C3331, C3332, C3334 and C3336 need prompt words, so
-the prompt goes to v44 in lane D's one commit (ruling 216): v43 spotted a usage error by a line opening `error:`, which
-argparse never prints first (C3205 with C3280 and C3331), read a background step 2 run only until its NEXT: line (C3273
-with C3325), said an inbox state line means no live inbox source sits on the folder, against its own not-read and
-not-a-folder branches (C3274), required an unread-inbox warning a refused step 2 never prints (C3326), let the Finish
-say `none: this Mac syncs no folder` after a step 2 that failed (C3240), offered a paused or retired folder and asked
-the folder question again over it (C3269, C3332; ruling 214), gave a double-quoted `--source-local` template in which
-`$` expands (C3334), and asked for a choice over a list cut at 200 rows (C3336). Two items not marked need words as
-well: C3206's step 3 `nothing to draft yet` rule names step 2's `--source-local` run in place of add-source, and C3213's
-not-a-folder parenthetical takes lane B's one phrase, `a file or a link that does not lead to a folder`. v44 quotes lane
-RB's new step 1 marks, so lane RB sends lane D C3332's mark words and lands them, with C3206's rewrite and C3336's
-depth-1 cut, in a run of their own; lane B sends lane D C3213's phrase first; and lane D's v44 commit lands after lane
-RB's run. Round 48 rehearses the prompt the operator will paste: v44, with v43's block (ea3d2d0d1) as scenario C's first
-old copy. Every marked item needs its words. C3241's status NEXT after a completed none (worded as
-NO_FOLDER_CHOSEN_NEXT, which step 2 already reads), C3236's and C3238's docs-repo NEXTs (the prompt's `not a step for
-the agent` rule), C3227's blocked-commit NEXT, C3226's restore advice, C3257's `inbox not a folder` loop word, C3203's
-kept clause and C3209's scoring need none: the prompt quotes none of the words they change. No other lane edits the
-README setup prompt block, its version or its digest; a lane whose fix changes words the prompt quotes sends lane D
-those words first, and lane D's prompt commit lands after them. If another fix seems to need new prompt words, message
-the lead before you build it.
+Prompt text: C3419, C3420, C3421, C3428, C3433, C3456, C3458, C3463, C3464, C3500 and C3530 need prompt words, so the
+prompt goes to v45 in lane D's one commit (ruling 231): v44 told the person to rename a folder whose name holds a
+no-break or ideographic space, which step 2 adds by its path (turn C3419), let step 1's no-unmarked-row stop catch a
+set-up Mac, a list cut by a `(N more)` line and the first exception's install or upgrade (C3420, C3456, C3464), read
+step 2's already-configured rule and the no-folder NEXT rule two ways when unmarked rows remain or the only chosen
+folder is paused (C3433, C3500), met a land-gate NEXT that names a git checkout of a mirror page, with no owner, against
+its own no-reset and never-edit rules, and let the agent run neither it nor the land gate's chmod 600 of a page (C3421,
+turn C3530), kept a failed install inside the Finish's none and pointed at a NEXT: line a usage error never prints
+(C3458), and said only the shell report prints `loads: not checked` (C3428 with C3463). Three items not marked need
+words as well: C3426's escaped paused or retired row and C3506's `[inside a paused folder]` and `[inside a retired
+folder]` rows are rows step 1 never offers, and C3505's folder named later after a none reruns step 2, never the
+add-source status names, loop's words unchanged. C3422 and C3457 are marked but need none: lane B's stored block and
+`last_run.land_gate` [FAIL] (C3531) make step 3's sentence that status prints the same NEXT: line unless one of its
+checks FAILs true as written, so only setup-feedback.md's Loop rule takes lane B's words. C3501 is marked, and C3521,
+C3525, C3538 and C3544 change installer NEXTs the prompt quotes, but none needs words: lane RB single-quotes every
+`--source-local '<folder>'` placeholder, the form v44's step 2 already gives, so "run a NEXT's command as given" agrees
+with it. v45 quotes lane RB's marks and C3539's NEXT words and lane B's owner words, so lane RB sends lane D its words
+and lands them in a run of their own, lane B sends and lands C3421's words, and lane D's v45 commit lands after both.
+Round 49 rehearses the prompt the operator will paste: v45, with v44's block (5c2398fda) as scenario C's first old copy.
+Every marked item but C3422, C3457 and C3501 needs its words. No other lane edits the README setup prompt block, its
+version or its digest; a lane whose fix changes words the prompt quotes sends lane D those words first, and lane D's
+prompt commit lands after them. If another fix seems to need new prompt words, message the lead before you build it.
 
 Bare commands: every runnable command the code prints names `~/.local/bin/agentsync`, never a bare `agentsync`
 (round 4's Q49).
 
-Dated lines: a dated line in any section other than your item's own (§16.290 to §16.294) begins "Amended <date>, §16.NN
+Dated lines: a dated line in any section other than your item's own (§16.295 to §16.299) begins "Amended <date>, §16.NN
 C<n>". A line that records another round's change reads "Amended <date>, §16.NN C<n> (by §16.NN <item>)"; never stamp
-another round's item id as if it were yours (round 5 F85). Round 46's ids are C3001 to C3116; round 47's are C3201 to
-C3337. The dated-line scans read a line of any date since round 19's W71.
+another round's item id as if it were yours (round 5 F85). Round 47's ids are C3201 to C3337; round 48's are C3401 to
+C3550. The dated-line scans read a line of any date since round 19's W71.
 
 Field compatibility: install.sh runs Python through the INSTALLED agentsync, which on a field Mac is older than
 the checkout (round 7 H7: a new import broke step 1 on every Mac set up before round 6). A new name that install.sh's
@@ -2941,12 +3108,12 @@ including possessive "§A's X" targets, and fails unless the target paragraph ha
 
 Dated-line completeness (round 12 lane D): every dated line from §16.92 on must be claimed in its section or
 pinned by a test; after a rebase, claim or pin each one you added. The pin tables in tests/test_deploy_pack.py take
-round 47's rows the same way. A quote in a §16 paragraph counts as a dated line only with a real date, a numeric home
+round 48's rows the same way. A quote in a §16 paragraph counts as a dated line only with a real date, a numeric home
 of §16.92 or later and no `C<n>` template, and test_every_dated_line_from_round_11_on_is_held_by_a_test then calls it
 loose unless it is claimed or pinned: quote the form with `C<n>` or `<date>`, as each section's "A dated line this
 round writes reads" sentence does, or pin it (round 35 C982).
 
-Scratch (round 16 U111): write logs, scratch files and probes under `~/.cache/agentsync-bring-back/b13/round47/
+Scratch (round 16 U111): write logs, scratch files and probes under `~/.cache/agentsync-bring-back/b13/round48/
 scratch-<lane>/`, not in /tmp. The land lock is the repo's own, in its git directory. To damage a manifest for a test or probe, write the
 junk with `python3 -I`, not `dd` (`Bash(dd:*)` is denied).
 
@@ -3027,7 +3194,7 @@ it is missing. Run a lint and the commit it guards as one `&&` chain, never `;`,
 check x | tail -3 && git commit` reads tail's exit, not ruff's (round 33). A new def, test or helper, placed before a
 decorated test goes above that test's decorators (round 33, bb9286d52).
 
-Landing (round 47): land with `scripts/ship-land.sh`, typed exactly so (no env prefix,
+Landing (round 48): land with `scripts/ship-land.sh`, typed exactly so (no env prefix,
 no `bash` in front, its own command). It takes the repo's one land lock (`/Users/chrisren/Development/agent-context-sync/.git/land.lock`, shared with the CLI conventions wave's lands), fetches, reads trunk's CI once without waiting (a run
 already ended red stops it there, exit 6, before the gate), rebases onto origin/main, runs `scripts/gate.sh`,
 waits out and checks trunk's CI, pushes `HEAD:main` with no permission prompt (never forced; a refused push is rebased
@@ -3060,134 +3227,146 @@ note and the owner messaged; never for exit 9: a run that lost its hosted runner
 --failed`) and waited for, never landed past (round 31 C569). The lane that landed a test that is red on CI
 owns its fix until main is green, even after other lanes land on top. CI takes 18 to 105 minutes a run (the slowest, 104:04, in round 46), and a run can wait over an hour for a macOS runner first (63:27 in round 31); its limit is 125 (W80, round 21 Y68, round 22 Z67, round 23 A74, round 24 B98, round 25 D83, round 28 I99, round 29 C207, round 30 C372, round 31 C571, round 32 C662, round 35 C985, round 37 C1290, round 38 C1460, round 40 C1866, round 45 C2878, round 46 C3060, round 47 C3286).
 
-Makes things worse: 14 round 47 items carry "a fix makes things worse? True" (C3202, C3203, C3206, C3215, C3236, C3244,
-C3247, C3252, C3268, C3284, C3295, C3296, C3300, C3318). For each, the verifier's corrected fix is one that does not,
-and the rulings and clusters adopt it (C3202: after a --no-folder run that did not complete its none, the Loop line is
-one constant sentence built from install.log's rc, failed step or status note (its own NEXT says what to do, a re-run
-keeps --no-folder, the folder question is not asked again), the doctor [FAIL] return kept first, where reading the NEXT
-from install.out quoted an earlier run's completed none or nothing, since the run that writes the report has not printed
-its NEXT yet and install.log holds no next= field; C3203: install.sh's whole phrase `per folder)` is kept after
-`--source-local ` in _quoted_value_end, _SOURCE_LOCAL_RE unchanged, where skipping a next word `per` leaked `per
-diem/Wombat` and cutting only path-shaped words leaked `Wombat Ledger/x`, which C2666 cuts; C3206: install.sh rewrites
-only step 2's own `nothing to draft yet` NEXT to its --source-local form, under EXIT_RC 0 and never under --no-folder,
-loop.py's add-source words unchanged, where changing loop.py's words always told a plain `agentsync sync` outside setup
-to run an installer flag; C3215: a second inbox source whose folder is a file reads `not a folder` with its own
-put-back-or-fix-path remedy, its full path kept (ruling 103) and its volume row unchanged, where the kept inbox's words
-gave it step 2's remedy, which C3044 removed because step 2 recreates only the kept inbox; C3236: docs_not_a_folder
-judges as ensure_repo does, following links, and lands after lane B's C3238, where an lstat test called a working
-symlinked docs repo not a folder and the new NEXT pointed at a report that still said run add-source; C3244: the
-refused-path loop alone reads a path-only mode, the id records and their two id loops unchanged, where id-less records
-collapsed an empty id field under `IFS=$'\t' read` and shifted every `<source-N>`, and config_path_values' `~` lines
-over-register non-source tables; C3247: the shell registers a one- or two-character head anchored on its `~` and a
-two-letter name only past report_word and two_letter_word, the same _TWO_LETTER_WORDS guard in _register_refused, where
-a 3-character floor in Python stopped the public report cutting `jd` and `~a`, and short_pair's any-case flag cut common
-words across the report; C3252: the sentinel row keeps _parent_fix only when a folder above refuses a search and
-otherwise names the sentinel with `chmod -N`, where _search_fix's file wording says `ls -le` shows the ACL, which ls
-refuses under a deny-readattr ACL, claims the owner and mode were checked and asks for write access lstat does not need;
-C3268: the UTF-32 branch, told before UTF-16's, raises ConversionError on a bad length or code point, and an .eml part
-opening `FF FE 00 00 41 00 42 00` still converts through eml's lenient fallback, where a bare decode('utf-32') let
-UnicodeDecodeError escape every caller and turned that UTF-16 part with a leading U+0000 into a failure; C3284: on a
-loop both reports register the link's first hop target, otherwise its realpath, where catching the raise and treating a
-loop as no target left the partner of a two-link loop through ~/Locked Contoso in clear while the shell's readlink cut
-it; C3295: the resume comment says a resume replays only the longest unchanged prefix of agent calls, the rehearsals run
-last in finders and a re-fire of a few slots is a fresh run naming them, where recording that a resume after an account
-move replays nothing blamed the account and budgeted for the wrong cause; C3296: no new RULES prose, the harvest's C3066
-tool-result scan recording each hit as a C2885 regression with the operands lost, where restating a rule RULES already
-holds verbatim only lengthens the brief and a kitcheck grep for the phrase flags every transcript that quotes it; C3300:
-canonical_source_root stops at the first repeated link as posixpath.realpath does and the report uses os.path.realpath,
-never Path.resolve(), where comparing Path.resolve() forms raised RuntimeError on 3.11 and 3.12 past
-_kept_inbox_not_a_folder's OSError catch and crashed doctor and status in exactly that case; C3318: xlsx's
-_EMITTER_VERSION moves to 1.0.7 once with outdated() still False, so a new conversion of the same bytes misses the cache
-and no published page is read again, where a targeted re-read of every page holding the old note re-converted every
-1.0.6 workbook for a note that shows only past the page cap): read its "Verifier" part before you build.
-Dated lines: every round 47 dated line reads 2026-11-25, its heading's date (lane D's round 25 test).
+Makes things worse: 16 round 48 items carry "a fix makes things worse? True" (C3402, C3406, C3410, C3431, C3436, C3450,
+C3466, C3469, C3475, C3487, C3499, C3500, C3505, C3510, C3540, C3547). For each, a corrected fix does not, and the
+rulings and clusters adopt it, the verifier's in every case but C3450's, where a counts key replaces the verifier's
+migration (C3402: the refused name leaves _logins and the shell's `<user>` pair, so its account's `~name/...` and
+`/Users/name/...` paths are cut whole by the other-home cuts and its bare head only at a path end, where cutting the
+head only where no `/` follows let the shell's `<user>` pair turn `~kestrel/Wombat Ledger/plan.md` into `~<user>/Wombat
+Ledger/plan.md`, which tilde() skips, printing more than now, and a separate login set existed only in Python; C3406: an
+unregistered bare `~login` is still cut by its shape and only one shared list of quantity words is spared, where cutting
+only a registered login or a refused head printed every other account's bare `~olga` in clear, the leak C3224 closed;
+C3410: the JSON gate step is built by hand, naming the document's findings, its argv `/bin/sh -c` with the sync as a
+second step and the text NEXT kept byte for byte, where feeding the text view's line through _step pointed a JSON
+document at lines above it and gave an argv opening `(umask`, which no program runs; C3431: a new round 48 dated line
+after ruling 215's and an Amended line under §16.294, round 47's words kept, where adding the clause inside them rewrote
+another round's text against ruling 186; C3436: the fact readers are gated while the redactor's cut-only
+_logged_cloud_folders read stays, where gating every reader dropped the cut of a folder only that log names
+(`Quillbrookzz`) and printed it twice in a public report; C3450: record_cache still runs for every keyed result and a
+served count is kept apart in the run's counts with no schema change, earlier builds' runs read as before, where
+skipping record_cache for uncached answers lost converted_seen and converted_again (C1821), a column with no backfill
+lost earlier builds' counts, a status filter missed both orders, and the verifier's served_run migration would be the
+manifest's first, which every older installed build refuses (MANIFEST_SCHEMA_VERSION 1, check_not_newer at
+manifest.py:1347); C3466: the inline probe stays and only a dangling link at or above the path is added, where calling
+docs_repo_state read a file above the docs path as uncreatable, losing the above case, and printed nothing on an
+installed build older than 3fcd255bf, losing the file and loop cases too; C3469: a dangling sources.toml link gets
+load_config words of its own, restore its target or move the link aside, where routing it through the not-found branch
+told the person to run add-source, the command that had just refused, a dead end; C3475: one fast in-process status and
+sync test over the moved-aside folder, where one row per caller, install.sh step 2's among them, added slow subprocess
+rows for promises the generic exit-78 tests already hold; C3487: a launch read before every args.head call, local git
+log for commit lists and poll.sh's one gh run list with attempt and updatedAt, where routing compare reads through the
+tools made routine the GitHub API spend trunk.sh's header rules out (C2066), which once stopped a land at exit 9; C3499:
+install.sh's whole phrase `leaves it so:` is a kept row under the phrase-end check, where cutting only path-shaped words
+left `Wombat Ledger/x` in clear and skipping the word `leaves` leaked a folder named `leaves/...` (ruling 214); C3500:
+the exception needs at least one chosen folder, stated once in step 1 and pointed at from step 2, where "every folder I
+chose" held vacuously for a bare run with nothing chosen and skipped the folder question C3003's paused-only Mac must
+ask; C3505: loop.NO_FOLDER_CHOSEN_LOOP_NEXT keeps its add-source words and v45 says to rerun step 2 this session, where
+naming step 2's run in loop's words sent every later session to a full reinstall at a fixed INSTALL_SH path and broke
+the byte-for-byte rule-2 match install.sh and the report key on; C3510: inbox_partial is gated by a live listing of a
+root the last sync could not list, where a stat-only check silenced the true note for an empty cloud-folder inbox, a
+file still being written and an inbox folder that is itself mode 000; C3540: only the console names the trailer's
+commit, the tag and numbering rules unchanged and the E9 path at DEBUG, where moving the tag only to agentsync's own
+commits broke the crash-between-commit-and-tag recovery, ignoring hand trailers reused run numbers against P137, and a
+WARNING on every seed broke B37's quiet new start; C3547: the text is chosen by what the last sync stored and by the
+stop pointer, where one `last walk held no empty cloud folder` sentence was false after a successful exclude, named a
+sync a guard stops, and used internal words): read its "Verifier" part before you build.
+Dated lines: every round 48 dated line reads 2026-11-27, its heading's date (lane D's round 25 test).
 
-Regressions: round 47 found 4 turns and 46 wrongs. That is the finders' count; the verifiers' headers class the same 4
-turns and 33 wrongs (93 small). 14 items are data integrity, 12 of them privacy (C3242, C3243, C3302, C3244, C3245,
-C3246, C3247, C3285, C3287, C3288, C3289, C3303; C3310 and C3333 the others), and the turns and wrongs share five root
-causes. A reader met an entry kind it was never tested with, a loop, a FIFO, a file where a folder belongs or a link
-through a file, and raised, hung or misnamed it: the agentsync report's redactor raised on a looping inbox link and went
-private only (C3210, C3284; ruling 206), every command hung on a FIFO config (C3307), a file at the docs repo's path
-read as a drafted baseline and sent the agent to add-source while step 2's NEXT did not say whose fix it was (turn
-C3236, C3238, C3239; ruling 211), and the inbox readers named a link's target, kept a note after the inbox was a folder
-again, read a link through a file as unreadable, probed a non-folder in doctor and stalled before the bounded read
-(C3211, C3212, C3312, C3313, C3311; ruling 210). A report read a value from one spelling, one record shape or one link
-hop and the other cut it: the shell dropped a record whose path held a TAB or LF, read no table without an id, kept a
-TOML escape and the last of two ids, followed one link hop, judged Unicode blanks by locale and read the configured docs
-repo from a file that does not parse (C3243, C3302, C3244, C3303, C3246, C3245, C3304, C3324), and the agentsync report
-missed a refused id, a refused value's parent and every folder under an inbox linked to the home (C3223, C3285, C3242;
-rulings 206 and 207), while the shell's source counts and its config state disagreed with the loader (C3305, C3323,
-C3335). A claim kept for one route was made on another: the report named step 3's question after a none and on prompts
-that never asked it, and showed status's NEXT after a failed none (C3237, C3306, C3337, C3272, C3328, C3202; ruling
-213), the guide kept status's old no-folder words (C3270, C3271), and step 1's list and the report's cut dropped a
-paused folder's state, so the folder question came back (turns C3269 and C3332, C3203; ruling 214). The prompt told a
-run by a prefix or a stop the run does not give: step 2 stopped reading at NEXT:, step 3 looked for a line opening
-`error:`, a warning a refused step 2 never prints was required, a `$` expanded inside a double-quoted folder, and step
-1's 200-row cut hid folders (C3325, C3331, C3326, C3334, C3336; ruling 216). A fix stopped at its first twin: the land
-gate's restore advice left mode 644 and an unreadable page blocked every commit with no fix while NEXT read as landed
-(turn C3226, C3227; ruling 212), ruling 202's Office twins left the text decoder's UTF-32 order, a preamble change, the
-xlsx version and two docstrings behind (C3321, C3316, C3318; ruling 215), ruling 201's stub re-read lost an upgrade on a
-second read (C3314), text-mode git output turned a trailer's CR into a newline and the loader stripped a stored path's
-U+3000 (C3310, C3333; ruling 209), and CI's head and limit lagged a 104:04 job (C3286). A fix that runs in an older
-installed build is not a fix: test the shell's cut over an older render. A word another reader greps for is a contract:
-when you change a printed phrase, grep install.sh, both reports, status, doctor and the guides for it, and test the
-reader against the writer's own constant, never a copy. Before you land a new stop, exit code, wait or person-owned fix,
-follow its words on a Mac in the state it is meant for AND test it on one where it must not fire. A test marked timing
-is skipped above a load of 4 per core: run any one you change with AGENTSYNC_TIMING=1 before you land. scripts/gate.sh
-re-runs a part's 1 to 20 failed tests once alone and convicts only on a second failure, so read a red land's log: a test
-that failed alone is yours or trunk's, never load. A background ship-land can end while its lane believes it is queued:
-while you wait on the lock, check with ps that your ship-land still runs. A test that sends SIGHUP or SIGINT to a child
-makes the child take that signal's default first, because a pytest started under nohup passes SIGHUP on ignored and one
-started with `&` passes SIGINT on ignored (C869 for two tests; b781e539 for C956 and C961). A new signal test must do
-the same, so a detached gate passes it (round 36 C1054). Send the words another lane waits on first, pre-gate with
---affected and land once; two lanes that share a chain may land jointly under one gate, the shared commit with one
-owner. A whole-tree test one lane owns can turn another lane's gate red: ruling 68's phrase scan reads install.sh's
-literals too, so a lane that prints a new clause adds it to both phrase lists in that commit and runs the scan before it
-lands. A citation of an off-trunk sha fails test_a_cited_commit_is_on_the_trunk: cite only what is on origin/main. A
-hook asks before any command holding the word "restore" and before `git push --delete`: leave the word out of -k
-filters, and never push a share branch you would have to delete. If the classifier refuses a command, do not reword it:
-message the lead. A trunk run that lost its hosted runner is rerun, never landed past (ship-land exit 9, round 31 C569);
-pass --allow-red-trunk only after reading a red run's log and finding no test failed. A fresh worktree needs `npm ci`
-before ship-land. The line numbers in the specs are 42ca57e03's; the CLI conventions wave has closed (its last land
-63deb83d, its queue empty), so trunk moves only by the lanes' lands: find a function by name and rebase on each land. A
-ruling for both reports lands both halves in one run, proven by one shared table both read: two halves ported by hand
-drift, so generate the second copy from the first, hold it byte for byte to its source, and run one property test over
-both reports. A shared table protects only the values it holds: every argument form a report parses (the = form, nested
-paths, names with blanks, echoes) must be a row in it and a case in its one property test. A rule keyed to where a path
-lives (under CloudStorage or not) leaks every path outside that place: the rule of a head applies to any path, and a
-test case outside the expected place proves it. A record ends only where its writer ends it: a reader of another
-program's output splits on the byte that program ends a record with (LF, or NUL under -z) and tests its prefix on bytes,
-never with str.splitlines() or strip(), a writer escapes or quotes every line break inside a record, and a test puts CR,
-VT, FF, 0x1C to 0x1E, U+0085, U+2028 and U+2029 inside one record and expects one record back. A test proves its fix
-only if it fails without it: before you land, run each new or changed test once with the fix's source hunk reverted in a
-scratch copy of your branch, see it fail for the reason it names, and say so in your note; a test that builds its
-expected value with the code under test, matches a substring, or changes a second input beside the one it tests passes
-either way (C2446, C2448, C2453, C2514). A fix has twins, and the twin left behind is the next round's wrong: the code
-that renders a value and the code that costs, cuts, quotes or renders it again (_code and _code_steps, the replan's
-put-back and the zero-byte pass's, install.sh's NEXT and the report's Loop line, the live render and the older-render
-rewrite, an unforced run and a forced one). Before you land, grep for every function and phrase you changed, name each
-twin in your note on a line that opens `Twins named:` (or `Twins named (<rule>):`), listing each changed function or
-phrase with its twin and the test that feeds both, or `Twins named: none, <reason>` (for example "docs-only items" or
-"no second renderer: grepped <names>") (round 45 C2887), and add one test that feeds both twins the same input and
-asserts the same answer (round 44: C2601, C2639, C2645, C2652, C2703). A choice the person makes is honored on every
-route its run can end on: when a flag records an answer (--no-folder), list every NEXT, exit code and report line that
-run can end on (the skill-missing and the rule-2 routes, a created and an existing config, a status [FAIL] and a
-timeout), and add one test per route with the flag set, asserting the answer where the run ended clean and never where
-it failed (round 45: C2909, C2910, C2945). A function that starts to raise changes every caller's contract: when you
-make a function raise a new error, list its callers in every lane (`git grep -n '<name>(' src`), and for each add a test
-that feeds it the input that now raises and asserts the caller still keeps its own promise (the report stays redacted,
-write_skill never raises, a config error names its file and exits 78); and a fallback that catches a broad exception
-where names are at stake fails closed (private only, no issue link), never open (round 46: C3099, C3033, C3037, C3110,
-C3038, C3039). Every reader of a path the person, the config or a link supplies is tested with each kind of entry it can
-meet: a folder, a file, a link to a folder, a link to a file, a dangling link, a link to itself, a two-link loop, a link
-through a file, a FIFO and a folder this account cannot search, as one parametrized test under a timeout, each row
-asserting that the reader returns, raises nothing it does not raise for a folder, and names the entry in the words every
-other reader of it gives (round 47: C3210, C3284, C3307, C3312, C3238, C3239, C3245).
+Regressions: round 48 found 3 turns and 53 wrongs. That is the finders' count; the verifiers' headers class 2 of the
+turns (C3419, C3530; C3544 small) and 47 wrongs (77 small). 14 items are data integrity, 7 of them privacy (C3401,
+C3402, C3405, C3435, C3439, C3470, C3471; C3421, C3448, C3460, C3469, C3506, C3533 and C3534 the others), and the turns
+and wrongs share six root causes. A fix to one writer reached only some of its readers, and a report still read a name
+from one spelling: C3333's escape of every non-ASCII blank asked the person to rename folders step 2 adds by path (turn
+C3419; ruling 220) and left a vanished listed name in clear in the shell report (C3401; rulings 218 and 219), neither
+report took those blanks as separators (C3405; ruling 217), and the reports missed a refused account's other paths, a
+path past an escaped quote, a padded path, a vanished source, a checkout git cannot read and a triple-quoted value
+(C3402, C3435, C3439, C3471, C3470, C3460; rulings 217 and 218), while the agentsync report cut a fetch warning's own
+words (C3535). A run's cause was told by one output and guessed by the rest: a sync that failed after the land gate
+passed read as blocked or landed in STATE.md, the run line, sync --json, step 2 and the next commit (C3409, C3444,
+C3447, C3455, C3465; ruling 222); a blocked sync gave three NEXTs, status hid it, its checkout named no owner and
+restored by a glob, and the prompt let the agent run neither it nor the gate's chmod (turn C3530, C3410, C3446, C3457,
+C3531, C3421, C3422, C3448; ruling 223); and the commit that landed carried changes miscounted an add, dropped a chain's
+middle run and committed a hand deletion as `0d` (C3443, C3445, C3534; ruling 224). A claim kept for one route was made
+on another again: the Summary and the issue link scored a run over no live folder fully one command, step 3's question
+was credited on held-only and no-folder routes, a failed none's Loop line kept status's skill NEXT, a completed none was
+told it may still be waiting, the held clause and install.sh's own --source-local phrase were cut, and the guides lagged
+round 47's rules (C3437, C3496, C3512, C3438, C3467, C3497, C3498, C3434, C3499, C3423, C3424; rulings 221 and 227). The
+prompt's general rules overrode its exceptions: step 1's no-unmarked-row stop caught a set-up Mac, a list cut by `(N
+more)` and the first exception's install, and the Finish kept a failed install inside the none (C3420, C3456, C3464,
+C3458; ruling 231), while every installer NEXT kept the double-quoted placeholder v44 had retired (turn C3544). A reader
+met an entry or an owner it was never tested with: status and doctor read the kept inbox with no time limit, a denied
+inbox's note outlived the denial, a looping second inbox got the agent's fix, the report counted the person's FAILs as
+unexpected, doctor's docs fixes named mkdir -p over a file and a sync that stops on it, a dangling docs link got the
+generic NEXT, add-source wrote over a looping config link, a refused log was still read and the logs' resolvers differed
+(C3442, C3510, C3511, C3513, C3545, C3449, C3466, C3469, C3436, C3468; rulings 225, 226 and 228). A converter or a count
+dropped what it was given, and a quote kept what the code had changed: eml lost a second text part and wrote NUL bytes,
+uncached rejections counted as cache reuse (C3533, C3532, C3450; ruling 229), and three dated lines quoted a warning
+C3216 had changed (C3425; ruling 230). A fix that runs in an older installed build is not a fix: test the shell's cut
+over an older render. A word another reader greps for is a contract: when you change a printed phrase, grep install.sh,
+both reports, status, doctor and the guides for it, and test the reader against the writer's own constant, never a copy.
+Before you land a new stop, exit code, wait or person-owned fix, follow its words on a Mac in the state it is meant for
+AND test it on one where it must not fire. A test marked timing is skipped above a load of 4 per core: run any one you
+change with AGENTSYNC_TIMING=1 before you land. scripts/gate.sh re-runs a part's 1 to 20 failed tests once alone and
+convicts only on a second failure, so read a red land's log: a test that failed alone is yours or trunk's, never load. A
+background ship-land can end while its lane believes it is queued: while you wait on the lock, check with ps that your
+ship-land still runs. A test that sends SIGHUP or SIGINT to a child makes the child take that signal's default first,
+because a pytest started under nohup passes SIGHUP on ignored and one started with `&` passes SIGINT on ignored (C869
+for two tests; b781e539 for C956 and C961). A new signal test must do the same, so a detached gate passes it (round 36
+C1054). Send the words another lane waits on first, pre-gate with --affected and land once; two lanes that share a chain
+may land jointly under one gate, the shared commit with one owner. A whole-tree test one lane owns can turn another
+lane's gate red: ruling 68's phrase scan reads install.sh's literals too, so a lane that prints a new clause adds it to
+both phrase lists in that commit and runs the scan before it lands. A citation of an off-trunk sha fails
+test_a_cited_commit_is_on_the_trunk: cite only what is on origin/main. A hook asks before any command holding the word
+"restore" and before `git push --delete`: leave the word out of -k filters, and never push a share branch you would have
+to delete. If the classifier refuses a command, do not reword it: message the lead. A trunk run that lost its hosted
+runner is rerun, never landed past (ship-land exit 9, round 31 C569); pass --allow-red-trunk only after reading a red
+run's log and finding no test failed. A fresh worktree needs `npm ci` before ship-land. The line numbers in the specs
+are caabd5b25's; the CLI conventions wave has closed (its last land 63deb83d, its queue empty), so trunk moves only by
+the lanes' lands: find a function by name and rebase on each land. A ruling for both reports lands both halves in one
+run, proven by one shared table both read: two halves ported by hand drift, so generate the second copy from the first,
+hold it byte for byte to its source, and run one property test over both reports. A shared table protects only the
+values it holds: every argument form a report parses (the = form, nested paths, names with blanks, echoes) must be a row
+in it and a case in its one property test. A rule keyed to where a path lives (under CloudStorage or not) leaks every
+path outside that place: the rule of a head applies to any path, and a test case outside the expected place proves it. A
+record ends only where its writer ends it: a reader of another program's output splits on the byte that program ends a
+record with (LF, or NUL under -z) and tests its prefix on bytes, never with str.splitlines() or strip(), a writer
+escapes or quotes every line break inside a record, and a test puts CR, VT, FF, 0x1C to 0x1E, U+0085, U+2028 and U+2029
+inside one record and expects one record back. A test proves its fix only if it fails without it: before you land, run
+each new or changed test once with the fix's source hunk reverted in a scratch copy of your branch, see it fail for the
+reason it names, and say so in your note; a test that builds its expected value with the code under test, matches a
+substring, or changes a second input beside the one it tests passes either way (C2446, C2448, C2453, C2514). A fix has
+twins, and the twin left behind is the next round's wrong: the code that renders a value and the code that costs, cuts,
+quotes or renders it again (_code and _code_steps, the replan's put-back and the zero-byte pass's, install.sh's NEXT and
+the report's Loop line, the live render and the older-render rewrite, an unforced run and a forced one). Before you
+land, grep for every function and phrase you changed, name each twin in your note on a line that opens `Twins named:`
+(or `Twins named (<rule>):`), listing each changed function or phrase with its twin and the test that feeds both, or
+`Twins named: none, <reason>` (for example "docs-only items" or "no second renderer: grepped <names>") (round 45 C2887),
+and add one test that feeds both twins the same input and asserts the same answer (round 44: C2601, C2639, C2645, C2652,
+C2703). A choice the person makes is honored on every route its run can end on: when a flag records an answer
+(--no-folder), list every NEXT, exit code and report line that run can end on (the skill-missing and the rule-2 routes,
+a created and an existing config, a status [FAIL] and a timeout), and add one test per route with the flag set,
+asserting the answer where the run ended clean and never where it failed (round 45: C2909, C2910, C2945). A function
+that starts to raise changes every caller's contract: when you make a function raise a new error, list its callers in
+every lane (`git grep -n '<name>(' src`), and for each add a test that feeds it the input that now raises and asserts
+the caller still keeps its own promise (the report stays redacted, write_skill never raises, a config error names its
+file and exits 78); and a fallback that catches a broad exception where names are at stake fails closed (private only,
+no issue link), never open (round 46: C3099, C3033, C3037, C3110, C3038, C3039). Every reader of a path the person, the
+config or a link supplies is tested with each kind of entry it can meet: a folder, a file, a link to a folder, a link to
+a file, a dangling link, a link to itself, a two-link loop, a link through a file, a FIFO and a folder this account
+cannot search, as one parametrized test under a timeout, each row asserting that the reader returns, raises nothing it
+does not raise for a folder, and names the entry in the words every other reader of it gives (round 47: C3210, C3284,
+C3307, C3312, C3238, C3239, C3245). A run ends in one cause, stored once and read by every output: when a run can end in
+a new state (blocked by the land gate, failed after it), record it with the run as data (a counts key or a meta row,
+never a phrase in its output and never a schema change an older installed build refuses), and add one test that ends a
+run in that state and in each sibling state (blocked, failed after the gate, committed, unchanged) and asserts that the
+text NEXT and run line, sync --json's outcome and next, STATE.md's Next, status's NEXT and exit code, install.sh step
+2's NEXT, the next commit's carried note and the report's Loop line all name the same cause (round 48: C3409, C3410,
+C3416, C3444, C3446, C3447, C3455, C3465, C3531).
 
 Lane peers (round 20 Y80): once all five lanes are live, the lead messages every lane the five session ids. Send a
 seam note straight to the lane that owns the file, and copy the lead only when it changes another lane's scope.
 
-Result note: `~/.cache/agentsync-bring-back/b13/lanes/r47-<lane>.md`. It carries a section headed exactly `For later
+Result note: `~/.cache/agentsync-bring-back/b13/lanes/r48-<lane>.md`. It carries a section headed exactly `For later
 lanes and the rehearsal`, after its Items and Corrections, which says `none` when the lane has nothing for a later lane
 or the rehearsal; a word for one lane, lane D included, goes inside that section, never under a heading of its own
 (C2215). Only a Landed or CI read-back section, written after the land, may follow it (C2465). An item under Items

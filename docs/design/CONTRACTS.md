@@ -48590,6 +48590,26 @@ reached step 3's sync loop, never after a last install run that chose no folder,
 `::test_rulings_199_and_205_take_round_47s_dated_lines_and_the_turns_row_reads_ruling_213` and
 `::test_ruling_204_takes_ruling_210s_dated_line_and_the_guides_take_lane_bs_phrase`.
 
+### 16.295 Round 48: the report: every spelling of a name cut (a refused account's other paths, the non-line-breaking blanks, the quantity words), a refused log read by nothing but the redactor, the held clause kept whole, and a route credited only from the attempt's own runs (2026-11-27, wave B13 round 48 lane RA)
+
+Reserved for round 48 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 48").
+
+### 16.296 Round 48: the installer: the shell halves of ruling 217, no value printed that it could not register, step 1's escapes and marks, the single-quoted placeholder, a failed sync told apart from a blocked one, and C2060 waits on the operator (2026-11-27, wave B13 round 48 lane RB)
+
+Reserved for round 48 lane RB of B13.
+
+### 16.297 Round 48: a failed sync reads as failed, a blocked sync gives one NEXT naming its owner, carried changes counted right and a hand-deleted page put back, the kept inbox read once, and the person's fix classed alike (2026-11-27, wave B13 round 48 lane B)
+
+Reserved for round 48 lane B of B13.
+
+### 16.298 Round 48: the converters: every text part of a message reaches its page with no control byte left (eml's emitter 1.1.5), and text.py's sentences move with their §15 copies (2026-11-27, wave B13 round 48 lane E)
+
+Reserved for round 48 lane E of B13.
+
+### 16.299 Round 48: the prompt goes to v45 (the land gate's fix run once per page, step 1's stop only with no synced line, a chosen folder that came back paused, a failed step 2 outside the none), dated lines, and the guides (2026-11-27, wave B13 round 48 lane D)
+
+Reserved for round 48 lane D of B13.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units

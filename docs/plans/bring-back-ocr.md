@@ -4491,6 +4491,136 @@ it). While its slots run, the lead reads trunk with `round48/tools/poll.sh` and 
 operator checkout (C2874), and a resume counts as a launch with its own launch read (C3299). The stop rule names Codex
 and Gemini: a clean round without Gemini goes to the operator before the loop closes.
 
+### B13 round 48: v44 rehearsal, cross-lane review, harvest, Codex beside Claude; Gemini not run (2026-11-27)
+
+Run `wf_03af256f-fbb` on `caabd5b2` (BASE `ad60663a`), codex-only, 167 agents, launched at 06:34:02Z on 2026-11-27 (the
+time of its Workflow call) with 0 errors, its result in the lead's log at 08:35Z. 150 raw findings from 16 finders, 150
+after dedupe, 126 confirmed (3 turns, 53 wrongs and 70 small by the finders' classes, which the run's tally gives; the
+verifiers' headers class 2 turns, 47 wrongs and 77 small, C3448, C3456, C3458, C3467, C3468, C3535 and C3544 down to
+small), 24 refuted (C3407, C3413, C3432, C3440, C3451, C3472, C3476, C3477, C3481, C3482, C3483, C3489, C3490, C3492,
+C3494, C3502, C3507, C3516, C3517, C3518, C3519, C3524, C3528, C3548); 16 of the confirmed carry "a fix makes things
+worse? True" (C3402, C3406, C3410, C3431, C3436, C3450, C3466, C3469, C3475, C3487, C3499, C3500, C3505, C3510, C3540,
+C3547), each with a corrected fix that does not, adopted: the verifier's in every case but C3450's, where a
+`cache_served` counts key replaces the verifier's served_run migration, which would be the manifest's first and which
+every older installed build refuses (MANIFEST_SCHEMA_VERSION 1, check_not_newer at manifest.py:1347). All six rehearsal
+scenarios (a to f) passed on v44 at `caabd5b2`, a's act 1 stopping at step 1 with a logged deviation, as v44 says, when
+the folder question came back unanswered. The stop rule is not met (3 turns and 53 wrongs by the finders' count; 2 turns
+and 47 wrongs by the verifiers'). The turns are C3419 (step 1's escape of every non-ASCII blank asked the person to
+rename a folder step 2 adds by its path), C3530 (the prompt let the agent run neither the land gate's chmod 600 of a
+page nor its checkout) and C3544 (every installer NEXT kept the double-quoted `--source-local` placeholder v44 had
+retired; the verifiers' small). Fourteen items are marked as needing prompt words and eleven need them (C3419, C3420,
+C3421, C3428, C3433, C3456, C3458, C3463, C3464, C3500, C3530), and three not marked need them too (C3426, C3505,
+C3506): v44 told the person to rename a folder whose name holds a no-break or ideographic space, let step 1's
+no-unmarked-row stop catch a set-up Mac, a list cut by `(N more)` and the first exception's install, read step 2's
+already-configured and no-folder rules two ways, met a land-gate NEXT naming a git checkout of a mirror page with no
+owner, kept a failed install inside the Finish's none and said only the shell report prints `loads: not checked`, so the
+prompt goes to v45. C3422 and C3457 need none under the code route ruling 223 takes, and C3501 none once the installer
+single-quotes its placeholders, the form v44's step 2 already gives (README.md:560). 14 items are data integrity, 7 of
+them privacy (C3402 and C3405 in lane RA; C3401, C3435, C3439, C3470 and C3471 in lane RB; the other seven C3460 and
+C3506 in lane RB, C3421, C3448, C3469 and C3534 in lane B and C3533 in lane E), and the turns and wrongs share six root
+causes: a fix to one writer reached only some of its readers, and a report still read a name from one spelling (rulings
+217, 218 and 220); a run's cause was told by one output and guessed by the rest (rulings 222 to 224); a claim kept for
+one route was made on another again (rulings 221 and 227); the prompt's general rules overrode its exceptions (ruling
+231, turn C3544); a reader met an entry or an owner it was never tested with (rulings 225, 226 and 228); and a converter
+or a count dropped what it was given, while a quote kept what the code had changed (rulings 229 and 230). Codex gave 49
+opinions, none disputed. Gemini did not run (the allow rule for `~/.claude/scripts/agy-review.sh` is the operator's,
+backlog `8ed9dae0fbc0`, now a tenth round without it). The lead's triage (`round48/triage.md`, from `wf_c5113aae-c1e`)
+placed every item once: its first run wrote the draft and stopped at the weekly limit before it returned, and a re-run
+checked that draft against the specs and the tree (every id once, the kept lessons equal to round 47's text, the
+manifest's schema facts, v44 at `5c2398fd` on trunk, the single-quoted `'<folder>'` form at README.md:560) and made four
+changes: C3508 moved to its class's place in lane RA, a §16.301 drafted for a lane B split, the RB and D splits drafted,
+and the manifest line reference corrected to :1347.
+
+Lead rulings for round 48 (in `lanes/COMMON47.md`, mirrored in `docs/lanes/COMMON.md`): (217) a name is cut in every
+spelling either report can print, whatever its blanks, its quote, its account or its state, the non-line-breaking
+Unicode spaces joining ruling 133's separator table and a vanished project root registering fuzzily, completing ruling
+207, lanes RA and RB landing both halves in one run; (218) the shell side prints no value it could not register and says
+what it could not read, going private only while `c0777e12a523` is open when a listed row that no CloudStorage folder
+spells holds a list escape; (219) C2060 is still gated on the operator under class C decision `c0777e12a523`, and
+nothing this round decodes a listed name in install.sh, rulings 150, 161, 174, 190, 200 and 208 standing; (220) step 1's
+list escapes only what a trim or the eye can drop, a blank only at a path part's edge, and every mark it prints says
+what step 2 does with that row, `[inside a paused folder]` and `[inside a retired folder]` among them; (221) the
+held-folder clause and install.sh's own --source-local phrases survive every cut and every list branch, completing
+ruling 214; (222) a sync that failed after the land gate passed reads as failed, never as blocked or landed, in every
+output and in the next commit; (223) a sync the land gate blocked gives one NEXT in its text, its JSON, STATE.md and
+status, each naming the fix's owner, and the prompt lets the agent run that fix once; (224) the commit that lands
+carried changes counts and names them right, and a mirror page agentsync owns is put back from HEAD, never deleted in
+silence; (225) every reader of the kept inbox reads it once, bounded, and words its note from the live entry, and no
+command writes over a config link it cannot read; (226) a fix only the person can make is the person's in doctor,
+status, step 2 and the report alike, keyed on disk, and no fix names a step that stops on the same entry; (227) the
+report and status credit a route only from the attempt's own runs, completing ruling 213; (228) the report reads only
+the logs it can name, through one resolver and one regular-file reader; (229) a message's every text part reaches its
+page as text, eml's emitter moving once to 1.1.5; (230) a contract or COMMON.md line that quotes another round's words
+takes a dated line beside it, and a §15 mirror moves word for word with its source, ruling 186 standing; (231) the setup
+prompt goes to v45 in lane D's one commit, after lanes RB and B land the words it quotes, as ruling 216 took it to v44.
+Every round 48 dated line reads 2026-11-27, the launch date and this section's heading's. The triage's 15 calls, each
+drafted one way so nothing waits (convictions 60 to 80), and the lead's call 16 (one lane B, below) are filed as one
+class B packet with their courses kept: decision `99872efc42a2`. Call 1 registers a vanished project root fuzzily in both
+reports, reversing ruling 207's carve-out (C3471, 60); call 4 takes ruling 220's edge rule with ESCAPED_MARK kept and
+step 2's refusals unchanged, its words narrowed to what step 2 does (C3527's option a), over a new mark (65); call 6
+takes status's stored block and the `last_run.land_gate` FAIL over C3422's rewording, the checkout as the agent's step,
+`git --literal-pathspecs` over `:(literal)`, the JSON argv `/bin/sh -c` and the block in a meta row (60 to 70); call 12
+takes the `cache_served` counts key over the verifier's migration (C3450, 70); call 14 leaves C3505's optional Loop-line
+swap, C3537's optional totals count and C3530's change to the BLOCKING line's words unbuilt (60); and call 15 keeps
+round 47's lessons word for word, the specs' base sha changed to `caabd5b25`, with one new lesson on a run's cause (80).
+Once every course is on origin/main, the packet is marked with `cc-decide action`, so its expiry fires nothing, and its
+evidence cites a sha only once `git merge-base --is-ancestor` puts it on origin/main (C2494).
+
+C3474 (C2060's shell half, C3287 again) is still gated on the operator's open class C decision `c0777e12a523` (ceiling
+permission): it needs install.sh to decode an escaped listed name, and it moves from lane D to lane RB under ruling 219,
+its corrected fix being lane procedure (conviction 75). Lane RB reads `cc-decide list --open` for it at start and right
+before the scripts/ship-land.sh call of its last land, never after that land has started, logging each read's time in
+its note, and, only on "Allow", builds the port at C2667's three porting points (`round44/items/C2667.md`), mirroring
+C3082, C3114 with C3036 and C3288 and keeping C3526's alias order, then drops the strict xfail, C3401's private-only
+line and test_deploy_pack.py's pin of its reason; a second refusal stops it. Otherwise the strict xfail keeps its
+one-line reason and §16.296 says so. C3401's private-only line reads the escape install.out already holds, C3405's
+separator class reads raw bytes, C3426 is a mark choice and C3470 a checkout path with no listed name, so all four are
+built ungated (85); C3419, C3527 and C3506 change the listing's escape and marks as C3333 did and are ungated (80); and
+C3526, which decodes nothing and sits in add_forms' cloud-listing alias outside C2667's porting points, is ungated (70).
+The lead adds a dated line to `c0777e12a523`'s receipt: from C3333 until ruling 220 narrows the escape the gap reached
+any listed name holding a non-ASCII blank, and after it a listed name holding a control, bidi or zero-width character or
+a blank at a part's edge, and an Allow's port keeps C3526's order; `1476293d00a3` stays superseded.
+
+Convergence: confirmed 100, 130, then 126; turns 1, 4, then 2; wrongs 27, 33, then 47 (the verifiers' counts in rounds
+46 to 48; this round the finders' are 3 turns and 53 wrongs).
+
+Lanes (`--account auto`, CONTRACTS §16.295 to §16.299, plain `scripts/ship-land.sh`, scratch under `round48/`): RA 22
+(ruling 217's Python halves and shared rows, sent to lane RB as a branch sha; ruling 228's refused log and regular-file
+reader; ruling 227's route scoring and Loop rule; ruling 221's kept rows, with install.sh's CUT_SOURCE_LOCAL_KEPT and
+C3405's alternation regenerated; C3529's person's buckets; the report clusters), RB 27 (both halves of ruling 217 landed
+in one run on lane RA's branch; ruling 218; ruling 220's escapes and marks, C3539's NEXT words and the single-quoted
+placeholders of C3544's group, landed in a run of their own before lane D's v45; C3455 with C3465 after lane B's
+run-line words; C3466's dangling link; the shell installer clusters; C3474 only on the operator's word), B 30 (the data
+integrity first, C3534, C3469 and C3421 with C3448; rulings 222 to 226, C3421's owner words sent to lane D and landed
+before v45 and the run-line words sent to lane RB first; C3468's resolver; the CLI clusters), E 4 (ruling 229's eml
+parts and control bytes, ruling 230's text.py lines, C3511's _walk_scan branch from lane B's words and the review of
+lane RB's _LIST_ESCAPED_RE), D 28 (the v45 commit after lane RB's marks run and lane B's C3421 words, ruling 230's dated
+lines and the guides) and L 15, each id once (126). Lane B builds 25 after its merges, at the line: the triage drafted a
+split into B1, the land gate, the cycle and runs (17 ids, 14 builds), and B2, the readers (13 ids, 11 builds), whose
+files are disjoint but for loop.py, cli.py and their tests, where B2 would rebase on B1's land, with §16.301 for B2
+(conviction 60); the lead keeps one lane B, whose area paragraph already orders the work, as round 47's call 15 did at
+34, and reserves no §16.301, so round 49's sections start at §16.301 (§16.300 is the CLI conventions wave's). Lanes RB
+(21 builds) and D (22 builds) also pass about 25 ids and stay whole (70), as round 45 ran lane RB at 28: neither has a
+split with disjoint files. Moved in triage: C3474 from D to RB, gated. C3460 is ordered with the other data-integrity
+items, not privacy, since its spec shows a held folder left unnamed and an inbox count off by one, not a value printed
+in clear (75); C3509, C3526 and C3527 are privacy-adjacent smalls left at their class's place (70). Halves built by
+another lane, ids kept where classified: C3419's _LIST_ESCAPED_RE, C3506's _LIST_MARKS and the NO_FOLDER_* constants of
+C3544's group in lane RB's commits; C3405's and C3499's generated install.sh blocks in lane RA's; C3545's PERSONS_FAILS
+and _PERSONS_KINDS_COPY, C3450's reuse query, C3468's resolver and C3466's docs_repo_state in lane B's; C3511's
+_walk_scan branch in lane E; and the prompt halves of C3419, C3421, C3426 and C3506 in lane D's v45. The corrected fixes
+the triage judged could still make things worse need no one: C3421's checkout as the agent's step, which discards a hand
+edit to a page agentsync owns while every later sync's gate stays blocked until it is restored (60, the zero-risk
+alternative the person's step at the cost of a turn), C3534's restore from HEAD before the gate, bounded by the deleted
+rows the run cannot account for (75), and C3471's fuzzy vanished root, bounded by the joined-name and own-folder filters
+(60). The lead holds 15: round 49's kit (C3541 with C3549, C3542, C3543, C3550), the brief (C3484, C3488, C3522, C3523,
+and C3520's kit half, the C3211 quote in `round49-workflow.js`), the workflow (C3493: the Gemini slots back only once
+backlog `8ed9dae0fbc0`'s allow rule exists), the harvest (C3480, C3485, C3495), and the record (C3486: a dated
+correction in `round29/lead-notes.md` making the Workflow tool_use timestamp the launch time; C3487: a launch read
+before every args.head call, local git log for commit lists and poll.sh's one gh run list, makes worse True; C3491's kit
+half; Codex-only review until that backlog's allow rule, that backlog and decision `c0777e12a523` named in every close).
+The specs cite `caabd5b25`'s line numbers, and the kept lessons in `docs/lanes/COMMON.md` now say so. Round 49 rehearses
+v45, with v44's block (`5c2398fd`) as scenario C's first old copy.
+
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be
