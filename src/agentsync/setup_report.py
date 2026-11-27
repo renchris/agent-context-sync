@@ -13929,6 +13929,12 @@ _STUB_NOW_RE = re.compile(r"(?s).+( is a `contains a credential` stub now)\Z")
 stub now: ...``, round 29 C145), as a ``: ``-segment: the page is cut, through the last such tail, and
 agentsync's own words after it stay (B13 round 29 C145's report half; ruling 23)."""
 
+_FETCH_FAILED_RE = re.compile(r"(fetch of ).+( failed)")
+"""The cycle's failed-fetch warning (``<source>: fetch of <rel_path> failed: <error>``, cycle.py's ``%s: fetch
+of %s failed: %s``) as a ``: ``-segment: everything between the fixed words is the item's path, cut whole (a
+rel_path holds blanks and slashes, so no word of it is left), and the words stay (B13 round 48 C3535: a name
+with a document's suffix cut the whole segment to ``<path>``, and the reader lost that a fetch failed)."""
+
 
 def _scrub_segment(part: str) -> str:
     if _LOG_HEAD_RE.fullmatch(part) or not _PATH_IN_LOG_RE.search(_probe(part)):
@@ -13936,6 +13942,9 @@ def _scrub_segment(part: str) -> str:
     stub = _STUB_NOW_RE.fullmatch(part)
     if stub is not None:
         return "<path>" + stub.group(1)
+    fetch = _FETCH_FAILED_RE.fullmatch(part)
+    if fetch is not None:
+        return fetch.group(1) + "<path>" + fetch.group(2)
     out = _KEY_PATH_RE.sub(
         lambda m: m.group(1) + "<path>" if _PATH_IN_LOG_RE.search(_probe(m.group(0))) else m.group(0), part
     )

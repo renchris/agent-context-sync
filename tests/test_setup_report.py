@@ -276,7 +276,7 @@ def test_recent_errors_never_carry_an_item_path_or_document_name(
         "src-x: 2 folder(s) could not be listed: '<path>' (EPERM: Operation not permitted), '<path>' "
         "(EDEADLK: Resource deadlock avoided)"
     ) in errors
-    assert "src-x: <path>: [Errno 89] Operation canceled" in errors
+    assert "src-x: fetch of <path> failed: [Errno 89] Operation canceled" in errors  # C3535
     assert "inbox: <path>: read failed: Operation canceled" in errors
     assert "src-x: read failed: [Errno 89] Operation canceled: '<path>" in errors
     assert "(item paths and document names shown as <path>)" in errors
@@ -826,13 +826,34 @@ def test_a_log_line_never_names_a_file_a_converter_reads(suffix: str) -> None:
     }
     for name in (f"Contoso Roadmap{suffix}", f"Fabrikam Org Chart{suffix.upper()}"):
         fetch = f"{LOG_HEAD}cycle: src-x: fetch of {name} failed: timed out"
-        assert setup_report._scrub_item_paths(fetch) == f"{LOG_HEAD}cycle: src-x: <path>: timed out"
+        assert (
+            setup_report._scrub_item_paths(fetch)
+            == f"{LOG_HEAD}cycle: src-x: fetch of <path> failed: timed out"
+        )
         broke = f"{LOG_HEAD}convert: converter image-ocr broke its contract on {name}: unit whole: empty body"
         assert setup_report._scrub_item_paths(broke) == f"{LOG_HEAD}convert: <path>: unit whole: empty body"
         failed = f"{LOG_HEAD}convert.image: {name}: on-device OCR failed: the OCR helper ran out of time"
         assert setup_report._scrub_item_paths(failed) == (
             f"{LOG_HEAD}convert.image: <path>: on-device OCR failed: the OCR helper ran out of time"
         )
+
+
+def test_a_failed_fetch_keeps_its_words_and_cuts_the_whole_name_c3535() -> None:
+    """B13 round 48 C3535: the cycle's ``<source>: fetch of <rel_path> failed: <error>`` lost its words: a
+    name with a document's suffix cut the whole segment to ``<path>``, so the reader no longer saw a fetch had
+    failed. The fixed words stay and everything between them is cut whole, a nested name with blanks too (no
+    word of it is left); the next segment's absolute path is still cut."""
+    head = f"{LOG_HEAD}cycle: project-alpha: "
+    path = "/Users/contoso/x/Contoso notes.potx"
+    line = f"{head}fetch of Contoso notes.potx failed: {path}: read failed: Permission denied"
+    scrubbed = setup_report._scrub_item_paths(line)
+    assert scrubbed == f"{head}fetch of <path> failed: <path>: read failed: Permission denied", scrubbed
+    assert "Contoso" not in scrubbed and "contoso" not in scrubbed, scrubbed
+    nested = f"{head}fetch of Big Bank Merger/Q3 pricing for Globex.xlsx failed: timed out"
+    scrubbed = setup_report._scrub_item_paths(nested)
+    assert scrubbed == f"{head}fetch of <path> failed: timed out", scrubbed
+    for word in ("Big", "Bank", "Merger", "Q3", "pricing", "Globex", "xlsx"):
+        assert word not in scrubbed, (word, scrubbed)
 
 
 def test_the_lock_wait_warning_keeps_a_fixed_stage_word_and_redacts_a_source_stage() -> None:
@@ -877,13 +898,16 @@ def test_a_logger_named_like_a_document_keeps_its_time_and_level(module: str, he
         f"{head}convert.{module}: <path>: comments not read on 1 page, first on page 2"
     )
     # Only a segment that is a whole log-line head is left alone: a file named like a logger is a file.
-    for posing in (
-        f"fetch of WARNING agentsync.convert.{module} failed",
-        f"unreadable ERROR agentsync.convert.{module}",
+    for posing, cut in (
+        (
+            f"fetch of WARNING agentsync.convert.{module} failed",
+            "fetch of <path> failed",
+        ),  # C3535: words kept
+        (f"unreadable ERROR agentsync.convert.{module}", "<path>"),
     ):
         if module != "image":  # ``.image`` is no document extension: nothing to scrub in it
             line = f"{LOG_HEAD}cycle: src-x: {posing}: timed out"
-            assert setup_report._scrub_item_paths(line) == f"{LOG_HEAD}cycle: src-x: <path>: timed out"
+            assert setup_report._scrub_item_paths(line) == f"{LOG_HEAD}cycle: src-x: {cut}: timed out"
 
 
 def test_a_joined_name_that_spells_any_report_word_leaves_the_word_alone() -> None:
@@ -7645,7 +7669,7 @@ def test_installer_output_log_lines_never_carry_a_nested_name(
     assert "zero children in a cloud tree: '<path>', '<path>'; enumeration incomplete, no deletions" in inst
     assert "    error: OSError: [Errno 13] Permission denied: '<path>'\n" in inst
     assert "  src-x: full · INCOMPLETE · cursor held\n" in inst
-    assert "ERROR agentsync.cycle: src-x: <path>: [Errno 89] Operation canceled\n" in inst
+    assert "ERROR agentsync.cycle: src-x: fetch of <path> failed: [Errno 89] Operation canceled\n" in inst
     assert "fatal: unable to access 'https://example.com/agent-context-sync.git/': Could not resolve" in inst
     assert "error: the sync step failed; see ~/agent-context/setup/install.out\n" in inst
     assert "[ok  ] disk.docs — 120 GiB free at ~/agent-context/docs\n" in inst

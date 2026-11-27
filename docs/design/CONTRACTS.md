@@ -49007,6 +49007,20 @@ row's number); only the lookup-level sibling test fails there. A literal filed u
 assertion. Tests: `test_report_redaction.py`'s
 `test_the_shell_report_cuts_a_looped_inbox_links_target_c3245[loop-linked-folder-*]` and `test_the_agentsync_report_cuts_a_folder_step_1_listed_but_not_configured_c2873`.
 
+**The failed-fetch warning keeps its words** (C3535; rehearsal finding; `agentsync.setup_report`). The cycle logs
+`<source>: fetch of <rel_path> failed: <error>`, and `_scrub_segment` cut a `: `-segment holding a document's suffix
+whole when neither the key rule nor the absolute-path rule cut anything from it, so `fetch of Contoso notes.potx
+failed` read `<path>` and the reader lost that a fetch had failed (a name with no suffix stayed intact). Before that
+fallback, next to the credential-stub case, `_FETCH_FAILED_RE` fullmatches the segment on the cycle's fixed words and
+cuts everything between them whole: `project-alpha: fetch of <path> failed: <path>: read failed: Permission denied`.
+The name is never cut word by word, since a rel_path holds blanks and slashes (`Big Bank Merger/Q3 pricing for
+Globex.xlsx` leaves no word of itself); the next segment's absolute path is still cut by the existing rules. The shell
+report has no twin: install.sh prints no err.log or install.out line and holds no `fetch of` text. Tests:
+`test_setup_report.py::test_a_failed_fetch_keeps_its_words_and_cuts_the_whole_name_c3535`, with
+`test_a_log_line_never_names_a_file_a_converter_reads`, `test_a_logger_named_like_a_document_keeps_its_time_and_level`,
+`test_recent_errors_never_carry_an_item_path_or_document_name` (`Big Bank`, `Merger` and `Globex` still absent) and
+`test_installer_output_log_lines_never_carry_a_nested_name` now expecting `fetch of <path> failed`.
+
 ### 16.296 Round 48: the installer: the shell halves of ruling 217, no value printed that it could not register, step 1's escapes and marks, the single-quoted placeholder, a failed sync told apart from a blocked one, and C2060 waits on the operator (2026-11-27, wave B13 round 48 lane RB)
 
 The installer's items of round 48 (`docs/plans/bring-back-ocr.md`, "B13 round 48"; each item's verifier's corrected
