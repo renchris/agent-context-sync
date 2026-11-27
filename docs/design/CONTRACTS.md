@@ -47977,6 +47977,9 @@ the tomllib reader takes `lstrip()`, and SOURCE_TABLES_AWK reads the path throug
 (kind, id and state keep py_strip), so a folder whose name ends in U+3000 or a space is named, never its sibling
 without it, as setup_report._install_sh_said_no_folder names it. Test:
 `test_install_oneshot.py::test_both_held_folder_readers_keep_a_paths_trailing_blank_as_the_loader_does_c3333`.
+Amended 2026-11-27, §16.296 C3419, C3527: a blank is escaped only at a path part's start or end, an ASCII space
+too (as `\040`), every blank of that run, a blank inside a name listed plain; a control, line-break, bidi or
+zero-width character anywhere, and arm_local._LIST_ESCAPED_RE holds the same rule.
 
 **A file where the docs repo belongs is the person's to move aside at step 2** (C3236; ruling 211; makes worse True
 for an lstat test or a land before lane B's C3238, which landed first). docs_not_a_folder, shaped like
@@ -48852,6 +48855,51 @@ installed interpreter)`, never skipping it, and non_inbox_sources counts it, its
 `tests/test_install_oneshot.py::test_the_line_reader_reads_a_one_line_triple_quoted_value_as_the_loader_does_c3460`,
 `::test_the_line_reader_says_it_could_not_read_a_value_written_across_lines_c3460`.
 
+**Step 1 escapes a blank only at a path part's edge** (C3419 and C3527, one rule; ruling 220; amends §16.291
+C3333 and §16.244 C1280). C3333 escaped every non-ASCII blank anywhere, so a folder with U+00A0 or U+3000 inside its name was listed
+escaped and the person told to rename a folder step 2 adds by its path, while `Project ` beside `Project` listed as
+two rows that read alike. LIST_ESC_AWK's esc and escd escape a blank str.strip trims (U+0020 as `\040`, U+00A0,
+U+1680, U+2000-U+200A, U+202F, U+205F, U+3000) only at a path part's start or end, next to `/` or either end of the
+text, every blank of that run, and a control, line-break (U+0085, U+2028, U+2029), bidi or zero-width character
+anywhere; shown() escapes the bare path, never the mark before it, and escd is esc's own test.
+arm_local._LIST_ESCAPED_RE is the same rule over a whole name or path, its twin held by the C3333 test; the users
+that write a `$'...'` word by character (doctor.ansi_c_word, the report's `%q` bodies) take
+arm_local.LIST_ESCAPED_CHAR_RE, the old per-character class, so those words are unchanged. Such a row keeps
+ESCAPED_MARK and --source-local's refusals stay as they are: a row pasted as shown, or a folder with a look-alike
+sibling, which now catches `Project\040` beside `Project ` (option a). Both guides' escape parenthetical moves in the
+same commit. Tests: `tests/test_install_list.py::test_the_list_escapes_every_non_ascii_blank_as_its_python_twin_does_c3333`,
+`::test_a_folder_with_a_space_at_its_edge_lists_escaped_and_its_literal_twin_is_refused_c3527`,
+`tests/test_arm_local.py::test_list_shown_name_spells_a_folder_as_install_shs_list_does_c1244`.
+
+**A row inside a held folder is marked, and an escaped held row takes the kept escaped mark** (C3506 and C3426;
+ruling 220; data integrity). A folder inside one sources.toml holds paused or retired was listed plain and offered.
+It takes `[inside a paused folder]` or `[inside a retired folder]` (INSIDE_PAUSED_MARK, INSIDE_RETIRED_MARK), ranked
+below [synced], [inside a synced folder], [paused] and [retired] and above [contains a synced folder]; it counts in
+heldn, and when one shows the NEXT's held clause, unchanged byte for byte, is followed by `; a folder marked [inside
+a paused folder] or [inside a retired folder] above is inside such a folder, so it is not synced either, and
+--source-local leaves it so too`; --json gives it the state `inside_paused` or `inside_retired`; pasted with its mark
+it is refused, `that folder is inside one sources.toml holds paused, so it is not synced either; paste nothing for
+it`; listed_folder_lines' strip, the awk lists, pasted_row and setup_report._LIST_MARKS read the marks too. An
+escaped paused or retired row, or one inside such a folder, takes ESCAPED_KEPT_MARK (no rename) and no twin mark,
+the --json mark alike, and pasted it gets the held refusal, never `already syncs`. Tests:
+`tests/test_install_list.py::test_a_folder_inside_a_held_one_is_marked_and_never_offered_c3506`,
+`::test_an_escaped_held_row_takes_the_kept_escaped_mark_and_the_held_refusal_c3426`,
+`tests/test_setup_report.py::test_both_readers_of_the_folder_list_strip_every_mark_install_sh_prints`.
+
+**Every list branch that prints a held row names it** (C3441; ruling 221). The no-provider and empty-provider NEXTs
+(exit 3), the denied and asking ones (exit 4, still ending on the click and its re-run) and the missing-folder one
+add the held clause after their re-run, before `$kept`, the exit-0 clause order unchanged. Test:
+`tests/test_install_list.py::test_every_list_branch_that_prints_a_held_row_names_it_c3441`.
+
+**A first sync that exits 0 shows each file it could not read** (C3537). show_first_sync prints the sync's per-item
+`error:` lines under the step's label after the converted line, which SYNC_SUMMARY_RE and install.log's note still
+read. Test: `tests/test_install_oneshot.py::test_a_first_sync_that_exits_0_shows_each_file_it_could_not_read_c3537`.
+
+**Every print of the launcher's path and the source line goes through q_word** (C3509; ruling 218). The usage error
+for a `--launcher` that is no folder, the codesign refusal, the up-to-date line and `source:` printed a path holding
+U+3000 or U+0085 raw, where the re-run words spell it with q_word's `$'..'` word; each spells it so now. Test:
+`tests/test_launcher.py::test_every_print_of_the_launcher_and_source_path_goes_through_q_word_c3509`.
+
 **A first sync names the land gate only when the gate blocked it, and counts the findings** (C3455 with C3465 and
 C3539; rulings 222 and 223; amends §16.291 C3227). BLOCKED_LINE quoted any BLOCKING line, so a sync whose cycle
 failed (`BLOCKING CYCLE`) or that failed after the gate passed read as blocked by the land gate. It is set only when
@@ -48861,6 +48909,23 @@ BLOCKING lines above); the first: <page>: <fix>; then re-run: <command>`, `1 blo
 loop.land_gate_step's plural() counts; otherwise the bare `fix what the first sync printed above (failed), then
 re-run: <command>`. Tests: `tests/test_install_oneshot.py::test_a_first_sync_the_land_gate_blocked_names_its_first_blocking_line_c3227`,
 `::test_a_first_sync_that_failed_after_the_gate_keeps_the_bare_next_c3455_c3465`.
+
+**Every `--source-local` placeholder the installer prints is single-quoted** (C3544 with C3501, C3521, C3525 and
+C3538; amends §16.271 C2401, §16.275 C2601, §16.276 C2658, §16.281 C2910, §16.291 C3206 and §16.300 D15). v44's step
+2 gives `--source-local '<folder>'`, so `$` and a backquote in a name stay as typed, while every installer NEXT that
+names the placeholder printed `--source-local "<folder>"`: the list's keep and choose NEXTs, the no-folder NEXTs,
+NO_FOLDER_CHOSEN_NEXT, the nothing-to-draft swap and json_step's display string now print `'<folder>'`, json_step's
+argv word staying `<folder>`, and setup_report's NO_FOLDER_NEXT, NO_FOLDER_CHOSEN_NEXT and NO_FOLDER_FIRST_NEXT move
+in the same commit; the concrete-folder form (double-quoted with its escapes, q_word and shown_arg), cycle's
+vanished add-back tail and DRAFT_ADD_FROM are unchanged. Tests:
+`tests/test_install_oneshot.py::test_every_source_local_placeholder_the_installer_prints_is_single_quoted_c3544`,
+`tests/test_report_redaction.py::test_both_reports_keep_the_single_quoted_folder_placeholder_c3544`.
+
+**The shell legend says how a folder outside CloudStorage is matched** (C3479's legend; amends §16.141 W5). Since
+§16.291 C3289 a configured folder outside CloudStorage is cut fuzzily, as a cloud folder is, while the legend still
+said `each as a whole word, in any letter case`. It names the fuzzy match: any letter case, any blanks or separators
+between a name's words, or none at a CamelCase boundary, a path with `/` still a whole word. Test:
+`tests/test_install_oneshot.py::test_the_folder_legend_names_a_project_folder_only_where_one_is_shown`.
 
 ### 16.297 Round 48: a failed sync reads as failed, a blocked sync gives one NEXT naming its owner, carried changes counted right and a hand-deleted page put back, the kept inbox read once, and the person's fix classed alike (2026-11-27, wave B13 round 48 lane B)
 
