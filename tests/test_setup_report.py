@@ -30448,17 +30448,63 @@ def test_the_loop_line_says_install_shs_own_form_on_status_rule_2_next_c3003(
             r.facts.doctor_problems.append(("FAIL", "state_dir.files", "x"))
         return setup_report._loop_line(r)
 
-    # B13 round 47 C3332: each local folder by its path too, which the Loop line shows past the home folder
+    # B13 round 47 C3332: each local folder by its path too; B13 round 48 C3504 (ruling 221): the whole path,
+    # home-relative, where loop_next_text cut it to its last part
     clause = setup_report.NOT_LIVE_CLAUSE.format(
-        folders="wombat (paused) at Wombat, quokka (retired) at Quokka"
+        folders="wombat (paused) at ~/Wombat, quokka (retired) at ~/Quokka"
     )
     line = loop(inbox + paused + retired, ok)
     assert f"NEXT: {own}{clause}" in line and "add-source" not in line, line
+    assert str(home) not in line, line
     line = loop(inbox, ok)
     assert f"NEXT: {own}" in line and "not live:" not in line and "add-source" not in line, line
     for logged, fail in ((ok.replace("end rc=0", "end rc=1"), False), (ok, True)):
         line = loop(inbox + paused, logged, fail)
         assert "add-source" in line and "not live:" not in line, (logged, fail, line)
+
+
+def test_the_loop_line_shows_a_held_folders_path_as_the_install_out_excerpt_does_c3504(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 48 C3504 (ruling 221): the Loop line cut a held folder's path in install.sh's `not live:`
+    clause to its last part (`at <folder-1>`, or `at Plans` for two folders both ending `Plans`), where the
+    install.out excerpt of the same NEXT read `at ~/Library/CloudStorage/OneDrive-<org-1>/<folder-1>`. The
+    clause keeps the path whole and home-relative, so the redacted report's Loop line and its excerpt show the
+    same cut path, never the raw home folder."""
+    home = Path.home()
+    held = home / "Library" / "CloudStorage" / f"OneDrive-{ORG}" / "Shared Docs" / "Plans"
+    held.mkdir(parents=True)
+    cfg = fake_mac["config"]
+    inbox = inbox_source_table("inbox", home / "agent-context" / "inbox")
+    paused = local_source_table("kestrel", held).replace('kind = "local"', 'kind = "local"\nstate = "paused"')
+    cfg.write_text(default_config_text() + inbox + paused, encoding="utf-8")
+    run = "2026-11-24T10:00:00Z run=20261124T100000Z-7"
+    (fake_mac["setup"] / "install.log").write_text(
+        f"{run} start install.sh compat=42 commit=0123456789ab kind=checkout source=- args=\n"
+        f"{run} end rc=0\n",
+        encoding="utf-8",
+    )
+    own = setup_report.NO_FOLDER_NEXT.format(
+        install_sh=setup_report.INSTALL_SH, rerun=setup_report.INSTALL_SH
+    )
+    said = setup_report.NOT_LIVE_CLAUSE.format(folders=f"kestrel (paused) at {held}")
+    (fake_mac["setup"] / "install.out").write_text(
+        f"# run=20261124T100000Z-7 2026-11-24T10:00:00Z install.sh\nNEXT: {own}{said}\n", encoding="utf-8"
+    )
+    rule2 = (
+        "NEXT: no folder is synced yet: ask the operator which folders to sync (`~/.local/bin/agentsync "
+        "--list-folders`), then run `~/.local/bin/agentsync add-source <folder>` and a sync"
+    )
+    hooks = setup_report.ReportHooks(loop_next=lambda _config: [rule2])
+    text, _red = setup_report.build_report(cfg, hooks=hooks)
+    [loop] = [ln for ln in text.splitlines() if ln.startswith("- Loop: ")]
+    at = re.search(r"; not live: <source-\d+> \(paused\) at (.+?): setting", loop)
+    assert at is not None, loop
+    shown = at.group(1)
+    assert shown.startswith("~/Library/CloudStorage/OneDrive-<org-") and shown.count("/") >= 5, shown
+    [excerpt] = [ln for ln in section(text, "Installer").splitlines() if "; not live: " in ln]
+    assert f" at {shown}: setting" in excerpt, (shown, excerpt)
+    assert str(home) not in loop and "/Users/" not in loop, loop
 
 
 @pytest.mark.parametrize("mac", ["synced", "new"])

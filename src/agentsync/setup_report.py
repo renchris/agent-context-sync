@@ -18068,6 +18068,11 @@ NOT_LIVE_CLAUSE = (
 191): the one copy of its words. Since B13 round 47 C3332 a local folder's item ends `` at <path>``, its
 path as load_config holds it, escaped as step 1's list escapes a row (install.sh's held_sources_clause, byte
 for byte)."""
+_NOT_LIVE_OPENER = NOT_LIVE_CLAUSE.split("{folders}", 1)[0]
+"""``; not live: ``, :data:`NOT_LIVE_CLAUSE`'s opener: :func:`_loop_line` runs :func:`loop_next_text` only on
+the text before it, so each held folder's path stays whole and home-relative (``~/...``), cut only by the
+report's normal pass as the install.out excerpt's copy of the same NEXT is, where loop_next_text cut it to its
+last part (B13 round 48 C3504, ruling 221)."""
 _NO_FOLDER_OPENERS = ("NEXT: no folder is synced yet", "NEXT: no folder to sync yet")
 """The two NEXT openers install.sh turns into :data:`NO_FOLDER_CHOSEN_NEXT` on a run that recorded the
 person's none, whatever the config counts (status's rule 2 among them; ruling 191)."""
@@ -18133,16 +18138,14 @@ def _install_sh_said_no_folder(r: _Run, config: Config, found: str) -> str | Non
         return NO_FOLDER_CHOSEN_NEXT if chosen else None
     if latest.rc == 0 and found.startswith(_RULE2_OPENER):  # B13 round 46 C3003
         # a local folder by its path too, escaped as step 1's list escapes a row, its braces doubled: the
-        # caller formats this line (B13 round 47 C3332)
+        # caller formats this line (B13 round 47 C3332); home-relative (`~/...`), as the report's install.out
+        # excerpt shows the same path, never the raw home folder (B13 round 48 C3504, ruling 221)
+        def at(path: Path) -> str:
+            shown = _LIST_ESCAPED_RE.sub(list_escaped_char, _home_tilde(str(path)) or str(path))
+            return f" at {shown}".replace("{", "{{").replace("}", "}}")
+
         idle = [
-            f"{s.id} ({s.state.value})"
-            + (
-                f" at {_LIST_ESCAPED_RE.sub(list_escaped_char, str(s.path))}".replace("{", "{{").replace(
-                    "}", "}}"
-                )
-                if s.path is not None
-                else ""
-            )
+            f"{s.id} ({s.state.value})" + (at(s.path) if s.path is not None else "")
             for s in config.sources
             if s.kind is not SourceKind.INBOX and not s.is_live
         ]
@@ -18167,7 +18170,9 @@ def _loop_line(r: _Run) -> str:
     ``AGENTS.md`` and ``_sync/STATE.md``, and :data:`_CONFIG_SHOWN`) whatever the path
     (:func:`_eval_by_name`). Records the loop's ``checks`` for the Summary's doctor line, only once its waits
     are on this line. Sets ``r.loop_stage`` for the issue link;
-    :func:`build_report` runs it once, before ``took``."""
+    :func:`build_report` runs it once, before ``took``. B13 round 48 C3504 (ruling 221): install.sh's
+    :data:`NOT_LIVE_CLAUSE` (:data:`_NOT_LIVE_OPENER` on) keeps each held folder's path whole, home-relative,
+    for the report's normal pass to cut as it cuts the install.out excerpt's copy."""
     if r.facts.loop is not None:
         # B13 round 43 C2402 (ruling 163): a folder other than the inbox, by loop.next_step's rule 2 test,
         # from sources.toml, never from status's words
@@ -18220,10 +18225,13 @@ def _loop_line(r: _Run) -> str:
         return f"- Loop: {stage}; NEXT: not read ({said}){damaged}"
     found = next((ln for ln in lines if ln.startswith("NEXT: ")), None)
     said_instead = _install_sh_said_no_folder(r, config, found) if found is not None else None
+    held = ""  # B13 round 48 C3504 (ruling 221): install.sh's not-live clause, its folders' paths kept whole
     if said_instead is not None:
         found = "NEXT: " + said_instead.format(install_sh=INSTALL_SH, rerun=INSTALL_SH)
+        found, opener, clause = found.partition(_NOT_LIVE_OPENER)
+        held = opener + clause
     text = (
-        loop_next_text(_fail_step_in_doctor(r, found))
+        loop_next_text(_fail_step_in_doctor(r, found)) + held
         if found
         else "NEXT: none (the loop state cannot be read)"
     )

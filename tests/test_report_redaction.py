@@ -3324,6 +3324,37 @@ def test_both_reports_cut_a_folder_step_1_marked_paused_or_retired_c3332(
     assert not leaks, leaks
 
 
+def test_the_loop_line_cuts_the_names_in_a_held_folders_whole_path_c3504(
+    fake_mac: dict[str, Path],  # noqa: F811
+) -> None:
+    """B13 round 48 C3504 (ruling 221; privacy): the Loop line's `not live:` clause now keeps a held folder's
+    path whole and home-relative (`~/Library/CloudStorage/OneDrive-Contoso/Shared Docs/Plans`), where
+    loop_next_text cut it to its last part, so the report's normal pass cuts each name in it, as it does
+    step 1's rows (C3332): the tenant, `Shared Docs` and `Plans` are cut, the raw home folder never shown."""
+    home = Path.home()
+    held = home / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Shared Docs" / "Plans"
+    held.mkdir(parents=True)
+    cfg = fake_mac["config"]
+    paused = local_source_table("kestrel", held).replace('kind = "local"', 'kind = "local"\nstate = "paused"')
+    cfg.write_text(default_config_text() + paused, encoding="utf-8")
+    run = "2026-11-24T10:00:00Z run=20261124T100000Z-7"
+    (fake_mac["setup"] / "install.log").write_text(
+        f"{run} start install.sh compat=42 commit=0123456789ab kind=checkout source=- args=\n"
+        f"{run} end rc=0\n",
+        encoding="utf-8",
+    )
+    rule2 = (
+        "NEXT: no folder is synced yet: ask the operator which folders to sync (`~/.local/bin/agentsync "
+        "--list-folders`), then run `~/.local/bin/agentsync add-source <folder>` and a sync"
+    )
+    hooks = setup_report.ReportHooks(loop_next=lambda _config: [rule2])
+    text, _red = setup_report.build_report(cfg, hooks=hooks)
+    [loop] = [ln for ln in text.splitlines() if ln.startswith("- Loop: ")]
+    assert "; not live: " in loop and " at ~/Library/CloudStorage/OneDrive-<org-" in loop, loop
+    leaks = [w for w in ("Contoso", "Shared Docs", "Plans", "kestrel", str(home), "/Users/") if w in loop]
+    assert not leaks, (leaks, loop)
+
+
 def test_a_listed_escaped_name_is_decoded_under_one_number_and_the_old_form_left_c2873() -> None:
     """B13 round 45 C2873 (ruling 190): only a row that opened with an escaped mark is decoded, `\\ooo` per
     byte, `\\t`, `\\r` and `\\n` as both LF and 0x1E; a twin-marked or plain row keeps its backslash as the
