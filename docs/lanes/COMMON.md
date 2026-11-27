@@ -3227,6 +3227,16 @@ and cat-file, which write nothing). To wait for another land, read the local `gi
 fetch moves it for all worktrees) or trunk.sh <sha>, at most once a minute, never in a fetch loop. A STOP is reported
 and looked at, never fetched.
 
+Branches (round 48 C3491): a lane deletes only its own throwaway b13/r<n>-* branches (a split, a pre-squash copy, a
+second branch of its own worktree), each by its exact name, and only once it has proved each one's commits are on trunk
+or on its lane branch: `git cherry origin/main <branch>` prints no `+` line, or the branch's tip is the lane branch's
+tip. It uses `git branch -d` wherever git's merged check can pass. Its result note lists each deleted branch with its
+old sha and that proof, and the lead's tools/remove-worktrees.sh echoes each noted name as deleted by that lane, so the
+round's removal log accounts for every b13/r<n>-* branch the round made. When git-worktree-guard or the classifier
+refuses a branch delete, it is never issued again in another form while the condition the refusal names still holds;
+a delete made after that condition is gone (after switching off the branch, with -d) is allowed, and the note names
+it.
+
 Trunk (round 11 M87): ship-land checks trunk's CI before it pushes and stops on red (exit 6); since round 27 P140 it
 also reads trunk's runs once before the gate, so a trunk already red stops the land before a 35-minute gate. If trunk is red, do not
 edit failing tests outside your lane's files: message the lead and the lane that landed them with the run id and the

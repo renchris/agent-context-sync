@@ -630,6 +630,26 @@ def test_the_lane_brief_says_a_lane_never_fetches_c2486() -> None:
     ) in landing
 
 
+def test_the_lane_brief_says_which_branches_a_lane_may_delete_c3491() -> None:
+    """B13 round 48 C3491: round 47's lanes deleted their own throwaway branches with nothing in the brief
+    about it, so the removal log could not name them and the harvest rebuilt them from transcripts, and one
+    lane re-issued a refused delete in another form. The rule sits beside Landing: only a lane's own proven
+    b13/r<n>-* branches, by exact name, -d where git's check can pass, each noted with its old sha and proof,
+    and a refused delete never re-issued while its condition holds."""
+    lanes = _page("docs/lanes/COMMON.md")
+    landing = lanes.split(" Landing (round ", 1)[1].split(" Trunk (round 11 M87):", 1)[0]
+    rule = " ".join(landing.split(" Branches (round 48 C3491): ", 1)[1].split())
+    for said in (
+        "a lane deletes only its own throwaway b13/r<n>-* branches",
+        "each by its exact name, and only once it has proved each one's commits are on trunk or on its lane",
+        "`git cherry origin/main <branch>` prints no `+` line, or the branch's tip is the lane branch's tip.",
+        "It uses `git branch -d` wherever git's merged check can pass.",
+        "Its result note lists each deleted branch with its old sha and that proof",
+        "it is never issued again in another form while the condition the refusal names still holds;",
+    ):
+        assert said in rule, said
+
+
 def test_the_guides_say_when_to_dispatch_ci_and_how_to_find_your_own_land() -> None:
     """B13 round 35 C982 with C990: three round 34 lessons were in no guide. A ship-land exit 9 with no run
     left the hand loop printing nothing, which reads like success, and nothing said that a dispatch runs the

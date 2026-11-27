@@ -48789,6 +48789,15 @@ does not lead to a folder`, the alarm's phrase, naming the four link kinds; the 
 and COMMON.md lines keep the old words. Test:
 `tests/test_deploy_pack.py::test_the_guides_configuration_rows_and_path_legend_follow_the_report_c2459`.
 
+**The lane brief says which branches a lane may delete** (C3491; `docs/lanes/COMMON.md`). Round 47's lanes B and RA
+deleted their own throwaway branches (lane B's b13/r47-b-w1 to w6, b2 and its pre-squash copy, lane RA's ra2, ra3 and
+ra) with nothing in the brief about it, so round 47's removal log could not name them, and lane B issued a refused
+`git branch -D` again as `-d` once it had switched off the branch; no commit was lost. A paragraph beside Landing now
+says a lane deletes only its own proven b13/r<n>-* branches, by exact name, `-d` where git's check can pass, lists
+each with its old sha and proof in its note, and never issues a refused delete again in another form while the
+refusal's condition holds. The harvest's counts and remove-worktrees.sh's echo are the lead's kit half. Test:
+`tests/test_deploy_pack.py::test_the_lane_brief_says_which_branches_a_lane_may_delete_c3491`.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units
