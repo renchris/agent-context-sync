@@ -25675,6 +25675,9 @@ its own (...); outside the home folder, its whole path; each as a whole word, in
 name on its own, such as notes, is not replaced`.
 Amended 2026-10-22, §16.165 A41: the clause's first words read `a folder outside CloudStorage that sources.toml
 names (a source's, or agentsync's own state, docs, cache or log folder where it moves one)`.
+Amended 2026-11-27, §16.296 C3479: `each as a whole word, in any letter case` reads `each as a whole word in any
+letter case, a name on its own also with any blanks or separators between its words, or none where a capital starts
+one (Harbor View, harbor-view, HarborView)`, the fuzzy match a configured folder takes since §16.291 C3289.
 
 **The shell's install source line says a URL rewrite as the agentsync report does** (W7, W23: one defect from two
 finders). `fallback_install_source_line` printed the configured origin's label alone; `_checkout_facts` adds

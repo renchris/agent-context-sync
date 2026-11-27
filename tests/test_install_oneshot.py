@@ -26798,8 +26798,9 @@ def test_the_folder_legend_names_a_project_folder_only_where_one_is_shown(
         "from: inside the home folder, its path from the first folder that is not a common container (such "
         "as Projects, Documents or a dot folder) down, and that folder's name on its own (in "
         '~/Projects/Harborview/notes, both "Harborview/notes" and "Harborview"); outside the home folder, '
-        "its whole path; each as a whole word, in any letter case; a later folder's name on its own, such as "
-        "notes, is not replaced"
+        "its whole path; each as a whole word in any letter case, a name on its own also with any blanks or "
+        "separators between its words, or none where a capital starts one (Harbor View, harbor-view, "
+        "HarborView); a later folder's name on its own, such as notes, is not replaced"
     )
     assert item.startswith("- <folder-N>: the names of the folders under CloudStorage that "), item
     assert (clause in item) == (state != "cloud only"), item
