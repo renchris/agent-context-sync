@@ -46685,6 +46685,9 @@ converted the two agree, so it moves nothing after.
 Amended 2026-11-25, §16.293 C3329: "converted once to `NOT_OOXML_REASON`" is the ordinary preamble's answer; a PDF
 header with `/Encrypt` in the first 1024 bytes gives `encrypted-pdf`, and under an active label rule a label refusal
 can come first. None of these moves anything on the same bytes, so nothing loops.
+Amended 2026-11-27, §16.299 C3452: the C3329 line's PDF answer is two reads, never one window: `%PDF-` in the
+first 1024 bytes and `/Encrypt` anywhere in the file give `encrypted-pdf`, as §16.293's C3316 paragraph and
+`policy.screen_file` say.
 
 **A helper's time-out fix builds it again only if it still does not answer** (C2817; `agentsync.ops.doctor`; amends
 §16.233 C915 and §16.243 C1227). Every helper's build goes through `ocr._build`, which runs `open_` (a `--version`
@@ -47436,6 +47439,9 @@ first; none of these moves anything on the same bytes, so nothing loops.
 Amended 2026-11-25, §16.293 C3230: the expected side takes its family's own noun now, so this stub reads `not-ooxml:
 a Word document, not a PowerPoint deck (not the type its name says)`; one cached under the older words keeps them
 until it is read again, and `FAMILY_MISMATCH_RE` matches both.
+Amended 2026-11-27, §16.299 C3452: the C3329 line's PDF answer is two reads, never one window: `%PDF-` in the
+first 1024 bytes and `/Encrypt` anywhere in the file give `encrypted-pdf`, as §16.293's C3316 paragraph and
+`policy.screen_file` say.
 
 **The family check reads only `<Types>`' own Override and Default children** (C3047; ruling 202;
 `agentsync.convert._common`; amends §16.278 C2708 and §16.283 C2854). `_ooxml_family` read every Override and
@@ -48715,6 +48721,13 @@ dating only §16.287's paragraph; the test held only the tail both spellings sha
 ...); the next sync of a live source rewrites it`, as §16.287's C3216 line does; the test holds cycle.py's whole
 warning, the new line after the C3278 one, its quote, and no `heartbeat <path> is corrupt` after it. Test:
 `tests/test_deploy_pack.py::test_the_c3004_dated_lines_are_in_date_order_and_name_the_all_paused_warning_c3278`.
+
+**The C3329 lines name the PDF header and the encryption scan apart** (C3452 with C3462, one defect; ruling 230;
+amends §16.283 C2924 and §16.288 C3096). Both C3329 dated lines said a PDF header "with `/Encrypt` in the first 1024
+bytes" gives `encrypted-pdf`, while `policy.screen_file` reads two things: `%PDF-` in the first 1024 bytes
+(`_PDF_HEADER_WINDOW`) and then `_PDF_ENCRYPT_RE` over the whole file, as §16.293's C3316 paragraph says. Each line
+keeps its words and takes a dated line saying so; no code moves. Test:
+`tests/test_deploy_pack.py::test_the_c3329_lines_take_a_dated_line_naming_the_pdf_scan_apart_c3452_c3462`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

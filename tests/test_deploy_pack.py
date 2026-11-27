@@ -1073,6 +1073,27 @@ def test_the_c3004_dated_lines_are_in_date_order_and_name_the_all_paused_warning
     ) in y43
 
 
+def test_the_c3329_lines_take_a_dated_line_naming_the_pdf_scan_apart_c3452_c3462() -> None:
+    """B13 round 48 C3452 with C3462 (ruling 230): both C3329 dated lines said a PDF header "with `/Encrypt`
+    in the first 1024 bytes" gives `encrypted-pdf`, while ``policy.screen_file`` reads `%PDF-` in that window
+    and `/Encrypt` over the whole file. Each line keeps its words and a round 48 line right after it names the
+    two reads apart, held to policy.py's own window and scan."""
+    from agentsync import policy  # noqa: PLC0415
+
+    assert policy._PDF_HEADER_WINDOW == 1024 and policy.PDF_MAGIC == b"%PDF-"
+    assert "_scan(path, _PDF_ENCRYPT_RE)" in inspect.getsource(policy)
+    said = "`%PDF-` in the first 1024 bytes and `/Encrypt` anywhere in the file give `encrypted-pdf`"
+    for heading in (
+        "**An Office file's container is screened before the cache, and beside",
+        "**A family-mismatch stub on bytes that are no longer a ZIP is converted once**",
+    ):
+        para = " ".join(_contracts_section(heading, "\n\n").split())
+        c3329 = para.index("Amended 2026-11-25, §16.293 C3329:")
+        line = para.index("Amended 2026-11-27, §16.299 C3452: the C3329 line")
+        assert "with `/Encrypt` in the first 1024 bytes gives `encrypted-pdf`" in para[c3329:line]
+        assert c3329 < line and said in para[line:], para[line:]
+
+
 def test_ruling_166_keeps_its_words_and_a_dated_line_records_call_5s_decline_c2673() -> None:
     """B13 round 44 C2673: ruling 166 still described C2470's v2 pass as built, and §16.273 said C2470 is not
     built "by the lead's ruling" with no record of it. As C2069 did for ruling 138, the ruling keeps its
