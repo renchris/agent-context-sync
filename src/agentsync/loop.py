@@ -100,6 +100,7 @@ from agentsync.cycle import (
     RECORDING_OCR_DOWN_META,
     RECORDING_PROGRESS_META,
     RECORDING_WAITS,
+    LandGateBlock,
     _reread_records,
 )
 from agentsync.errors import AccountHomeError, AgentSyncError, ConfigError
@@ -137,7 +138,9 @@ LAND_GATE_NO_FIX = (
 """How :func:`land_gate_step` ends when its first blocking finding names no command (B13 round 48 C3421)."""
 
 
-def land_gate_step(findings: Sequence[LintFinding], *, where: str = "above") -> str | None:
+def land_gate_step(
+    findings: Sequence[LintFinding], *, where: str = "above", whose: str = "this sync's"
+) -> str | None:
     """The step of a sync whose commit the land gate blocked, None when no finding is blocking: the count,
     where the BLOCKING lines are (``above`` on a sync's screen, :data:`LINT_FINDINGS_BELOW` in STATE.md), the
     first one's page and fix, then the sync. ``sync`` prints it in place of the loop's NEXT and STATE.md's
@@ -145,17 +148,33 @@ def land_gate_step(findings: Sequence[LintFinding], *, where: str = "above") -> 
     read ``commit none (no content change)`` and then the loop's step, a baseline question, as if it had
     landed). A first finding whose message holds no command in backticks gives :data:`LAND_GATE_NO_FIX` in
     place of the sync: the agent has nothing to run, and a sync would block again (B13 round 48 C3421, ruling
-    223)."""
+    223). ``whose``: whose commit it was, ``the last sync's`` in status's record line
+    (:func:`last_land_gate_step`, B13 round 48 C3531)."""
     blocking = [f for f in findings if f.blocking]
     if not blocking:
         return None
-    first = blocking[0]
+    return _land_gate_words(blocking[0], len(blocking), where=where, whose=whose)
+
+
+def _land_gate_words(first: LintFinding, count: int, *, where: str, whose: str) -> str:
+    """:func:`land_gate_step`'s text for ``count`` blocking findings, ``first`` the first of them."""
     fix = first.message.removesuffix(", then sync again")
-    count = plural(len(blocking), "blocking finding")
+    counted = plural(count, "blocking finding")
     then = f"then run `{BIN} sync`" if re.search(r"`[^`]+`", fix) else LAND_GATE_NO_FIX
     return (
-        f"the land gate blocked this sync's commit ({count}, the BLOCKING lines {where}): {first.path}: "
+        f"the land gate blocked {whose} commit ({counted}, the BLOCKING lines {where}): {first.path}: "
         f"{fix}; {then}"
+    )
+
+
+def last_land_gate_step(config: Config, block: LandGateBlock) -> str:
+    """The fix of status's ``last_run.land_gate`` FAIL: :func:`land_gate_step`'s words for the last sync's
+    commit, from the block the cycle kept (``cycle.LAND_GATE_BLOCK_META``), its BLOCKING lines under ``## Lint
+    findings`` in the docs repo's STATE.md, since status prints none (B13 round 48 C3531 with C3457, ruling
+    223: status after a blocked sync gave the loop's step and exited 0)."""
+    state = _shown(expand(config.docs_repo) / _STATE_MD)
+    return _land_gate_words(
+        block.finding(), block.count, where=f"{LINT_FINDINGS_BELOW} in {state}", whose="the last sync's"
     )
 
 

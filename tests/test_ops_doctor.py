@@ -167,6 +167,7 @@ EXPECTED_ORDER = [
     "launchd.reconcile",
     "lock",
     "heartbeat.local-fixture",
+    "last_run.land_gate",
     "logs",
 ]
 
@@ -1894,7 +1895,7 @@ def test_a_state_folder_this_account_cannot_look_inside_fails_by_its_mode_and_th
     # folder; its default is ~/Library/Logs/agentsync)
     stopped = [r for r in results if "could not read" in r.detail and r.name not in ("permissions", "logs")]
     assert stopped == [], stopped
-    for group in ("config.vanished_sources", "lock", "heartbeat"):
+    for group in ("config.vanished_sources", "lock", "heartbeat", "last_run.land_gate"):
         r = named[group]
         assert (
             not r.ok and r.severity is doctor.Severity.INFO and r.detail == doctor.STATE_FOLDER_UNCHECKED

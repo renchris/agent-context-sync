@@ -49,7 +49,9 @@ from agentsync.config import (
 )
 from agentsync.convert import media, ocr, speech
 from agentsync.cycle import (
+    LAND_GATE_BLOCK_META,
     VANISHED_FIX,
+    LandGateBlock,
     _holds_home,
     _sync_leaves,
     unowned_mirror_pages,
@@ -69,6 +71,7 @@ from agentsync.loop import (
     empty_cloud_folders_held,
     empty_folder_fix,
     empty_root_fix,
+    last_land_gate_step,
     says_first,
 )
 from agentsync.manifest import (
@@ -4149,6 +4152,43 @@ def _check_vanished_sources(config: Config) -> list[CheckResult]:
     ]
 
 
+LAND_GATE_CLEAR = "no sync's commit is held by the land gate"
+"""The ``last_run.land_gate`` check's [ok] detail: no block kept, or no sync yet (B13 round 48 C3531)."""
+
+
+def land_gate_held_detail(block: LandGateBlock) -> str:
+    """The ``last_run.land_gate`` FAIL's detail: the run the gate blocked and how many findings blocked it."""
+    count = plural(block.count, "blocking finding")
+    return (
+        f"run {block.run}'s commit was blocked by the land gate ({count}); no sync has passed the gate since"
+    )
+
+
+def _check_last_run_land_gate(config: Config) -> list[CheckResult]:
+    """A [FAIL] while the block the cycle kept stands (``cycle.LAND_GATE_BLOCK_META``: written by a sync the
+    land gate blocked, deleted by the next whose gate passes or is skipped on a clean tree), its fix
+    ``loop.last_land_gate_step``, the blocked sync's own step for the last sync's commit with its BLOCKING
+    lines under ``## Lint findings`` in STATE.md: status after such a sync gave the loop's step and exited 0
+    (B13 round 48 C3531 with C3457, ruling 223). Not install-blocking (``cli._blocks_install``): its fix
+    ends in a sync. [ok] with no block or no manifest; nothing when the manifest cannot be read (the
+    manifest checks report that), and under ``manifest.read_only_reads`` an older-schema or busy manifest
+    gives an [info] line with the read note, never [ok] (B13 round 32 C642)."""
+    name = "last_run.land_gate"
+    db = config.state_paths.db
+    try:
+        if not db.exists():
+            return [_ok(name, LAND_GATE_CLEAR)]
+        with Manifest(db) as manifest:
+            block = LandGateBlock.from_meta(manifest.get_meta(LAND_GATE_BLOCK_META))
+    except (ManifestNotCurrentError, ManifestBusyError) as exc:  # under manifest.read_only_reads (C560)
+        return [_bad(name, read_note(exc), Severity.INFO)]
+    except (OSError, sqlite3.Error, AgentSyncError):
+        return []
+    if block is None:
+        return [_ok(name, LAND_GATE_CLEAR)]
+    return [_bad(name, land_gate_held_detail(block), Severity.ERROR, fix=last_land_gate_step(config, block))]
+
+
 def _vanished_add_backs(config: Config, manifest: Manifest, vanished: Collection[str]) -> list[Path]:
     """``cycle.vanished_add_backs`` read through ``manifest``."""
     return vanished_add_backs(config, manifest.get_meta, vanished)
@@ -4510,6 +4550,7 @@ _CHECKS: tuple[tuple[str, Callable[[Config], list[CheckResult]]], ...] = (
     ("gitleaks", _check_gitleaks),
     ("lock", _check_lock),
     ("heartbeat", _check_heartbeat),
+    ("last_run.land_gate", _check_last_run_land_gate),
     ("logs", _check_logs),
 )
 
@@ -4609,7 +4650,7 @@ def groups_seen(seen: Callable[[str], None]) -> Iterator[None]:
         _group_holder.seen = before
 
 
-_STATE_FOLDER_GROUPS = frozenset({"config.vanished_sources", "lock", "heartbeat"})
+_STATE_FOLDER_GROUPS = frozenset({"config.vanished_sources", "lock", "heartbeat", "last_run.land_gate"})
 """The checks that read files in the state folder (the manifest, the lock, the heartbeat): over a folder this
 account cannot search each says :data:`STATE_FOLDER_UNCHECKED` (B13 round 20 X73), and over one that is not a
 folder :data:`STATE_FOLDER_NOT_A_FOLDER` (round 23 ruling 4). Three more read it and say

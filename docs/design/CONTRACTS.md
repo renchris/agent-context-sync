@@ -48048,6 +48048,12 @@ Amended 2026-11-27, §16.297 C3409: its NEXT, STATE.md's Next and `sync --json`'
 <message>; once that is fixed, run `~/.local/bin/agentsync sync` ``, never the loop's.
 Amended 2026-11-27, §16.297 C3446: `loop.held_lines` puts the gate's step (or C3409's) ahead of every loop rule in
 all three outputs, the WAITING ON YOU and note lines kept; STATE.md no longer takes it as rule 1's fix.
+Amended 2026-11-27, §16.297 C3531: the block outlives the sync's screen: the cycle keeps it in manifest meta
+`land_gate_block` (`cycle.LAND_GATE_BLOCK_META`, a `cycle.LandGateBlock`: run, count, first finding), cleared by
+the next run whose gate passes or is skipped, and while it stands status FAILs `last_run.land_gate` (exit 1, not
+install-blocking; detail `doctor.land_gate_held_detail`, else `doctor.LAND_GATE_CLEAR`), its fix
+`loop.last_land_gate_step`: `land_gate_step`'s words with `the last sync's commit` and `where` naming STATE.md's
+`## Lint findings` (C3457).
 
 **The commit that lands blocked runs' pages counts them and names those runs** (C3228; ruling 212). A run the land
 gate blocks keeps its `run_changes` rows (only a landed commit's `clear_run_changes` deletes them) and its

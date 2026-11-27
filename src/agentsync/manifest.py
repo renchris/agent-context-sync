@@ -1751,6 +1751,10 @@ class Manifest:
         """Upsert a meta value."""
         _write_meta(self._db, key, value)
 
+    def delete_meta(self, key: str) -> None:
+        """Delete one meta value (nothing when it is not set)."""
+        self._db.execute("DELETE FROM meta WHERE key = ?", (key,))
+
     def delete_meta_prefix(self, prefix: str) -> None:
         """Delete every meta value whose key starts with ``prefix`` (a non-empty one)."""
         if not prefix:

@@ -536,6 +536,85 @@ def test_a_sync_that_fails_after_the_land_gate_passed_never_says_the_gate_blocke
     state = (initialised.docs_repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
     assert "land gate" not in state
     assert loop.NEXT_PREFIX + step.replace("line above", "line under ## Lint findings") in state.splitlines()
+    # B13 round 48 C3531, ruling 223: a cycle failure is never the land gate's block, so status keeps none
+    _, lines = _status(cfg, capsys)
+    assert [ln for ln in lines if " last_run.land_gate " in ln] == [
+        "[ok  ] last_run.land_gate"
+        + " " * (_name_width(lines) - 18)
+        + " — no sync's commit is held by the land gate"
+    ], lines
+    assert not [ln for ln in lines if ln.startswith("[FAIL] last_run.")], lines
+    with manifest_mod.Manifest(initialised.state_paths.db) as manifest:
+        assert manifest.get_meta(cycle_mod.LAND_GATE_BLOCK_META) is None
+
+
+def _name_width(lines: Sequence[str]) -> int:
+    """The width status pads its check names to, read from its ``[tag] name — detail`` lines."""
+    return max(len(m[1]) for ln in lines if (m := re.match(r"\[(?:ok  |FAIL|warn|info)\] (\S+ *) — ", ln)))
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+def test_status_after_a_sync_the_land_gate_blocked_fails_with_the_syncs_step_c3531(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 48 C3531 with C3457, ruling 223: after a sync the land gate blocked, status printed the
+    loop's step (a baseline question) and exited 0, so it and the setup report's Loop line hid the block. The
+    block is kept in the manifest; while it stands status FAILs ``last_run.land_gate`` (exit 1, not
+    install-blocking), its fix the sync's own step for the last sync, pointing at STATE.md's ``## Lint
+    findings``; the next sync that commits clears it and status reads as before."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
+    capsys.readouterr()
+    before, _ = _status(cfg, capsys)
+    repo, page = initialised.docs_repo, _a_mirror_page(initialised)
+    page.write_text(page.read_text(encoding="utf-8") + "\n", encoding="utf-8")  # dirty, so the gate lints it
+    page.chmod(0)
+    try:
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    finally:
+        page.chmod(0o600)
+    out = capsys.readouterr().out.splitlines()
+    run = re.match(r"run (\d+) · ", next(x for x in out if x.startswith("run ")))
+    assert run is not None, out
+    [sync_next] = [x for x in out if x.startswith(loop.NEXT_PREFIX)]
+    assert sync_next.startswith(
+        "NEXT: the land gate blocked this sync's commit (1 blocking finding, the BLOCKING"
+    )
+    rc, lines = _status(cfg, capsys)
+    text = "\n".join(lines)
+    assert rc == cli.EXIT_FAILED, text
+    [fail] = [ln for ln in lines if ln.startswith("[FAIL] ")]
+    head, fix = fail.split(" (fix: ", 1)
+    assert re.fullmatch(r"\[FAIL\] last_run\.land_gate +— (.*)", head) is not None, fail
+    assert head.endswith(
+        f"— run {run[1]}'s commit was blocked by the land gate (1 blocking finding); no sync has passed the "
+        "gate since"
+    ), head
+    state = "~/" + (repo / "_sync" / "STATE.md").relative_to(Path.home()).as_posix()
+    assert (
+        fix
+        == sync_next.removeprefix(loop.NEXT_PREFIX)
+        .replace("this sync's commit", "the last sync's commit")
+        .replace("the BLOCKING lines above", f"the BLOCKING lines under ## Lint findings in {state}")
+        + ")"
+    ), fix
+    assert [ln for ln in lines if ln.startswith(loop.NEXT_PREFIX)] == [
+        "NEXT: the last_run.land_gate check failed: do what the fix on its [FAIL] line below says"
+    ], text
+    [result] = doctor._check_last_run_land_gate(initialised)
+    assert result.severity is doctor.Severity.ERROR and not result.ok
+    assert cli._blocks_install(result) is False
+    # the chmod is done: the next sync commits, and status reads as it did before the block
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert re.search(r" · commit [0-9a-f]{12} · ", capsys.readouterr().out)
+    rc, lines = _status(cfg, capsys)
+    assert rc == before, lines
+    assert [ln for ln in lines if " last_run.land_gate " in ln] == [
+        "[ok  ] last_run.land_gate"
+        + " " * (_name_width(lines) - 18)
+        + " — no sync's commit is held by the land gate"
+    ], lines
+    assert not [ln for ln in lines if ln.startswith("[FAIL] ")], lines
 
 
 def test_a_commit_with_no_mirror_change_says_what_its_zero_counts(capsys: pytest.CaptureFixture[str]) -> None:
@@ -6690,7 +6769,14 @@ def test_a_file_where_the_state_folder_or_a_folder_above_it_belongs_is_one_fail_
     ], text
     (fail,) = [ln for ln in out if ln.startswith("[FAIL] ")]
     assert f"{that} is a file, not a folder" in fail and fail.endswith(moved), fail
-    for name in ("lock", "heartbeat", "governance.hold", "governance.purge_queue", "config.vanished_sources"):
+    for name in (
+        "lock",
+        "heartbeat",
+        "governance.hold",
+        "governance.purge_queue",
+        "config.vanished_sources",
+        "last_run.land_gate",
+    ):
         (line,) = [ln for ln in out if ln.startswith(f"[info] {name} ")]
         assert line.endswith(f"— {doctor.STATE_FOLDER_NOT_A_FOLDER}"), line
     for words in ("report it", "check crashed", "GovernanceError", "Errno", "cannot look inside"):

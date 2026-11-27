@@ -2610,8 +2610,9 @@ def _document_form(line: str, sids: Sequence[str]) -> str:
 
 def _blocks_install(result: doctor.CheckResult) -> bool:
     """Whether a check's result stops install.sh's first sync: an ERROR FAIL other than the launcher's own
-    TCC_PENDING (install.sh's blocking_fails)."""
-    if result.ok or result.severity is not doctor.Severity.ERROR:
+    TCC_PENDING (install.sh's blocking_fails) and the land gate's block of the last sync, whose fix ends in a
+    sync (B13 round 48 C3531, ruling 223)."""
+    if result.ok or result.severity is not doctor.Severity.ERROR or result.name == "last_run.land_gate":
         return False
     return not (result.name.startswith("tcc.") and result.detail.startswith("TCC_PENDING: "))
 

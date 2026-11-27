@@ -380,6 +380,63 @@ _PATH_FOLD_V2_META = "convert-path-fold-v2:done"
 still names the staging or home folder, had it folded in place, row and page (``_Cycle._fold_pathed_reasons``,
 B13 round 32 C660): on a Mac whose re-read and escaped-fold keys were already written, nothing else reads
 them."""
+LAND_GATE_BLOCK_META = "land_gate_block"
+"""A JSON object ``{"run", "count", "code", "path", "message"}``: the last run the land gate blocked, its
+blocking count and its first blocking finding (:class:`LandGateBlock`). Written by the cycle the gate blocks,
+deleted by the next one whose gate passes or is skipped on a clean tree; a cycle that raises leaves it as it
+is and never writes it. Status's ``last_run.land_gate`` check FAILs while it stands (B13 round 48 C3531 with
+C3457, ruling 223)."""
+
+
+@dataclass(frozen=True, slots=True)
+class LandGateBlock:
+    """The land gate's block of a run's commit, as :data:`LAND_GATE_BLOCK_META` keeps it: the run, how many
+    findings blocked it and the first of them (B13 round 48 C3531, ruling 223)."""
+
+    run: int
+    count: int
+    code: str
+    path: str
+    message: str
+
+    def finding(self) -> LintFinding:
+        """The first blocking finding, as the cycle had it."""
+        return LintFinding(self.code, self.path, self.message)
+
+    def to_meta(self) -> str:
+        """The meta value: one JSON object."""
+        return json.dumps(
+            {
+                "run": self.run,
+                "count": self.count,
+                "code": self.code,
+                "path": self.path,
+                "message": self.message,
+            },
+            sort_keys=True,
+        )
+
+    @classmethod
+    def from_meta(cls, raw: str | None) -> LandGateBlock | None:
+        """The block a meta value keeps, None for no value or one that is not such an object."""
+        if not raw:
+            return None
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            return None
+        if not isinstance(data, dict):
+            return None
+        run, count = data.get("run"), data.get("count")
+        texts = [data.get(k) for k in ("code", "path", "message")]
+        if not (isinstance(run, int) and isinstance(count, int) and count > 0):
+            return None
+        if not all(isinstance(t, str) for t in texts):
+            return None
+        code, path, message = (str(t) for t in texts)
+        return cls(run, count, code, path, message)
+
+
 _REREAD_STREAK = 3
 """Re-reads that failed in a row, after which a cycle starts no more: what fails three files running is
 more likely the Mac than the files, and each of them has used one of its attempts."""
@@ -2671,8 +2728,10 @@ class _Cycle:
             if blocked:
                 log.error("land gate blocked the commit: %d blocking finding(s)", self._blocking_count())
                 self.manifest.discard_pending(self.run_id)
+                self._keep_land_gate_block()  # after the discard, so it cannot drop it (C3531)
                 status = "failed"
             else:
+                self.manifest.delete_meta(LAND_GATE_BLOCK_META)  # this run ends unblocked (C3531, ruling 223)
                 self.lock.beat(LockStage.COMMIT)
                 commit_sha = self._commit(statuses, dirty=dirty)
                 self._retag_published()
@@ -4064,6 +4123,14 @@ class _Cycle:
 
     def _blocking_count(self) -> int:
         return sum(1 for f in self.findings if f.blocking)
+
+    def _keep_land_gate_block(self) -> None:
+        """Write :data:`LAND_GATE_BLOCK_META` for this run, which the land gate blocked: the run, the blocking
+        count and the first blocking finding, so status names the block after this sync's screen is gone (B13
+        round 48 C3531 with C3457, ruling 223)."""
+        first = next(f for f in self.findings if f.blocking)
+        block = LandGateBlock(self.run_id, self._blocking_count(), first.code, first.path, first.message)
+        self.manifest.set_meta(LAND_GATE_BLOCK_META, block.to_meta())
 
     def _report(self, commit_sha: str | None, *, promoted: bool = False) -> CycleReport:
         """Freeze the run.  A source this run did not select has an acc only for an alarm about a page of it
