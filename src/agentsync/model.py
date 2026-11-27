@@ -585,11 +585,15 @@ class CycleReport:
     new_manifest_kept: int = 0
     # the new start was the background job's, said by this foreground run (B13 round 26 E74)
     new_manifest_by_job: bool = False
-    # the mirror changes of earlier runs the land gate blocked that this run's commit holds, net per page and
-    # only those still uncommitted, and those runs: counted in the commit subject and named in its body, never
-    # written to the CHANGELOG again, which those runs did (B13 round 47 C3228, ruling 212)
+    # the mirror changes of earlier failed runs (the land gate blocked them, or the cycle failed) that this
+    # run's commit holds, net per page and only those still uncommitted, and those runs: counted in the commit
+    # subject and named in its body, never written to the CHANGELOG again, which those runs did (B13 round 47
+    # C3228, ruling 212); of them, the changes whose latest run failed rather than was blocked, and the runs
+    # that failed, said apart (B13 round 48 C3444, ruling 222)
     carried: tuple[MirrorChange, ...] = ()
     carried_runs: tuple[int, ...] = ()
+    carried_failed: tuple[MirrorChange, ...] = ()
+    carried_failed_runs: tuple[int, ...] = ()
     # the land gate held this run's commit: a cycle that failed after the gate passed carries a blocking
     # ``CYCLE`` finding too, which never reads as the gate's block (B13 round 47 C3227)
     land_gate_blocked: bool = False

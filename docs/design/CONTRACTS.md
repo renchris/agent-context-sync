@@ -1091,6 +1091,8 @@ class CycleReport:
     new_manifest_by_job: bool = False  # 2026-10-23 (§16.185 E74): the background job's new start, said by this run
     carried: tuple[MirrorChange, ...] = ()  # 2026-11-25 (§16.292 C3228): blocked runs' pages this commit holds
     carried_runs: tuple[int, ...] = ()  # 2026-11-25 (§16.292 C3228): those runs, named in the commit body
+    carried_failed: tuple[MirrorChange, ...] = ()  # 2026-11-27 (§16.297 C3444): of those pages, a failed run's
+    carried_failed_runs: tuple[int, ...] = ()  # 2026-11-27 (§16.297 C3444): the runs that failed, not blocked
     land_gate_blocked: bool = False  # 2026-11-25 (§16.292 C3227): the gate held the commit, never a CYCLE finding
     cycle_failed: bool = False  # 2026-11-27 (§16.297 C3416): the cycle raised and committed nothing
     commit_holds_mirror: bool = False  # 2026-11-25 (§16.292 C3228): the commit holds a mirror/ path

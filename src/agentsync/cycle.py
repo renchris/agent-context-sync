@@ -2516,6 +2516,8 @@ class _Cycle:
         # earlier blocked runs' changes this run's commit holds, and those runs (B13 round 47 C3228)
         self._carried: list[MirrorChange] = []
         self._carried_runs: list[int] = []
+        self._carried_failed: list[MirrorChange] = []  # of those, a failed (not blocked) run's (C3444)
+        self._carried_failed_runs: list[int] = []
         self._commit_view: list[MirrorChange] = []  # the subject's changes, netted against HEAD (C3443)
         self._gate_blocked = False  # the land gate held this run's commit (B13 round 47 C3227)
         self._cycle_failed = False  # the cycle raised and committed nothing (B13 round 48 C3416, ruling 222)
@@ -4059,8 +4061,9 @@ class _Cycle:
             log.warning("published tag moved to HEAD %s (it lagged at %s)", head[:12], tagged[:12] or "none")
 
     def _carry_blocked_changes(self) -> None:
-        """The changes of earlier runs the land gate blocked that this commit holds: their ``run_changes``
-        rows outlive a blocked run (only a landed commit clears them), so a later run's commit held their
+        """The changes of earlier failed runs that this commit holds: their ``run_changes`` rows outlive a run
+        the land gate blocked, or one that failed after it (only a landed commit clears them; round 48 C3444,
+        ruling 222: each said by its cause, ``blocked`` or ``failed``), so a later run's commit held their
         pages under ``sync: 0a 0m 0r 0d`` and a console line saying no source changed a mirror page (B13
         round 47 C3228, ruling 212). Net per page in run order (an add then a change is an add, an add then a
         delete nothing), only pages this run did not change and that are still uncommitted, the filter
@@ -4072,16 +4075,19 @@ class _Cycle:
         stay per run. The runs named are every run each kept net change passed through, a rename chain's
         middle runs included (C3445)."""
         self._commit_view = list(self.changes)
-        runs = self.manifest.failed_runs_with_changes(self.run_id)
-        if not runs:
+        causes = dict(self.manifest.failed_runs_by_cause(self.run_id))
+        if not causes:
             return
         own = _paths_of(self.changes)
-        pairs = _net_changes_runs([(run, c) for run in runs for c in self.manifest.run_changes(run)])
+        pairs = _net_changes_runs([(run, c) for run in causes for c in self.manifest.run_changes(run)])
         loose = [(c, through) for c, through in pairs if not _touches(c, own)]
         dirty = _dirty_paths(self.repo, sorted(_paths_of(c for c, _ in loose)))
         kept = [(c, through) for c, through in loose if _touches(c, dirty)]
         self._carried = [c for c, _ in kept]
         self._carried_runs = sorted({run for _, through in kept for run in through})
+        # a page's cause is its latest run's: the run whose change the commit holds last (C3444)
+        self._carried_failed = [c for c, through in kept if causes[max(through)] == "failed"]
+        self._carried_failed_runs = [run for run in self._carried_runs if causes[run] == "failed"]
         held = [c for c, _ in pairs if _touches(c, own) or _touches(c, dirty)]
         self._commit_view = _net_changes([*held, *self.changes])
 
@@ -4198,6 +4204,8 @@ class _Cycle:
             path_reread_held=path_held,
             carried=tuple(sorted(self._carried, key=lambda c: (c.path, c.op.value))),
             carried_runs=tuple(self._carried_runs),
+            carried_failed=tuple(sorted(self._carried_failed, key=lambda c: (c.path, c.op.value))),
+            carried_failed_runs=tuple(self._carried_failed_runs),
             land_gate_blocked=self._gate_blocked,
             cycle_failed=self._cycle_failed,
             commit_holds_mirror=self._commit_holds_mirror,
@@ -4402,6 +4410,8 @@ class _Cycle:
         self._tally["path_reread_waiting"] = report.path_reread_waiting
         self._tally["path_reread_held"] = report.path_reread_held  # of the failed (C754)
         counts.update(self._run_tally())
+        if self._gate_blocked:  # the cause, read back by the next commit's carried note (C3444, ruling 222)
+            counts["land_gate_blocked"] = 1
         self.manifest.finish_run(self.run_id, status=status, commit_sha=report.commit_sha, counts=counts)
         try:
             self.publisher.write_state(
@@ -4689,7 +4699,7 @@ class _Cycle:
     # ---- pages deleted by hand (B13 round 48 C3534, ruling 224) ------------------------------------------
     def _said_removals(self) -> set[str]:
         """The mirror pages this run's own bookkeeping removes: every page its changes (and the changes of the
-        earlier runs the land gate blocked, which this commit holds) name, a rename's old path too, the
+        earlier failed runs (blocked or not), which this commit holds) name, a rename's old path too, the
         deletion notices and orphans a new start removed, the kept pages a complete pass swept, the pages
         recovery's repair removed, and the committed pages a redaction moved off a credential-bearing name."""
         blocked = [
@@ -4796,7 +4806,9 @@ class _Cycle:
             f"{sid}: {plural(n, 'deletion notice')} removed ({notice_gone_why(n)})"
             for sid, n in sorted(by_source.items())
         ]
-        notes += _carried_notes(self._carried, self._carried_runs)
+        notes += _carried_notes(
+            self._carried, self._carried_runs, self._carried_failed, self._carried_failed_runs
+        )
         notes += [
             f"{sid}: {plural(len(pages), 'mirror page')} deleted by hand "
             f"{'was' if len(pages) == 1 else 'were'} restored; to drop a page, exclude its source file"
@@ -8732,18 +8744,40 @@ def _commit_holds_mirror(repo: Path, sha: str) -> bool:
     return any(path.startswith("mirror/") for path in out.stdout.split("\0"))
 
 
-def _carried_notes(carried: Sequence[MirrorChange], runs: Sequence[int]) -> list[str]:
-    """The commit body's line per source for the blocked runs' changes it carries, ``carried from blocked
-    runs 4-5: <source> 0a 2m 0r 0d``: never an ``Agentsync-Run`` trailer, whose readers would take those runs
-    for this commit's (B13 round 47 C3228)."""
-    per_source: dict[str, Counter[ChangeOp]] = {}
+def _carried_notes(
+    carried: Sequence[MirrorChange],
+    runs: Sequence[int],
+    failed: Sequence[MirrorChange] = (),
+    failed_runs: Sequence[int] = (),
+) -> list[str]:
+    """The commit body's line per cause and source for the earlier failed runs' changes it carries, ``carried
+    from blocked runs 4-5: <source> 0a 2m 0r 0d`` for runs the land gate blocked and ``carried from failed run
+    6: ...`` for runs that failed otherwise (``failed`` and ``failed_runs``, of ``carried`` and ``runs``; B13
+    round 48 C3444, ruling 222): never an ``Agentsync-Run`` trailer, whose readers would take those runs for
+    this commit's (B13 round 47 C3228)."""
+    gone = Counter(failed)
+    blocked: list[MirrorChange] = []
     for c in carried:
-        per_source.setdefault(c.source_id, Counter())[counted_op(c)] += 1
-    return [
-        f"carried from blocked {run_span(runs)}: {sid} {n[ChangeOp.ADDED]}a {n[ChangeOp.MODIFIED]}m "
-        f"{n[ChangeOp.RENAMED]}r {n[ChangeOp.DELETED]}d"
-        for sid, n in sorted(per_source.items())
-    ]
+        if gone[c]:
+            gone[c] -= 1
+        else:
+            blocked.append(c)
+    lines: list[str] = []
+    for cause, changes, named in (
+        ("blocked", blocked, [r for r in runs if r not in set(failed_runs)]),
+        ("failed", list(failed), list(failed_runs)),
+    ):
+        if not changes or not named:
+            continue
+        per_source: dict[str, Counter[ChangeOp]] = {}
+        for c in changes:
+            per_source.setdefault(c.source_id, Counter())[counted_op(c)] += 1
+        lines += [
+            f"carried from {cause} {run_span(named)}: {sid} {n[ChangeOp.ADDED]}a {n[ChangeOp.MODIFIED]}m "
+            f"{n[ChangeOp.RENAMED]}r {n[ChangeOp.DELETED]}d"
+            for sid, n in sorted(per_source.items())
+        ]
+    return lines
 
 
 def _dirty_paths(repo: Path, paths: Sequence[str]) -> set[str]:

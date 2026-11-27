@@ -2930,15 +2930,31 @@ class Manifest:
             )
 
     def failed_runs_with_changes(self, before: int) -> list[int]:
-        """The runs before ``before`` that ended ``failed`` (a run the land gate blocked) and still have
-        recorded mirror changes, oldest first: no commit has landed since, which clears them (B13 round 47
-        C3228)."""
+        """The runs before ``before`` that ended ``failed`` (the land gate blocked it, or the cycle failed)
+        and still have recorded mirror changes, oldest first: no commit has landed since, which clears them
+        (B13 round 47 C3228; round 48 C3444: failed is not only blocked)."""
+        return [run for run, _cause in self.failed_runs_by_cause(before)]
+
+    def failed_runs_by_cause(self, before: int) -> list[tuple[int, str]]:
+        """:meth:`failed_runs_with_changes` with each run's cause: ``blocked`` when its counts hold
+        ``land_gate_blocked: 1`` (the land gate held its commit), else ``failed``, a run recorded before that
+        key too (B13 round 48 C3444, ruling 222: a key in the counts, no column, for the older installed build
+        that reads the same manifest)."""
         rows = self._db.execute(
-            "SELECT DISTINCT rc.run_id FROM run_changes rc JOIN runs r ON r.run_id = rc.run_id "
+            "SELECT DISTINCT rc.run_id, r.counts_json FROM run_changes rc "
+            "JOIN runs r ON r.run_id = rc.run_id "
             "WHERE r.status = 'failed' AND rc.run_id < ? ORDER BY rc.run_id",
             (before,),
         ).fetchall()
-        return [int(r[0]) for r in rows]
+        out: list[tuple[int, str]] = []
+        for run_id, raw in rows:
+            try:
+                doc = json.loads(raw or "{}")
+            except ValueError:
+                doc = {}
+            blocked = isinstance(doc, dict) and doc.get("land_gate_blocked") == 1
+            out.append((int(run_id), "blocked" if blocked else "failed"))
+        return out
 
     def run_changes(self, run_id: int) -> list[MirrorChange]:
         """The mirror changes recorded for ``run_id``, in production order.

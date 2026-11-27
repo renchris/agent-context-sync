@@ -1510,6 +1510,52 @@ def test_a_crashed_run_after_a_blocked_one_forgets_only_its_own_rows_c3411(
     assert pages["sample.txt.md"].relative_to(repo).as_posix() in held, held
 
 
+def test_a_run_that_failed_after_the_gate_is_carried_as_failed_never_as_blocked_c3444(
+    sample_config: Config,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 48 C3444, ruling 222: every run that ended ``failed`` was carried as one the land gate
+    blocked, so a commit that failed after the gate passed went into history as ``carried from blocked run``.
+    A gate block is stored as ``land_gate_blocked: 1`` in the run's counts; any other failed run is carried
+    as ``failed``, in the commit body and on the console."""
+    repo = sample_config.docs_repo
+    run(sample_config)
+    (local_source_dir / "projects" / "sample.txt").write_text("changed in a failed run\n", encoding="utf-8")
+
+    def refuse(*_a: object, **_k: object) -> None:
+        raise OSError("the commit could not be made")
+
+    with monkeypatch.context() as m:
+        m.setattr(cycle_mod.gitops, "commit_cycle", refuse)
+        failed = run(sample_config)
+    assert failed.commit_sha is None and not failed.land_gate_blocked
+    with Manifest(sample_config.state_paths.db) as man:
+        assert man.failed_runs_by_cause(failed.run_id + 1) == [(failed.run_id, "failed")]
+    report = run(sample_config)
+    assert report.commit_sha is not None
+    assert report.carried_runs == report.carried_failed_runs == (failed.run_id,)
+    body = git(repo, "log", "-1", "--format=%b").splitlines()
+    assert f"carried from failed run {failed.run_id}: local-fixture 0a 1m 0r 0d" in body, body
+    assert not any(x.startswith("carried from blocked") for x in body), body
+    capsys.readouterr()
+    cli._print_report(report)
+    line = capsys.readouterr().out.splitlines()[0]
+    assert line.endswith(
+        f"0 changes this run; 1 mirror page from failed run {failed.run_id} lands in this commit"
+    ), line
+
+
+def test_the_carried_notes_say_each_cause_apart_c3444() -> None:
+    """C3444: with blocked and failed runs both carried, one line per cause and source, never one span."""
+    a, b, c = (_net_row("M", p) for p in ("a", "b", "c"))
+    assert cycle_mod._carried_notes([a, b, c], [4, 5, 6], [c], [6]) == [
+        "carried from blocked runs 4-5: contoso 0a 2m 0r 0d",
+        "carried from failed run 6: contoso 0a 1m 0r 0d",
+    ]
+
+
 INBOX_SOURCE = """
 [[source]]
 id = "inbox"
