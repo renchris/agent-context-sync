@@ -1904,6 +1904,25 @@ def test_no_folder_records_the_persons_none_and_exits_0_c2658(env: dict[str, str
     assert last_line(bare).startswith("NEXT: no folder is synced yet: "), "a bare re-run keeps C2401's NEXT"
 
 
+def test_no_folder_says_its_own_words_over_statuss_completed_none_step_c3546(
+    env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 48 ruling 227 (C3546): lane B's status gives a completed none its own rule-2 step ahead of
+    the skill rule, loop.NO_FOLDER_CHOSEN_LOOP_NEXT in agentsync's add-source words; under --no-folder step 2
+    passed it through. It says install.sh's own NO_FOLDER_CHOSEN_NEXT for it, as for the no-folder words."""
+    from agentsync import loop  # noqa: PLC0415
+
+    assert install_sh(env, str(wheel), "--no-folder").returncode == 0
+    want = (
+        "NEXT: the person chose no folder, so this Mac syncs none of their folders: go on to the report; if "
+        f"they choose one later, the run is: {INSTALL_SH} {wheel} --source-local '<folder>' (one "
+        f"--source-local per folder) [setup report: {report_path(env)}]"
+    )
+    status_next = f"NEXT: {loop.NO_FOLDER_CHOSEN_LOOP_NEXT}"
+    again = install_sh({**env, "STUB_STATUS_OUT": status_next}, str(wheel), "--no-folder")
+    assert again.returncode == 0 and last_line(again) == want, again.stdout + again.stderr
+
+
 @pytest.mark.parametrize("other", ["--source-local", "--confirm-install-agent", "--list-folders"])
 def test_no_folder_is_refused_beside_a_folder_c2658(
     env: dict[str, str], folder: Path, wheel: Path, other: str

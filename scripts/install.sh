@@ -15625,9 +15625,12 @@ else # the loop's NEXT, after the background-sync result when it was asked for
 	# and C2700, amended by B13 round 46 C3003; B13 round 47 C3282 with C3309), and a [FAIL], held-listing,
 	# chmod, sign-in or any other NEXT passes through (B13 round 45 ruling 191, C2910 with C2945, C2931, C2838
 	# and C2860)
+	# B13 round 48 ruling 227 (C3546): lane B's status now gives a completed none its own rule-2 step before the
+	# skill rule (loop.NO_FOLDER_CHOSEN_LOOP_NEXT, agentsync's add-source words); under --no-folder step 2 says
+	# install.sh's own words for it, as for the no-folder ones
 	if [ "$NO_FOLDER" -eq 1 ] && [ "$EXIT_RC" -eq 0 ]; then
 		case "$next" in
-		"no folder is synced yet"* | "no folder to sync yet"*) next="$NO_FOLDER_CHOSEN_NEXT" ;;
+		"no folder is synced yet"* | "no folder to sync yet"* | "the person chose no folder"*) next="$NO_FOLDER_CHOSEN_NEXT" ;;
 		esac
 	fi
 	if [ "$INSTALL_AGENT" -eq 1 ] && [ "$SIMULATE" -eq 1 ]; then
