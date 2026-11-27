@@ -47823,6 +47823,9 @@ so is an earlier attempt. Tests: `tests/test_setup_report.py`
 `test_the_loop_line_says_the_next_install_sh_printed_for_a_none_c2946`'s failed-none row,
 `test_a_bare_run_that_ended_0_with_no_live_folder_is_never_fully_one_command_c3209`,
 `test_only_the_latest_attempt_reads_todays_config_for_its_outcome_c3209`).
+Amended 2026-11-27, §16.295 C3497: the C3202 branch runs above the doctor-FAIL guard, a FAIL-led or sign-in NEXT
+kept; status's skill-missing NEXT is replaced even with a doctor [FAIL], since status puts the skill ahead of the
+FAIL fixes (ruling 227); the guard's never-with-a-FAIL rule stays for the completed-none and bare-run branches.
 
 **install.sh's `per folder)` is kept whole after `--source-local`** (C3203; ruling 214; makes worse True for
 skipping `per` or cutting only path-shaped words; lane RB's recut mirrors it, §16.291). The quoted-head span rule

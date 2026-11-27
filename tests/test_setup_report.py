@@ -12760,13 +12760,13 @@ def test_the_loop_line_says_the_next_install_sh_printed_for_a_none_c2946(fake_ma
             assert "skill is missing" not in line and "choose the folders" not in line, line
     # B13 round 47 C3202 (ruling 213): a failed none reads its own sentence, never status's skill NEXT
     failed_none = _no_folder_run(t0, "--no-folder", 1, steps=("agentsync seconds=4 rc=1 result=failed",))
-    line = loop(inbox_only, failed_none, skill)
-    assert setup_report.NO_FOLDER_UNFINISHED_NEXT.format(why="its agentsync step failed with rc 1") in line, (
-        line
-    )
-    assert "skill is missing" not in line and setup_report.NO_FOLDER_CHOSEN not in line, line
+    # B13 round 48 C3497 (ruling 227): with a doctor FAIL too (status puts the skill ahead of its FAIL fixes)
+    for fail in (False, True):
+        line = loop(inbox_only, failed_none, skill, fail)
+        unfinished = setup_report.NO_FOLDER_UNFINISHED_NEXT.format(why="its agentsync step failed with rc 1")
+        assert unfinished in line, (fail, line)
+        assert "skill is missing" not in line and setup_report.NO_FOLDER_CHOSEN not in line, line
     for body, logged, found, fail in (
-        (inbox_only, failed_none, skill, True),  # with a doctor FAIL, status's NEXT stands
         (inbox_only, none_ok, skill, True),  # a doctor FAIL: install.sh's [FAIL] branch comes first
         (inbox_only + folder, none_ok, skill, False),  # a folder: status's skill-missing NEXT stands
         (inbox_only + folder, _no_folder_run(t0, "", 2), skill, False),
@@ -30564,8 +30564,22 @@ _R202_LOGS = {  # install.log, then the Loop line's NEXT: None for status's own,
 }
 
 
-@pytest.mark.parametrize("next_", ["skill", "rule2"])
-@pytest.mark.parametrize("shape", [*_R202_LOGS, "n-perm-h"])
+_C3497_NEXTS = {  # status's NEXTs a doctor [FAIL] keeps after a failed none (B13 round 48 C3497)
+    "fail": "NEXT: the state_dir.files check failed: fix the state folder's files, then rerun install.sh",
+    "sign-in": "NEXT: sign in to OneDrive, then rerun install.sh",
+}
+_C3497_KEPT = {"fail": "the state_dir.files check failed", "sign-in": "sign in to OneDrive"}
+
+
+@pytest.mark.parametrize(
+    ("shape", "next_"),
+    [  # status puts its FAIL fixes ahead of rule 2, so n-perm-h has no rule-2 row (B13 round 48 C3497)
+        *((shape, next_) for shape in _R202_LOGS for next_ in ("skill", "rule2")),
+        ("n-perm-h", "skill"),
+        ("n-perm-h", "fail"),
+        ("n-perm-h", "sign-in"),
+    ],
+)
 def test_a_none_that_did_not_finish_says_its_own_next_says_what_to_do_c3202(
     fake_mac: dict[str, Path], shape: str, next_: str
 ) -> None:
@@ -30573,9 +30587,13 @@ def test_a_none_that_did_not_finish_says_its_own_next_says_what_to_do_c3202(
     --no-folder run that failed, timed out or never ended, the Loop line kept status's skill-missing or
     rule-2 NEXT (a sync, add-source, the folder question), which v43 forbids after a none. It reads one
     sentence built from install.log's facts: the run did not finish, its own NEXT says what to do, a re-run
-    keeps --no-folder, the folder question is not asked again. A doctor [FAIL] still comes first (n-perm-h)
-    and a bare failed run keeps status's NEXT."""
-    hooks = setup_report.ReportHooks(loop_next=lambda _config: [_R202_NEXTS[next_]])
+    keeps --no-folder, the folder question is not asked again. A bare failed run keeps status's NEXT.
+
+    B13 round 48 C3497 (ruling 227): with a doctor [FAIL] (n-perm-h) status's skill-missing NEXT, which
+    status puts ahead of the FAIL fixes, read `run agentsync sync` after the failed none; it reads the
+    sentence too, and a FAIL-led or sign-in NEXT is kept."""
+    said = {**_R202_NEXTS, **_C3497_NEXTS}[next_]
+    hooks = setup_report.ReportHooks(loop_next=lambda _config: [said])
     cfg = fake_mac["config"]
     cfg.write_text(
         default_config_text() + inbox_source_table("inbox", Path.home() / "agent-context" / "inbox"),
@@ -30588,8 +30606,10 @@ def test_a_none_that_did_not_finish_says_its_own_next_says_what_to_do_c3202(
         r.facts.doctor_problems.append(("FAIL", "state_dir.files", "x"))
     line = setup_report._loop_line(r)
     head = setup_report.NO_FOLDER_UNFINISHED_NEXT.split("{", 1)[0]
-    if shape in ("n-perm-h", "bare-failed"):
+    if shape == "bare-failed" or next_ in _C3497_NEXTS:
         assert head not in line, line
+        if next_ in _C3497_NEXTS:  # kept as status gives it
+            assert _C3497_KEPT[next_] in line, line
         return
     assert want is not None
     assert setup_report.NO_FOLDER_UNFINISHED_NEXT.format(why=want) in line, line

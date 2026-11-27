@@ -18095,11 +18095,13 @@ def _install_sh_said_no_folder(r: _Run, config: Config, found: str) -> str | Non
     included, never ``live_sources()``).
 
     B13 round 47 ruling 213: after a ``--no-folder`` run that did not complete its none, status's
-    skill-missing, rule-2 or no-folder NEXT reads :data:`NO_FOLDER_UNFINISHED_NEXT` (C3202), the doctor FAIL
-    return kept first; and status's own choice NEXT after a completed none (:data:`_CHOSEN_LOOP_OPENER`) is
-    kept as it is (C3241)."""
-    if any(tag == "FAIL" for tag, _name, _detail in r.facts.doctor_problems):
-        return None
+    skill-missing, rule-2 or no-folder NEXT reads :data:`NO_FOLDER_UNFINISHED_NEXT` (C3202); and status's own
+    choice NEXT after a completed none (:data:`_CHOSEN_LOOP_OPENER`) is kept as it is (C3241).
+
+    B13 round 48 C3497 (ruling 227): the C3202 branch runs above the doctor-FAIL guard, a FAIL-led or sign-in
+    NEXT kept; status's skill-missing NEXT is replaced even with a doctor [FAIL], since status puts the skill
+    ahead of the FAIL fixes (it read `run agentsync sync` after a failed none). The guard's never-with-a-FAIL
+    rule stays for the completed-none and bare-run branches."""
     if found.startswith(_CHOSEN_LOOP_OPENER):  # B13 round 47 C3241: status already said the choice
         return None
     installs = install_runs_only(r.install_runs)
@@ -18108,9 +18110,11 @@ def _install_sh_said_no_folder(r: _Run, config: Config, found: str) -> str | Non
         return None
     inbox_only = not any(s.kind is not SourceKind.INBOX for s in config.sources)
     missing = found.startswith(_SKILL_MISSING_NEXT)
-    if latest.chose_no_folder and not latest.completed_none:  # B13 round 47 C3202 (ruling 213)
+    if latest.chose_no_folder and not latest.completed_none:  # B13 round 47 C3202; round 48 C3497
         sent_on = missing or found.startswith((_RULE2_OPENER, *_NO_FOLDER_OPENERS))
         return NO_FOLDER_UNFINISHED_NEXT.format(why=_no_folder_cause(latest)) if sent_on else None
+    if any(tag == "FAIL" for tag, _name, _detail in r.facts.doctor_problems):
+        return None
     if latest.chose_no_folder:
         chosen = (inbox_only and missing) or found.startswith(_NO_FOLDER_OPENERS)
         return NO_FOLDER_CHOSEN_NEXT if chosen else None
