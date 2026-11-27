@@ -21209,6 +21209,179 @@ def test_a_state_folder_that_is_not_a_folder_is_the_persons_and_named_so(
     )
 
 
+def _source_root_line(fake_mac: dict[str, Path], tmp_path: Path) -> tuple[str, str]:
+    """The Summary's doctor and outcome lines of a report on ``fake_mac`` whose two cloud folders each hold a
+    file, so no empty folder's warn is on the line (B13 round 48 C3513)."""
+    for key in ("one", "two"):
+        (fake_mac[key] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    summary = section(text, "Summary")
+    return _line(summary, "- doctor: "), _line(summary, "- **outcome: ")
+
+
+def test_a_file_at_the_kept_inbox_name_is_the_persons_not_unexpected_c3513(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 48 C3513 (ruling 226), g1's shape: a file at the kept inbox's name. Doctor FAILs the inbox's
+    listable and volume rows with the person's restore fix, and status calls it the person's, while the
+    Doctor line read ``unexpected 2`` and the outcome counted 2 unexpected doctor FAILs. Both now sit in
+    their own bucket, each the person's, by the report's own read (config's kept-inbox test)."""
+    inbox = expand(load_config(fake_mac["config"]).docs_repo).parent / "inbox"
+    inbox.rename(inbox.with_name("inbox-kept"))  # moved aside, never removed
+    inbox.write_text("not a folder\n", encoding="utf-8")
+    line, outcome = _source_root_line(fake_mac, tmp_path)
+    assert (
+        f"{setup_report._SOURCE_ROOT_WORDS} (2 checks): source.inbox.listable FAIL (the person's; see "
+        "Doctor), source.inbox.volume FAIL (the person's; see Doctor)"
+    ) in line, line
+    assert line.endswith(" · unexpected 0"), line
+    assert "unexpected doctor FAIL" not in outcome, outcome
+    assert f"with a known cause, {setup_report._SOURCE_ROOT_WORDS}: source.inbox.listable" in outcome, outcome
+
+
+def test_a_source_under_a_folder_that_refuses_a_search_is_the_persons_c3513(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 48 C3513, g6's shape: a local [[source]] under a folder at mode 000. Doctor FAILs its
+    listable row (``permission denied``, the person's search access to give) and gives volume ``not
+    checked``; the Doctor line read ``unexpected 1``. It is in the person's bucket now, by the root's own
+    lstat (EACCES)."""
+    area = Path.home() / "Contoso area"
+    notes = area / "notes"
+    notes.mkdir(parents=True)
+    (notes / "a.txt").write_text("a\n", encoding="utf-8")
+    cfg = fake_mac["config"]
+    assert cli.main(["add-source", str(notes), "--config", str(cfg)]) == 0
+    sid = next(s.id for s in load_config(cfg).sources if s.path is not None and s.path.name == "notes")
+    area.chmod(0)
+    try:
+        line, outcome = _source_root_line(fake_mac, tmp_path)
+    finally:
+        area.chmod(0o700)
+    assert (
+        f"{setup_report._SOURCE_ROOT_WORDS} (1 check): source.{sid}.listable FAIL (the person's; see Doctor)"
+    ) in line, line
+    assert line.endswith(" · unexpected 0"), line
+    assert "unexpected doctor FAIL" not in outcome, outcome
+
+
+def test_a_listable_fail_on_a_readable_folder_stays_unexpected_c3513(fake_mac: dict[str, Path]) -> None:
+    """B13 round 48 C3513: keyed on disk, never on doctor's words: a listable or volume FAIL of a source whose
+    root is a folder this account can list stays unexpected, whatever its fix says."""
+    cfg = fake_mac["config"]
+    r = setup_report._Run(cfg, setup_report.ReportHooks(), 12.0)
+    r.facts.doctor = Counter({"FAIL": 2})
+    r.facts.doctor_problems = [
+        ("FAIL", "source.inbox.listable", "~/agent-context/inbox is not a folder (fix: restore it)"),
+        ("FAIL", "source.inbox.volume", "volume UUID not checked (fix: the person gives access)"),
+    ]
+    sort = setup_report._sort_doctor(r, [])
+    assert sort.from_source_root == [], sort
+    assert sort.unexpected == ["source.inbox.listable FAIL", "source.inbox.volume FAIL"], sort
+
+
+_ROOT_KINDS = {
+    "folder": False,
+    "file": True,
+    "link to folder": False,
+    "link to file": True,
+    "dangling link": False,  # config resolves it: its missing target, doctor's ``does not exist``
+    "link to itself": False,  # doctor's generic look-in-Finder fix, not the person's
+    "two-link loop": False,
+    "link through a file": True,
+    "fifo": True,
+    "folder this account cannot search": True,
+}
+
+
+@pytest.mark.parametrize("kind", list(_ROOT_KINDS))
+def test_each_entry_kind_at_a_source_root_is_bucketed_as_doctor_says_it_c3513(kind: str) -> None:
+    """B13 round 48 C3513 (round 47's rule): each kind of entry at a local [[source]]'s root, the config read
+    after it is there, as doctor and the report read it. ``_source_root_fails`` returns without raising
+    (under a 20 s alarm: a fifo or a loop must never hold it) and files the root's FAILs in the person's
+    bucket exactly where doctor's listable row says ``is not a directory`` or ``permission denied``, each
+    with the person's fix; a folder (doctor FAILs nothing) keeps an injected FAIL unexpected, a loop (doctor's
+    generic look-in-Finder fix) stays unexpected, and so does a dangling link, which config resolves to its
+    missing target: doctor says ``does not exist``, the missing root's own row."""
+    import signal  # noqa: PLC0415 - as the reader test above imports it
+
+    home = Path.home()
+    root = home / "Contoso notes"
+    root.mkdir()
+    cfg = home / "contoso.toml"
+    cfg.write_text(
+        f"[agentsync]\ndocs_repo = {toml_string(str(home / 'agent-context' / 'docs'))}\n\n"
+        f'[[source]]\nid = "contoso-notes"\nkind = "local"\npath = {toml_string(str(root))}\n',
+        encoding="utf-8",
+    )
+    root.rmdir()
+    other = home / "Contoso other"
+    note = home / "note.txt"
+    note.write_text("x\n", encoding="utf-8")
+    if kind == "folder":
+        root.mkdir()
+        (root / "a.txt").write_text("a\n", encoding="utf-8")
+    elif kind == "file":
+        root.write_text("x\n", encoding="utf-8")
+    elif kind == "link to folder":
+        other.mkdir()
+        (other / "a.txt").write_text("a\n", encoding="utf-8")
+        root.symlink_to(other)
+    elif kind == "link to file":
+        root.symlink_to(note)
+    elif kind == "dangling link":
+        root.symlink_to(home / "Contoso gone")
+    elif kind == "link to itself":
+        root.symlink_to(root.name)
+    elif kind == "two-link loop":
+        other.symlink_to(root)
+        root.symlink_to(other)
+    elif kind == "link through a file":
+        root.symlink_to(note / "sub")
+    elif kind == "fifo":
+        os.mkfifo(root)
+    else:
+        root.mkdir()
+        (root / "a.txt").write_text("a\n", encoding="utf-8")
+        root.chmod(0)
+
+    def hung(_signum: int, _frame: object) -> None:
+        raise TimeoutError(f"_source_root_fails hung on {kind}")
+
+    old = signal.signal(signal.SIGALRM, hung)
+    signal.alarm(20)
+    try:
+        config = load_config(cfg)
+        src = next(s for s in config.sources if s.id == "contoso-notes")
+        rows = [c for c in doctor._check_local_source(config, src, Path(sys.executable)) if not c.ok]
+        fails = [c for c in rows if c.severity is doctor.Severity.ERROR]
+        r = setup_report._Run(cfg, setup_report.ReportHooks(), 12.0)
+        r.facts.doctor = Counter({"FAIL": max(len(fails), 1)})
+        r.facts.doctor_problems = [("FAIL", c.name, f"{c.detail} (fix: {c.fix})") for c in fails] or [
+            ("FAIL", "source.contoso-notes.listable", "injected (fix: the person looks)")
+        ]
+        got = setup_report._source_root_fails(r)
+        sort = setup_report._sort_doctor(r, [])
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old)
+        if kind == "folder this account cannot search":
+            root.chmod(0o700)
+    said = [(c.name, c.detail, c.fix) for c in fails]
+    listable = [c.detail for c in fails if c.name.endswith(".listable")]
+    not_folder = any(d.endswith((" is not a directory", ": permission denied")) for d in listable)
+    assert not_folder is _ROOT_KINDS[kind], said
+    if not_folder:
+        assert all(doctor.is_persons_fix(c.fix or "") for c in fails), said
+    names = {name for _t, name, _d in r.facts.doctor_problems}
+    if _ROOT_KINDS[kind]:
+        assert got == {"source.contoso-notes.listable", "source.contoso-notes.volume"}, got
+        assert sort.unexpected == [] and len(sort.from_source_root) == len(names), sort
+    else:
+        assert got == set(), got
+        assert sort.from_source_root == [] and len(sort.unexpected) == len(names), sort
+
+
 def test_a_docs_repo_path_that_is_not_a_folder_is_the_persons_c3529(
     fake_mac: dict[str, Path], tmp_path: Path
 ) -> None:

@@ -48968,6 +48968,26 @@ checked` there. The outcome names that bucket as a known cause. A docs repo that
 FAIL unexpected, and a dangling link at the path reads `not_a_folder` and is filed the same way. Test:
 `test_setup_report.py::test_a_docs_repo_path_that_is_not_a_folder_is_the_persons_c3529`.
 
+**A [[source]] root that is not a folder or refuses a search is the person's on the Doctor line** (C3513; ruling
+226; `agentsync.setup_report`). With a file at the kept inbox's name (g1) or a source under a folder at mode 000 (g6),
+doctor FAILs the source's listable row (and volume, for a root that is not a folder) with a fix status and step 2 call
+the person's, while the Doctor line read `unexpected 2: source.inbox.listable FAIL, source.inbox.volume FAIL` and the
+outcome counted them unexpected: `_sort_doctor` buckets by its own reads, never by `is_persons_fix`, and its one
+source-root bucket covered only CloudStorage folders step 1 counted gone. `_source_root_fails`, beside
+`_gone_folder_fails`, takes the listable and volume FAILs of each live source whose root config's kept-inbox test calls
+not a folder, or whose root the report's own read finds not a folder (a file, a link to a file, a fifo, a dangling
+link, a link through a file) or refusing this account a search (EACCES from its lstat, a folder above, or a local
+listing; nothing in a File Provider tree is listed), and files them as `from a [[source]] folder that is not a folder
+or that this account cannot search (2 checks): source.inbox.listable FAIL (the person's; see Doctor), ...`, never in
+`yours`. A looping link at a source other than the kept inbox stays unexpected, doctor giving it the generic
+look-in-Finder fix; a dangling link at a plain source's root is stored resolved, so it reads as its missing target
+(`does not exist`) and stays where a missing root is; EPERM (macOS privacy) stays as it was. A listable FAIL on a root
+this account can list stays unexpected whatever its words. Tests:
+`test_setup_report.py::test_a_file_at_the_kept_inbox_name_is_the_persons_not_unexpected_c3513`,
+`test_a_source_under_a_folder_that_refuses_a_search_is_the_persons_c3513`,
+`test_a_listable_fail_on_a_readable_folder_stays_unexpected_c3513` and
+`test_each_entry_kind_at_a_source_root_is_bucketed_as_doctor_says_it_c3513` (ten entry kinds under a 20 s alarm).
+
 ### 16.296 Round 48: the installer: the shell halves of ruling 217, no value printed that it could not register, step 1's escapes and marks, the single-quoted placeholder, a failed sync told apart from a blocked one, and C2060 waits on the operator (2026-11-27, wave B13 round 48 lane RB)
 
 The installer's items of round 48 (`docs/plans/bring-back-ocr.md`, "B13 round 48"; each item's verifier's corrected

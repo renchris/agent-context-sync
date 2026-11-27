@@ -162,6 +162,7 @@ from agentsync.config import (
     Config,
     ConvertConfig,
     inbox_state,
+    kept_inbox_not_a_folder,
     load_config,
     read_config_bytes,
     read_config_text,
@@ -14966,6 +14967,59 @@ def _gone_folder_fails(r: _Run, runs: Sequence[InstallRun]) -> set[str]:
     return {f"source.{sid}.{check}" for sid in missing for check in ("listable", "volume")}
 
 
+def _source_root_unusable(root: Path) -> bool:
+    """Whether a [[source]] root is there but no folder this account can list (B13 round 48 C3513, ruling
+    226), as doctor's listable row reads it with the person's fix: not a folder (a file, a link to a file, a
+    fifo, a dangling link, a link through a file), or refusing this account a search, its own lstat or a
+    folder above it (EACCES), or its listing (EACCES), a local root only: nothing inside a File Provider
+    tree is listed here, where a hidden Allow prompt holds it. A looping link says no, as doctor gives it
+    the generic look-in-Finder fix, not the person's (the kept inbox's loop is :func:`_source_root_fails`'
+    config test), and so do a missing root (its own fix) and EPERM, macOS privacy's. Never raises."""
+    try:
+        root.lstat()
+    except OSError as exc:  # a folder above refuses a search, or one above is a file
+        return exc.errno in (errno.EACCES, errno.ENOTDIR)
+    try:
+        st = root.stat()
+    except OSError as exc:  # a dangling link, a link through a file or into a folder that refuses a search
+        return exc.errno in (errno.ENOENT, errno.ENOTDIR, errno.EACCES)
+    if not stat.S_ISDIR(st.st_mode):
+        return True
+    if _cloud_parts(root) is not None:
+        return False
+    try:
+        with os.scandir(root):
+            return False
+    except OSError as exc:
+        return exc.errno == errno.EACCES
+
+
+def _source_root_fails(r: _Run) -> set[str]:
+    """The doctor FAIL checks of a live [[source]] whose root is not a folder or that this account cannot
+    search (B13 round 48 C3513, ruling 226): ``source.<id>.listable`` and ``.volume``, where doctor's fix is
+    the person's (a file or link at the kept inbox's name to move aside, a [[source]] path to point at a
+    folder, a folder's search access to give), read by the report's own lstat of the root
+    (:func:`_source_root_unusable`) and config's one kept-inbox test (``kept_inbox_not_a_folder``), never
+    by doctor's fix text, beside :func:`_gone_folder_fails`. Only sources doctor FAILed are read. Empty with
+    no config; a read that raises says no."""
+    if r.config is None:
+        return set()
+    failing = {name for tag, name, _detail in r.facts.doctor_problems if tag == "FAIL"}
+    out: set[str] = set()
+    for src in r.config.sources:
+        names = {f"source.{src.id}.listable", f"source.{src.id}.volume"}
+        if not src.is_live or src.path is None or not names & failing:
+            continue
+        try:
+            kept = kept_inbox_not_a_folder(r.config, src)
+            hit = kept is not None or _source_root_unusable(expand(src.path))
+        except Exception:
+            hit = False
+        if hit:
+            out |= names
+    return out
+
+
 def _stopping_list(runs: Sequence[InstallRun]) -> dict[str, str]:
     """The ``list-folders`` step of these runs' last list run: the one :func:`_list_stopped` reads the stop
     of. Empty with none."""
@@ -15666,6 +15720,11 @@ folder, not checked (:data:`_NOT_FOLDER_UNCHECKED`), keyed on the report's own s
 (:func:`_not_a_folder_at`), never on doctor's words: an older doctor FAILs heartbeat and governance there
 too."""
 _NOT_FOLDER_UNCHECKED = " (not checked: the state folder is not a folder)"
+_SOURCE_ROOT_WORDS = "from a [[source]] folder that is not a folder or that this account cannot search"
+"""The Doctor line's bucket for the listable and volume FAILs of a [[source]] whose root is not a folder or
+refuses this account a search (B13 round 48 C3513, ruling 226; :func:`_source_root_fails`): the kept inbox
+with a file at its name (g1) or a folder above a source at mode 000 (g6), whose fixes status and step 2
+call the person's, each entry so labelled, while the outcome counted them unexpected."""
 _DOCS_NOT_FOLDER_WORDS = "from the docs repo path that is not a folder"
 """The Doctor line's bucket when something other than a folder sits at the docs repo path, a dangling link
 too (B13 round 48 C3529, ruling 226): docs_repo.git's FAIL, the person's move aside, and an older doctor's
@@ -15888,6 +15947,7 @@ class _DoctorSort:
     from_trail_lost: list[str] = dataclasses.field(default_factory=list)  # B13 round 33 ruling 82
     trail_lost_words: str = ""
     from_docs_notfolder: list[str] = dataclasses.field(default_factory=list)  # B13 round 48 C3529
+    from_source_root: list[str] = dataclasses.field(default_factory=list)  # B13 round 48 C3513
 
 
 def _state_shut(c: Config, read_error: BaseException | None = None) -> str:
@@ -16668,6 +16728,8 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
     fr = r.friction
     signed_out = _sign_in_stop_fails(r, fr.latest if fr is not None else None, runs)
     not_on_disk = _gone_folder_fails(r, runs) - signed_out
+    source_root = _source_root_fails(r) - signed_out - not_on_disk  # B13 round 48 C3513
+    from_source_root: list[str] = []
     refusing = _refusing_checks(r.config) if r.config is not None else frozenset()
     # read only when doctor printed the FAIL it sorts, and never against the budget: the Summary is built
     # after the Loop line, which can spend it, and a remote FAIL the budget hid would read as unexpected (V55)
@@ -16848,6 +16910,10 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         if tag == "FAIL" and name in not_on_disk:  # B13 round 14 Q3, Q18, Q36: step 1 announced them
             from_gone.append(name)
             fails.append((name, _GONE))
+            continue
+        if tag == "FAIL" and name in source_root:  # B13 round 48 C3513 (ruling 226): by the root's own lstat
+            from_source_root.append(f"{name} FAIL{_PERSONS}")
+            fails.append((name, _SOURCE_ROOT_WORDS))
             continue
         # B13 round 16 T4, T14: the Configuration line names its cause. Keyed on the report's own reading,
         # never on the fix text: a sign-in or folder FAIL whose fix is the person's that no step announced
@@ -17187,6 +17253,7 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         from_trail_lost=from_trail_lost,
         trail_lost_words=trail_lost_words,
         from_docs_notfolder=from_docs_notfolder,
+        from_source_root=from_source_root,
     )
     r.doctor_sorted = (key, sort)
     return sort
@@ -17325,6 +17392,11 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
         parts.append(
             f"{_NOT_FOLDER_WORDS} ({_plural(len(sort.from_notfolder), 'check')}): "
             + ", ".join(_fold(sort.from_notfolder))
+        )
+    if sort.from_source_root:  # B13 round 48 C3513
+        parts.append(
+            f"{_SOURCE_ROOT_WORDS} ({_plural(len(sort.from_source_root), 'check')}): "
+            + ", ".join(_fold(sort.from_source_root))
         )
     if sort.from_docs_notfolder:  # B13 round 48 C3529
         parts.append(
