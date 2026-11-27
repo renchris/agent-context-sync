@@ -47968,6 +47968,8 @@ fuzzy add skips a value holding a line break; the id is cut in both and only tha
 Amended 2026-11-27, §16.295 C3471: a vanished project root now registers fuzzily in both reports as a configured one
 does, a joined name and a value holding `/` literal (ruling 217, reversing ruling 207's carve-out for the vanished
 loop).
+Amended 2026-11-27, §16.295 C3473: the looped test's pin is its `loop-linked-folder` row (the first hop's own folder a
+link), the one row that fails with ae8f777c7's install.sh hunk reversed; its other rows pass there.
 
 **A config this account cannot reach reads not checked** (C3335; dated line under §16.286's C3019 paragraph). stat's
 message is read as captured text, never through a pipe pipefail hides, and matched at its end: `- config: <path> (not
@@ -48989,6 +48991,21 @@ this account can list stays unexpected whatever its words. Tests:
 `test_a_source_under_a_folder_that_refuses_a_search_is_the_persons_c3513`,
 `test_a_listable_fail_on_a_readable_folder_stays_unexpected_c3513` and
 `test_each_entry_kind_at_a_source_root_is_bucketed_as_doctor_says_it_c3513` (ten entry kinds under a 20 s alarm).
+
+**C3245's loop pin and C3288's rows bite on their own fixes** (C3473; ruling 206 and ruling 208;
+`test_report_redaction`). With ae8f777c7's install.sh hunk reversed, all 8 rows of `test_the_shell_report_cuts_a_looped_inbox_links_target_c3245`
+passed: one readlink hop already gave each loop's first-hop target, so the pin proved nothing. A `loop-linked-folder`
+row (the inbox links to `~/Kestrel Alias/x`, `Kestrel Alias` links to `~/Kestrel Real`, and `Kestrel Real/x` links back
+to the inbox) needs the walk that resolves the first hop's own folder: on the revert the shell prints `the inbox links
+to ~/Kestrel Real/x` in clear (2 of 2 locales fail, the other 8 pass), and it passes with the fix. It stays out of
+`_C3245_ROWS`. C3288's lines in `test_the_agentsync_report_cuts_a_folder_step_1_listed_but_not_configured_c2873` were
+built with `setup_report._tokens`, the code under test; they are now literals (`_C3288_SAID`, `the folder Alder32
+Birch32 is listed`, `slug alder32-birch32`), and each must print exactly one `<folder-N>`, the one its own listed row's
+`debug: cwd` line prints. Measured: dropping `of=name` from `_add_listed` or `target` from `Redactor.add` leaves the
+report's number intact (the blank-joined form and the name share one `_norm` key, so the fuzzy lookup returns the
+row's number); only the lookup-level sibling test fails there. A literal filed under the other row fails the new
+assertion. Tests: `test_report_redaction.py`'s
+`test_the_shell_report_cuts_a_looped_inbox_links_target_c3245[loop-linked-folder-*]` and `test_the_agentsync_report_cuts_a_folder_step_1_listed_but_not_configured_c2873`.
 
 ### 16.296 Round 48: the installer: the shell halves of ruling 217, no value printed that it could not register, step 1's escapes and marks, the single-quoted placeholder, a failed sync told apart from a blocked one, and C2060 waits on the operator (2026-11-27, wave B13 round 48 lane RB)
 

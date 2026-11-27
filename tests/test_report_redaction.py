@@ -3255,6 +3255,21 @@ def test_both_reports_register_no_inbox_beside_a_docs_repo_under_the_root_c2430(
     assert shell == python and sp == pp, (shell, python)
 
 
+_C3288_SAID = {
+    "Alder29\x1eBirch29": ["the folder Alder29 Birch29 is listed", "slug alder29-birch29"],
+    "Alder30\x7fBirch30": ["the folder Alder30 Birch30 is listed", "slug alder30-birch30"],
+    "Alder31\tBirch31": ["the folder Alder31 Birch31 is listed", "slug alder31-birch31"],
+    "Q3\x08Plans": ["the folder Q3 Plans is listed", "slug q3-plans"],
+    "Alder32\x1eBirch32": ["the folder Alder32 Birch32 is listed", "slug alder32-birch32"],
+    "Alder33\nBirch33": ["the folder Alder33 Birch33 is listed", "slug alder33-birch33"],
+    "Wombat\\tQuokka\x7f": ["the folder Wombat t Quokka is listed", "slug wombat-t-quokka"],
+    "Wombat\\177Quokka\x7f": ["the folder Wombat 177 Quokka is listed", "slug wombat-177-quokka"],
+    "Q3\\101\\tPlans": ["the folder Q3 101 t Plans is listed", "slug q3-101-t-plans"],
+}
+"""B13 round 47 C3288's lines per listed name: its words as its RS reading splits them, joined by a blank and
+slugged, written out (B13 round 48 C3473: never derived with setup_report._tokens, the code under test)."""
+
+
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
 @pytest.mark.parametrize(
     "names",
@@ -3280,19 +3295,26 @@ def test_the_agentsync_report_cuts_a_folder_step_1_listed_but_not_configured_c28
     privacy): and an escaped row's other reading's blank-joined and slug forms (`Alder32 Birch32`,
     `alder32-birch32`), compared case-blind, cut under the row's one number, where the LF reading, LF being no
     separator, registered none of them."""
-    said = [ln for n, name in enumerate(names) for ln in _hostile_lines(n, name, locale, home=env["HOME"])]
-    for (
-        name
-    ) in names:  # C3288: each name's words as its RS reading splits them, joined by a blank and slugged
-        words = setup_report._tokens(name.replace("\n", "\x1e"))
-        if len(words) > 1 and all(w.isprintable() for w in words):
-            said += [f"the folder {' '.join(words)} is listed", f"slug {'-'.join(w.lower() for w in words)}"]
+    said: list[str] = []
+    base: dict[str, int] = {}  # each name's `debug: cwd` line, the row's own <folder-N>
+    for n, name in enumerate(names):
+        rows = _hostile_lines(n, name, locale, home=env["HOME"])
+        base[name] = len(said) + next(i for i, ln in enumerate(rows) if ln.startswith("debug: cwd "))
+        said += rows
+    held: list[tuple[int, str]] = []  # C3288: each name's words joined by a blank and slugged, as literals
+    for name in names:
+        held += [(len(said) + i, name) for i in range(len(_C3288_SAID[name]))]
+        said += _C3288_SAID[name]
     _shell, python, _sp, _pp = _both_reports(
         env, ["Juniper Notes"], said, locale, shell=False, listed=names, vanish=True
     )
     assert len(python) == len(said), (len(python), len(said))
     leaks = [ln for ln in python for f in _fragments(names) if f.casefold() in ln.casefold()]
     assert not leaks, (len(leaks), leaks[:4])
+    # B13 round 48 C3473: each C3288 line holds one <folder-N>, the one its own listed row's base line prints
+    for i, name in held:
+        [own] = re.findall(r"<folder-\d+>", python[base[name]])
+        assert re.findall(r"<folder-\d+>", python[i]) == [own], (python[i], python[base[name]])
 
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
@@ -5755,6 +5777,9 @@ _C3245_LOOPS = [
     "chain",
     "loop-locked",
     "documents-self-link",
+    # B13 round 48 C3473: the first hop's own folder a link, so one readlink hop prints ~/Kestrel Alias/x and
+    # only the walk that resolves that hop's folder prints the real one (kept out of _C3245_ROWS)
+    "loop-linked-folder",
 ]  # pathlib's resolve() raises on these
 
 
@@ -5786,6 +5811,12 @@ def _inbox_link_row(home: Path, row: str) -> tuple[list[str], list[str], Path | 
         juniper.symlink_to("Juniper")
         inbox.symlink_to(juniper)
         return ["the inbox links to ~/Documents/Juniper"], ["Juniper"], None
+    if row == "loop-linked-folder":  # inbox -> ~/Kestrel Alias/x, Kestrel Alias -> ~/Kestrel Real, x -> inbox
+        (home / "Kestrel Real").mkdir()
+        (home / "Kestrel Alias").symlink_to(home / "Kestrel Real")
+        (home / "Kestrel Real" / "x").symlink_to(inbox)
+        inbox.symlink_to(home / "Kestrel Alias" / "x")
+        return ["the inbox links to ~/Kestrel Real/x"], ["Kestrel"], None
     (locked / "inner").mkdir(parents=True)
     if row == "relative":
         inbox.symlink_to("../Locked Contoso/inner")
