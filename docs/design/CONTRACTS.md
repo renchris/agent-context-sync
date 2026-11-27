@@ -48876,6 +48876,10 @@ the folder question); not live: <id> (paused): setting a folder to live is the p
 never the agent's`. Tests: `test_setup_report.py`'s
 `test_the_summary_attempt_line_and_issue_link_score_a_no_live_folder_run_alike_c3437_c3496_c3512` (paused and retired,
 with and without a step 1 deviation) and `test_the_issue_links_fallback_scores_the_latest_attempt_as_the_attempt_line_does_c3437`.
+Review found the fallback still scored without doctor FAILs, persons' FAILs, the config cause or step 3 stops (fully
+one command in the link beside the Summary's worked with help for a live folder and a doctor [FAIL]); with an attempt
+it is now `_attempt_outcome(r, latest)` itself, and `compute_outcome` only with no attempt
+(`test_the_issue_links_fallback_counts_the_doctor_fails_the_summary_counts_c3437`).
 
 **Any last run without `--no-folder` takes the no-live-folder score** (C3508; ruling 227; `agentsync.setup_report`).
 A `--source-local` run over a paused-only config that ended 0 on `no folder is synced yet` scored fully one command:
@@ -48894,14 +48898,23 @@ that carries neither, today's `not_live`, which `_reached_step_3` passes for the
 today's config for every run (an earlier run that looped over a folder the person later paused keeps its question).
 Tests: `test_step_3s_question_is_credited_from_each_runs_own_record_first_c3438_c3467_c3503` (19 rows),
 `test_an_end_line_with_a_next_key_parses_as_one_without_it_c3438` and
-`test_the_expected_turns_line_drops_step_3s_question_for_a_held_only_latest_run_c3438`.
+`test_the_expected_turns_line_drops_step_3s_question_for_a_held_only_latest_run_c3438`. Review found a config step
+with one positive count beside a missing or non-digit one (`kept=1` alone, `kept=1 added=x`) fell to `not_live` and
+read no loop; one positive ASCII count is now a loop, two digit counts summing to 0 no loop, anything else as before
+(`test_one_positive_count_is_a_loop_whatever_the_other_says_c3438_c3503`). Review also found `ended_on_no_folder` read
+`next=no-folder` inside a quoted value and from an end line a later unkeyed end superseded; it reads only the run's
+last end line, and only a whole token outside double quotes
+(`test_only_the_last_end_lines_top_level_next_key_ends_a_run_on_no_folder_c3467`).
 
 **A failed none's own NEXT beats status's skill-missing NEXT even beside a doctor [FAIL]** (C3497; ruling 227;
 `agentsync.setup_report`; amends §16.290 C3202). After a `--no-folder` run that did not finish, with a doctor [FAIL],
 the Loop line kept status's `run ~/.local/bin/agentsync sync`. The C3202 branch now runs above the doctor-FAIL guard,
 so the line reads `NEXT: the --no-folder run did not finish (<cause>): its own NEXT: line says what to do; ...`; a
 FAIL-led or sign-in NEXT is kept as status gives it. Tests: `test_a_none_that_did_not_finish_says_its_own_next_says_what_to_do_c3202`
-and `test_the_loop_line_says_the_next_install_sh_printed_for_a_none_c2946`.
+and `test_the_loop_line_says_the_next_install_sh_printed_for_a_none_c2946`. Review found the branch read every run in
+install.log, so an earlier attempt's failed none replaced status's rule-2 NEXT for a later attempt with no install run
+yet; `_install_sh_said_no_folder` reads the latest attempt's runs (`_latest_runs`, every run with no attempt) in every
+branch (`test_an_earlier_attempts_failed_none_never_replaces_a_later_attempts_next_c3497`).
 
 **A completed none is never said to be waiting for the folder answer** (C3498; ruling 227; `agentsync.setup_report`).
 Step 2's report after the person's completed none warned that the attempt might still be waiting for the folder

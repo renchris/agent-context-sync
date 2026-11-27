@@ -15167,15 +15167,23 @@ def _loop_run(run: InstallRun, *, not_live: Sequence[str] | None = None) -> bool
     logged ``kept=0 added=0`` (no live folder after it; paused and retired ones are not counted). ``not_live``
     (today's held folders, :func:`_not_live_folders`) is read only for a run that carries neither, and only
     when the caller passes it: the latest attempt's last run. Never today's config for every run, which would
-    take a step 3 question from a run that looped over a folder later paused by hand."""
+    take a step 3 question from a run that looped over a folder later paused by hand. Review of ruling 227: a
+    config step that logged one positive count (``kept=1`` alone, ``added=1`` alone, or beside a count that
+    is no digit) is a loop too; only both counts read as digits that sum to 0 say no loop."""
     first = run.step("first-sync") or {}
     no_sources = first.get("result") == "skipped" and first.get("note") == "no-sources"
     if run.chose_no_folder or not run.completed_none or no_sources or run.ended_on_no_folder:
         return False
     config = run.step("config") or {}
     kept, added = config.get("kept", ""), config.get("added", "")
-    if kept.isascii() and kept.isdigit() and added.isascii() and added.isdigit():
-        return int(kept) + int(added) > 0
+
+    def digits(count: str) -> bool:
+        return count.isascii() and count.isdigit()
+
+    if any(digits(count) and int(count) > 0 for count in (kept, added)):  # B13 round 48 C3438/C3503
+        return True  # one live folder logged is a loop, whatever the other count says
+    if digits(kept) and digits(added):
+        return False  # both counted, both 0
     return not_live is None
 
 
@@ -18122,7 +18130,10 @@ def _install_sh_said_no_folder(r: _Run, config: Config, found: str) -> str | Non
     rule stays for the completed-none and bare-run branches."""
     if found.startswith(_CHOSEN_LOOP_OPENER):  # B13 round 47 C3241: status already said the choice
         return None
-    installs = install_runs_only(r.install_runs)
+    # B13 round 48 C3497 (ruling 227): the latest attempt's runs alone (every run with no attempt), so a
+    # failed none of an earlier attempt never speaks for a later one still waiting on its folder answer;
+    # every branch below reads the same run, install.sh's last word in this attempt
+    installs = install_runs_only(_latest_runs(r))
     latest = installs[-1] if installs else None
     if latest is None:
         return None
@@ -20810,9 +20821,16 @@ def _issue_link(r: _Run, red: Redactor) -> str:
     att = fr.latest if fr is not None else None
     agent = att.said("Agent") if att is not None else ""
     agent = re.sub(r"[^\w .:/()+,@<>-]", "", red.scrub_agent(" ".join(agent.split())))[:100].strip()
-    outcome = r.outcome or compute_outcome(  # the Summary's, else the same inputs (B13 round 48 C3437)
-        att, _latest_runs(r), not_live=_outcome_not_live(r), not_read=_unread_logs(r)
-    )
+    # the Summary's, else the attempt line's (B13 round 48 C3437, ruling 227: its doctor FAILs, held folders
+    # and stops too); with no attempt there are no doctor inputs to lose
+    if r.outcome is not None:
+        outcome = r.outcome
+    elif fr is not None and fr.attempts:
+        outcome = _attempt_outcome(r, len(fr.attempts) - 1)
+    else:
+        outcome = compute_outcome(
+            att, _latest_runs(r), not_live=_outcome_not_live(r), not_read=_unread_logs(r)
+        )
     return build_issue_url(
         outcome=outcome.form_label,
         title_outcome=outcome.title_label,

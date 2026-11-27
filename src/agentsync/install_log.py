@@ -35,6 +35,7 @@ __all__ = [
 _INSTALL_LINE_RE = re.compile(r"^(?P<at>\S+) run=(?P<run>\S+) (?P<rest>.*)$")
 _KV_RE = re.compile(r"(\w+)=(\S+)")
 _END_RE = re.compile(r"^\S+ run=\S+ end ")
+_QUOTED_RE = re.compile(r'"[^"]*"?')  # a double-quoted span, to its closing quote or the line's end
 _SIMULATED_RE = re.compile(r"\blaunchd\s*[=:]\s*simulated\b", re.IGNORECASE)
 
 
@@ -239,11 +240,15 @@ class InstallRun:
         """Whether an end line of this run carries ``next=no-folder``: install.sh ended it on its no-folder
         NEXT (no folder is synced yet, or none to sync), which sends the agent to the folder question, never
         to step 3's sync loop (B13 round 48 C3438 with C3467, ruling 227; lane RB writes the key). An extra
-        ``key=value`` after ``seconds=``, so a line without it, and an older reader, parse as before."""
-        return any(
-            _END_RE.search(ln) is not None and dict(_KV_RE.findall(ln)).get("next") == "no-folder"
-            for ln in self.lines
-        )
+        ``key=value`` after ``seconds=``, so a line without it, and an older reader, parse as before.
+
+        Review of ruling 227 (C3467): only the run's last end line speaks (a keyed end a later unkeyed end
+        superseded reads False; a later non-end line, a report step, changes nothing), and only a top-level
+        ``next=no-folder`` pair, never one inside a double-quoted value (``detail="... next=no-folder"``)."""
+        ends = [ln for ln in self.lines if _END_RE.search(ln) is not None]
+        if not ends:
+            return False
+        return "next=no-folder" in _QUOTED_RE.sub(" ", ends[-1]).split()  # a whole token, outside quotes
 
     @property
     def display_id(self) -> str:

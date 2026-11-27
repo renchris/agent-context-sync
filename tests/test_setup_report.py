@@ -31018,6 +31018,103 @@ def test_an_end_line_with_a_next_key_parses_as_one_without_it_c3438(tmp_path: Pa
     assert (b.rc, b.seconds, b.ended_on_no_folder, b.completed_none) == (0, 9, True, True)
 
 
+_R227_REVIEW_END = "2026-11-25T10:01:00Z run=20261125T100100Z-41 end rc=0 seconds=9"
+_R227_REVIEW_ENDS = {  # the run's lines after its steps, whether it ended on install.sh's no-folder NEXT
+    "quoted-detail": (f'{_R227_REVIEW_END} detail="says next=no-folder here"', False),
+    "keyed-then-unkeyed": (f"{_R227_REVIEW_END} next=no-folder\n{_R227_REVIEW_END}", False),
+    "keyed-then-report": (
+        f"{_R227_REVIEW_END} next=no-folder\n"
+        "2026-11-25T10:01:00Z run=20261125T100100Z-41 step=report seconds=1 rc=0 result=done",
+        True,
+    ),
+    "plain-keyed": (f"{_R227_REVIEW_END} next=no-folder", True),
+}
+
+
+@pytest.mark.parametrize("row", list(_R227_REVIEW_ENDS))
+def test_only_the_last_end_lines_top_level_next_key_ends_a_run_on_no_folder_c3467(
+    tmp_path: Path, row: str
+) -> None:
+    """B13 round 48 C3467 (review of ruling 227): `next=no-folder` inside a quoted value read as the key, and
+    a keyed end line a later unkeyed end superseded still read True. Only the run's last end line speaks,
+    and only a top-level token; a report step after a keyed end changes nothing."""
+    tail, want = _R227_REVIEW_ENDS[row]
+    [run] = setup_report.read_install_runs(
+        _write(tmp_path / "install.log", _r213_run(1, "", None) + tail + "\n")
+    )
+    assert run.ended_on_no_folder is want, row
+
+
+_R227_REVIEW_COUNTS = {  # the config step's counts, whether the run loops with today's held-only folders
+    "kept-1-alone": ("rc=0 result=done note=exists kept=1", True),
+    "added-1-alone": ("rc=0 result=done note=created added=1", True),
+    "kept-1-added-x": ("rc=0 result=done note=exists kept=1 added=x", True),
+    "kept-0-alone": ("rc=0 result=done note=exists kept=0", False),  # today's held folders decide
+}
+
+
+@pytest.mark.parametrize("row", list(_R227_REVIEW_COUNTS))
+def test_one_positive_count_is_a_loop_whatever_the_other_says_c3438_c3503(tmp_path: Path, row: str) -> None:
+    """B13 round 48 C3438 with C3503 (review of ruling 227): only both-digit counts decided, so a config step
+    that logged one positive count beside a missing or non-digit one fell to today's held folders and read no
+    loop. One positive count is a loop; anything short of two digit counts is judged as before."""
+    config, want = _R227_REVIEW_COUNTS[row]
+    [run] = setup_report.read_install_runs(
+        _write(tmp_path / "install.log", _r213_run(1, "", 0, config=config))
+    )
+    assert setup_report._loop_run(run, not_live=["kestrel (paused)"]) is want, row
+    assert setup_report._loop_run(run) is True, row  # no held folders passed: a loop, as before
+
+
+def test_an_earlier_attempts_failed_none_never_replaces_a_later_attempts_next_c3497(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 48 C3497 (review of ruling 227): the unfinished-none sentence read every run in install.log,
+    so with attempt 1 ending on a failed --no-folder run and attempt 2 waiting on its first folder answer (no
+    install run yet) the Loop line replaced status's rule-2 NEXT with "the --no-folder run did not finish".
+    It reads the latest attempt's runs; one attempt with that failed none still reads the sentence."""
+    said = _R202_NEXTS["rule2"]
+    cfg = fake_mac["config"]
+    cfg.write_text(
+        default_config_text() + inbox_source_table("inbox", Path.home() / "agent-context" / "inbox"),
+        encoding="utf-8",
+    )
+    log = fake_mac["setup"] / "install.log"
+    log.write_text(_r213_run(1, "--no-folder", 1, config="rc=1 result=failed"), encoding="utf-8")
+    first = "Attempt: 2026-11-25T09:59:00Z\nPrompt: v44\n"
+    second = (
+        "Attempt: 2026-11-25T10:30:00Z\nPrompt: v44\n"
+        "2026-11-25T10:31:00Z | step 1 | deviation | no folder answer came | -\n"
+    )
+    unfinished = setup_report.NO_FOLDER_UNFINISHED_NEXT.format(why="its config step failed with rc 1")
+    for friction, replaced in ((first + second, False), (first, True)):
+        r = setup_report._Run(cfg, setup_report.ReportHooks(loop_next=lambda _config: [said]), 60.0)
+        r.friction = setup_report.parse_friction(friction)
+        r.install_runs = setup_report.read_install_runs(log)
+        line = setup_report._loop_line(r)
+        assert (unfinished in line) is replaced, line
+        assert ("the --no-folder run did not finish" in line) is replaced, line
+        if not replaced:
+            assert "no folder is synced yet: ask the operator which folders to sync" in line, line
+
+
+def test_the_issue_links_fallback_counts_the_doctor_fails_the_summary_counts_c3437(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 48 C3437 (review of ruling 227): with no Summary written (``r.outcome`` unset) the issue
+    link's fallback scored without doctor FAILs, so a run with a live folder and a current doctor [FAIL] read
+    "Fully one command" where the Summary says "worked with help"; it is _attempt_outcome's."""
+    _held_config(fake_mac["config"], "paused", live=True)
+    (fake_mac["setup"] / "install.log").write_text(_N14, encoding="utf-8")
+    r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 60.0)
+    r.friction = setup_report.parse_friction(_C3512_ATTEMPTS)
+    r.install_runs = setup_report.read_install_runs(fake_mac["setup"] / "install.log")
+    r.facts.doctor_problems.append(("FAIL", "state_dir.files", "x"))
+    assert r.outcome is None
+    link = parse_qs(urlsplit(setup_report._issue_link(r, setup_report.Redactor())).query)
+    assert link["outcome"] == [setup_report._attempt_outcome(r, 2).form_label] == ["Worked with help"], link
+
+
 @pytest.mark.parametrize("live", [False, True])
 def test_the_expected_turns_line_drops_step_3s_question_for_a_held_only_latest_run_c3438(
     fake_mac: dict[str, Path], live: bool
