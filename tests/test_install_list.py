@@ -22,11 +22,13 @@ from test_install_oneshot import (  # noqa: F401  (fixtures)
     LIST_NEXT,
     LOOK_ALIKE_WORDS,
     SHELL_HELPER_FNS,
+    STUB_FIND_EPERM,
     TWIN_MARK,
     _cloud,
     _inbox,
     _tool_python,
     _write_config,
+    _write_exe,
     env,
     install_log,
     install_out,
@@ -198,6 +200,39 @@ def test_a_paused_or_retired_folder_is_marked_and_never_counted_c3332(
         (f"{lib}/Kestrel\tPlans", "paused", ESCAPED_KEPT_MARK),
     ], rows
     assert doc["total"] == 5
+
+
+@pytest.mark.parametrize("case", ["no-provider", "empty-provider", "denied"])
+def test_every_list_branch_that_prints_a_held_row_names_it_c3441(
+    env: dict[str, str],  # noqa: F811
+    case: str,
+) -> None:
+    """B13 round 48 ruling 221 (C3441): a folder sources.toml holds paused outside ~/Library/CloudStorage is
+    printed `[paused] <path>` in every branch, but only the exit-0 ones named it in the NEXT, so under a
+    sign-in or a denial the person met a marked row with no word of what it is. The no-provider and
+    empty-provider NEXTs (exit 3) and the denied one (exit 4, still ending on the click and its re-run) take
+    the held clause after their re-run."""
+    home = Path(env["HOME"])
+    old = home / "Documents" / "Old Notes"
+    old.mkdir(parents=True)
+    cs = _cloud(env)
+    if case != "no-provider":
+        (cs / "OneDrive-Contoso").mkdir(parents=True)
+    if case == "denied":
+        (cs / "OneDrive-Contoso" / "Alpha").mkdir()
+        _write_exe(Path(env["PATH"].split(":")[0]) / "find", STUB_FIND_EPERM)
+    _write_config(env, _inbox(env), _held("old", old, "paused"))
+    _tool_python(env)
+    cp = install_sh(env, "--list-folders")
+    assert cp.returncode == (4 if case == "denied" else 3), cp.stdout + cp.stderr
+    assert f"[paused] {old}" in cp.stdout.splitlines(), cp.stdout
+    nxt = [ln for ln in cp.stdout.splitlines() if ln.startswith("NEXT: ")][-1]
+    lead = {
+        "no-provider": "NEXT: OneDrive is not signed in on this Mac: sign in to OneDrive, then re-run: ",
+        "empty-provider": "NEXT: no folders are synced yet in ",
+        "denied": "NEXT: this terminal app was denied access to files managed by OneDrive: allow it in ",
+    }[case]
+    assert nxt.startswith(lead) and nxt.endswith(HELD_LIST_NEXT), nxt
 
 
 _HELD_INSIDE_NEXT = (

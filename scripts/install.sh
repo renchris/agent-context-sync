@@ -12448,11 +12448,11 @@ list_folders() {
 	rc=0
 	if [ -n "$denied" ]; then
 		rc=4
-		NEXT_MSG="$term was denied access to files managed by $denied: allow it in System Settings > Privacy & Security > Files and Folders (turn on $denied under $term; a click, not a command), then re-run: $RERUN"
+		NEXT_MSG="$term was denied access to files managed by $denied: allow it in System Settings > Privacy & Security > Files and Folders (turn on $denied under $term; a click, not a command), then re-run: $RERUN$heldtail"
 		step_end failed "$rc" "denied${synced:+ synced=$synced}$unread"
 	elif [ -n "$asking" ]; then
 		rc=4
-		NEXT_MSG="macOS is asking whether $term may access files managed by $asking: click Allow (or turn it on in System Settings > Privacy & Security > Files and Folders), then re-run: $RERUN"
+		NEXT_MSG="macOS is asking whether $term may access files managed by $asking: click Allow (or turn it on in System Settings > Privacy & Security > Files and Folders), then re-run: $RERUN$heldtail"
 		step_end failed "$rc" "tcc-pending${synced:+ synced=$synced}$unread"
 	elif [ "$missing" -gt 0 ]; then
 		# Not "a re-run keeps them": step 2 would stop on each missing folder's [FAIL] lines. A Mac whose synced
@@ -12462,7 +12462,7 @@ list_folders() {
 		# several apps joined as the report joins them, "A, B and C" (B13 round 15 S40); the plural is read off
 		# the comma list first, since "A and B" holds no comma
 		case "$apps" in *", "*) more="are not signed in on this Mac, so this Mac is" apps="${apps%, *} and ${apps##*, }" ;; *) more="is not signed in on this Mac, so it is" ;; esac
-		NEXT_MSG="$apps $more missing $missing of the folders this Mac already syncs: sign in to $apps (or let it finish setting up), then re-run: $RERUN; the folders marked $SYNCED_MARK are kept"
+		NEXT_MSG="$apps $more missing $missing of the folders this Mac already syncs: sign in to $apps (or let it finish setting up), then re-run: $RERUN; the folders marked $SYNCED_MARK are kept$heldtail"
 		# which apps, and how many folders are missing, beside how many this Mac syncs: the readers named
 		# OneDrive and counted every synced folder as missing (B13 round 13 O5)
 		step_end failed "$rc" "not-signed-in apps=$tokens missing=$missing synced=$synced"
@@ -12511,11 +12511,13 @@ list_folders() {
 		step_end "done" 0 "listed-$total synced=$synced$more$vlog$clog"
 	elif [ "$providers" -eq 0 ]; then
 		rc=3
-		NEXT_MSG="OneDrive is not signed in on this Mac: sign in to OneDrive, then re-run: $RERUN$kept"
+		# the held clause in every branch that prints a held row, before $kept, the exit-0 order unchanged (B13 round
+		# 48 ruling 221, C3441: a held row printed with no clause under a sign-in or a denial)
+		NEXT_MSG="OneDrive is not signed in on this Mac: sign in to OneDrive, then re-run: $RERUN$heldtail$kept"
 		step_end failed "$rc" "not-signed-in apps=onedrive${synced:+ synced=$synced}$unread"
 	elif [ "$total" -eq 0 ]; then
 		rc=3
-		NEXT_MSG="no folders are synced yet in $cs: sign in to OneDrive (or let it finish setting up), then re-run: $RERUN$kept"
+		NEXT_MSG="no folders are synced yet in $cs: sign in to OneDrive (or let it finish setting up), then re-run: $RERUN$heldtail$kept"
 		step_end failed "$rc" "no-folders${synced:+ synced=$synced}$unread"
 	elif [ "$stuck" -eq 1 ]; then
 		# The installed build is this checkout's and failed on the config: step 2 does not reinstall it, so

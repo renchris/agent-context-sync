@@ -14231,8 +14231,8 @@ def test_the_deploy_guides_say_a_set_up_mac_with_a_missing_folder_exits_3() -> N
     # signed-out check never runs) and a NEXT that says so; the Install section said a set-up Mac exits 0
     installer = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
     assert (
-        'NEXT_MSG="OneDrive is not signed in on this Mac: sign in to OneDrive, then re-run: $RERUN$kept"'
-        in installer
+        'NEXT_MSG="OneDrive is not signed in on this Mac: sign in to OneDrive, then re-run: '
+        '$RERUN$heldtail$kept"' in installer  # B13 round 48 C3441: a held row is named in this NEXT too
     )
     assert "On a Mac that already syncs folders it exits 3" not in readme
     assert (
