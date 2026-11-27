@@ -3425,6 +3425,43 @@ def test_the_walk_names_every_kept_inbox_entry_as_typed_c3312_c3211(
         assert "contoso-" not in text, text
 
 
+@pytest.mark.parametrize("entry", ["link-into-an-unsearchable-folder", "unsearchable-folder"])
+def test_a_denied_inbox_root_that_lists_again_gives_no_partial_note_c3510(tmp_path: Path, entry: str) -> None:
+    """B13 round 48 C3510 (ruling 225): after a sync that could not read the kept inbox's root (a link into a
+    folder this account cannot search, or the inbox folder itself mode 0), a readable folder put back at that
+    name still read ``the inbox (<id>) was not fully listed`` in status until the next sync, since C3212's
+    folder-again check covered only the not-a-folder note. The root-unlisted inbox's note is gated by a live,
+    bounded listing of the root: while it still refuses, a note stays (a stat would read the mode-0 folder as
+    a folder); once it lists, no inbox note at all."""
+    root = tmp_path / "Contoso Gamma"
+    (root / "Gamma Empty").mkdir(parents=True)
+    config = _synced(tmp_path, root)
+    config, box = ensure_inbox(config.config_path)
+    assert box is not None and run_cycle(config, mode=None).exit_code == 0
+    kept = config.docs_repo.parent / "inbox"
+    kept.rename(tmp_path / "inbox-moved")  # moved aside, never removed
+    locked = _put_entry(kept, entry)
+    try:
+        if os.access(locked[0], os.X_OK):
+            pytest.skip("this account searches a mode-0 folder")
+        with _bounded(60):
+            config = load_config(config.config_path)
+            assert run_cycle(config, mode=None).exit_code == 0
+            denied = loop.next_step(load_config(config.config_path)).notes
+            if entry == "unsearchable-folder":
+                kept.chmod(0o700)  # the folder this account reads again
+            else:
+                kept.rename(tmp_path / "link-moved")  # the link moved aside, a folder put back
+                kept.mkdir()
+            again = loop.next_step(load_config(config.config_path)).notes
+    finally:
+        for folder in locked:
+            folder.chmod(0o700)
+    assert any(n.startswith(f"the inbox ({box.id}) ") for n in denied), denied
+    assert not any(n.startswith(f"the inbox ({box.id}) ") for n in again), again
+    assert not any("was not fully listed" in n for n in again), again
+
+
 def _forget_kept_inbox_reads() -> None:
     """config.forget_kept_inbox_reads once the probe threads a held run abandoned have ended: the probe's
     ``call_with_timeout`` gives up first and leaves its thread waiting out kept_inbox_read's own limit, which

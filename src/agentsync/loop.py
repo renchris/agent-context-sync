@@ -1124,6 +1124,34 @@ def _inbox_root_not_a_folder(
     return (_shown(typed), True) if typed is not None else (_display_path(src.path), False)
 
 
+def _inbox_root_readable_again(manifest: Manifest, src: SourceConfig) -> bool:
+    """Whether an inbox whose last walk could not read its root lists now (B13 round 48 C3510, ruling 225):
+    the walk stored the root unlisted (``root_unlisted:<id>``) with no kind (the cycle's pre-walk ``source
+    root is not read`` skip stores none) or a refusal's kind (``UNKNOWN_MODE``, ``UNKNOWN_PRIVACY``,
+    ``UNKNOWN_OTHER``), no folder below it is unlisted, and a live listing of the root, bounded as the walk's
+    own reads are (config.bounded_inbox_read), returns: a folder this account reads is back, so the next sync
+    lists it and the "was not fully listed" note is not printed (C3212's rule on this path). A stat never
+    decides it: an inbox folder that is itself mode 0 stats as a folder and still lists nothing, so its note
+    stays (makes worse True for a stat). Any OSError, or a listing past the limit, is False."""
+    if not manifest.get_meta(_ROOT_UNLISTED_META + src.id) or src.path is None:
+        return False
+    kinds = _unlisted_kinds(manifest, src, ["."])
+    if kinds is not None and not kinds <= {UNKNOWN_MODE, UNKNOWN_PRIVACY, UNKNOWN_OTHER}:
+        return False
+    if any(d != "." for d in _unlisted_dirs(manifest, src)):
+        return False
+    root = expand(src.path)
+
+    def listed() -> bool:
+        with os.scandir(root):
+            return True
+
+    try:
+        return bounded_inbox_read(listed) is True
+    except OSError:
+        return False
+
+
 def _missing_root_wait(config: Config, sid: str, pause: str, *, state: str = "") -> str:
     """The wait for a source whose last walk found no root folder (``UNKNOWN_MISSING``; B13 round 14 Q6, Q11,
     Q34): it was renamed, moved or deleted, or what holds it is not there. Status reads no folder for it (a
@@ -1611,7 +1639,10 @@ def next_step(
                             root_kinds[src.id] = frozenset({UNKNOWN_MISSING})
                             root_states[src.id] = manifest.get_meta(_ROOT_MISSING_STATE_META + src.id) or ""
                         elif src.kind is SourceKind.INBOX:
-                            inbox_partial.append(src.id)
+                            # a root the last walk could not read that lists now: no note, the next sync
+                            # lists it (B13 round 48 C3510, ruling 225; C3212's rule on this path)
+                            if not _inbox_root_readable_again(manifest, src):
+                                inbox_partial.append(src.id)
                         elif stored and (other := _unlisted_dirs(manifest, src)):
                             # Every empty cloud folder is excluded since that walk, but a folder it could not
                             # read beside them is not: another sync does not complete the listing (B13 round
