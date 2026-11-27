@@ -135,6 +135,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import tomllib
 import unicodedata
@@ -161,6 +162,7 @@ from agentsync.config import (
     SOURCE_ID_RE,
     Config,
     ConvertConfig,
+    SourceConfig,
     inbox_state,
     kept_inbox_not_a_folder,
     load_config,
@@ -5169,6 +5171,9 @@ class _Run:
         self.now = datetime.now(UTC)  # the report's moment (build_report sets it)
         self.git: Path | None = None  # what /usr/bin/git runs, looked up once per report (_git_ro_err)
         self.provider_states: dict[Path, str] = {}  # doctor.provider_state per provider folder, read once
+        # the person's-bucket disk reads of _sort_doctor, per source root and docs path, read once
+        # (:func:`_bounded_disk_reads`, B13 round 48 fix of C3529, C3513)
+        self.disk_reads: dict[str, frozenset[str]] = {}
         self.last_call_limit: float | None = None  # the wait :meth:`call` last gave its function (V3, V49)
         self.devtools_note = ""  # the runner's note when xcode-select -p did not answer (C834, ruling 96)
         self.doctor_grace = 0.0  # the seconds the deadline moved for a slow doctor (_DOCTOR_GRACE_S, V4)
@@ -14928,18 +14933,88 @@ def _sign_in_stop_fails(r: _Run, att: Attempt | None, runs: Sequence[InstallRun]
     return gone
 
 
-def _docs_repo_not_folder(c: Config | None) -> bool:
+def _docs_repo_not_folder(r: _Run) -> bool:
     """Whether :func:`paths.docs_repo_state` reads the configured docs repo path ``not_a_folder``: something
     there, or a link (a dangling one too), that is not a folder, the reading doctor's docs_repo.git check
     gives its FAIL on (B13 round 48 C3529, ruling 226), or ``uncreatable``: nothing there and the nearest
     path above it a file or a folder this account cannot write, whose docs_repo.git fix ruling 226 gives the
-    person too (move the anchor aside, chmod it, or set docs_repo elsewhere). A read that raises says no."""
+    person too (move the anchor aside, chmod it, or set docs_repo elsewhere). Read only when doctor FAILed
+    docs_repo.git or docs_repo.permissions, bounded by :func:`_bounded_disk_reads`, never the report's budget:
+    a docs path on a share that stalls says no, and so does a read that raises, OSError or ValueError (a NUL
+    in the path; B13 round 48, the cross-vendor review of ruling 226)."""
+    return any(_bounded_disk_reads(r, _docs_repo_reads(r)).values())
+
+
+def _docs_repo_reads(r: _Run) -> dict[str, Callable[[], frozenset[str]]]:
+    """:func:`_docs_repo_not_folder`'s one read, for :func:`_bounded_disk_reads`: none with no config or no
+    docs_repo.git or docs_repo.permissions FAIL."""
+    c = r.config
+    if c is None or not any(
+        t == "FAIL" and n in ("docs_repo.git", "docs_repo.permissions") for t, n, _ in r.facts.doctor_problems
+    ):
+        return {}
+
+    def read() -> frozenset[str]:
+        state = docs_repo_state(expand(c.docs_repo))[0]
+        return frozenset({"docs_repo.git"}) if state in ("not_a_folder", "uncreatable") else frozenset()
+
+    return {f"docs\0{c.docs_repo}": read}
+
+
+def _names_docs_repo(detail: str, c: Config | None) -> bool:
+    """Whether a docs_repo.permissions detail, before its ``(fix: ...)``, is about the docs repo path: it
+    names that path (expanded, as doctor's ``_check_permissions`` prints each path it found), or a path
+    below it, or says ``the docs repo path`` (lane B's ``not checked`` words, B13 round 48 C3545). One about
+    another root (the cache at 0755, say) is not the docs path's, and stays unexpected (B13 round 48, the
+    cross-vendor review of ruling 226). A path that cannot be expanded says no."""
     if c is None:
         return False
+    said = _without_fix(detail)
+    if "the docs repo path" in said:
+        return True
     try:
-        return docs_repo_state(expand(c.docs_repo))[0] in ("not_a_folder", "uncreatable")
-    except OSError:
+        repo = str(expand(c.docs_repo))
+    except (OSError, ValueError):
         return False
+    return re.search(rf"(?:^|[\s:,]){re.escape(repo)}(?=$|[\s,/])", said) is not None
+
+
+_DISK_READ_S = 3.0
+"""How long :func:`_bounded_disk_reads` waits for the person's-bucket disk reads of one sort, all at once: a
+fixed wait of its own, never the report's budget, which the Loop line can spend before the Summary sorts
+(V55), and short enough that a share that stalls after doctor ran cannot hold the report."""
+
+
+def _bounded_disk_reads(
+    r: _Run, reads: Mapping[str, Callable[[], frozenset[str]]]
+) -> dict[str, frozenset[str]]:
+    """Each read in a daemon thread of its own, all started together and waited on for at most
+    :data:`_DISK_READ_S` in all, its answer kept per key for the report (``r.disk_reads``), so the several
+    sorts of one report never read a path twice. A read that does not answer in time, or raises, says no (an
+    empty set): its FAILs stay unexpected. The thread of one that never answers is left behind; as a daemon it
+    holds neither the report nor the interpreter's exit."""
+    boxes: dict[str, queue.Queue[frozenset[str]]] = {}
+    for key, read in reads.items():
+        if key in r.disk_reads or key in boxes:
+            continue
+        box: queue.Queue[frozenset[str]] = queue.Queue(maxsize=1)
+
+        def target(read: Callable[[], frozenset[str]] = read, box: queue.Queue[frozenset[str]] = box) -> None:
+            try:
+                got = read()
+            except Exception:  # OSError, ValueError (a NUL in a path), anything: says no
+                got = frozenset()
+            box.put(got)
+
+        threading.Thread(target=target, name="setup-report-disk-read", daemon=True).start()
+        boxes[key] = box
+    end = time.monotonic() + _DISK_READ_S
+    for key, box in boxes.items():
+        try:
+            r.disk_reads[key] = box.get(timeout=max(0.0, end - time.monotonic()))
+        except queue.Empty:
+            r.disk_reads[key] = frozenset()
+    return {key: r.disk_reads[key] for key in reads}
 
 
 def _on_disk(path: Path) -> bool:
@@ -14978,31 +15053,45 @@ def _gone_folder_fails(r: _Run, runs: Sequence[InstallRun]) -> set[str]:
     return {f"source.{sid}.{check}" for sid in missing for check in ("listable", "volume")}
 
 
-def _source_root_unusable(root: Path) -> bool:
-    """Whether a [[source]] root is there but no folder this account can list (B13 round 48 C3513, ruling
-    226), as doctor's listable row reads it with the person's fix: not a folder (a file, a link to a file, a
-    fifo, a dangling link, a link through a file), or refusing this account a search, its own lstat or a
-    folder above it (EACCES), or its listing (EACCES), a local root only: nothing inside a File Provider
-    tree is listed here, where a hidden Allow prompt holds it. A looping link says no, as doctor gives it
-    the generic look-in-Finder fix, not the person's (the kept inbox's loop is :func:`_source_root_fails`'
-    config test), and so do a missing root (its own fix) and EPERM, macOS privacy's. Never raises."""
+_ROOT_BOTH = frozenset({"listable", "volume"})
+_ROOT_LISTABLE = frozenset({"listable"})
+
+
+def _source_root_unusable(root: Path) -> frozenset[str]:
+    """Which of a [[source]]'s checks (``listable``, ``volume``) are the person's because its root is there
+    but no folder this account can list (B13 round 48 C3513, ruling 226), as doctor's listable row reads it
+    with the person's fix: both when it is not a folder (a file, a link to a file, a fifo, a dangling link,
+    a link through a file, one above it a file); ``listable`` alone when it refuses this account a search
+    (EACCES), its own lstat or a folder above it, or its listing, a local root only, since doctor's volume
+    row there is ``not checked`` and a volume FAIL beside it is some other fault's (B13 round 48, the
+    cross-vendor review of ruling 226). Nothing inside a File Provider tree is listed here, where a hidden
+    Allow prompt holds it, and an EACCES there says no: an unreadable provider folder counts as signed in
+    (B13 round 12 N61), its FAILs unexpected. A looping link says no, as doctor gives it the generic
+    look-in-Finder fix, not the person's (the kept inbox's loop is :func:`_source_root_fails`' config test),
+    and so do a missing root (its own fix) and EPERM, macOS privacy's."""
+    cloud = _cloud_parts(root) is not None
+    refused = frozenset() if cloud else _ROOT_LISTABLE
     try:
         root.lstat()
     except OSError as exc:  # a folder above refuses a search, or one above is a file
-        return exc.errno in (errno.EACCES, errno.ENOTDIR)
+        if exc.errno == errno.ENOTDIR:
+            return _ROOT_BOTH
+        return refused if exc.errno == errno.EACCES else frozenset()
     try:
         st = root.stat()
     except OSError as exc:  # a dangling link, a link through a file or into a folder that refuses a search
-        return exc.errno in (errno.ENOENT, errno.ENOTDIR, errno.EACCES)
+        if exc.errno in (errno.ENOENT, errno.ENOTDIR):
+            return _ROOT_BOTH
+        return refused if exc.errno == errno.EACCES else frozenset()
     if not stat.S_ISDIR(st.st_mode):
-        return True
-    if _cloud_parts(root) is not None:
-        return False
+        return _ROOT_BOTH
+    if cloud:
+        return frozenset()
     try:
         with os.scandir(root):
-            return False
+            return frozenset()
     except OSError as exc:
-        return exc.errno == errno.EACCES
+        return _ROOT_LISTABLE if exc.errno == errno.EACCES else frozenset()
 
 
 def _source_root_fails(r: _Run) -> set[str]:
@@ -15010,25 +15099,36 @@ def _source_root_fails(r: _Run) -> set[str]:
     search (B13 round 48 C3513, ruling 226): ``source.<id>.listable`` and ``.volume``, where doctor's fix is
     the person's (a file or link at the kept inbox's name to move aside, a [[source]] path to point at a
     folder, a folder's search access to give), read by the report's own lstat of the root
-    (:func:`_source_root_unusable`) and config's one kept-inbox test (``kept_inbox_not_a_folder``), never
-    by doctor's fix text, beside :func:`_gone_folder_fails`. Only sources doctor FAILed are read. Empty with
-    no config; a read that raises says no."""
-    if r.config is None:
-        return set()
+    (:func:`_source_root_unusable`, ``.listable`` alone for a refused search) and config's one kept-inbox
+    test (``kept_inbox_not_a_folder``, both), never by doctor's fix text, beside :func:`_gone_folder_fails`.
+    Only sources doctor FAILed are read, each bounded by :func:`_bounded_disk_reads`, never the report's
+    budget: a root on a share that stalls says no, and so does a read that raises (OSError, ValueError).
+    Empty with no config."""
+    got = _bounded_disk_reads(r, _source_root_reads(r))
+    return {f"source.{key.split(chr(0))[1]}.{check}" for key, checks in got.items() for check in checks}
+
+
+def _source_root_reads(r: _Run) -> dict[str, Callable[[], frozenset[str]]]:
+    """:func:`_source_root_fails`' reads, one per live source doctor FAILed, for :func:`_bounded_disk_reads`,
+    each keyed ``source<NUL><id><NUL><path>`` (an id never holds a NUL: ``SOURCE_ID_RE``)."""
+    c = r.config
+    if c is None:
+        return {}
     failing = {name for tag, name, _detail in r.facts.doctor_problems if tag == "FAIL"}
-    out: set[str] = set()
-    for src in r.config.sources:
+    reads: dict[str, Callable[[], frozenset[str]]] = {}
+    for src in c.sources:
         names = {f"source.{src.id}.listable", f"source.{src.id}.volume"}
         if not src.is_live or src.path is None or not names & failing:
             continue
-        try:
-            kept = kept_inbox_not_a_folder(r.config, src)
-            hit = kept is not None or _source_root_unusable(expand(src.path))
-        except Exception:
-            hit = False
-        if hit:
-            out |= names
-    return out
+
+        def read(src: SourceConfig = src) -> frozenset[str]:
+            if kept_inbox_not_a_folder(c, src) is not None:
+                return _ROOT_BOTH
+            assert src.path is not None
+            return _source_root_unusable(expand(src.path))
+
+        reads[f"source\0{src.id}\0{src.path}"] = read
+    return reads
 
 
 def _stopping_list(runs: Sequence[InstallRun]) -> dict[str, str]:
@@ -16738,6 +16838,8 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
     yours: list[str] = []
     unexpected: list[str] = []
     fr = r.friction
+    # the person's-bucket reads below, started together so one wait bounds them all (never the budget)
+    _bounded_disk_reads(r, {**_docs_repo_reads(r), **_source_root_reads(r)})
     signed_out = _sign_in_stop_fails(r, fr.latest if fr is not None else None, runs)
     not_on_disk = _gone_folder_fails(r, runs) - signed_out
     source_root = _source_root_fails(r) - signed_out - not_on_disk  # B13 round 48 C3513
@@ -16759,7 +16861,7 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
     # B13 round 23 A23: a state folder (or a folder above it) that is not a folder comes before the file tests
     notfolder = r.config is not None and _not_a_folder_at(expand(r.config.state_paths.root)) is not None
     from_notfolder: list[str] = []
-    docs_notfolder = _docs_repo_not_folder(r.config)  # B13 round 48 C3529
+    docs_notfolder = _docs_repo_not_folder(r)  # B13 round 48 C3529
     from_docs_notfolder: list[str] = []
     unreadable = not notfolder and r.config is not None and _state_unreadable(r.config, read_error)
     notfile = not notfolder and not unreadable and r.config is not None and _state_not_file(r.config)
@@ -16910,7 +17012,15 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
                 fails.append((name, _NOT_FOLDER_WORDS))
             continue
         # B13 round 48 C3529 (ruling 226): the person's move aside, by the report's own docs_repo_state
-        if docs_notfolder and tag == "FAIL" and name in ("docs_repo.git", "docs_repo.permissions"):
+        # docs_repo.permissions only when its words name the docs path: another root's stays unexpected
+        if (
+            docs_notfolder
+            and tag == "FAIL"
+            and (
+                name == "docs_repo.git"
+                or (name == "docs_repo.permissions" and _names_docs_repo(detail, r.config))
+            )
+        ):
             whose_words = _PERSONS if name == "docs_repo.git" else _DOCS_NOT_FOLDER_UNCHECKED
             from_docs_notfolder.append(f"{name} {tag}{whose_words}")
             fails.append((name, _DOCS_NOT_FOLDER_WORDS))

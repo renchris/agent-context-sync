@@ -21399,7 +21399,10 @@ def test_each_entry_kind_at_a_source_root_is_bucketed_as_doctor_says_it_c3513(ki
         assert all(doctor.is_persons_fix(c.fix or "") for c in fails), said
     names = {name for _t, name, _d in r.facts.doctor_problems}
     if _ROOT_KINDS[kind]:
-        assert got == {"source.contoso-notes.listable", "source.contoso-notes.volume"}, got
+        # a folder that only refuses its listing files listable alone: doctor's volume row there is not
+        # checked, so a volume FAIL beside it is another fault's (the cross-vendor review of ruling 226)
+        checks = ("listable",) if kind == "folder this account cannot search" else ("listable", "volume")
+        assert got == {f"source.contoso-notes.{check}" for check in checks}, got
         assert sort.unexpected == [] and len(sort.from_source_root) == len(names), sort
     else:
         assert got == set(), got
@@ -21468,6 +21471,184 @@ def test_a_docs_repo_path_that_is_not_a_folder_is_the_persons_c3529(
     got = sort()
     assert got.unexpected == ["docs_repo.git FAIL", "docs_repo.permissions FAIL"], got
     assert got.from_docs_notfolder == [] and [w for _n, w in got.fails] == [None, None], got
+
+
+def test_the_persons_doctor_buckets_read_disk_bounded_c3529_c3513(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 48, the cross-vendor review of ruling 226: _sort_doctor's own reads of a source root and the
+    docs path ran on the report's thread, so a share that stalls after doctor ran held the Summary with no
+    outcome. Each read now runs bounded (``_DISK_READ_S``, never the report's budget), all at once: with
+    lstat and stat of both paths held, the sort returns within that wait plus 2 s and their FAILs stay
+    unexpected; a second sort of the same report reads neither path again."""
+    import signal  # noqa: PLC0415 - as the reader test above imports it
+
+    cfg = fake_mac["config"]
+    config = load_config(cfg)
+    root = expand(next(s for s in config.sources if s.id == "inbox").path or Path())
+    docs = expand(config.docs_repo)
+    held = threading.Event()
+    stalled = {str(root), str(docs)}
+    asked: list[str] = []
+
+    def holding(real: Callable[..., os.stat_result]) -> Callable[..., os.stat_result]:
+        def call(path: Any, *args: Any, **kwargs: Any) -> os.stat_result:
+            if isinstance(path, (str, os.PathLike)) and os.fspath(path) in stalled:
+                asked.append(os.fspath(path))
+                held.wait(60)
+            return real(path, *args, **kwargs)
+
+        return call
+
+    r = setup_report._Run(cfg, setup_report.ReportHooks(), 12.0)
+    r.facts.doctor = Counter({"FAIL": 3})
+    r.facts.doctor_problems = [
+        ("FAIL", "docs_repo.git", f"{docs} exists but is not a directory (fix: move {docs} aside)"),
+        ("FAIL", "source.inbox.listable", f"{root} is not a folder (fix: the person moves it aside)"),
+        ("FAIL", "source.inbox.volume", f"volume UUID not checked: {root} is not a folder (fix: as above)"),
+    ]
+    monkeypatch.setattr(os, "lstat", holding(os.lstat))
+    monkeypatch.setattr(os, "stat", holding(os.stat))
+
+    class Hung(BaseException):
+        """Past every ``except Exception`` and ``except OSError`` around a read (TimeoutError is one)."""
+
+    def hung(_signum: int, _frame: object) -> None:
+        raise Hung("_sort_doctor waited on a held disk read")
+
+    old = signal.signal(signal.SIGALRM, hung)
+    signal.alarm(20)
+    try:
+        t0 = time.monotonic()
+        sort = setup_report._sort_doctor(r, [])
+        took = time.monotonic() - t0
+        first = len(asked)
+        r.doctor_sorted = None  # a later sort of the same report: answered from what was read
+        t1 = time.monotonic()
+        again = setup_report._sort_doctor(r, [])
+        took_again = time.monotonic() - t1
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old)
+        held.set()
+    assert took < setup_report._DISK_READ_S + 2, took
+    assert set(asked) == stalled, asked
+    assert sort.unexpected == [
+        "docs_repo.git FAIL",
+        "source.inbox.listable FAIL",
+        "source.inbox.volume FAIL",
+    ], sort
+    assert sort.from_docs_notfolder == [] and sort.from_source_root == [], sort
+    assert again.unexpected == sort.unexpected and took_again < 1, (again, took_again)
+    assert len(asked) == first, asked
+
+
+def test_docs_repo_permissions_is_filed_only_when_it_names_the_docs_path_c3529(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 48, the cross-vendor review of ruling 226: with the docs path not a folder, a
+    docs_repo.permissions FAIL was filed in its bucket whatever root it was about, so another folder's
+    (the cache at 0755) was hidden there. It is filed only when its words, before the fix, name the docs
+    path or say ``the docs repo path`` (lane B's not-checked words); docs_repo.git keeps its disk key."""
+    cfg = fake_mac["config"]
+    docs = expand(load_config(cfg).docs_repo)
+    if docs.exists():
+        docs.rename(docs.with_name("kept-docs"))
+    docs.parent.mkdir(parents=True, exist_ok=True)
+    docs.write_text("not a folder\n", encoding="utf-8")
+    other = Path.home() / "Library" / "Caches" / "Contoso"
+    git_fail = ("FAIL", "docs_repo.git", f"{docs} exists but is not a directory (fix: move {docs} aside)")
+
+    def sort(perm_detail: str) -> setup_report._DoctorSort:
+        r = setup_report._Run(cfg, setup_report.ReportHooks(), 12.0)
+        r.facts.doctor = Counter({"FAIL": 2})
+        r.facts.doctor_problems = [git_fail, ("FAIL", "docs_repo.permissions", perm_detail)]
+        return setup_report._sort_doctor(r, [])
+
+    # another root's, the fix naming the docs path too (doctor's chmod lists every root there)
+    got = sort(f"group/other can read tenant data: {other} (fix: chmod -R go-rwx {docs} {other})")
+    assert got.unexpected == ["docs_repo.permissions FAIL"], got
+    assert got.from_docs_notfolder == ["docs_repo.git FAIL" + setup_report._PERSONS], got
+    # a name that only starts with the docs path's is another path
+    got = sort(f"group/other can read tenant data: {docs}-old (fix: run agentsync sync)")
+    assert got.unexpected == ["docs_repo.permissions FAIL"], got
+    for said in (
+        f"group/other can read tenant data: {docs} (fix: run agentsync sync)",
+        f"group/other can read tenant data: {other}, {docs} (fix: run agentsync sync)",
+        "not checked: the docs repo path is not a folder (see docs_repo.git)",
+    ):
+        got = sort(said)
+        assert got.unexpected == [] and len(got.from_docs_notfolder) == 2, (said, got)
+
+
+def test_a_volume_fail_beside_a_folder_that_refuses_its_listing_stays_unexpected_c3513() -> None:
+    """B13 round 48, the cross-vendor review of ruling 226: a local [[source]] folder this account cannot
+    list (mode 000) filed its volume FAIL as the person's too, though doctor's volume row there is ``not
+    checked``: a volume FAIL beside it is another fault's and stays unexpected; listable is the person's."""
+    home = Path.home()
+    root = home / "Contoso notes"
+    root.mkdir()
+    (root / "a.txt").write_text("a\n", encoding="utf-8")
+    cfg = home / "contoso.toml"
+    cfg.write_text(
+        f"[agentsync]\ndocs_repo = {toml_string(str(home / 'agent-context' / 'docs'))}\n\n"
+        f'[[source]]\nid = "contoso-notes"\nkind = "local"\npath = {toml_string(str(root))}\n',
+        encoding="utf-8",
+    )
+    r = setup_report._Run(cfg, setup_report.ReportHooks(), 12.0)
+    r.facts.doctor = Counter({"FAIL": 2})
+    r.facts.doctor_problems = [
+        ("FAIL", "source.contoso-notes.listable", f"{root}: permission denied (fix: the person runs chmod)"),
+        ("FAIL", "source.contoso-notes.volume", f"volume UUID unreadable for {root}: I/O error (fix: mount)"),
+    ]
+    root.chmod(0)
+    try:
+        sort = setup_report._sort_doctor(r, [])
+    finally:
+        root.chmod(0o700)
+    assert sort.from_source_root == ["source.contoso-notes.listable FAIL" + setup_report._PERSONS], sort
+    assert sort.unexpected == ["source.contoso-notes.volume FAIL"], sort
+
+
+def test_a_docs_repo_or_source_path_holding_a_nul_never_raises_past_the_sort_c3529_c3513(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 48, the cross-vendor review of ruling 226: ``docs_repo = "~/bad\\u0000/docs"`` made the docs
+    read raise ValueError, which escaped _sort_doctor, and the Summary lost its doctor and outcome lines. A
+    read that raises says no, for the docs path and a source root alike: the FAILs stay unexpected and the
+    Summary keeps both lines."""
+    cfg = fake_mac["config"]
+    real = load_config(cfg)
+    docs = expand(real.docs_repo)
+    if docs.exists():
+        docs.rename(docs.with_name("kept-docs"))
+    docs.parent.mkdir(parents=True, exist_ok=True)
+    docs.write_text("not a folder\n", encoding="utf-8")  # doctor FAILs docs_repo.git on the real config
+    src = next(s for s in real.sources if s.id == "inbox")
+    bad = dataclasses.replace(
+        real,
+        docs_repo=Path("~/bad\0/docs"),
+        sources=tuple(
+            dataclasses.replace(s, path=Path("/Contoso\0notes")) if s.id == src.id else s
+            for s in real.sources
+        ),
+    )
+    r = setup_report._Run(cfg, setup_report.ReportHooks(), 12.0)
+    r.config = bad
+    r.facts.doctor = Counter({"FAIL": 2})
+    r.facts.doctor_problems = [
+        ("FAIL", "docs_repo.git", "the docs repo is not a directory (fix: the person moves it aside)"),
+        ("FAIL", "source.inbox.listable", "the inbox is not a folder (fix: the person moves it aside)"),
+    ]
+    sort = setup_report._sort_doctor(r, [])
+    assert sort.unexpected == ["docs_repo.git FAIL", "source.inbox.listable FAIL"], sort
+    # the whole report, its own config read giving that docs path
+    monkeypatch.setattr(
+        setup_report, "load_config", lambda _path: dataclasses.replace(real, docs_repo=bad.docs_repo)
+    )
+    _rc, text, _ = report(tmp_path, cfg)
+    summary = section(text, "Summary")
+    assert _line(summary, "- doctor: ") and _line(summary, "- **outcome: "), summary
 
 
 def test_a_folder_where_the_wal_or_shm_belongs_is_the_persons(

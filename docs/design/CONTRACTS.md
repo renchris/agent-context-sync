@@ -48970,7 +48970,14 @@ checked` there. The outcome names that bucket as a known cause. A docs repo that
 FAIL unexpected, and a dangling link at the path reads `not_a_folder` and is filed the same way; so is a path that
 cannot be created (`uncreatable`: nothing there and the nearest path above it a file or a folder this account cannot
 write), whose docs_repo.git fix ruling 226 gives the person too, hence the bucket's `or cannot be created`, in
-PERSONS_KINDS' words. Test: `test_setup_report.py::test_a_docs_repo_path_that_is_not_a_folder_is_the_persons_c3529`.
+PERSONS_KINDS' words. A cross-vendor review found the read unbounded, a NUL in the path raising past `_sort_doctor`, and
+any docs_repo.permissions FAIL filed here; the read now runs in a daemon thread bounded by `_DISK_READ_S` (3 s, never
+the report's budget; a read that stalls or raises, OSError or ValueError, says no), and docs_repo.permissions is filed
+only when its words before the fix name the docs path or say `the docs repo path`, another root's staying unexpected.
+Tests: `test_setup_report.py::test_a_docs_repo_path_that_is_not_a_folder_is_the_persons_c3529`,
+`test_docs_repo_permissions_is_filed_only_when_it_names_the_docs_path_c3529`,
+`test_the_persons_doctor_buckets_read_disk_bounded_c3529_c3513` and
+`test_a_docs_repo_or_source_path_holding_a_nul_never_raises_past_the_sort_c3529_c3513`.
 
 **A [[source]] root that is not a folder or refuses a search is the person's on the Doctor line** (C3513; ruling
 226; `agentsync.setup_report`). With a file at the kept inbox's name (g1) or a source under a folder at mode 000 (g6),
@@ -48986,10 +48993,15 @@ or that this account cannot search (2 checks): source.inbox.listable FAIL (the p
 `yours`. A looping link at a source other than the kept inbox stays unexpected, doctor giving it the generic
 look-in-Finder fix; a dangling link at a plain source's root is stored resolved, so it reads as its missing target
 (`does not exist`) and stays where a missing root is; EPERM (macOS privacy) stays as it was. A listable FAIL on a root
-this account can list stays unexpected whatever its words. Tests:
+this account can list stays unexpected whatever its words. A cross-vendor review found the reads unbounded and the
+volume FAIL of a folder that only refuses a search filed too, and the lead found the FAILs of a source under an
+unreadable provider folder taken from unexpected; each root's read now runs with the docs path's, all at once in daemon threads bounded by
+`_DISK_READ_S`, a refused search (EACCES) files listable alone (doctor's volume row there is `not checked`), and an
+EACCES inside a File Provider tree says no (an unreadable provider folder is signed in, N61). Tests:
 `test_setup_report.py::test_a_file_at_the_kept_inbox_name_is_the_persons_not_unexpected_c3513`,
 `test_a_source_under_a_folder_that_refuses_a_search_is_the_persons_c3513`,
-`test_a_listable_fail_on_a_readable_folder_stays_unexpected_c3513` and
+`test_a_listable_fail_on_a_readable_folder_stays_unexpected_c3513`,
+`test_a_volume_fail_beside_a_folder_that_refuses_its_listing_stays_unexpected_c3513` and
 `test_each_entry_kind_at_a_source_root_is_bucketed_as_doctor_says_it_c3513` (ten entry kinds under a 20 s alarm).
 
 **C3245's loop pin and C3288's rows bite on their own fixes** (C3473; ruling 206 and ruling 208;
