@@ -14564,6 +14564,16 @@ def _not_live_folders(r: _Run) -> list[str] | None:
     return [f"{s.id} ({s.state.value})" for s in config.sources if s.kind is not SourceKind.INBOX]
 
 
+def _outcome_not_live(r: _Run, *, latest: bool = True) -> list[str] | None:
+    """:func:`compute_outcome`'s ``not_live`` for an attempt: today's held folders (:func:`_not_live_folders`)
+    for the latest attempt, the only one today's sources.toml applies to, else None. The one copy the
+    attempt line (:func:`_attempt_outcome`), the Summary (:func:`_summary`) and the issue link's fallback
+    (:func:`_issue_link`) share, so the three cannot score one attempt two ways (B13 round 48 C3437 with C3496
+    and C3512, ruling 227: the Summary and the link passed none and read "fully one command" beside the
+    attempt line's "worked with help")."""
+    return _not_live_folders(r) if latest else None
+
+
 def _unread_logs(r: _Run) -> tuple[tuple[str, str], ...]:
     """The logs the report did not read, each with why, as :func:`compute_outcome`'s ``not_read`` names them:
     a ``~name`` variable it refused (:func:`_env_log`, B13 round 48 C3403, ruling 228), or a path that is no
@@ -14596,7 +14606,7 @@ def _attempt_outcome(r: _Run, index: int) -> Outcome:
         persons_fails=_persons_fails(r, runs) if latest else (),
         earlier=not latest,  # B13 round 27 P123
         late_stops=[s for s, _e in _late_stops(r, index)] if latest else (),  # B13 round 27 P101
-        not_live=_not_live_folders(r) if latest else None,  # B13 round 47 C3209: today's config, the latest's
+        not_live=_outcome_not_live(r, latest=latest),  # B13 round 47 C3209; round 48 C3437: one helper
         not_read=_unread_logs(r),  # B13 round 48 C3403
     )
     rerun = _rerun_note(fr, index)
@@ -19394,6 +19404,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
         sync_stops=stops,
         persons_fails=persons_fails,
         late_stops=[s for s, _e in late_stops],  # B13 round 27 P101
+        not_live=_outcome_not_live(r),  # B13 round 48 C3437 with C3496 and C3512: the latest attempt's
         not_read=_unread_logs(r),  # B13 round 48 C3403
     )
     run_type = compute_run_type(runs, home_path())
@@ -19747,10 +19758,26 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
             f"- install.sh · step {outcome.step} · the install stopped: {'; '.join(outcome.why)} "
             "(not logged: the agent logged no line for this stop)"
         )
+    # B13 round 48 C3512 (ruling 227): a latest run that ended 0 with no live folder but the inbox is one of
+    # the outcome's reasons, an installer-side item as a retried run is, so Items never reads "none" beside
+    # "worked with help"; it names the held folders as the reason does
+    no_live_item = None
+    if NO_LIVE_FOLDER_WHY in outcome.why:
+        step = (att.layout if att is not None else prompt_layout(None)).install_step
+        held = "".join(f"; {w}" for w in outcome.why if w.startswith("not live: "))
+        no_live_item = f"- install.sh · step {step} · {NO_LIVE_FOLDER_WHY}{held}"
     # B13 round 35 C949: no dead `not retried` guard (a failed outcome has no retried runs)
     failed_before = _failed_before_lines(r, att, runs, outcome) if att is not None else []
     if att is not None and (
-        items or retried or unread or signed_out or install_stop or stops or told or failed_before
+        items
+        or retried
+        or unread
+        or signed_out
+        or install_stop
+        or stops
+        or told
+        or failed_before
+        or no_live_item
     ):
         if signed_out:
             out.append(signed_out)
@@ -19773,8 +19800,12 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
                 f"- install.sh · {_plural(len(retried) - INSTALL_RUNS_SHOWN, 'more such run')} (see "
                 "Installer)"
             )
+        if no_live_item:  # B13 round 48 C3512
+            out.append(no_live_item)
         out += [_sync_stop_line(s, account.get(id(s))) for s in stops]  # B13 round 23 A9; round 24 ruling 9
         out += [_item_line(r, att, e) for e in (*told, *items)]
+    elif no_live_item is not None:  # no friction log: the reason is still install.log's (B13 round 48 C3512)
+        out.append(no_live_item)
     else:
         unread = "friction log" in dict(_unread_logs(r))
         unseen = " (friction log not read)" if unread else " (no friction log)"
@@ -20724,9 +20755,9 @@ def _issue_link(r: _Run, red: Redactor) -> str:
     att = fr.latest if fr is not None else None
     agent = att.said("Agent") if att is not None else ""
     agent = re.sub(r"[^\w .:/()+,@<>-]", "", red.scrub_agent(" ".join(agent.split())))[:100].strip()
-    outcome = r.outcome or compute_outcome(
-        att, _latest_runs(r), not_read=_unread_logs(r)
-    )  # the Summary's, else
+    outcome = r.outcome or compute_outcome(  # the Summary's, else the same inputs (B13 round 48 C3437)
+        att, _latest_runs(r), not_live=_outcome_not_live(r), not_read=_unread_logs(r)
+    )
     return build_issue_url(
         outcome=outcome.form_label,
         title_outcome=outcome.title_label,

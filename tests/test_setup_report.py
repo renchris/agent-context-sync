@@ -30683,6 +30683,92 @@ def test_only_the_latest_attempt_reads_todays_config_for_its_outcome_c3209(fake_
     assert setup_report.NO_LIVE_FOLDER_WHY in setup_report._attempt_outcome(r, 1).why
 
 
+def _held_config(cfg: Path, state: str, *, live: bool = False) -> None:
+    """sources.toml holding the inbox and two local folders at ``state`` (B13 round 48 C3512's INBOXPO2
+    shape), plus a live local folder when ``live``."""
+    home = Path.home()
+    held = "".join(
+        local_source_table(name, home / name.title()).replace(
+            'kind = "local"',
+            f'kind = "local"\nstate = "{state}"'
+            + ('\nretired_reason = "the project closed"' if state == "retired" else ""),
+        )
+        for name in ("project-alpha", "project-beta")
+    )
+    live_table = local_source_table("wombat", home / "Wombat") if live else ""
+    cfg.write_text(
+        default_config_text()
+        + inbox_source_table("inbox", home / "agent-context" / "inbox")
+        + held
+        + live_table,
+        encoding="utf-8",
+    )
+
+
+_C3512_ATTEMPTS = (
+    "Attempt: 2026-11-25T08:00:00Z\nPrompt: v44\n"
+    "Attempt: 2026-11-25T09:00:00Z\nPrompt: v44\n"
+    "Attempt: 2026-11-25T10:00:00Z\nPrompt: v44\n"
+)
+
+
+@pytest.mark.usefixtures("clean_doctor")
+@pytest.mark.parametrize("deviation", [False, True])
+@pytest.mark.parametrize("state", ["paused", "retired"])
+def test_the_summary_attempt_line_and_issue_link_score_a_no_live_folder_run_alike_c3437_c3496_c3512(
+    fake_mac: dict[str, Path], tmp_path: Path, state: str, deviation: bool
+) -> None:
+    """B13 round 48 C3437 with C3496 and C3512 (ruling 227): only the attempt line passed today's held
+    folders to compute_outcome, so the Summary and the issue link read "fully one command" beside "worked
+    with help" for a latest bare run that ended 0 over a config with no live folder but the inbox (INBOXPO2:
+    3 attempts, two folders paused or retired). One helper feeds all three; the Items list names the reason
+    and the held folders, never "none"; a step 1 deviation after the run makes all three "stopped at step
+    1"."""
+    _held_config(fake_mac["config"], state)
+    (fake_mac["setup"] / "install.log").write_text(_N14, encoding="utf-8")
+    dev = "2026-11-25T10:02:00Z | step 1 | deviation | no folder answer came | -\n" if deviation else ""
+    write_friction(fake_mac, _C3512_ATTEMPTS + dev)
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    summary = section(text, "Summary")
+    head = summary.strip().splitlines()[0]
+    attempt = next(ln for ln in section(text, "Agent friction log").splitlines() if "attempt 3 (" in ln)
+    link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
+    if deviation:
+        assert head.startswith("- **outcome: stopped at step 1 (no folder answer came)**"), head
+        assert "): stopped at step 1 (no folder answer came);" in attempt, attempt
+        assert link["outcome"] == [setup_report.STOPPED_FORM_OPTION], link
+        return
+    assert head.startswith("- **outcome: worked with help** (computed: install.sh exit 0; "), head
+    held = f"not live: <folder-4> ({state}), <folder-5> ({state}): "  # the folders' ids, redacted
+    assert setup_report.NO_LIVE_FOLDER_WHY in head and held in head, head
+    assert "fully one command" not in head and "fully one command" not in attempt, (head, attempt)
+    assert "): worked with help;" in attempt, attempt  # the attempt line gives the kind, not the reasons
+    assert link["outcome"] == ["Worked with help"], link
+    items = summary.split("Items that were not one command (attempt 3):", 1)[1].split("\n\n", 2)[1]
+    assert items.splitlines()[0] == (
+        f"- install.sh · step 2 · {setup_report.NO_LIVE_FOLDER_WHY}; {held}setting a folder to live is the "
+        "person's own edit of sources.toml, never the agent's"
+    ), items
+
+
+def test_the_issue_links_fallback_scores_the_latest_attempt_as_the_attempt_line_does_c3437(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 48 C3437 (ruling 227): with no Summary written (``r.outcome`` unset), the issue link's
+    fallback compute_outcome took no held folders and labeled the attempt "Fully one command"; it takes the
+    attempt line's inputs through the one helper, so its label is _attempt_outcome's. A config with a live
+    folder keeps "Fully one command" in both."""
+    for live, want in ((False, "Worked with help"), (True, "Fully one command")):
+        _held_config(fake_mac["config"], "paused", live=live)
+        (fake_mac["setup"] / "install.log").write_text(_N14, encoding="utf-8")
+        r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 60.0)
+        r.friction = setup_report.parse_friction(_C3512_ATTEMPTS)
+        r.install_runs = setup_report.read_install_runs(fake_mac["setup"] / "install.log")
+        assert r.outcome is None
+        link = parse_qs(urlsplit(setup_report._issue_link(r, setup_report.Redactor())).query)
+        assert link["outcome"] == [setup_report._attempt_outcome(r, 2).form_label] == [want], (live, link)
+
+
 @pytest.mark.parametrize("row", list(_R213_ROWS))
 @pytest.mark.parametrize("version", [11, 40, 41, 43, None])
 def test_step_3s_question_is_credited_only_on_the_route_the_attempt_took_ruling_213(
