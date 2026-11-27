@@ -8,6 +8,7 @@ import json
 import os
 import re
 import shlex
+import sqlite3
 import subprocess
 import sys
 import time
@@ -5539,6 +5540,69 @@ def test_both_reports_cut_a_project_folders_fuzzy_spellings_alike_c3289(
     # joined: the shell's private verdict for a report word's <folder-N> ("the <folder-2> went on") predates
     # C3289 (red with or without its hunk), so only that arm's verdict is left out here (lane RB)
     assert arm == "joined" or shell_private == python_private, (shell_private, python_private)
+
+
+def _wal_frames_no_shm(db: Path) -> None:
+    """Leave ``db`` with a -wal that holds frames and no -shm, which any open of it would make."""
+    conn = sqlite3.connect(db)
+    try:
+        conn.execute("PRAGMA journal_mode=wal")
+        conn.execute("PRAGMA wal_autocheckpoint=0")
+        conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('c3471-probe', 'x')")
+        conn.commit()
+        wal = db.with_name(db.name + "-wal").read_bytes()
+    finally:
+        conn.close()
+    assert wal
+    db.with_name(db.name + "-wal").write_bytes(wal)
+    db.with_name(db.name + "-shm").unlink(missing_ok=True)
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize("wal", ["none", "frames-no-shm"])
+def test_the_shell_report_cuts_a_vanished_source_folder_the_manifest_alone_names_c3471(
+    env: dict[str, str],  # noqa: F811
+    wal: str,
+    locale: str,
+) -> None:
+    """B13 round 48 ruling 217 (C3471; privacy): with no doctor log or install.out naming a vanished
+    source, the shell report printed its folder `KestrelAlder` and every other spelling in clear, since only
+    those logs told it the folder. It reads the manifest's scope_root rows itself, with /usr/bin/sqlite3 under
+    MANIFEST_RO_PY's rule, and registers the root fuzzily as a configured one: all five spellings cut, the
+    literal row as the agentsync report prints it. A -wal with frames and no -shm is never opened: no -shm
+    is made beside it, and the shell then knows the folder only from the logs, as before."""
+    home = Path(env["HOME"])
+    folder = home / "Development" / "KestrelAlder"
+    folder.mkdir(parents=True)
+    (folder / "notes.txt").write_text("notes\n", encoding="utf-8")
+    juniper = _cloud(env) / "OneDrive-Fabrikam" / "Juniper Notes"
+    juniper.mkdir(parents=True)
+    cfg = home / "agent-context" / "sources.toml"
+    base = default_config_text() + local_source_table("juniper", juniper)
+    run = {**env, "LC_ALL": locale, "LANG": locale, "AGENTSYNC_OCR": "0", "AGENTSYNC_TM_EXCLUDE": "0"}
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text(base + local_source_table("kestrel-den", folder), encoding="utf-8")
+    sync = [sys.executable, "-m", "agentsync", "sync", "--config", str(cfg)]
+    done = subprocess.run(sync, capture_output=True, text=True, check=False, timeout=300, env=run)
+    assert done.returncode == 0, done.stdout + done.stderr
+    db = home / "Library" / "Application Support" / "agentsync" / "manifest.sqlite"
+    assert db.is_file()
+    cfg.write_text(base, encoding="utf-8")
+    if wal == "frames-no-shm":
+        _wal_frames_no_shm(db)
+        cp = install_sh({**run, "AGENTSYNC_CONFIG": str(cfg)}, "--report-only")
+        assert cp.returncode == 0 and "shell fallback" in cp.stdout, cp.stdout + cp.stderr
+        assert not db.with_name(db.name + "-shm").exists()
+        return
+    said = ["KestrelAlder is mine", *(f"{w} is mine" for w in _C3289_SPELLINGS)]
+    texts: list[str] = []
+    shell, python_rows, _shell_private, _python_private = _both_reports(
+        env, [], said, locale, config=cfg, config_body=base, texts_out=texts
+    )
+    assert shell[0] == python_rows[0], (shell, python_rows)
+    assert all(re.fullmatch(r"<folder-\d+> is mine", ln) for ln in shell), shell
+    leaks = [ln for ln in texts[0].splitlines() if re.search("(?i)kestrel", ln)]
+    assert not leaks, leaks
 
 
 # ---- B13 round 47 ruling 206: the kept inbox's link, resolved alike in both reports ------------------------

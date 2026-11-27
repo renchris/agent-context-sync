@@ -3591,7 +3591,7 @@ redaction_pairs() {
 	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x links walked lk
 	local cfg_cut tilde port k ph b auth sep tail rw keys key m sp top raw folder_keys=$'\n' FUZZY lib_n=0
 	local tables=0 ids=" " hp beside own_state own_docs own_cache own_logs fl fuzzy_keys=$'\n' folded_vals=$'\n'
-	local cts remote_docs eff_docs inbox_at=0 sv ref_docs="" ref_state="" ref_cache="" ref_logs="" head rest bx cand gb pre
+	local cts cfg_ids="" remote_docs eff_docs inbox_at=0 sv ref_docs="" ref_state="" ref_cache="" ref_logs="" head rest bx cand gb pre
 	local -a known=() logged_late=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=() listed=() rooted=() placed=() cfgpaths=() parents=()
 	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
 	# (written with printf %q, which read without -r undoes; a $'..' form is unquoted by the loop after it).
@@ -4351,8 +4351,9 @@ redaction_pairs() {
 	}
 	# PATH [configured]: configured, from the configured-sources loop alone, registers the path's rel and first
 	# part with fuzzy_flag's flag, as setup_report registers a configured folder fuzzily: f, or i for a joined
-	# name (its mode j, which Python keeps literal), and i for any value holding `/`; the vanished-source loop,
-	# the own folders and a path outside the home stay i (B13 round 47 ruling 207, C3289)
+	# name (its mode j, which Python keeps literal), and i for any value holding `/`; the own folders and a path
+	# outside the home stay i (B13 round 47 ruling 207, C3289). Since B13 round 48 ruling 217 (C3471) the
+	# vanished-source loop passes configured too, as setup_report registers a vanished root's values.
 	project_flag() { # VALUE MODE: sets FUZZY to the flag project_values registers VALUE with
 		FUZZY=i
 		[ "$2" = configured ] || return 0
@@ -4595,6 +4596,7 @@ redaction_pairs() {
 			id_pairs "$v" "$ph" "$k"
 		done < <(config_source_records "$cts")
 	fi
+	cfg_ids="$ids" # the configured ids alone, before the vanished ones join (C3471)
 	# A source still mirrored whose [[source]] block is gone is in no table above, yet doctor's
 	# config.vanished_sources [FAIL] and the sync's refusal quote its id ("source 'x' (3 files) is mirrored but
 	# no longer in sources.toml"): the ids those lines quote, registered after the configured ones (B13 round
@@ -4621,7 +4623,10 @@ redaction_pairs() {
 	# ! or a character that does not print, and bare or single-quoted in an older build's log (B13 round 19 W34),
 	# as the Python report registers each vanished id's scope_root (B13 round 17 U46; round 18 V46): one in
 	# CloudStorage by its parts, any other as a project folder. Numbered in byte order, as the Python report
-	# numbers them (round 19 W73).
+	# numbers them (round 19 W73). B13 round 48 ruling 217 (C3471; privacy): and the root the manifest records
+	# for each such source (manifest_vanished_roots), as the agentsync report reads it, so no log need name the
+	# folder; only where sources.toml parses, as setup_report reads them only with its config loaded. No comment
+	# goes inside the process substitution below: bash 3.2 runs its words as commands there.
 	while IFS= read -r v; do
 		case "$v" in
 		\~/Library/CloudStorage/*) folder_parts "" "$cs/${v#\~/Library/CloudStorage/}" ;;
@@ -4629,18 +4634,21 @@ redaction_pairs() {
 		?*)
 			# as the configured loop: the inbox itself skipped, a folder strictly below a kept inbox target
 			# registered through own_folder_values (B13 round 47 ruling 206, C3242)
+			# fuzzily as a configured one, a joined name and a value holding `/` literal (B13 round 48 ruling
+			# 217, C3471: ruling 207 kept it literal, so `Kestrel Alder` printed beside a cut KestrelAlder)
 			if under_inbox_target "$v"; then
 				[ "$inbox_at" -eq 1 ] || own_folder_values "$v" /
 			else
-				project_values "$v"
+				project_values "$v" configured
 			fi
 			placed+=("$v")
 			;;
 		esac
 	done < <({
-		[ -z "$DOCTOR_LOG" ] || [ ! -f "$DOCTOR_LOG" ] || LC_ALL=C grep -E '^\[FAIL\] config\.vanished_sources ' "$DOCTOR_LOG"
-		[ ! -f "$INSTALL_OUT" ] || LC_ALL=C grep -E '(^configuration error: |config\.vanished_sources ).*mirrored but no longer in sources\.toml' "$INSTALL_OUT"
-	} 2>/dev/null | LC_ALL=C awk -v q="'" '{
+		{
+			[ -z "$DOCTOR_LOG" ] || [ ! -f "$DOCTOR_LOG" ] || LC_ALL=C grep -E '^\[FAIL\] config\.vanished_sources ' "$DOCTOR_LOG"
+			[ ! -f "$INSTALL_OUT" ] || LC_ALL=C grep -E '(^configuration error: |config\.vanished_sources ).*mirrored but no longer in sources\.toml' "$INSTALL_OUT"
+		} 2>/dev/null | LC_ALL=C awk -v q="'" '{
 		s = $0
 		for (;;) {
 			i = index(s, " add-source "); k = index(s, " --source-local ")
@@ -4666,7 +4674,9 @@ redaction_pairs() {
 			}
 			if (v != "") print v
 		}
-	}' | LC_ALL=C sort -u)
+	}'
+		[ "${cts#loaded}" = "$cts" ] || manifest_vanished_roots "$cfg_ids"
+	} | LC_ALL=C sort -u)
 	# Every hold scope no source above names (hold_scopes: the hold list, the audit trail and the hold record), as
 	# a source id after them: a scope is free text in an id's shape, so a matter name can stand there, and status's
 	# HOLD: line and the lost-hold FAIL print it (B13 round 30 ruling 39, C386, as setup_report registers lane RA's
@@ -7832,6 +7842,64 @@ config_source_records() {
 		inside && !hid && /^[[:space:]]*(id|"id"|\047id\047)[[:space:]]*=[[:space:]]*["\047]/ { hid = 1; id = val($0); next }
 		inside && !hpath && /^[[:space:]]*(path|"path"|\047path\047)[[:space:]]*=[[:space:]]*["\047]/ { hpath = 1; path = val($0, 1); next }
 		END { flush() }' "$CONFIG" 2>/dev/null || true
+}
+# B13 round 48 ruling 217 (C3471; privacy): the folder the manifest records as the root of each source it still
+# holds rows for that sources.toml no longer configures (meta scope_root:<id>, "<run>:<path>"), one a line, as
+# setup_report._unconfigured_roots reads them for the agentsync report, so a vanished source's folder is cut when
+# no doctor log or install.out names it. Its arguments are the configured ids, each a word. Read by
+# /usr/bin/sqlite3 under MANIFEST_RO_PY's rule, so no agentsync and no Python is needed and no -wal or -shm is
+# made: a -journal, or both a -wal and a -shm, a plain mode=ro open; no -wal or an empty one and no -shm,
+# immutable=1, read only when the manifest's and its -wal's sizes and times are the same after as before; a -wal
+# with frames and no -shm, which any open makes, never read. Each value through hex(), so no byte of a path ends
+# a row early; a path holding a line break is none, as the line-read loop that registers them reads one a line.
+manifest_vanished_roots() { # CONFIGURED-ID...
+	local k v state="" db real n uri before after rows
+	[ -x /usr/bin/sqlite3 ] || return 0
+	if [ -f "$CONFIG" ]; then
+		while IFS=$'\t' read -r k v; do
+			[ "$k" != state_dir ] || [ -n "$state" ] || state="$(py_strip "$v")"
+		done < <(agentsync_dir_values)
+	fi
+	state="${state:-$HOME/Library/Application Support/agentsync}"
+	case "$state" in \~) state="$HOME" ;; \~/*) state="$HOME/${state#\~/}" ;; esac
+	db="$state/manifest.sqlite" real="$db" n=0
+	[ -f "$db" ] && [ -r "$db" ] || return 0
+	while [ -L "$real" ] && [ "$n" -lt 40 ]; do # os.path.realpath, as manifest_ro_uri reads the files beside it
+		k="$(readlink "$real" 2>/dev/null)" || return 0
+		case "$k" in /*) real="$k" ;; *) real="${real%/*}/$k" ;; esac
+		n=$((n + 1))
+	done
+	uri="file:$(printf '%s' "$db" | LC_ALL=C awk 'BEGIN { for (i = 0; i < 256; i++) ord[sprintf("%c", i)] = i }
+		{ s = $0; out = ""
+		  for (i = 1; i <= length(s); i++) { c = substr(s, i, 1); out = out (c ~ /[A-Za-z0-9._~\/-]/ ? c : sprintf("%%%02X", ord[c])) }
+		  printf "%s", out }')?mode=ro"
+	if [ -e "$real-journal" ] || [ -L "$real-journal" ] || { { [ -e "$real-wal" ] || [ -L "$real-wal" ]; } && { [ -e "$real-shm" ] || [ -L "$real-shm" ]; }; }; then
+		before=""
+	elif [ -L "$real-wal" ] || { [ -e "$real-wal" ] && { [ ! -f "$real-wal" ] || [ -s "$real-wal" ]; }; }; then
+		return 0
+	else
+		uri="$uri&immutable=1"
+		before="$(LC_ALL=C stat -f '%z %Fm' "$real" "$real-wal" 2>&1)"
+	fi
+	rows="$(with_timeout 5 /usr/bin/sqlite3 -init /dev/null -batch -noheader -readonly "$uri" \
+		"SELECT hex(substr(key, 12)), hex(value) FROM meta WHERE key LIKE 'scope_root:%' AND substr(key, 12) IN (SELECT DISTINCT source_id FROM items)" 2>/dev/null)" || return 0
+	if [ -n "$before" ]; then
+		after="$(LC_ALL=C stat -f '%z %Fm' "$real" "$real-wal" 2>&1)"
+		[ "$after" = "$before" ] || return 0
+	fi
+	printf '%s\n' "$rows" | IDS=" $* " LC_ALL=C awk -F'|' '
+		function unhex(h,    out, i) {
+			out = ""
+			for (i = 1; i < length(h); i += 2) out = out sprintf("%c", index("0123456789ABCDEF", substr(h, i, 1)) * 16 + index("0123456789ABCDEF", substr(h, i + 1, 1)) - 17)
+			return out
+		}
+		NF == 2 {
+			id = unhex($1); v = unhex($2)
+			if (index(ENVIRON["IDS"], " " id " ")) next
+			if (!(i = index(v, ":"))) next
+			v = substr(v, i + 1)
+			if (v != "" && v !~ /[\n\r]/) print v
+		}' 2>/dev/null || true
 }
 # The shell report's Redaction section: fixed text, written after redact_stream (as the issue link is), so no
 # value can replace a word of it ("the login name" with a folder named "name").
