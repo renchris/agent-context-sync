@@ -48652,7 +48652,70 @@ Reserved for round 48 lane RB of B13.
 
 ### 16.297 Round 48: a failed sync reads as failed, a blocked sync gives one NEXT naming its owner, carried changes counted right and a hand-deleted page put back, the kept inbox read once, and the person's fix classed alike (2026-11-27, wave B13 round 48 lane B)
 
-Reserved for round 48 lane B of B13.
+Round 48's lane B items (`round48/items/<id>.md`, each verifier's corrected fix built, as the lead's rulings 222 to
+226 settle it). A dated line this round writes reads `Amended 2026-11-27, §16.297 C<n>`.
+
+**The land gate's checkout names its owner and puts back one literal page** (C3421 and C3448; ruling 223; data
+integrity; amends §16.292 C3226). The hand-edit finding gave ``restore it with `(umask 077 && git -C <docs_repo>
+checkout -- '<page>')` `` with no owner, against the setup prompt's never-edit and no-reset rules, and git read the
+page's name as a pathspec glob, so the checkout of `mirror/src/a[b].md` put back `mirror/src/ab.md` too, discarding a
+hand edit the finding never named. `lints._checkout_advice` now gives `(umask 077 && git --literal-pathspecs -C
+<docs_repo> checkout -- '<page>')`, and the finding follows it with `lints.CHECKOUT_OWNER`, `(the agent's step: it puts
+back agentsync's own page and discards only the hand edit)`. `loop.land_gate_step` keeps ``; then run
+`~/.local/bin/agentsync sync` `` only when the first blocking finding's fix holds a command in backticks; otherwise it
+ends `loop.LAND_GATE_NO_FIX`, `this finding has no fix for the agent: show the BLOCKING lines to the person and go to
+the report`. The prompt's half is lane D's v45. Tests: `test_hand_edited_body_is_blocking`,
+`test_the_checkout_puts_back_only_the_page_it_names_c3448` (both pages hand-edited, the advised command run through
+`sh -c`), `test_land_gate_step_with_no_command_sends_the_agent_to_the_report_c3421` and
+`test_state_md_next_is_the_blocking_finding_that_held_the_commit`.
+
+**add-source never writes over a config link it cannot read** (C3469; ruling 225; data integrity; makes worse True
+for the not-found advice). add-source decided a fresh config by `exists()`, which follows a link, so it wrote the
+template over a looping or dangling sources.toml link and raised a traceback through a folder it could not search.
+It now writes the template only when `os.lstat` finds nothing at the name; anything else is read by `load_config`,
+which exits 78. `config._config_missing` tells a dangling link `<file>: a link to <target>, which is missing; restore
+its target or move the link aside`, never add-source, the command that would refuse it; `load_config` and
+`append_to_config` share it. The two config editors take `os.path.realpath` in place of `Path.resolve()`, which raised
+RuntimeError on a loop under Python 3.11, and `governance.load_governance` turns every read error into a ConfigError.
+Tests: `test_every_config_reader_returns_on_every_kind_of_entry_c3307` (a self link, a two-link loop, a link through a
+file and a link into a mode-000 folder added) and
+`test_status_sync_and_add_source_never_write_over_a_config_link_they_cannot_read_c3469`.
+
+**One resolver of the two log variables** (C3468; ruling 228). The report trimmed `$AGENTSYNC_SETUP_LOG` and
+`$AGENTSYNC_FRICTION_LOG` with `str.strip()` and the loop not at all, so a padded value named two files and rule 2
+missed the person's none the report read. `paths.env_log_path(env, default)` trims `paths.CONFIG_BLANKS` at both
+ends, reads an empty value as unset, expands `~` and `~/` and refuses `~name` (the raw value returned twice);
+`setup_report._env_log` delegates to it and `loop._person_chose_no_folder` reads the setup log through it
+(`loop.SETUP_LOG_DEFAULT`). install.sh's half is lane RB's. Tests:
+`test_the_loop_and_the_report_read_one_setup_log_c3468` and `test_env_log_path_trims_only_the_config_blanks_c3468`.
+
+**A sync that failed after the land gate reads as failed** (C3447 and C3416; ruling 222; amends §16.292 C3227,
+§16.247 C1484 and §16.300 C1484). A cycle that raised before it committed printed `commit none (no content change)`
+and its JSON outcome was `blocked`, the gate's word. `CycleReport.cycle_failed` is set where the cycle appends its
+`CYCLE` finding with no commit, never inferred from a blocking finding; the run line reads `commit none (the cycle
+failed)` and `cli._cycle_outcome` gives `committed | blocked | failed | unchanged`, `failed` adding its findings as
+`blocked` does, accept-deletions alike. Tests:
+`test_a_sync_that_fails_after_the_land_gate_passed_never_says_the_gate_blocked_it_c3227` and
+`test_cli_json.py::test_a_sync_that_fails_after_the_land_gate_passed_is_failed_with_its_finding_c3447`.
+
+**A failed sync's step is its own** (C3409; ruling 222; amends §16.292 C3227). STATE.md's Next, the screen's NEXT and
+the JSON's next gave the loop's step after a failed cycle, as if it had landed. `loop.failed_cycle_step` gives ``this
+sync failed before its commit landed (the BLOCKING CYCLE line <where>): <message>; once that is fixed, run
+`~/.local/bin/agentsync sync` ``, and `loop.held_step` chooses: a gate block takes `land_gate_step`, a failure this
+step, otherwise the loop's. Tests: the C3227 test above (screen and STATE.md),
+`test_state_md_next_is_the_blocking_finding_that_held_the_commit` and the C3447 JSON test.
+
+**A held sync gives one NEXT** (C3446; ruling 223; amends §16.292 C3227). STATE.md took the gate step as rule 1's fix,
+behind the skill and sign-in rules, so a blocked sync gave three NEXTs. `loop.held_lines` puts `held_step`'s step
+ahead of every loop rule in the text, STATE.md and the JSON, the WAITING ON YOU and note lines kept. Test:
+`test_state_md_puts_a_held_step_ahead_of_every_loop_rule_c3446` (a stale skill).
+
+**A blocked sync's JSON step is the gate's** (C3410; ruling 223; makes worse True for feeding the text line through
+`_step`; amends §16.300 C1484). `sync --json` gave the loop's step as `next`. `cli._sync_document` takes `held_step`
+with `where` `in this document's findings` (`cli.IN_THIS_DOCUMENT`), and `cli._held_next` builds its entries by hand:
+a fix's command has argv `["/bin/sh", "-c", <command>]`, since `(umask 077 && ...)` is no program, and the sync
+follows as a second entry; a step whose only command is the sync is `_step`'s one entry. The text NEXT is unchanged
+byte for byte. Test: `test_cli_json.py::test_a_blocked_sync_json_gives_the_gate_step_with_a_shell_argv_then_the_sync_c3410`.
 
 ### 16.298 Round 48: the converters: every text part of a message reaches its page with no control byte left (eml's emitter 1.1.5), and text.py's sentences move with their §15 copies (2026-11-27, wave B13 round 48 lane E)
 
