@@ -2669,8 +2669,9 @@ class PlainTextConverter:
     into a fenced block.
 
     The body is the text inside a fenced block (``csv``/``tsv`` rendered as a GFM table up to
-    max_rows_per_sheet rows).  NUL bytes -> ConversionError (binary).  No file-name heading: the action key
-    does not include the name and a rename keeps bodies, so output depends on the bytes and suffix only.
+    max_rows_per_sheet rows).  A NUL byte in unmarked text, or a NUL character in a decoded BOM-marked body
+    -> ConversionError (binary).  No file-name heading: the action key does not include the name and a
+    rename keeps bodies, so output depends on the bytes and suffix only.
     A ``.url`` internet shortcut is fenced as ``ini``; its title is left empty so the page takes the file's
     name, and its summary names the ``URL=`` target.  ``.vtt`` is not here: it routes to ``vtt-turns``
     (§16.35); ``.url`` joined per §16.42.
@@ -48651,6 +48652,17 @@ page committed to a scratch repository counts its lines in `git diff --numstat`;
 hold the same controls give the same body, no control left) and
 `test_convert_family.py::test_a_utf16_part_opening_u0000_still_takes_emls_lenient_fallback_c3268` (its page now
 holds the fallback's text with U+FFFD for each NUL).
+
+**text.py's NUL sentence names both checks, in the code and its §15 copy** (C3454; ruling 230;
+`agentsync.convert.text`, `agentsync.convert._common`). `PlainTextConverter`'s docstring and its §15 copy said
+`NUL bytes -> ConversionError (binary).`, false for UTF-16 and UTF-32 text with its mark, whose zero bytes decode:
+`_decode_text` checks raw zero bytes only in unmarked text and refuses a NUL character after any decode. Both copies
+now read `A NUL byte in unmarked text, or a NUL character in a decoded BOM-marked body -> ConversionError (binary).`,
+moved together in one commit as ruling 230 asks of a §15 mirror, and `_decode_text`'s docstring says `Raises
+ConversionError on NUL bytes in unmarked text and on a NUL character after any decode (binary)`. The decode-order
+phrase is untouched, still at exactly its two copies. Docs only; no output changes. Test:
+`test_contracts.py::test_the_plain_text_nul_sentence_names_both_checks_in_text_py_and_its_copy_c3454` (the sentence
+in text.py and in §15, the old one in neither, each check true of `_decode_text`, the decode-order phrase twice).
 
 ### 16.299 Round 48: the prompt goes to v45 (the land gate's fix run once per page, step 1's stop only with no synced line, a chosen folder that came back paused, a failed step 2 outside the none), dated lines, and the guides (2026-11-27, wave B13 round 48 lane D)
 

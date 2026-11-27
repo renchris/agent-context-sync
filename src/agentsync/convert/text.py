@@ -110,8 +110,9 @@ class PlainTextConverter:
     into a fenced block.
 
     The body is the text inside a fenced block (``csv``/``tsv`` rendered as a GFM table up to
-    max_rows_per_sheet rows).  NUL bytes -> ConversionError (binary).  No file-name heading: the action key
-    does not include the name and a rename keeps bodies, so output depends on the bytes and suffix only.
+    max_rows_per_sheet rows).  A NUL byte in unmarked text, or a NUL character in a decoded BOM-marked body
+    -> ConversionError (binary).  No file-name heading: the action key does not include the name and a
+    rename keeps bodies, so output depends on the bytes and suffix only.
     A ``.url`` internet shortcut is fenced as ``ini``; its title is left empty so the page takes the file's
     name, and its summary names the ``URL=`` target.
     """

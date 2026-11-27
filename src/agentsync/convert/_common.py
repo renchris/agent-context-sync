@@ -352,12 +352,12 @@ def _decode_text(data: bytes) -> str:
     """Decode bytes: UTF-8/UTF-32/UTF-16 BOM first, then strict UTF-8, then cp1252, then latin-1.
 
     cp1252 before latin-1 because Windows-authored corporate text uses its smart quotes (0x91-0x94), which
-    latin-1 maps to C1 control characters.  Raises ConversionError on NUL bytes outside UTF-16 and UTF-32
-    (binary), and on a marked body that does not decode.  UTF-32's marks are told before UTF-16's, since
-    ``FF FE 00 00`` opens with UTF-16LE's mark: a UTF-32LE file read as UTF-16 was NUL characters, and a
-    UTF-32BE one fell to the NUL-byte check (B13 round 47 C3321 with C3268 and C3291).  A body of a bad
-    length or code point raises ConversionError, never UnicodeDecodeError, so a UTF-16LE part opening
-    U+0000 (``FF FE 00 00 41 00``) is still the ConversionError eml's lenient fallback catches.
+    latin-1 maps to C1 control characters.  Raises ConversionError on NUL bytes in unmarked text and on a NUL
+    character after any decode (binary), and on a marked body that does not decode.  UTF-32's marks are told
+    before UTF-16's, since ``FF FE 00 00`` opens with UTF-16LE's mark: a UTF-32LE file read as UTF-16 was
+    NUL characters, and a UTF-32BE one fell to the NUL-byte check (B13 round 47 C3321 with C3268 and C3291).
+    A body of a bad length or code point raises ConversionError, never UnicodeDecodeError, so a UTF-16LE
+    part opening U+0000 (``FF FE 00 00 41 00``) is still the ConversionError eml's lenient fallback catches.
     """
     if data.startswith(b"\xef\xbb\xbf"):
         text = data[3:].decode("utf-8", errors="replace")

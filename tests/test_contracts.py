@@ -1007,6 +1007,39 @@ def test_the_plain_text_reference_says_what_text_py_does() -> None:
     assert " ".join(raw.split()).count(said) == 2
 
 
+def test_the_plain_text_nul_sentence_names_both_checks_in_text_py_and_its_copy_c3454() -> None:
+    """B13 round 48 C3454 (ruling 230): text.py's docstring and its §15 copy said "NUL bytes ->
+    ConversionError (binary)", false for BOM-marked UTF-16 and UTF-32 text, whose zero bytes decode; the raw
+    check runs only on unmarked text, and a decoded NUL character is refused after any decode.  The sentence
+    names both checks, in the code and in §15 word for word, each true of ``_decode_text``, and the decode
+    order phrase stays at its two copies."""
+    from agentsync.convert import _common, text  # noqa: PLC0415
+    from agentsync.errors import ConversionError  # noqa: PLC0415
+
+    said = (
+        "A NUL byte in unmarked text, or a NUL character in a decoded BOM-marked body -> ConversionError"
+        " (binary)."
+    )
+    raw = " ".join(CONTRACTS.read_text(encoding="utf-8").split())
+    start = raw.index("### `agentsync.convert.text` — `src/agentsync/convert/text.py`")
+    block = raw[start : raw.index(" ### ", start + 1)]
+    doc = " ".join((text.PlainTextConverter.__doc__ or "").split())
+    for where, flat in (("text.py", doc), ("§15", block)):
+        assert said in flat, where
+        assert "NUL bytes -> ConversionError" not in flat, where
+    assert _common._decode_text("hi".encode("utf-16")) == "hi" == _common._decode_text("hi".encode("utf-32"))
+    with pytest.raises(ConversionError, match=r"^binary content \(NUL bytes\)$"):
+        _common._decode_text(b"a\x00b")
+    with pytest.raises(ConversionError, match=r"^binary content \(NUL characters\)$"):
+        _common._decode_text("a\x00b".encode("utf-16"))
+    common_doc = " ".join((_common._decode_text.__doc__ or "").split())
+    assert "Raises ConversionError on NUL bytes in unmarked text and on a NUL character after any decode" in (
+        common_doc
+    )
+    order = "decoded (UTF-8/UTF-32/UTF-16 BOM first, then strict UTF-8, then cp1252, else latin-1)"
+    assert raw.count(order) == 2
+
+
 def test_every_exception_names_rule_reason_impact_and_a_test() -> None:
     """U-C13 (R422): each row of §16.300.30's exceptions record names the guideline rule the repo or a
     caller won against, the reason, what a person or a script sees, and tests that a scan of tests/
