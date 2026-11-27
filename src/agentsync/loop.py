@@ -76,7 +76,6 @@ from agentsync.config import (
     inbox_entry,
     inbox_state,
     kept_inbox_entry,
-    kept_inbox_not_a_folder,
     kept_inbox_read,
     live_inbox,
 )
@@ -2286,28 +2285,36 @@ def status_line(config: Config) -> str:
         # kept folder is matched by identity (paths.same_folder, as root_guide matches it, C2318), so a
         # source stored as ``Inbox`` on a case-insensitive Mac is the kept one (B13 round 43 C2411,
         # ruling 162).
-        # The kept entry is read once (config.inbox_entry) and decided by the one check
-        # (config.kept_inbox_not_a_folder): ``not a folder`` as inbox_state and doctor say it, and ``?`` for
-        # an entry this account cannot read, never ``missing``, which stays for a folder that is not there
-        # (B13 round 47 C3257, ruling 210).
+        # The kept entry is read once and decided as inbox_state and doctor decide it: ``not a folder``, and
+        # ``?`` for an entry this account cannot read, never ``missing``, which stays for a folder that is not
+        # there (B13 round 47 C3257, ruling 210).
         live = [s for s in config.live_sources() if s.kind is SourceKind.INBOX and s.path is not None]
         boxes = [s.path for s in live if s.path is not None]
         if not boxes:
             return "off"
         # The kept entry and its canonical path come from the one bounded read every reader shares
         # (config.kept_inbox_read): a read held past the listings' limit is ``inbox ?`` with no WARNING, as
-        # an entry this account cannot read, and the folders named are listed under the same limit (B13
-        # round 48 C3414 with C3442, ruling 225).
+        # an entry this account cannot read, and the folders named are matched and listed under the same
+        # limit (B13 round 48 C3414 with C3442, ruling 225). The kept folder is matched first, and its entry
+        # decides the word only when a live inbox source is on it: with the kept source paused, a live inbox
+        # elsewhere is the inbox, whatever sits at the kept name (B13 round 48 C3415, ruling 225).
         _typed, kept, entry = kept_inbox_read(config)
-        if entry.startswith(INBOX_ENTRY_UNREAD):
-            raise PermissionError(entry[len(INBOX_ENTRY_UNREAD) :])  # ``inbox ?``, with no WARNING
-        if any(kept_inbox_not_a_folder(config, s) is not None for s in live):
-            return "not a folder"
-        named = [path for path in boxes if kept is not None and same_folder(path, kept)] or boxes
-        found = bounded_inbox_read(lambda: all(expand(path).is_dir() for path in named))
+        if entry == INBOX_ENTRY_TIMED_OUT:
+            raise PermissionError("timed out")  # ``inbox ?``, with no WARNING
+
+        def look() -> tuple[bool, bool]:
+            on_kept = [path for path in boxes if kept is not None and same_folder(expand(path), kept)]
+            return bool(on_kept), all(expand(path).is_dir() for path in on_kept or boxes)
+
+        found = bounded_inbox_read(look)
         if found is None:
             raise PermissionError("timed out")  # ``inbox ?``, with no WARNING
-        return "on" if found else "missing"
+        on_kept, present = found
+        if on_kept and entry.startswith(INBOX_ENTRY_UNREAD):
+            raise PermissionError(entry[len(INBOX_ENTRY_UNREAD) :])  # ``inbox ?``, with no WARNING
+        if on_kept and entry == INBOX_ENTRY_NOT_A_FOLDER:
+            return "not a folder"
+        return "on" if present else "missing"
 
     def checkpoint() -> str:
         found = gitops.curated_checkpoint(docs) if (docs / ".git").exists() else None

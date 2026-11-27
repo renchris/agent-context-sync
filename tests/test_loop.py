@@ -2950,6 +2950,41 @@ def test_status_line_says_a_denied_kept_inbox_is_unread_where_is_dir_swallows_th
     assert "cannot read inbox" not in caplog.text, caplog.text
 
 
+@pytest.mark.parametrize("entry", ["link-into-an-unsearchable-folder", "file"])
+def test_status_line_reads_the_kept_entry_only_when_a_live_inbox_source_is_on_it_c3415(
+    tmp_path: Path, folder: Path, entry: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """B13 round 48 C3415 (ruling 225): status_line raised ``inbox ?`` for a kept entry this account cannot
+    read before it asked whether any live inbox source is on it, so with the kept source paused and a live
+    inbox elsewhere the part read ``?`` for a folder no sync reads. It matches the kept folder first and reads
+    the entry only when a live inbox source is on it: the live one elsewhere reads ``inbox on``."""
+    drop = tmp_path / "Contoso Drop"
+    drop.mkdir()
+    config = _synced(tmp_path, folder, inbox_source_table("contoso-drop", drop))
+    config, kept_src = ensure_inbox(config.config_path)
+    assert kept_src is not None
+    cfg = config.config_path
+    head = f'id = "{kept_src.id}"\n'
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8").replace(head, head + 'state = "paused"\n'), encoding="utf-8"
+    )
+    kept = config.docs_repo.parent / "inbox"
+    kept.rename(tmp_path / "inbox-moved")  # moved aside, never removed
+    locked = _put_entry(kept, entry)
+    try:
+        if locked and os.access(locked[0], os.X_OK):
+            pytest.skip("this account searches a mode-0 folder")
+        config = load_config(cfg)
+        assert [s.id for s in config.live_sources() if s.kind is SourceKind.INBOX] == ["contoso-drop"]
+        with _bounded(10), caplog.at_level(logging.WARNING, logger="agentsync"):
+            line = loop.status_line(config)
+    finally:
+        for made in locked:
+            made.chmod(0o700)
+    assert " · inbox on · " in line, line
+    assert "cannot read inbox" not in caplog.text, caplog.text
+
+
 def _nothing_to_draft(config: Config, why: str, inbox: str | None = None) -> str:
     """Rule 4's NEXT over an empty mirror (B13 round 44 C2630 with C2603, ruling 181): the opening kept, the
     move the operator's, and ``or the inbox (<inbox>)`` only for an inbox that is read (C2602)."""
