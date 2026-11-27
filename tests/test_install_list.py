@@ -446,6 +446,40 @@ def test_a_folder_ending_in_a_non_ascii_blank_lists_escaped_c3333(env: dict[str,
     ), got
 
 
+def test_a_folder_with_a_space_at_its_edge_lists_escaped_and_its_literal_twin_is_refused_c3527(
+    env: dict[str, str],  # noqa: F811
+) -> None:
+    """B13 round 48 ruling 220 (C3527, option a): `Project` and `Project ` (a trailing space) listed as two
+    rows that read alike. A space at a part's edge is escaped as `\\040` with ESCAPED_MARK, a leading one too,
+    a mid-name space and a mid-name U+3000 stay plain; --json gives the escaped row its mark; and a folder
+    literally named `Project\\040` beside `Project ` is the look-alike twin step 2 refuses, while the lone
+    `Project ` is added by its path."""
+    lib = _cloud(env) / "OneDrive-Contoso"
+    for n in ("Project", "Project ", " Notes", "Project Alpha", "Kestrel\u3000Ledger"):
+        (lib / n).mkdir(parents=True)
+    cp = install_sh(env, "--list-folders", "--all")
+    assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
+    assert sorted(cp.stdout.splitlines()[:-1]) == sorted(
+        [
+            f"{lib}/Project",
+            f"{ESCAPED_MARK} {lib}/Project\\040",
+            f"{ESCAPED_MARK} {lib}/\\040Notes",
+            f"{lib}/Project Alpha",
+            f"{lib}/Kestrel\u3000Ledger",
+        ]
+    ), cp.stdout
+    doc = json.loads(install_sh(env, "--list-folders", "--json").stdout)
+    marks = {f["path"]: f.get("mark") for f in doc["folders"]}
+    assert marks[f"{lib}/Project "] == ESCAPED_MARK and marks[f"{lib}/Project Alpha"] is None, marks
+    assert marks[f"{lib}/Kestrel\u3000Ledger"] is None, marks
+    (lib / "Project\\040").mkdir()
+    refused = install_sh(env, "--source-local", str(lib / "Project "))
+    assert refused.returncode == 2, refused.stdout + refused.stderr
+    assert "step 1 shows this folder's name with a hidden or control character" in refused.stderr, (
+        refused.stderr
+    )
+
+
 _ANYWHERE_BLANKS = ("\u0085", "\u2028", "\u2029")
 """The blanks escaped wherever they stand: line breaks to the report's splitlines (U+0085, U+2028, U+2029)."""
 
