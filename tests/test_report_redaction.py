@@ -5362,10 +5362,15 @@ def test_both_reports_judge_a_unicode_blank_in_a_refused_head_alike_c3304(
 
 
 _C3289_SPELLINGS = ("Kestrel Alder", "Kestrel_Alder", "KESTREL ALDER", "kestrel-alder")
+_C3471_SHELL = pytest.param(
+    "vanished-shell",
+    id="vanished-shell",
+    marks=pytest.mark.xfail(strict=True, reason="lane RB's C3471 shell half"),
+)
 
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
-@pytest.mark.parametrize("arm", ["configured", "joined", "vanished"])
+@pytest.mark.parametrize("arm", ["configured", "joined", "vanished", _C3471_SHELL])
 def test_both_reports_cut_a_project_folders_fuzzy_spellings_alike_c3289(
     env: dict[str, str],  # noqa: F811
     arm: str,
@@ -5374,8 +5379,14 @@ def test_both_reports_cut_a_project_folders_fuzzy_spellings_alike_c3289(
     """B13 round 47 ruling 207 (C3289; privacy): the shell registered a configured folder outside
     CloudStorage as written only, so `Kestrel Alder` and its other spellings of `KestrelAlder` printed in
     clear where the agentsync report cuts them fuzzily. The configured-sources loop takes fuzzy_flag's flag:
-    every spelling cut in both. A joined name (one whose letters spell a report word) and a vanished source's
-    folder stay literal in both: the same rows and one verdict."""
+    every spelling cut in both. A joined name (one whose letters spell a report word) stays literal in both:
+    the same rows and one verdict. B13 round 48 C3471 (ruling 217, reversing ruling 207's carve-out; privacy):
+    a vanished source's folder, synced and then its block removed, with no doctor log and no install.out
+    naming it, is cut in all five spellings, ``KestrelAlder`` among them, as a configured one is. ``vanished``
+    asserts the agentsync report's half in every run; ``vanished-shell`` (the two reports' parity) is lane
+    RB's, a strict xfail until install.sh reads the vanished roots from the manifest and registers them
+    fuzzily."""
+    vanished = arm.startswith("vanished")
     home = Path(env["HOME"])
     name = "InStall" if arm == "joined" else "KestrelAlder"
     folder = home / "Development" / name
@@ -5386,7 +5397,7 @@ def test_both_reports_cut_a_project_folders_fuzzy_spellings_alike_c3289(
     cfg = home / "agent-context" / "sources.toml"
     base = default_config_text() + local_source_table("juniper", juniper)
     body = base + local_source_table("kestrel-den", folder)
-    if arm == "vanished":  # synced, then its [[source]] block removed: the manifest keeps its folder
+    if vanished:  # synced, then its [[source]] block removed: the manifest keeps its folder
         run = {**env, "LC_ALL": locale, "LANG": locale, "AGENTSYNC_OCR": "0", "AGENTSYNC_TM_EXCLUDE": "0"}
         cfg.parent.mkdir(parents=True, exist_ok=True)
         cfg.write_text(body, encoding="utf-8")
@@ -5399,12 +5410,20 @@ def test_both_reports_cut_a_project_folders_fuzzy_spellings_alike_c3289(
         if arm != "joined"
         else ["InStall is mine", "In Stall is mine", "the install went on"]
     )
+    if vanished:  # C3471: the literal name too
+        said = [f"{name} is mine", *said]
     texts: list[str] = []
     shell, python_rows, shell_private, python_private = _both_reports(
-        env, [], said, locale, config=cfg, config_body=body, texts_out=texts
+        env, [], said, locale, shell=arm != "vanished", config=cfg, config_body=body, texts_out=texts
     )
-    if arm == "configured":
+    if arm != "joined":
         assert all(re.fullmatch(r"<folder-\d+> is mine", ln) for ln in python_rows), python_rows
+    if vanished:
+        assert len(set(python_rows)) == 1 and not python_private, (python_rows, texts[1])
+        leaks = [ln for ln in texts[1].splitlines() if re.search("(?i)kestrel", ln)]
+        assert not leaks, leaks
+    if arm == "vanished":
+        return  # the agentsync report's half alone (C3471)
     assert shell == python_rows, (shell, python_rows)
     # joined: the shell's private verdict for a report word's <folder-N> ("the <folder-2> went on") predates
     # C3289 (red with or without its hunk), so only that arm's verdict is left out here (lane RB)

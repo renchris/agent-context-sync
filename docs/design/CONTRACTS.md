@@ -47922,6 +47922,9 @@ fuzzy add skips a value holding a line break; the id is cut in both and only tha
 `test_the_paths_mode_reads_every_source_path_whatever_its_id_c3244`,
 `test_the_structural_check_calls_a_repeated_key_unparsed_and_the_records_take_the_first_c3246` and
 `test_one_basic_string_decoder_reads_a_source_path_as_the_path_reader_does_c3303`.
+Amended 2026-11-27, §16.295 C3471: a vanished project root now registers fuzzily in both reports as a configured one
+does, a joined name and a value holding `/` literal (ruling 217, reversing ruling 207's carve-out for the vanished
+loop).
 
 **A config this account cannot reach reads not checked** (C3335; dated line under §16.286's C3019 paragraph). stat's
 message is read as captured text, never through a pipe pipefail hides, and matched at its end: `- config: <path> (not

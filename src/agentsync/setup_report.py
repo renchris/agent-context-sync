@@ -6813,9 +6813,14 @@ def _build_redactor(r: _Run) -> Redactor:
                         red.add("folder", c, fuzzy=True)
                         _alias_escaped(red, c)
                 elif (below := _project_place(root, own, inbox_targets)) is not None:
-                    # B13 round 47 C3242 (ruling 206): below the kept inbox's target, the own-folder filter
+                    # B13 round 47 C3242 (ruling 206): below the kept inbox's target, the own-folder filter.
+                    # B13 round 48 C3471 (ruling 217, reversing ruling 207's carve-out; privacy): fuzzy, as a
+                    # configured project folder registers (the project_paths loop above), so `Kestrel Alder`
+                    # and `kestrel-alder` of a vanished `KestrelAlder` are cut too; a value holding a "/" or a
+                    # joined report word stays one literal
                     for value in _own_folder_values(root, Path("/")) if below else _project_values(root):
-                        red.add("folder", value, ignore_case=True)
+                        joined = len(_tokens(value)) >= 2 and _norm(value) in report_words()
+                        red.add("folder", value, ignore_case=True, fuzzy="/" not in value and not joined)
                         _alias_escaped(red, value)
     # Then every hold scope no source registered: ``hold`` takes any id-shaped scope, one set before its
     # source is added or kept on a removed one, so a matter name typed there printed in the HOLD line and the
