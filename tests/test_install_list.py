@@ -38,6 +38,8 @@ from test_install_oneshot import (  # noqa: F401  (fixtures)
 
 ESCAPED_MARK = "[name holds a hidden or control character: rename it to sync it]"
 """install.sh's ``ESCAPED_MARK``, as test_install_oneshot pins it."""
+ESCAPED_KEPT_MARK = "[name holds a hidden or control character]"
+"""install.sh's ``ESCAPED_KEPT_MARK``: an escaped row never offered, a kept or (since C3426) a held one."""
 
 PAST = re.compile(r"; (\d+) folders? past the first (\d+) (?:are|is) not listed: \S+ --list-folders --all$")
 """The clause a capped list's NEXT ends with."""
@@ -178,7 +180,7 @@ def test_a_paused_or_retired_folder_is_marked_and_never_counted_c3332(
         f"{lib}/Alpha",
         f"[paused] {lib}/Beta",
         *gamma,
-        f"{ESCAPED_MARK} [paused] {lib}/Kestrel\\tPlans",
+        f"{ESCAPED_KEPT_MARK} [paused] {lib}/Kestrel\\tPlans",  # B13 round 48 C3426: no rename
         f"{nxt}{HELD_LIST_NEXT}",
     ], cp.stdout
     assert install_log(env)[-2].endswith(f" result=done note=listed-5 synced={2 if live else 0}"), (
@@ -193,9 +195,93 @@ def test_a_paused_or_retired_folder_is_marked_and_never_counted_c3332(
         (f"{lib}/Beta", "paused", None),
         (f"{lib}/Gamma", "synced" if live else "listed", None),
         (f"{lib}/Gamma/In", "inside_synced" if live else "listed", None),
-        (f"{lib}/Kestrel\tPlans", "paused", ESCAPED_MARK),
+        (f"{lib}/Kestrel\tPlans", "paused", ESCAPED_KEPT_MARK),
     ], rows
     assert doc["total"] == 5
+
+
+_HELD_INSIDE_NEXT = (
+    HELD_LIST_NEXT
+    + "; a folder marked [inside a paused folder] or [inside a retired folder] above is inside such"
+    " a folder, so it is not synced either, and --source-local leaves it so too"
+)
+"""HELD_LIST_NEXT once a row inside a held folder is listed (B13 round 48 C3506)."""
+
+
+@pytest.mark.parametrize("state", ["paused", "retired"])
+def test_a_folder_inside_a_held_one_is_marked_and_never_offered_c3506(
+    env: dict[str, str],  # noqa: F811
+    state: str,
+) -> None:
+    """B13 round 48 ruling 220 (C3506; data integrity): a folder inside one sources.toml holds paused or
+    retired was listed plain and offered, and --source-local added a folder a held source already names. It
+    is marked [inside a paused folder] or [inside a retired folder], below [inside a synced folder] (a live
+    folder above still wins) and the held marks, counted with the held rows, named in the NEXT's held clause,
+    given its own JSON state, and refused when pasted with its mark."""
+    lib = _cloud(env) / "OneDrive-Contoso"
+    for d in ("Alpha", "Beta/Sub", "Gamma/Held"):
+        (lib / d).mkdir(parents=True)
+    tables = [_inbox(env), _held("beta", lib / "Beta", state), local_source_table("gamma", lib / "Gamma")]
+    tables.append(_held("gamma-held", lib / "Gamma" / "Held", state))
+    _write_config(env, *tables)
+    _tool_python(env)
+    cp = install_sh(env, "--list-folders")
+    assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
+    lines = cp.stdout.splitlines()
+    assert lines[1:-1] == [
+        f"{lib}/Alpha",
+        f"[{state}] {lib}/Beta",
+        f"[inside a {state} folder] {lib}/Beta/Sub",
+        f"[synced] {lib}/Gamma",
+        f"[inside a synced folder] {lib}/Gamma/Held",
+    ], lines
+    assert lines[-1].endswith(_HELD_INSIDE_NEXT), lines[-1]
+    doc = json.loads(install_sh(env, "--list-folders", "--json").stdout)
+    rows = {f["path"]: f["state"] for f in doc["folders"]}
+    assert rows[f"{lib}/Beta/Sub"] == f"inside_{state}" and rows[f"{lib}/Gamma/Held"] == "inside_synced", rows
+    pasted = install_sh(env, "--source-local", f"[inside a {state} folder] {lib}/Beta/Sub")
+    assert pasted.returncode == 2, pasted.stdout + pasted.stderr
+    assert (
+        f"this is a row step 1 marked [inside a {state} folder]: that folder is inside one sources.toml holds"
+        f" {state}, so it is not synced either; paste nothing for it"
+    ) in pasted.stderr, pasted.stderr
+
+
+@pytest.mark.parametrize("state", ["paused", "retired"])
+def test_an_escaped_held_row_takes_the_kept_escaped_mark_and_the_held_refusal_c3426(
+    env: dict[str, str],  # noqa: F811
+    state: str,
+) -> None:
+    """B13 round 48 ruling 220 (C3426): an escaped paused or retired row took ESCAPED_MARK, which says to
+    rename the folder to sync it, and pasted it got the escaped refusal, though the folder is held, not
+    unsyncable; a plain held twin took TWIN_MARK. Such a row takes ESCAPED_KEPT_MARK, its twin no mark, the
+    JSON mark alike, and the held refusal when pasted, never `already syncs`."""
+    lib = _cloud(env) / "OneDrive-Contoso"
+    for d in ("Alpha", "Kes\x01trel", "Kes\\001trel"):
+        (lib / d).mkdir(parents=True)
+    tables = [
+        _inbox(env),
+        _held("kes", lib / "Kes\x01trel", state),
+        _held("kes2", lib / "Kes\\001trel", state),
+    ]
+    _write_config(env, *tables)
+    _tool_python(env)
+    cp = install_sh(env, "--list-folders")
+    assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
+    lines = cp.stdout.splitlines()
+    escaped = f"{ESCAPED_KEPT_MARK} [{state}] {lib}/Kes\\001trel"
+    assert escaped in lines and f"[{state}] {lib}/Kes\\001trel" in lines, lines
+    assert not [ln for ln in lines if ln.startswith((ESCAPED_MARK, TWIN_MARK))], lines
+    doc = json.loads(install_sh(env, "--list-folders", "--json").stdout)
+    marks = {f["path"]: f.get("mark") for f in doc["folders"]}
+    assert marks[f"{lib}/Kes\x01trel"] == ESCAPED_KEPT_MARK and marks[f"{lib}/Kes\\001trel"] is None, marks
+    pasted = install_sh(env, "--source-local", escaped)
+    assert pasted.returncode == 2, pasted.stdout + pasted.stderr
+    assert (
+        f"this is a row step 1 marked {ESCAPED_KEPT_MARK} [{state}]: that folder is in sources.toml but not"
+        " synced, so paste nothing for it"
+    ) in pasted.stderr, pasted.stderr
+    assert "already syncs" not in pasted.stderr
 
 
 @pytest.mark.parametrize("json_run", [False, True])

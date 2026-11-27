@@ -2180,6 +2180,7 @@ list_rows_json() { # rows on stdin [TWINS: list_twins' file]
 	# a row the list shows with a first mark also carries it as "mark" (B13 round 37 ruling 121)
 	LC_ALL=C awk -v s="$SYNCED_MARK " -v i="$INSIDE_MARK " -v c="$CONTAINS_MARK " -v em="$ESCAPED_MARK" \
 		-v km="$ESCAPED_KEPT_MARK" -v tm="$TWIN_MARK" -v tf="${1:-}" -v pz="$PAUSED_MARK " -v rt="$RETIRED_MARK " \
+		-v ipz="$INSIDE_PAUSED_MARK " -v irt="$INSIDE_RETIRED_MARK " \
 		"$LIST_ESC_AWK"'BEGIN {
 		if (tf != "") while ((getline l < tf) > 0) twin[l] = 1
 		for (k = 1; k < 32; k++) je[sprintf("%c", k)] = sprintf("\\u%04x", k)
@@ -2195,6 +2196,8 @@ list_rows_json() { # rows on stdin [TWINS: list_twins' file]
 		else if (index(p, c) == 1) { st = "contains_synced"; p = substr(p, length(c) + 1) }
 		else if (index(p, pz) == 1) { st = "paused"; p = substr(p, length(pz) + 1) }
 		else if (index(p, rt) == 1) { st = "retired"; p = substr(p, length(rt) + 1) }
+		else if (index(p, ipz) == 1) { st = "inside_paused"; p = substr(p, length(ipz) + 1) }
+		else if (index(p, irt) == 1) { st = "inside_retired"; p = substr(p, length(irt) + 1) }
 		out = ""
 		n = length(p)
 		for (k = 1; k <= n; k++) {
@@ -2202,7 +2205,8 @@ list_rows_json() { # rows on stdin [TWINS: list_twins' file]
 			if (ch == "\036") ch = "\n"
 			out = out ((ch in je) ? je[ch] : ch)
 		}
-		kp = (st == "synced" || st == "inside_synced")
+		# a held row, or one inside a held folder, is never offered: its escaped mark is the kept one (C3426)
+		kp = (st == "synced" || st == "inside_synced" || st == "paused" || st == "retired" || st == "inside_paused" || st == "inside_retired")
 		m = escd(p) ? (kp ? km : em) : ((p in twin) && !kp ? tm : "")
 		printf "%s{\"path\":\"%s\",\"state\":\"%s\"%s}", (NR > 1 ? "," : ""), out, st, (m != "" ? ",\"mark\":\"" m "\"" : "")
 	}'
@@ -3038,7 +3042,7 @@ listed_folder_lines() {
 	[ -f "$INSTALL_OUT" ] && [ ! -L "$INSTALL_OUT" ] || return 0
 	CS="$HOME/Library/CloudStorage" LC_ALL=C awk '/^# run=/ { list = ($0 ~ / install[.]sh( .*)? --list-folders( |$)/); next }
 		list { sub(/^\[name (holds a (hidden or )?control character(: rename it to sync it)?|reads as another folder there: rename one of them to sync it)\] /, "")
-			sub(/^\[(synced|inside a synced folder|contains a synced folder|paused|retired)\] /, "")
+			sub(/^\[(synced|inside a synced folder|contains a synced folder|paused|retired|inside a paused folder|inside a retired folder)\] /, "")
 			n = length(ENVIRON["CS"]) + 1
 			if (substr($0, 1, n) == ENVIRON["CS"] "/" && index(substr($0, n + 1), "/")) print }' "$INSTALL_OUT" 2>/dev/null || true
 }
@@ -10985,6 +10989,13 @@ CONTAINS_MARK="[contains a synced folder]"
 # round 47 ruling 214, C3332)
 PAUSED_MARK="[paused]"
 RETIRED_MARK="[retired]"
+# A folder inside one the config holds paused or retired is not synced either, and --source-local would add a
+# folder a held one already names: its row takes one of these in the same slot, ranked below $SYNCED_MARK,
+# $INSIDE_MARK, $PAUSED_MARK and $RETIRED_MARK and above $CONTAINS_MARK, counted with the held rows and refused
+# when pasted (B13 round 48 ruling 220, C3506; data integrity: such a row was offered as a plain folder)
+INSIDE_PAUSED_MARK="[inside a paused folder]"
+INSIDE_RETIRED_MARK="[inside a retired folder]"
+HELD_INSIDE_TAIL="; a folder marked $INSIDE_PAUSED_MARK or $INSIDE_RETIRED_MARK above is inside such a folder, so it is not synced either, and --source-local leaves it so too"
 # A row list_shown printed with a control character escaped opens with this mark, before any other: two
 # folders can show as one escaped text, so such a row is never a folder to paste (B13 round 36 C1001, C1072)
 # B13 round 38 C1447 (ruling 129): the escaped form covers the line separators (since 62b46915d, C932) and, since
@@ -11007,7 +11018,8 @@ ESCAPED_KEPT_MARK_OLD="[name holds a control character]"
 # holds paused or retired that the file does not hold, as "$PAUSED_MARK <path>" or "$RETIRED_MARK <path>"
 # (sorted; counted in neither number), then each line of the file, with "$SYNCED_MARK " before a folder that is
 # one of them, "$INSIDE_MARK " before one inside one of them, "$PAUSED_MARK " or "$RETIRED_MARK " before a held
-# folder that is no synced one and is inside none, and "$CONTAINS_MARK " before one that holds one. So every
+# folder that is no synced one and is inside none, "$INSIDE_PAUSED_MARK " or "$INSIDE_RETIRED_MARK " before one
+# inside a held folder (B13 round 48 ruling 220, C3506), and "$CONTAINS_MARK " before one that holds one. So every
 # synced or held folder is printed once with its mark, the ones no line of the file names first (B13 round 47
 # C3332: a held folder was listed unmarked, and --source-local left it held). Both sides go through agentsync's own rule, so a folder the config
 # names through a link is still that folder. Both are then compared the way macOS names a folder, in any
@@ -11076,6 +11088,8 @@ with open(sys.argv[2], "rb") as fh:  # a newline in a name travels as RS, 0x1e (
     listed = [os.fsdecode(line).replace("\x1e", "\n") for line in fh.read().split(b"\n") if line]
 same, inside, contains, paused, retired = (mark + " " for mark in sys.argv[3:8])
 hmark = {"paused": paused, "retired": retired}
+# a folder inside a held one, ranked after the held marks and before contains (C3506)
+inmark = {"paused": sys.argv[8] + " ", "retired": sys.argv[9] + " "} if len(sys.argv) > 9 else {}
 shown, body = set(), []
 for p in listed:
     folder = key(canonical_source_root(Path(p)))
@@ -11087,6 +11101,8 @@ for p in listed:
     elif folder in held:
         shown.add(folder)
         body.append(hmark[held[folder][1]] + p)
+    elif inmark and any(folder.startswith(h) for h in held):
+        body.append(inmark[next(v for h, v in held.items() if folder.startswith(h))[1]] + p)
     elif any(s.startswith(folder) for s in synced):
         body.append(contains + p)
     else:
@@ -11096,7 +11112,8 @@ heldfirst = sorted(hmark[state] + path for k, (path, state) in held.items() if k
 rows = [*first, *heldfirst, *body]
 out = [str(len(synced)), str(len(first)), *(row.replace("\n", "\x1e") for row in rows)]
 sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
-' "$CONFIG" "$2" "$SYNCED_MARK" "$INSIDE_MARK" "$CONTAINS_MARK" "$PAUSED_MARK" "$RETIRED_MARK"
+' "$CONFIG" "$2" "$SYNCED_MARK" "$INSIDE_MARK" "$CONTAINS_MARK" "$PAUSED_MARK" "$RETIRED_MARK" \
+	"$INSIDE_PAUSED_MARK" "$INSIDE_RETIRED_MARK"
 }
 # The sources the manifest still mirrors (present file rows) whose [[source]] block is gone from the config,
 # read by the interpreter $1 as cycle.vanished_sources reads them, which step 2's status FAILs on and every sync
@@ -11785,24 +11802,33 @@ function oct(s, i, n,    k, o) { # the N bytes of S from I, each \ooo; one "?" u
 # what esc escapes anything in: a quick test for the bytes it can escape first, then esc itself (ruling 220)
 function escd(s) { return s ~ /[[:cntrl:] \302\330\341\342\343\357]/ && esc(s) != s }
 function kept(s) { return (synced != "" && index(s, synced) == 1) || (inside != "" && index(s, inside) == 1) }
+# a row the config holds paused or retired, or one inside such a folder (B13 round 48 ruling 220, C3426, C3506):
+# never offered, so an escaped one takes the kept escaped mark, which says no rename, and no row of it a twin mark
+function held(s) {
+	return (paused != "" && index(s, paused) == 1) || (retired != "" && index(s, retired) == 1) ||
+		(inpaused != "" && index(s, inpaused) == 1) || (inretired != "" && index(s, inretired) == 1)
+}
 function bare(s) {
 	if (synced != "" && index(s, synced) == 1) return substr(s, length(synced) + 1)
 	if (inside != "" && index(s, inside) == 1) return substr(s, length(inside) + 1)
 	if (contains != "" && index(s, contains) == 1) return substr(s, length(contains) + 1)
 	if (paused != "" && index(s, paused) == 1) return substr(s, length(paused) + 1)
 	if (retired != "" && index(s, retired) == 1) return substr(s, length(retired) + 1)
+	if (inpaused != "" && index(s, inpaused) == 1) return substr(s, length(inpaused) + 1)
+	if (inretired != "" && index(s, inretired) == 1) return substr(s, length(inretired) + 1)
 	return s
 }
 function shown(s,    b) {
 	b = bare(s)
-	if (escd(b)) return ((keptmark != "" && kept(s)) ? keptmark : mark) substr(s, 1, length(s) - length(b)) esc(b)
-	return (twinmark != "" && !kept(s) && (bare(s) in twin)) ? twinmark s : s
+	if (escd(b)) return ((keptmark != "" && (kept(s) || held(s))) ? keptmark : mark) substr(s, 1, length(s) - length(b)) esc(b)
+	return (twinmark != "" && !kept(s) && !held(s) && (bare(s) in twin)) ? twinmark s : s
 }
 '
 list_shown() { # rows on stdin [TWINS: a file of the rows list_twins found]
 	LC_ALL=C awk -v mark="$ESCAPED_MARK " -v keptmark="$ESCAPED_KEPT_MARK " -v twinmark="$TWIN_MARK " \
 		-v synced="$SYNCED_MARK " -v inside="$INSIDE_MARK " -v contains="$CONTAINS_MARK " -v tf="${1:-}" \
-		-v paused="$PAUSED_MARK " -v retired="$RETIRED_MARK " \
+		-v paused="$PAUSED_MARK " -v retired="$RETIRED_MARK " -v inpaused="$INSIDE_PAUSED_MARK " \
+		-v inretired="$INSIDE_RETIRED_MARK " \
 		"$LIST_ESC_AWK"'BEGIN { if (tf != "") while ((getline l < tf) > 0) twin[l] = 1 } { print shown($0) }'
 }
 # The rows on stdin (marks allowed) whose bare path has no control character but holds a \ or a ?, and has a twin
@@ -11824,7 +11850,9 @@ list_twins() {
 		[ "$t" -gt 0 ] || break
 		! with_timeout "$t" escaped_twin "$p" dir </dev/null >/dev/null 2>&1 || printf '%s\n' "$p"
 	done < <(LC_ALL=C awk -v synced="$SYNCED_MARK " -v inside="$INSIDE_MARK " -v contains="$CONTAINS_MARK " \
-		-v paused="$PAUSED_MARK " -v retired="$RETIRED_MARK " "$LIST_ESC_AWK"'{ s = bare($0); if (!kept($0) && !escd(s) && (index(s, "\\") || index(s, "?"))) print s }')
+		-v paused="$PAUSED_MARK " -v retired="$RETIRED_MARK " -v inpaused="$INSIDE_PAUSED_MARK " \
+		-v inretired="$INSIDE_RETIRED_MARK " \
+		"$LIST_ESC_AWK"'{ s = bare($0); if (!kept($0) && !held($0) && !escd(s) && (index(s, "\\") || index(s, "?"))) print s }')
 }
 list_plain() { # rows on stdin, escaped as list_shown escapes them, with no mark
 	LC_ALL=C awk -v mark="" "$LIST_ESC_AWK"'{ print shown($0) }'
@@ -11881,6 +11909,7 @@ list_folders() {
 	local cs="$HOME/Library/CloudStorage" tmp e label rc total providers=0 denied="" asking="" term max=200
 	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks marks synced="" unlisted="" unread="" kept="" built
 	local heldn=0 heldtail="" # the rows marked $PAUSED_MARK or $RETIRED_MARK, and their NEXT clause (C3332)
+	local heldin="" # how many of them are inside a held folder (C3506), empty for none
 	local TWIN_DEADLINE="" # list_twins' bound, set to deadline's only once a provider was denied or asked (C1464)
 	local line missing=0 gone=0 gonepaths="" others=0 other="" libs=0 libpaths="" apps="" tokens="" tok="" stuck=0 more=""
 	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vreal="" vplain="" vtail="" vlog="" cerr="" ctail="" clog="" stail="" crole="" clink="" cunread="" lwhat="" lfix="" lfact="" lown="" chbmode="" cshort="" cmis="" cmisread="" sfix="" cside="" codd="" fnoun="" stopsat="" chold="" ccut="" rcut="" rrc=0 rt0=0"" rtail="" cfg_abs=""
@@ -11979,9 +12008,13 @@ list_folders() {
 			;;
 		esac
 		# the held rows, read off their marks: never in $synced or line 1 (B13 round 47 C3332)
+		# and the rows inside a held folder, counted with them, their clause only when one shows (C3506)
 		[ -z "$synced" ] || heldn="$(LC_ALL=C awk -v p="$PAUSED_MARK " -v r="$RETIRED_MARK " \
-			'NR > 2 && (index($0, p) == 1 || index($0, r) == 1) { n++ } END { print n + 0 }' "$tmp/marked")"
-		[ "$heldn" -eq 0 ] || heldtail="; a folder marked $PAUSED_MARK or $RETIRED_MARK above is in sources.toml but not synced, and --source-local leaves it so: setting a folder to live is the person's own edit of sources.toml, never the agent's"
+			-v ip="$INSIDE_PAUSED_MARK " -v ir="$INSIDE_RETIRED_MARK " \
+			'NR > 2 && (index($0, p) == 1 || index($0, r) == 1) { n++ } NR > 2 && (index($0, ip) == 1 || index($0, ir) == 1) { m++ } END { print n + m " " m + 0 }' "$tmp/marked")"
+		heldin="${heldn#* }" heldn="${heldn%% *}"
+		[ "$heldin" != 0 ] || heldin=""
+		[ "$heldn" -eq 0 ] || heldtail="; a folder marked $PAUSED_MARK or $RETIRED_MARK above is in sources.toml but not synced, and --source-local leaves it so: setting a folder to live is the person's own edit of sources.toml, never the agent's${heldin:+$HELD_INSIDE_TAIL}"
 		# A source still mirrored whose [[source]] block is gone (B13 round 16 T6, T30): step 2's status FAILs on
 		# it, so the NEXT says which, never "none is needed". Read only once the folders were read and with no
 		# provider denied or still asking (that exit 4 comes first); a reader that fails changes nothing.
@@ -12928,6 +12961,16 @@ source_local_refused() { # SHOWN-NAME WORDS [NEXT]
 	USAGE_NEXT="${3:-$RENAME_NEXT}"
 	usage_error "--source-local $1: $2"
 }
+# A held row's refusal, pasted with its mark plain or after the kept escaped mark (B13 round 47 ruling 214,
+# C3332; round 48 ruling 220, C3426 and C3506): what the folder is, and the NEXT
+held_said() { # MARK
+	case "$1" in
+	"$INSIDE_PAUSED_MARK") printf '%s' "that folder is inside one sources.toml holds paused, so it is not synced either; paste nothing for it" ;;
+	"$INSIDE_RETIRED_MARK") printf '%s' "that folder is inside one sources.toml holds retired, so it is not synced either; paste nothing for it" ;;
+	*) printf '%s' "that folder is in sources.toml but not synced, so paste nothing for it" ;;
+	esac
+}
+HELD_NEXT="leave that --source-local out: setting that folder to live is the person's own edit of sources.toml, never the agent's; then run the corrected command"
 pasted_row() { # ROW MARK: the row's path, with its marks gone, as list_plain shows it
 	local g="${1#*"$2"}"
 	g="${g# }"
@@ -12936,6 +12979,8 @@ pasted_row() { # ROW MARK: the row's path, with its marks gone, as list_plain sh
 	g="${g#"$CONTAINS_MARK "}"
 	g="${g#"$PAUSED_MARK "}"
 	g="${g#"$RETIRED_MARK "}"
+	g="${g#"$INSIDE_PAUSED_MARK "}"
+	g="${g#"$INSIDE_RETIRED_MARK "}"
 	list_name "$g"
 }
 for f in ${SOURCE_LOCALS[@]+"${SOURCE_LOCALS[@]}"}; do
@@ -12947,6 +12992,16 @@ for f in ${SOURCE_LOCALS[@]+"${SOURCE_LOCALS[@]}"}; do
 		;;
 	*"$TWIN_MARK"*)
 		source_local_refused "$(pasted_row "$f" "$TWIN_MARK")" "this is a row step 1 marked $TWIN_MARK: it is step 1's escaped form of another folder there; rename one of them in its sync app, $again" "$TWIN_NEXT"
+		;;
+	*"$ESCAPED_KEPT_MARK $PAUSED_MARK "* | *"$ESCAPED_KEPT_MARK $RETIRED_MARK "* | *"$ESCAPED_KEPT_MARK $INSIDE_PAUSED_MARK "* | *"$ESCAPED_KEPT_MARK $INSIDE_RETIRED_MARK "*)
+		# an escaped held row: the held refusal, never "already syncs" (B13 round 48 ruling 220, C3426)
+		pm="$PAUSED_MARK"
+		case "$f" in
+		*"$ESCAPED_KEPT_MARK $RETIRED_MARK "*) pm="$RETIRED_MARK" ;;
+		*"$ESCAPED_KEPT_MARK $INSIDE_PAUSED_MARK "*) pm="$INSIDE_PAUSED_MARK" ;;
+		*"$ESCAPED_KEPT_MARK $INSIDE_RETIRED_MARK "*) pm="$INSIDE_RETIRED_MARK" ;;
+		esac
+		source_local_refused "$(pasted_row "$f" "$ESCAPED_KEPT_MARK")" "this is a row step 1 marked $ESCAPED_KEPT_MARK $pm: $(held_said "$pm")" "$HELD_NEXT"
 		;;
 	*"$ESCAPED_KEPT_MARK"* | *"$ESCAPED_KEPT_MARK_OLD"*)
 		pm="$ESCAPED_KEPT_MARK"
@@ -12963,13 +13018,16 @@ for f in ${SOURCE_LOCALS[@]+"${SOURCE_LOCALS[@]}"}; do
 		source_local_refused "$(pasted_row "$f" "$CONTAINS_MARK")" "this is a row step 1 marked $CONTAINS_MARK: a sync would read the synced folder inside it twice, so paste nothing for it" \
 			"leave that --source-local out: the folder it names holds one that already syncs; then run the corrected command"
 		;;
-	"$PAUSED_MARK "* | "$RETIRED_MARK "*)
+	"$PAUSED_MARK "* | "$RETIRED_MARK "* | "$INSIDE_PAUSED_MARK "* | "$INSIDE_RETIRED_MARK "*)
 		# a held row pasted with its mark: --source-local would leave that folder held, and setting it live is the
-		# person's edit of sources.toml (B13 round 47 ruling 214, C3332)
+		# person's edit of sources.toml (B13 round 47 ruling 214, C3332); a row inside a held folder alike (C3506)
 		pm="$PAUSED_MARK"
-		case "$f" in "$RETIRED_MARK "*) pm="$RETIRED_MARK" ;; esac
-		source_local_refused "$(pasted_row "$f" "$pm")" "this is a row step 1 marked $pm: that folder is in sources.toml but not synced, so paste nothing for it" \
-			"leave that --source-local out: setting that folder to live is the person's own edit of sources.toml, never the agent's; then run the corrected command"
+		case "$f" in
+		"$RETIRED_MARK "*) pm="$RETIRED_MARK" ;;
+		"$INSIDE_PAUSED_MARK "*) pm="$INSIDE_PAUSED_MARK" ;;
+		"$INSIDE_RETIRED_MARK "*) pm="$INSIDE_RETIRED_MARK" ;;
+		esac
+		source_local_refused "$(pasted_row "$f" "$pm")" "this is a row step 1 marked $pm: $(held_said "$pm")" "$HELD_NEXT"
 		;;
 	esac
 	case "$f" in

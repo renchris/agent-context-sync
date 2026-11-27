@@ -4671,10 +4671,13 @@ _LIST_MARKS = (
     "[contains a synced folder] ",
     "[paused] ",
     "[retired] ",
+    "[inside a paused folder] ",
+    "[inside a retired folder] ",
 )
 """install.sh's ``ESCAPED_MARK``, ``TWIN_MARK``, ``ESCAPED_KEPT_MARK``, ``ESCAPED_MARK_OLD``,
 ``ESCAPED_KEPT_MARK_OLD``, ``SYNCED_MARK``, ``INSIDE_MARK``, ``CONTAINS_MARK``, ``PAUSED_MARK`` and
-``RETIRED_MARK`` (B13 round 47 C3332), each with the space the
+``RETIRED_MARK`` (B13 round 47 C3332), ``INSIDE_PAUSED_MARK`` and ``INSIDE_RETIRED_MARK`` (B13 round 48
+ruling 220, C3506: a folder inside a held one), each with the space the
 folder list puts after it (a test holds them equal to install.sh's). A row opens with at most one of the
 first five, then may carry one of the others, so they are stripped in this order (B13 round 36 C1001; round
 37 ruling 121, lane RB). The two ``_OLD`` marks are the escaped marks' words before B13 round 38 C1447

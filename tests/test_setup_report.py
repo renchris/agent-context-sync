@@ -26282,7 +26282,8 @@ def test_both_readers_of_the_folder_list_strip_every_mark_install_sh_prints() ->
     strip it first and then one of the others, and an escaped synced row registers its whole name. B13 round
     37 ruling 121 (lane RB): TWIN_MARK and ESCAPED_KEPT_MARK open a row in the same slot, so both readers take
     all three first marks, the shell's as one alternation, before the others. B13 round 47 C3332: the held
-    marks [paused] and [retired] too, in the slot [synced] takes."""
+    marks [paused] and [retired] too, in the slot [synced] takes. B13 round 48 C3506: and the marks of a
+    folder inside a held one, [inside a paused folder] and [inside a retired folder]."""
     script = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
     firsts = [
         re.findall(rf'^{name}="(\[[^"]+\])"$', script, flags=re.M)[0]
@@ -26293,8 +26294,12 @@ def test_both_readers_of_the_folder_list_strip_every_mark_install_sh_prints() ->
         re.findall(rf'^{name}_OLD="(\[[^"]+\])"$', script, flags=re.M)[0]
         for name in ("ESCAPED_MARK", "ESCAPED_KEPT_MARK")
     ]
-    marks = re.findall(r'^(?:SYNCED|INSIDE|CONTAINS|PAUSED|RETIRED)_MARK="(\[[^"]+\])"', script, flags=re.M)
-    assert len(marks) == 5 and len(re.findall(r'^[A-Z_]+_MARK="', script, flags=re.M)) == 8, marks
+    marks = re.findall(
+        r'^(?:SYNCED|INSIDE|CONTAINS|PAUSED|RETIRED|INSIDE_PAUSED|INSIDE_RETIRED)_MARK="(\[[^"]+\])"',
+        script,
+        flags=re.M,
+    )
+    assert len(marks) == 7 and len(re.findall(r'^[A-Z_]+_MARK="', script, flags=re.M)) == 10, marks
     assert setup_report._LIST_MARKS[:3] == tuple(f"{m} " for m in firsts)
     assert setup_report._LIST_MARKS[3:5] == tuple(f"{m} " for m in olds)
     assert sorted(setup_report._LIST_MARKS[5:]) == sorted(f"{m} " for m in marks)
