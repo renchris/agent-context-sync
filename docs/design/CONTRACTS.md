@@ -48771,7 +48771,13 @@ change. Tests: `tests/test_cycle.py::test_a_mirror_page_deleted_by_hand_is_put_b
 `::test_a_page_the_run_renames_is_still_deleted_when_it_was_also_deleted_by_hand`,
 `::test_a_page_recovery_removes_is_counted_in_the_subject_it_is_committed_under`,
 `tests/test_gitops.py::test_commit_cycle_refuses_a_staged_mirror_deletion_no_change_accounts_for`,
-`::test_deleted_since_head_lists_worktree_and_staged_deletions`.
+`::test_deleted_since_head_lists_worktree_and_staged_deletions`. Only a delete's page and a rename's old path (of this
+run's changes and the failed runs' rows) count as a change's removal, never an add's or a modify's page, whose
+`.files` folder alone stays accounted while the page is there, and the commit guard reads the same set, so a page a
+blocked run rewrote and the person deleted is put back, test
+`::test_a_page_a_blocked_run_changed_and_the_person_deleted_is_put_back_c3534`. The extra `DELETED` count leaves out
+every path `_commit_view`'s netted changes name, so a blocked rename a→b this run's edit of b continues reads `1r`, not
+`1r 1d`, test `::test_a_blocked_rename_this_run_continues_counts_its_old_path_once_c3534`.
 
 **Status FAILs while the land gate's block of the last sync stands** (C3531 with C3457; ruling 223; amends
 §16.292 C3227). After a sync the land gate blocked, `agentsync status` printed the loop's own step (a baseline
@@ -48809,7 +48815,10 @@ this run changed too with this run's changes against HEAD (`Cycle._commit_view`)
 CHANGELOG staying per run (C3443); `_net_changes_runs` keeps beside each net change every run it passed through, and
 `_carried_runs` is their union, so a chain names its middle run (C3445). Tests:
 `test_a_page_a_blocked_run_added_and_this_run_edited_is_an_add_in_the_subject_c3443` and
-`test_a_net_change_names_every_run_it_passed_through_c3445`.
+`test_a_net_change_names_every_run_it_passed_through_c3445`. A net carried change HEAD already holds (an add whose page
+HEAD has, a delete whose page it lacks, a rename it has made) is dropped before the carry and the netting, so a stale
+add left by a run killed after its commit landed never reads `1a` over an `M`, test
+`test_a_blocked_add_a_landed_crashed_commit_held_is_not_netted_again_c3443`.
 
 **Carried runs are said by cause** (C3444; ruling 222; amends §16.292 C3228). Every failed run's carried pages read
 `from blocked runs`, though a run whose cycle raised after the gate passed was never blocked. A run the land gate
@@ -48818,7 +48827,12 @@ blocked stores `land_gate_blocked: 1` in its run counts (no column, so an older 
 `carried from failed run 6:`) and the run line (`... from blocked runs 4-5 and 1 mirror page from failed run 6 land
 in this commit`) say each cause apart; `CycleReport.carried_failed` and `carried_failed_runs` hold the failed ones.
 Tests: `test_a_run_that_failed_after_the_gate_is_carried_as_failed_never_as_blocked_c3444` and
-`test_the_carried_notes_say_each_cause_apart_c3444`.
+`test_the_carried_notes_say_each_cause_apart_c3444`. Each run is named under its own cause beside the pages it touched:
+a cause's body line counts, per source, the pages that passed through its runs (a page a blocked run changed and a
+failed run changed again is in both lines), and the run line counts each page once (`2 mirror pages from blocked runs
+4, 6 and failed run 5 land in this commit`), tests
+`test_every_run_a_carried_page_passed_through_is_named_under_its_own_cause_c3444` and
+`test_a_blocked_run_whose_only_page_a_failed_run_changed_again_is_still_named_c3444`.
 
 **A sync makes a page chmod 644 by hand owner-only** (C3536; ruling 224; amends §16.292 C3226). `Publisher._write_bytes`
 cleared group and other bits only on a page a sync republished, so a page made 644 by hand stayed 644 through every
