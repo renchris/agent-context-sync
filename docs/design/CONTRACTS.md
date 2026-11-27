@@ -48728,6 +48728,51 @@ a fix's command has argv `["/bin/sh", "-c", <command>]`, since `(umask 077 && ..
 follows as a second entry; a step whose only command is the sync is `_step`'s one entry. The text NEXT is unchanged
 byte for byte. Test: `test_cli_json.py::test_a_blocked_sync_json_gives_the_gate_step_with_a_shell_argv_then_the_sync_c3410`.
 
+**C3534: a mirror page deleted by hand is put back from HEAD (ruling 224).** A page moved away by hand while its source
+was unchanged used to be committed as a deletion under `sync: 0a 0m 0r 0d`, and it was never written back, because an
+unchanged row is settled without a fetch. Just before the land gate, `Cycle._put_back_deleted_pages` reads
+`gitops.deleted_since_head` (`D` in either status column under `mirror/`). It leaves alone every path the run accounts
+for (`_said_removals`): the paths and old paths of this run's changes and of the blocked runs' rows, removed deletion
+notices, a new start's orphans, swept kept pages, recover's orphans, and the committed pages a redaction moved off a
+credential-bearing name, each with its `.files` sidecar folder. Every other file, when held by a page an outputs row
+owns (any status) or a kept page, is put back by `gitops.restore_from_head`, made 600, said in a WARNING per file
+(`<sid>: <rel> was deleted by hand; restored from the last commit (to drop a page, exclude its source file)`) and noted
+in the commit body per source (`<sid>: N mirror page(s) deleted by hand was/were restored; to drop a page, exclude its
+source file`). A deleted file that no row owns is an orphan: it is committed as deleted. `gitops.commit_cycle(...,
+accounted=)` raises PublishError, committing nothing, on a staged `mirror/` deletion outside the accounted paths
+(`gitops.covered`). The subject and body count a `DELETED` for each deleted page that no change names and that is no
+deletion notice, so `0d` no longer sits over a page `D` that no change names. The CHANGELOG and the run line stay per
+change. Tests: `tests/test_cycle.py::test_a_mirror_page_deleted_by_hand_is_put_back_from_head_with_a_warning_and_a_body_note`,
+`::test_a_mirror_page_deleted_by_hand_alone_is_put_back_and_nothing_is_committed`,
+`::test_a_page_the_run_renames_is_still_deleted_when_it_was_also_deleted_by_hand`,
+`::test_a_page_recovery_removes_is_counted_in_the_subject_it_is_committed_under`,
+`tests/test_gitops.py::test_commit_cycle_refuses_a_staged_mirror_deletion_no_change_accounts_for`,
+`::test_deleted_since_head_lists_worktree_and_staged_deletions`.
+
+**Status FAILs while the land gate's block of the last sync stands** (C3531 with C3457; ruling 223; amends
+§16.292 C3227). After a sync the land gate blocked, `agentsync status` printed the loop's own step (a baseline
+question) and exited 0, so it and the setup report's Loop line hid the block, and the prompt's "status prints the
+same NEXT: line without syncing, unless one of its checks FAILs" was false. The cycle now keeps the block in
+manifest meta `land_gate_block` (`cycle.LAND_GATE_BLOCK_META`), one JSON object `{"run", "count", "code", "path",
+"message"}` of the blocked run, its blocking count and its first blocking finding (`cycle.LandGateBlock`), written
+where the gate blocks, after `discard_pending`; the same decision point deletes it (`Manifest.delete_meta`) when
+the gate ran and passed or was skipped on a clean tree. A cycle that raises before the gate leaves it as it is,
+and a cycle failure (a `CYCLE` finding, `_gate_blocked` False) never writes it. While it stands doctor's and
+status's new check `last_run.land_gate` (`doctor._check_last_run_land_gate`, in `_STATE_FOLDER_GROUPS`, read
+through a read-only manifest open under `manifest.read_only_reads`) is an ERROR FAIL, detail `run <N>'s commit was
+blocked by the land gate (<count> blocking finding(s)); no sync has passed the gate since`
+(`doctor.land_gate_held_detail`), fix `loop.last_land_gate_step`: `land_gate_step`'s words, factored into
+`loop._land_gate_words`, with `the last sync's commit` (its new keyword `whose`, default `this sync's`, so every
+current output is byte for byte the same) and `where` `under ## Lint findings in ~/<docs>/_sync/STATE.md`, since
+status prints no BLOCKING lines. With no block or no manifest it reads `[ok] last_run.land_gate — no sync's commit
+is held by the land gate` (`doctor.LAND_GATE_CLEAR`). `cli._blocks_install` returns False for it, since its fix
+ends in a sync; status exits 1 and its NEXT is the usual FAIL-led `the last_run.land_gate check failed: do what the
+fix on its [FAIL] line below says`. Tests: `test_status_after_a_sync_the_land_gate_blocked_fails_with_the_syncs_step_c3531`
+(a mode-000 page blocks a sync; status exits 1 with one [FAIL] whose fix is the sync's NEXT but for the two
+clauses, not install-blocking; after the chmod a sync commits and status is [ok] on it and exits as before) and
+`test_a_sync_that_fails_after_the_land_gate_passed_never_says_the_gate_blocked_it_c3227` (now also: no block kept,
+status [ok] on the check).
+
 ### 16.298 Round 48: the converters: every text part of a message reaches its page with no control byte left (eml's emitter 1.1.5), and text.py's sentences move with their §15 copies (2026-11-27, wave B13 round 48 lane E)
 
 Round 48's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 48"; specs `round48/items/C<n>.md`, the

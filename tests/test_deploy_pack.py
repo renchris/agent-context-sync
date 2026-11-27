@@ -9942,6 +9942,11 @@ _ROUND_48_D_PARAGRAPH_AMENDS = (
 )
 """Round 48 lane D's dated lines at paragraphs that name no item: C3431's at §16.294's rulings paragraph, lane
 E's round 47 range running to 5262647cd (ruling 230)."""
+_ROUND_48_B_PARAGRAPH_AMENDS = (
+    ("15", "Amended 2026-11-27, §16.297 C3534: `commit_cycle` takes a keyword `accounted`", "§16.297 C3534"),
+)
+"""Round 48 lane B's dated lines no claim holds: C3534's in §15's `agentsync.gitops` reference, commit_cycle's
+``accounted`` refusal of a staged mirror deletion no change accounts for (ruling 224)."""
 _ROUND_45_RB_PARAGRAPH_AMENDS = (
     (
         "16.116",
@@ -10237,6 +10242,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_47_RB_PARAGRAPH_AMENDS,
         *_ROUND_47_B_PARAGRAPH_AMENDS,
         *_ROUND_48_D_PARAGRAPH_AMENDS,
+        *_ROUND_48_B_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")
