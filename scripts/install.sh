@@ -6137,7 +6137,7 @@ typed_note_cut() {
 		TYPED_PAIRS="${1:-}" TYPED_CFG="${2:-}" TYPED_LISTED="${3:-}" TYPED_ALLCFG="${4:-}" CUT_SEP="$CUT_SEP" TYPED_PROVIDER="$CUT_HEADS_PROVIDER" \
 		TYPED_FIRST="$CUT_HEADS_FIRST_UNKNOWN" TYPED_CWDS="$CUT_HEADS_CWD" TYPED_UNDER="$CUT_HEADS_UNDER_CWD" \
 		TYPED_CWDNAME="${CUT_HEADS_CWD_NAME:-}" TYPED_CWDUSAGE="${CUT_CWD_USAGE:-}" TYPED_CONFIG="${CUT_HEADS_CONFIG:-}" \
-		TYPED_CFGDEF="${CUT_CONFIG_DEFAULT:-}" TYPED_HEADS="$CUT_REFUSED_HEADS" \
+		TYPED_CFGDEF="${CUT_CONFIG_DEFAULT:-}" TYPED_HEADS="$CUT_REFUSED_HEADS" TYPED_SLKEPT="${CUT_SOURCE_LOCAL_KEPT:-}" \
 		FREE_HEAD="$CUT_FREE_HEAD" FREE_END="$CUT_FREE_END" FREE_TRAIL="$CUT_FREE_TRAIL" \
 		FREE_CUT_TRAIL="${CUT_FREE_CUT_TRAIL:-}" FREE_STOP="$CUT_FREE_PART_STOP" FREE_PATH="$CUT_FREE_PATH_START" \
 		FREE_APPS="$CUT_APPS" FREE_KEPT="$CUT_PROVIDER_KEPT" \
@@ -6174,6 +6174,11 @@ typed_note_cut() {
 		nhn = split(ENVIRON["TYPED_CWDNAME"], hn, "|"); nus = split(ENVIRON["TYPED_CWDUSAGE"], us, "|")
 		nhg = split(ENVIRON["TYPED_CONFIG"], hg, "|"); cfgdef = ENVIRON["TYPED_CFGDEF"]
 		nh = split(ENVIRON["TYPED_HEADS"], head, "|")
+		# B13 round 48 ruling 221 (C3434): install.sh\047s own --source-local phrases, the block\047s
+		# CUT_SOURCE_LOCAL_KEPT rows (report_cuts.SOURCE_LOCAL_KEPT), through ENVIRON, an empty row skipped (BSD
+		# awk\047s index of an empty string is 1)
+		nsk = 0
+		n = split(ENVIRON["TYPED_SLKEPT"], w, "|"); for (i = 1; i <= n; i++) if (w[i] != "") sk[++nsk] = w[i]
 		freeinit() # the free-text pass\047s inputs, FREECUT_AWK\047s (B13 round 43 ruling 160, C2498)
 		dcwd = ""
 		n = split(ENVIRON["TYPED_FIXED"], w, "|"); for (i = 1; i <= n; i++) fixed[w[i]] = 1
@@ -6247,6 +6252,16 @@ typed_note_cut() {
 				pre = substr(l, 1, h - 1); rest = substr(l, b)
 				if ((!index(pre, "\047") && !index(pre, "\"")) || rest ~ /^(\047|"|[$]\047)/ ||
 					rest ~ /^([^ \t\n\r\f\013\\\047"]|\\[^ \t])*\\[ \t]/) { h = b; continue }
+				# a kept phrase (one --source-local per folder) keeps the one-word read, as
+				# setup_report._quoted_value_end keeps it, only where the phrase ends: the end, a blank, a
+				# semicolon, a comma or a dot, so a held clause after it stays and a path after it is still cut (C3434)
+				if (wh[k] == "--source-local ") {
+					for (j = 1; j <= nsk; j++) {
+						c = substr(rest, length(sk[j]) + 1, 1)
+						if (substr(rest, 1, length(sk[j])) == sk[j] && (c == "" || c == " " || c == ";" || c == "," || c == ".")) break
+					}
+					if (j <= nsk) { h = b; continue }
+				}
 				e = n + 1
 				for (j = 1; j <= 2; j++) {
 					q = (j == 1) ? "\047" : "\""

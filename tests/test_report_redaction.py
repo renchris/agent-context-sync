@@ -4608,6 +4608,34 @@ def test_both_reports_keep_a_tilde_quantity_word_c3406(
 
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+def test_both_reports_keep_install_shs_own_source_local_phrase_and_its_held_clause_c3434(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+) -> None:
+    """B13 round 48 ruling 221 (C3434): typed_note_cut never read CUT_SOURCE_LOCAL_KEPT, so the shell cut
+    `(one --source-local per folder); not live: ... at <a path>` from a quoted NEXT to `(one --source-local
+    <path>`, where setup_report._quoted_heads_cut keeps install.sh's own phrase and the held clause after it.
+    Both keep a kept phrase only where it ends (a blank, `;`, `,`, `.` or the end), so `per
+    folder)/Wombat Ledger` and `per diem/Wombat` are still cut: the same rows in both reports, no Wombat."""
+    said = [
+        "NEXT: run install.sh --source-local '<folder>' (one --source-local per folder); not live: juniper"
+        " (paused) at ~/Library/CloudStorage/OneDrive-Contoso/Juniper Notes",
+        'NEXT: run install.sh --source-local "<folder>" (one --source-local per folder), then ~/x/y.',
+        "run install.sh --source-local '<folder>' (one --source-local per folder)/Wombat Ledger x",
+        'run install.sh --source-local "<folder>" then --source-local per diem/Wombat Quarry',
+    ]
+    texts: list[str] = []
+    shell, python, shell_private, python_private = _both_reports(
+        env, ["Juniper Notes"], said, locale, texts_out=texts
+    )
+    assert all("(one --source-local per folder)" in ln for ln in python[:2]), python
+    assert "; not live: juniper (paused) at " in python[0], python
+    assert shell == python and shell_private == python_private, (shell, python)
+    for label, text in zip(("shell", "agentsync"), texts, strict=True):
+        assert not [ln for ln in text.splitlines() if "Wombat" in ln], label
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
 def test_both_reports_keep_the_single_quoted_folder_placeholder_c3544(
     env: dict[str, str],  # noqa: F811
     locale: str,
