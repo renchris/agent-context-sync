@@ -4560,7 +4560,6 @@ def test_a_tilde_quantity_word_is_no_login_c3406(said: str, want: str) -> None:
 _C3406_SHELL = pytest.param(
     True,
     id="shell",
-    marks=pytest.mark.xfail(strict=True, reason="lane RB's C3406 shell half"),
 )
 
 
@@ -4746,7 +4745,6 @@ def test_a_path_under_a_refused_account_is_cut_whole_c3402(raw: str, rows: list[
 _C3402_SHELL = pytest.param(
     True,
     id="shell",
-    marks=pytest.mark.xfail(strict=True, reason="lane RB's C3402 shell half"),
 )
 
 

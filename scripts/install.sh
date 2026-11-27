@@ -4642,13 +4642,21 @@ redaction_pairs() {
 		# C3247: a head of any length, anchored on its ~ (add_forms, no 3-character floor), and the name alone
 		# from 3 characters, or of 2 as written past the report words and the two-letter word list, as
 		# _register_refused registers them; one character alone never
+		# B13 round 48 ruling 217 (C3402; privacy): the head and the name are no pairs, which ran before
+		# foreign_home_cut and turned `/Users/name/...` into `/Users/<user>/...` (skipped as this account's) and
+		# `~name/Wombat Ledger/x` into `~<user> Ledger/x`: each is a line foreign_home_cut reads (flag L, a login
+		# read after `~`, whatever its characters, so `~name/...` is cut whole and the bare head only at a path
+		# end; flag W, the name alone cut as a word after its cuts), in NFC and NFD as add_forms gives them
 		py_has_space "${head#\~}" || {
-			add_forms "$head" "~<user>" c
 			x="${head#\~}"
+			for v in "$x" "$(printf '%s' "$x" | LC_ALL=C /usr/bin/iconv -f UTF-8 -t UTF-8-MAC 2>/dev/null)" \
+				"$(printf '%s' "$x" | LC_ALL=C /usr/bin/iconv -f UTF-8-MAC -t UTF-8 2>/dev/null)"; do
+				[ -z "$v" ] || printf '%s\t~<user>\tL\n' "$v"
+			done
 			if [ "${#x}" -ge 3 ]; then
-				report_word "$(recase lower "$x")" || add_pair "$x" "<user>" w
+				report_word "$(recase lower "$x")" || printf '%s\t<user>\tW\n' "$x"
 			elif [ "${#x}" -eq 2 ] && ! report_word "$(recase lower "$x")" && ! two_letter_word "$(recase lower "$x")"; then
-				add_forms "$x" "<user>" w
+				printf '%s\t<user>\tW\n' "$x"
 			fi
 		}
 		# under Library/CloudStorage/<entry>, the folders after the entry: CloudStorage itself is no folder
@@ -5455,13 +5463,18 @@ redact_stream() {
 	# setup_report._PURGE_ID_RE writes it: the id runs to a blank, backtick or quote, and one already a
 	# placeholder stays (B13 round 30 ruling 35, lane RA's report half). The pairs are read once, before the
 	# stream, and typed_note_cut takes them with the configured folders' CloudStorage parts (B13 round 39 C1601).
-	local pairs="" cfg raw allcfg listed
+	local pairs="" cfg raw allcfg listed refused_logins="" refused_words=""
 	# read whole first, so a crash part way through is a failure, never a shorter list (B13 round 40 C1836)
 	raw="$(redaction_pairs </dev/null)" || {
 		redact_failed
 		cat >/dev/null
 		return 1
 	}
+	# a refused ~name value's login and name (flags L and W, C3402) go to foreign_home_cut, never to the pairs
+	refused_logins="$(printf '%s\n' "$raw" | LC_ALL=C awk -F '\t' '$3 == "L" { print length($1) "\t" $1 }' |
+		LC_ALL=C sort -t "$(printf '\t')" -k1,1nr -k2,2 -u | LC_ALL=C cut -f 2-)" || refused_logins=""
+	refused_words="$(printf '%s\n' "$raw" | LC_ALL=C awk -F '\t' '$3 == "W" { print $1 }' | LC_ALL=C sort -u)" || refused_words=""
+	raw="$(printf '%s\n' "$raw" | LC_ALL=C awk -F '\t' '$3 != "L" && $3 != "W"')" || raw=""
 	[ -z "$raw" ] || pairs="$(printf '%s\n' "$raw" | CUT_SEP="$CUT_SEP" CUT_SEP_ERE="${CUT_SEP_ERE:-}" LC_ALL=C awk -F '\t' "$SEP_RUN_AWK"'{ k = $1; if ($3 == "f" || $3 == "j" || $3 == "o") gsub(sepere(), "", k); print length(k) "\t" $0 }' |
 		LC_ALL=C sort -t "$(printf '\t')" -k1,1nr -s | LC_ALL=C cut -f 2-)"
 	cfg="$({ [ -f "$CONFIG" ] && config_path_values; } </dev/null 2>/dev/null | LC_ALL=C sed -n 's#^.*/Library/CloudStorage/[^/]*/##p')" || cfg=""
@@ -5834,7 +5847,8 @@ redact_stream() {
 		print line
 	}
 	END { if (hn && ENVIRON["HOLD_WORD_FILE"] != "") print hn > ENVIRON["HOLD_WORD_FILE"] } # the words cut, each once' |
-		foreign_home_cut | typed_note_cut "$pairs" "$cfg" "$listed" "$allcfg"
+		REFUSED_LOGINS="$refused_logins" REFUSED_WORDS="$refused_words" foreign_home_cut |
+		typed_note_cut "$pairs" "$cfg" "$listed" "$allcfg"
 }
 # A path in another home (a moved home's install.log source= or args=, a --source in another account's folder) is
 # cut whole to /Users/<path>, the form a --source-local argument already gets, uncounted, as setup_report.Redactor
@@ -5867,7 +5881,7 @@ redact_stream() {
 # followed being a component other than `<path>` already; a current render has neither, so it comes back byte for
 # byte (C1210, C1237).
 foreign_home_cut() {
-	LC_ALL=C RECUT="${1:-}" awk '
+	LC_ALL=C RECUT="${1:-}" QUANTITY="${CUT_TILDE_QUANTITY_WORDS:-}" awk '
 	function upto(s, k, slash,    ch) { # the first byte at or after k that ends the path (slash: "/" ends it too)
 		while (k <= length(s)) {
 			ch = substr(s, k, 1)
@@ -5941,13 +5955,41 @@ foreign_home_cut() {
 	# backtick with a `/` and a byte after it, to the same mark\047s next one; else with a `/` and a component, its
 	# parts and the words after a blank as rest() reads a /Users/ path\047s, `~<user>/<path>`; else, at a `/`, a
 	# STOP byte or the end, `~<user>` alone. ~/, ~+ and ~- hold no login.
-	function tilde(s,    out, i, p, r, n, k, b, q, e) {
+	function quantity(w) { # one of report_cuts.TILDE_QUANTITY_WORDS in any case, a single trailing dot allowed
+		w = tolower(w)
+		if (index(QW, "|" w "|")) return 1
+		return (w ~ /[^.]\.$/ && index(QW, "|" substr(w, 1, length(w) - 1) "|"))
+	}
+	# B13 round 48 ruling 217 (C3402): a refused value\047s name alone, a word, after every other cut: no
+	# letter, digit, underscore or byte outside ASCII on either side, as the agentsync report\047s user value is cut
+	function words(s,    j, out, x, w, a, z) {
+		for (j = 1; j <= nrw; j++) {
+			w = RW[j]; out = ""
+			while ((x = index(s, w)) > 0) {
+				a = (x > 1) ? substr(s, x - 1, 1) : substr(out, length(out), 1)
+				z = substr(s, x + length(w), 1)
+				if (a ~ /[A-Za-z0-9_]/ || a ~ "[\200-\377]" || z ~ /[A-Za-z0-9_]/ || z ~ "[\200-\377]") { out = out substr(s, 1, x); s = substr(s, x + 1); continue }
+				out = out substr(s, 1, x - 1) "<user>"; ncut++; s = substr(s, x + length(w))
+			}
+			s = out s
+		}
+		return s
+	}
+	function tilde(s,    out, i, p, r, n, k, b, q, e, j, c, named) {
 		out = ""
 		while ((i = index(s, "~")) > 0) {
 			p = (i > 1) ? substr(s, i - 1, 1) : substr(out, length(out), 1)
 			r = substr(s, i + 1); n = 0
 			if (match(r, /^[A-Za-z_][A-Za-z0-9._-]*/)) n = RLENGTH
 			else if (match(r, /^<[a-z]+(-[0-9]+)?>/) && substr(r, 1, RLENGTH) != "<user>" && substr(r, 1, RLENGTH) != "<path>") n = RLENGTH
+			# B13 round 48 ruling 217 (C3402): a refused value\047s login, whatever its characters, longest first,
+			# before a slash, a STOP byte or the end, as setup_report reads add_tilde_login\047s names; one as long as the
+			# word already read is named too, so a refused ~a is never spared as the quantity word a
+			named = 0
+			for (j = 1; j <= nrl; j++) {
+				c = substr(r, length(RL[j]) + 1, 1)
+				if (length(RL[j]) >= n && substr(r, 1, length(RL[j])) == RL[j] && (c == "" || c == "/" || index(STOP, c))) { n = length(RL[j]); named = 1; break }
+			}
 			k = i + 1 + n; b = substr(s, k, 1)
 			if (n && p != "" && index("\"\047`", p) && b == "/" && (q = qend(s, k + 1, p)) > k + 1) {
 				out = out substr(s, 1, i - 1) "~<user>/<path>"; ncut++; s = substr(s, q); continue
@@ -5956,13 +5998,21 @@ foreign_home_cut() {
 				if (b == "/" && (e = upto(s, k + 1, 1)) > k + 1) {
 					out = out substr(s, 1, i - 1) "~<user>/<path>"; ncut++; s = substr(s, rest(s, e, substr(s, k + 1, e - k - 1))); continue
 				}
+				# B13 round 48 ruling 217 (C3406): a quantity word (took ~twenty seconds, ~ten.) is no login
+				# at a path end, as setup_report._other_login_re spares one; a slash after it is cut as ever
+				if (b != "/" && !named && quantity(substr(r, 1, n))) { out = out substr(s, 1, i); s = substr(s, i + 1); continue }
 				if (b == "" || b == "/" || index(STOP, b)) { out = out substr(s, 1, i - 1) "~<user>"; ncut++; s = substr(s, k); continue }
 			}
 			out = out substr(s, 1, i); s = substr(s, i + 1)
 		}
 		return out s
 	}
-	BEGIN { STOP = " \t\r\f\v\"\047`()[]{},;" }
+	BEGIN {
+		STOP = " \t\r\f\v\"\047`()[]{},;"
+		QW = "|" tolower(ENVIRON["QUANTITY"]) "|"
+		nrl = (ENVIRON["REFUSED_LOGINS"] == "") ? 0 : split(ENVIRON["REFUSED_LOGINS"], RL, "\n")
+		nrw = (ENVIRON["REFUSED_WORDS"] == "") ? 0 : split(ENVIRON["REFUSED_WORDS"], RW, "\n")
+	}
 	{
 		recut = (ENVIRON["RECUT"] == "recut")
 		s = recut ? older($0) : $0; out = ""; from = 1
@@ -5982,7 +6032,7 @@ foreign_home_cut() {
 			if (pre != "" && index("\"\047`", pre) && (q = qend(s, h + 1, pre)) > h + 1) { s = substr(s, q); from = 1; continue }
 			s = substr(s, rest(s, k, comp)); from = 1
 		}
-		print tilde(out s)
+		print words(tilde(out s))
 	}
 	# with CUT_COUNT set, how many cuts this pass made, for report_recut\047s note (B13 round 38 C1406)
 	END { if (ENVIRON["CUT_COUNT"] != "") printf "%d\n", ncut > ENVIRON["CUT_COUNT"] }'
