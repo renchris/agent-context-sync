@@ -10483,6 +10483,15 @@ _ROUND_48_B_PARAGRAPH_AMENDS = (
 ``accounted`` refusal of a staged mirror deletion no change accounts for (ruling 224); C3536's two in §16.29's
 permission paragraphs, ``mirror/`` walked now; C3514's in §16.39's incomplete-inbox paragraph, the unreadable
 root's own note (ruling 225)."""
+_ROUND_48_RA_PARAGRAPH_AMENDS = (
+    ("16.14", "def read_friction(path: Path) -> Friction | None: ...", "§16.295 C3404"),
+    ("16.14", "def compute_outcome(attempt: Attempt | None, runs: Sequence[InstallRun], *,", "§16.295 C3403"),
+    ("16.290", "a run that named an answer is scored as before", "§16.295 C3508"),
+)
+"""Round 48 lane RA's dated lines no one claim holds alone: C3404's at §16.14's read_friction signature (a
+file that is not a regular file raises NotARegularFileError), C3403's at its compute_outcome signature
+(``not_read``), and C3508's under §16.290's C3209 sentence (any last run without ``--no-folder``) (B13
+round 48 rulings 228 and 227)."""
 _ROUND_45_RB_PARAGRAPH_AMENDS = (
     (
         "16.116",
@@ -10779,6 +10788,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_47_B_PARAGRAPH_AMENDS,
         *_ROUND_48_D_PARAGRAPH_AMENDS,
         *_ROUND_48_B_PARAGRAPH_AMENDS,
+        *_ROUND_48_RA_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")

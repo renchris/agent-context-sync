@@ -47826,6 +47826,9 @@ so is an earlier attempt. Tests: `tests/test_setup_report.py`
 Amended 2026-11-27, §16.295 C3497: the C3202 branch runs above the doctor-FAIL guard, a FAIL-led or sign-in NEXT
 kept; status's skill-missing NEXT is replaced even with a doctor [FAIL], since status puts the skill ahead of the
 FAIL fixes (ruling 227); the guard's never-with-a-FAIL rule stays for the completed-none and bare-run branches.
+Amended 2026-11-27, §16.295 C3508: the no-live-folder score takes any last run without `--no-folder` that ended 0
+and completed, a `--source-local` run over a paused or retired folder included, not only a bare one; the Summary and
+the issue link pass the same `not_live` as the attempt line (C3437 with C3496 and C3512; ruling 227).
 
 **install.sh's `per folder)` is kept whole after `--source-local`** (C3203; ruling 214; makes worse True for
 skipping `per` or cutting only path-shaped words; lane RB's recut mirrors it, §16.291). The quoted-head span rule
@@ -48848,6 +48851,52 @@ build_report to the report's own resolver, `_env_log(FRICTION_ENV, FRICTION_DEFA
 refused and not read. Its signature above is a dated SUPERSEDED comment, and build_report's docstring names the
 resolver. Lane B's C3468 makes `_env_log` delegate to `paths.env_log_path` (§16.297). Test:
 `test_the_friction_log_has_one_resolver_and_no_dead_default_c3408`.
+
+**The Summary, the issue link and the attempt line score a no-live-folder run alike** (C3437 with C3496 and C3512;
+ruling 227, completing ruling 213; `agentsync.setup_report`). C3209 gave `compute_outcome` the latest attempt's
+`not_live` only in the friction section's attempt line, so the Summary and the issue link still said fully one
+command for a last bare run that ended 0 over a config with no live folder but the inbox. One helper,
+`_outcome_not_live`, gives `not_live` to `_attempt_outcome`, `_summary`'s `compute_outcome` call and `_issue_link`'s
+fallback, and the Items list names `NO_LIVE_FOLDER_WHY` with the held folders when it is among the outcome's reasons,
+never `none` beside `worked with help`: `install.sh ended 0 with no folder synced (its NEXT: sends the agent back to
+the folder question); not live: <id> (paused): setting a folder to live is the person's own edit of sources.toml,
+never the agent's`. Tests: `test_setup_report.py`'s
+`test_the_summary_attempt_line_and_issue_link_score_a_no_live_folder_run_alike_c3437_c3496_c3512` (paused and retired,
+with and without a step 1 deviation) and `test_the_issue_links_fallback_scores_the_latest_attempt_as_the_attempt_line_does_c3437`.
+
+**Any last run without `--no-folder` takes the no-live-folder score** (C3508; ruling 227; `agentsync.setup_report`).
+A `--source-local` run over a paused-only config that ended 0 on `no folder is synced yet` scored fully one command:
+the branch read `_bare_run(last)`. It reads `not last.chose_no_folder`, and `_bare_run`, with no other reader, goes.
+Tests: `test_any_last_run_without_no_folder_that_ended_0_with_no_live_folder_worked_with_help_c3508` (a completed and a
+failed none, a bare run and two `--source-local` runs, each with held, empty and unread `not_live`) and
+`test_a_source_local_last_run_over_a_paused_folder_reads_worked_with_help_twice_c3508`.
+
+**Step 3's question is credited from the run's own record first** (C3438 with C3467 and C3503; ruling 227;
+`agentsync.install_log`, `agentsync.setup_report`). The expected-turns line credited step 3's folder question to a
+run that ended on install.sh's no-folder NEXT, which sends the agent to the folder question and never to the loop.
+`InstallRun.ended_on_no_folder` is true when an end line carries `next=no-folder` (lane RB's key, §16.296; an extra
+key leaves an older reader's parse as it was), and `_loop_run` reads, in order: that key (no loop); then the config
+step's counts, when `kept` and `added` are both logged (a loop only when they add up to more than 0); then, for a run
+that carries neither, today's `not_live`, which `_reached_step_3` passes for the latest attempt's last run only, never
+today's config for every run (an earlier run that looped over a folder the person later paused keeps its question).
+Tests: `test_step_3s_question_is_credited_from_each_runs_own_record_first_c3438_c3467_c3503` (19 rows),
+`test_an_end_line_with_a_next_key_parses_as_one_without_it_c3438` and
+`test_the_expected_turns_line_drops_step_3s_question_for_a_held_only_latest_run_c3438`.
+
+**A failed none's own NEXT beats status's skill-missing NEXT even beside a doctor [FAIL]** (C3497; ruling 227;
+`agentsync.setup_report`; amends §16.290 C3202). After a `--no-folder` run that did not finish, with a doctor [FAIL],
+the Loop line kept status's `run ~/.local/bin/agentsync sync`. The C3202 branch now runs above the doctor-FAIL guard,
+so the line reads `NEXT: the --no-folder run did not finish (<cause>): its own NEXT: line says what to do; ...`; a
+FAIL-led or sign-in NEXT is kept as status gives it. Tests: `test_a_none_that_did_not_finish_says_its_own_next_says_what_to_do_c3202`
+and `test_the_loop_line_says_the_next_install_sh_printed_for_a_none_c2946`.
+
+**A completed none is never said to be waiting for the folder answer** (C3498; ruling 227; `agentsync.setup_report`).
+Step 2's report after the person's completed none warned that the attempt might still be waiting for the folder
+answer and that `--report-only` would turn it into failed at step 1. A completed none (`NO_FOLDER_CHOSEN`) now gets its
+own WARNING: `attempt N has no end line yet: the person chose no folder, so step 3 goes straight to its report; step
+3's last command `install.sh --report-only` closes the attempt and leaves the outcome as it is` (the command spelled
+as the WARNINGs beside it spell it); the waiting WARNING is unchanged. Test:
+`test_a_completed_none_is_never_said_to_be_waiting_for_the_folder_answer_c3498`.
 
 ### 16.296 Round 48: the installer: the shell halves of ruling 217, no value printed that it could not register, step 1's escapes and marks, the single-quoted placeholder, a failed sync told apart from a blocked one, and C2060 waits on the operator (2026-11-27, wave B13 round 48 lane RB)
 
