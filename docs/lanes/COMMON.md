@@ -2520,6 +2520,10 @@ a container stub on non-ZIP bytes moves when its sniffed answer changes (ff0dc90
 answer is told before the cache and never stored (49705fd02), one noun per family names both sides of a mismatch
 (98b6751a0), and xlsx's emitter moves to 1.0.7 once with no published page read again (feb72b65a) (round 47 lane E,
 CONTRACTS §16.293).
+(2026-11-27) Ruling 215's line above leaves out lane E's last round 47 commit: eml moves to 1.1.4 (msg carrying it)
+and vtt to 1.0.5, so a marked UTF-32 part misses the garbage or not-vtt answer an older decoder cached, and
+pandoc's HTML decode reads a marked UTF-16 or UTF-32 page whole, pandoc at 1.0.4, no published page read again
+(5262647cd) (round 48 C3431, CONTRACTS §16.299).
 (203) Every word install.sh writes or prints is valid UTF-8 and reads back as its path, completing ruling 193's C2944
 (lane RB; C3080 with C3089 and C3103). One helper before ALL_ARGS, q_word, gives printf %q's word and re-quotes a
 `$'..'` result under LC_ALL=C exported in a subshell; shown_arg calls it and keeps its double-quote and `!` branches.

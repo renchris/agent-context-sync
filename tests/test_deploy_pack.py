@@ -957,6 +957,15 @@ def test_ruling_202_takes_ruling_215s_dated_line_with_lane_es_shas() -> None:
     dated = lanes[lanes.index(line) : lanes.index("(203) ")]
     for sha in ("cc31a5022", "da48ab484", "e01857e32", "ff0dc9079", "49705fd02", "98b6751a0", "feb72b65a"):
         assert f"({sha})" in dated, sha
+    # B13 round 48 C3431 (ruling 230): ruling 215's line left out lane E's 5262647cd; it keeps its words and
+    # a round 48 line right after it names that commit's eml, vtt and pandoc moves
+    line48 = "(2026-11-27) Ruling 215's line above leaves out lane E's last round 47 commit:"
+    words215 = "(feb72b65a) (round 47 lane E, CONTRACTS §16.293)."
+    assert lanes.index(words215) + len(words215) + 1 == lanes.index(line48) < lanes.index("(203) ")
+    flat48 = " ".join(lanes[lanes.index(line48) : lanes.index("(203) ")].split())
+    assert "(5262647cd)" not in dated[: dated.index(line48)] and "(5262647cd)" in flat48
+    for moved in ("eml moves to 1.1.4", "vtt to 1.0.5", "pandoc at 1.0.4", "no published page read again"):
+        assert moved in flat48, moved
 
 
 def test_rulings_199_and_205_take_round_47s_dated_lines_and_the_turns_row_reads_ruling_213() -> None:
@@ -9877,6 +9886,11 @@ _ROUND_47_B_PARAGRAPH_AMENDS = (
 two WARNINGs naming the path once; C3214's under the C2813 and C3010 paragraphs, the settle-window line
 without its ``note: `` head; C3257's at §16.21's item 2, the loop line's ``inbox not a folder`` and ``?``
 (ruling 210); C3218's at §16.22's heartbeat bullet, the inbox warn's pointer at ``source.<id>.listable``."""
+_ROUND_48_D_PARAGRAPH_AMENDS = (
+    ("16.294", "**COMMON.md's rulings 199, 202, 204 and 205 take round 47's dated lines", "§16.299 C3431"),
+)
+"""Round 48 lane D's dated lines at paragraphs that name no item: C3431's at §16.294's rulings paragraph, lane
+E's round 47 range running to 5262647cd (ruling 230)."""
 _ROUND_45_RB_PARAGRAPH_AMENDS = (
     (
         "16.116",
@@ -10171,6 +10185,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_47_E_PARAGRAPH_AMENDS,
         *_ROUND_47_RB_PARAGRAPH_AMENDS,
         *_ROUND_47_B_PARAGRAPH_AMENDS,
+        *_ROUND_48_D_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")

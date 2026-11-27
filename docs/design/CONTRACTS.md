@@ -48624,6 +48624,9 @@ reached step 3's sync loop, never after a last install run that chose no folder,
 `setup_report.STEP_3_ASKS_V41`. Tests: `tests/test_deploy_pack.py::test_ruling_202_takes_ruling_215s_dated_line_with_lane_es_shas`
 `::test_rulings_199_and_205_take_round_47s_dated_lines_and_the_turns_row_reads_ruling_213` and
 `::test_ruling_204_takes_ruling_210s_dated_line_and_the_guides_take_lane_bs_phrase`.
+Amended 2026-11-27, §16.299 C3431: lane E's round 47 range runs cc31a5022 to 5262647cd, not feb72b65a, and ruling
+202 takes a second dated line, after ruling 215's, for 5262647cd's eml, vtt and pandoc moves; ruling 215's line keeps
+its words.
 
 ### 16.295 Round 48: the report: every spelling of a name cut (a refused account's other paths, the non-line-breaking blanks, the quantity words), a refused log read by nothing but the redactor, the held clause kept whole, and a route credited only from the attempt's own runs (2026-11-27, wave B13 round 48 lane RA)
 
@@ -48759,6 +48762,15 @@ scan round 45's C2929 replaced: `policy.has_banner` is True only when the banner
 lines aside. A §15 mirror moves word for word with its source, so the stub now carries the docstring's first sentence,
 `True when the banner is ``body``'s first line, leading blank lines aside.`, as §16.283's C2929 paragraph says it; no
 code moves. Test: `tests/test_deploy_pack.py::test_section_15s_policy_stub_says_has_banners_rule_as_policy_py_does_c3453`.
+
+**Ruling 202 takes a second dated line for lane E's last round 47 commit** (C3431; ruling 230; `docs/lanes/COMMON.md`,
+and §16.294's rulings paragraph). Ruling 215's line beside ruling 202, and §16.294's `cc31a5022 to feb72b65a`, stopped
+at feb72b65a, while lane E's 5262647cd landed after it: eml to 1.1.4 (msg carrying it) and vtt to 1.0.5, so a marked
+UTF-32 part misses the answer an older decoder cached, and pandoc's HTML decode reads a marked UTF-16 or UTF-32 page
+whole, pandoc at 1.0.4. Round 47's words are kept (ruling 186; a rewrite of them would make things worse, the
+verifier's): a new line right after ruling 215's names 5262647cd, and §16.294's paragraph takes a dated line naming the
+range to 5262647cd. Test: `tests/test_deploy_pack.py::test_ruling_202_takes_ruling_215s_dated_line_with_lane_es_shas`
+and the dated-line pin.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
