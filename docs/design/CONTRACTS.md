@@ -47950,6 +47950,10 @@ line reader, which only tomllib resolves. Tests: `test_install_oneshot.py`'s
 `test_install_sh_counts_sources_as_the_report_reads_them_c2934` (over both interpreters and CRLF),
 `test_both_held_folder_readers_read_every_spelling_as_the_loader_does_c3305` and
 `test_the_shell_report_counts_every_header_spelling_with_no_interpreter_c3249`.
+Amended 2026-11-27, §16.296 C3460: every spelling but two: the line reader reads one-line basic, literal and
+triple-quoted (`"""..."""`, `'''...'''`) values; a TOML escape and a triple-quoted value written across lines stay
+unread, a table holding the second flagged (src_unread), so non_inbox_sources counts it as a folder source and
+held_sources_clause names it as one it could not read, and only there do the counts differ from load_config's.
 
 **A folder name holding a non-ASCII blank is listed escaped** (C3333's installer half; ruling 209). The list's escape
 (LIST_ESC_AWK's escd and esc) and its Python twin arm_local._LIST_ESCAPED_RE mark every non-ASCII character
@@ -48822,6 +48826,15 @@ INSTALLER_COMMIT branch `this installer's checkout is at <commit>`, the `unknown
 show_version_json. Tests: `tests/test_install_oneshot.py::test_no_checkout_but_the_standard_one_is_named_by_its_path_c3470`,
 `::test_the_shell_report_says_why_a_copy_has_no_commit`,
 `tests/test_install_json.py::test_version_json_of_an_unread_checkout_escapes_its_reason`.
+
+**The line reader reads a one-line triple-quoted value and says when it cannot** (C3460; ruling 218; amends §16.291
+C3305). SOURCE_TABLES_AWK's src_q stripped one quote at each end, so with no interpreter `state = """paused"""` read
+`""paused""`, a held folder dropped out of held_sources_clause and a triple-quoted inbox kind counted as a folder. A
+value opening `"""` or `'''` and closing it on its line is read inside them; one not closed there reads empty and
+sets src_unread, which src_end clears: held_sources_clause names such a table `<id> (its state not read without the
+installed interpreter)`, never skipping it, and non_inbox_sources counts it, its cautious default. Tests:
+`tests/test_install_oneshot.py::test_the_line_reader_reads_a_one_line_triple_quoted_value_as_the_loader_does_c3460`,
+`::test_the_line_reader_says_it_could_not_read_a_value_written_across_lines_c3460`.
 
 ### 16.297 Round 48: a failed sync reads as failed, a blocked sync gives one NEXT naming its owner, carried changes counted right and a hand-deleted page put back, the kept inbox read once, and the person's fix classed alike (2026-11-27, wave B13 round 48 lane B)
 

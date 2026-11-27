@@ -28846,6 +28846,59 @@ def test_both_held_folder_readers_read_every_spelling_as_the_loader_does_c3305(
     assert cp.stdout == f"; not live: {_c3003_held(home)}{_HELD_TAIL}", cp.stdout
 
 
+_C3460_TABLES = (
+    '\n[[source]]\nid = "kestrel-plans"\nkind = """local"""\npath = "~/Kestrel Plans"\nstate = """paused"""\n'
+    "\n[[source]]\nid = '''wombat-notes'''\nkind = '''local'''\npath = '~/Wombat Notes'\n"
+    "state = '''retired'''\n"
+    'retired_reason = "made-up"\n'
+    '\n[[source]]\nid = "quokka-drop"\nkind = """inbox"""  # a comment\npath = "~/Quokka Drop"\n'
+)
+
+
+@pytest.mark.parametrize("tool_py", ["tomllib", "none"])
+def test_the_line_reader_reads_a_one_line_triple_quoted_value_as_the_loader_does_c3460(
+    tmp_path: Path, tool_py: str
+) -> None:
+    """B13 round 48 ruling 218 (C3460): src_q stripped one quote at each end, so with no interpreter a
+    triple-quoted `state` read `""paused""`, both held folders dropped out of the clause, and a triple-quoted
+    inbox kind counted a folder. A triple-quoted value closed on its line is read inside its quotes: both
+    readers name what load_config holds and count what it counts."""
+    config = tmp_path / "sources.toml"
+    config.write_text(default_config_text() + _C3460_TABLES, encoding="utf-8")
+    home = Path.home()
+    cp = _held_clause(config, home, sys.executable if tool_py == "tomllib" else "")
+    assert (cp.returncode, cp.stderr) == (0, ""), cp
+    assert cp.stdout == f"; not live: {_c3003_held(home)}{_HELD_TAIL}", cp.stdout
+    harness = "\n".join([_source_reader(), _shell_function("non_inbox_sources"), 'non_inbox_sources "$1"'])
+    count = _bash_run(
+        [BASH32, "-c", harness, "x", str(config)],
+        capture_output=True,
+        text=True,
+        env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "TOOL_PY": ""},
+    )
+    want = sum(1 for s in load_config(config).sources if s.kind is not SourceKind.INBOX)
+    assert (count.returncode, count.stdout, count.stderr) == (0, f"{want}\n", ""), count
+
+
+def test_the_line_reader_says_it_could_not_read_a_value_written_across_lines_c3460(tmp_path: Path) -> None:
+    """B13 round 48 ruling 218 (C3460): a triple-quoted value opened and not closed on its line, which
+    tomllib reads across lines, is not guessed at by the line reader: the table is flagged (src_unread), so
+    held_sources_clause names it as one it could not read where it skipped it before, and non_inbox_sources
+    counts it as a folder source, its cautious default."""
+    config = tmp_path / "sources.toml"
+    body = (
+        '\n[[source]]\nid = "kestrel-plans"\nkind = "local"\npath = "~/Kestrel Plans"\n'
+        'state = """\npaused"""\n'
+    )
+    config.write_text(default_config_text() + body, encoding="utf-8")
+    assert [s.state.value for s in load_config(config).sources] == ["paused"]
+    cp = _held_clause(config, Path.home(), "")
+    assert (cp.returncode, cp.stderr) == (0, ""), cp
+    assert cp.stdout == (
+        f"; not live: kestrel-plans (its state not read without the installed interpreter){_HELD_TAIL}"
+    ), cp.stdout
+
+
 def test_the_report_names_each_held_folder_as_install_sh_does_c3332() -> None:
     """B13 round 47 C3332 (ruling 214): held_sources_clause names each paused or retired folder by its path as
     well as its id, so the agent can match it to step 1's marked row, and the report's twin

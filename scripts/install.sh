@@ -3352,10 +3352,23 @@ SOURCE_HEADER_ERE='^[[:space:]]*\[\[[[:space:]]*(source|"source"|'"'"'source'"'"
 # src_table(kind, id, state, path); non_inbox_sources and held_sources_clause read through it alone, so the two
 # cannot read a table apart (B13 round 47 C3305 with C3323 and C3249). The path keeps its end as written, only a
 # leading blank of that set dropped, as config._path_str reads it (src_pv; lane B's C3333 rule: a folder whose name
-# ends in a blank is that folder, never its sibling without it).
+# ends in a blank is that folder, never its sibling without it). A value in triple quotes ("""...""" or
+# '''...''') closed on its line is read inside them; one opened and not closed there, which tomllib reads across
+# lines, is not guessed at: it reads empty and sets src_unread for the table, which src_table's callers read
+# (non_inbox_sources counts the table as a folder source, held_sources_clause names it as one it could not read),
+# as CONTRACTS' C3305 paragraph names that subset (B13 round 48 ruling 218, C3460: `state = """paused"""` read
+# as `""paused""`, so a held folder dropped out of the clause and `kind = """inbox"""` counted as a folder).
 # shellcheck disable=SC2016 # an awk program: awk reads its $ fields
-SOURCE_TABLES_AWK="$PY_STRIP_AWK"'function src_q(s) {
-	sub(/^[^=]*=[[:space:]]*["\047]/, "", s)
+SOURCE_TABLES_AWK="$PY_STRIP_AWK"'function src_q(s,    d, i) {
+	sub(/^[^=]*=[[:space:]]*/, "", s)
+	d = substr(s, 1, 3)
+	if (d == "\"\"\"" || d == "\047\047\047") {
+		s = substr(s, 4)
+		if ((i = index(s, d)) > 0) return substr(s, 1, i - 1)
+		src_unread = 1
+		return ""
+	}
+	sub(/^["\047]/, "", s)
 	sub(/["\047][[:space:]]*(#.*)?$/, "", s)
 	return s
 }
@@ -3368,7 +3381,7 @@ function src_pv(s,    w) {
 }
 function src_end() {
 	if (src_t) src_table(src_kind, src_id, src_state, src_path)
-	src_t = 0; src_kind = ""; src_id = ""; src_state = ""; src_path = ""
+	src_t = 0; src_kind = ""; src_id = ""; src_state = ""; src_path = ""; src_unread = 0
 }
 { sub(/\r$/, "") }
 /^[[:space:]]*\[/ { src_end(); src_t = ($0 ~ /'"$SOURCE_HEADER_ERE"'/); next }
@@ -14475,6 +14488,9 @@ sys.stdout.buffer.write("\n".join(o).encode("utf-8", "surrogateescape"))' "$1" 2
 			function src_table(kind, id, state, path) {
 				if (kind != "inbox" && id != "" && (state == "paused" || state == "retired"))
 					o = o (o == "" ? "" : "\n") id " (" state ")" ((kind == "local" && path != "") ? "\037" home(path) : "")
+				# a value written across lines, which only the interpreter reads (C3460): said, never skipped
+				else if (src_unread && kind != "inbox")
+					o = o (o == "" ? "" : "\n") (id != "" ? id : "a [[source]] table") " (its state not read without the installed interpreter)"
 			}
 			END { printf "%s", o }' "$1" 2>/dev/null)" || l=""
 	fi
