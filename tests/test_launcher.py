@@ -789,6 +789,58 @@ def test_install_sh_rejects_an_unsigned_launcher(stubs: dict[str, str], tmp_path
     assert not (Path(stubs["HOME"]) / "Applications").exists()
 
 
+def _c_word(word: str) -> str:
+    """bash 3.2's printf %q word for ``word`` under LC_ALL=C, as install.sh's q_word writes a $'..' one."""
+    cp = subprocess.run(
+        [BASH32, "-c", 'printf %q "$1"', "x", word],
+        capture_output=True,
+        check=True,
+        env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
+    )
+    return cp.stdout.decode("ascii")
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+def test_every_print_of_the_launcher_and_source_path_goes_through_q_word_c3509(
+    stubs: dict[str, str], tmp_path: Path, locale: str
+) -> None:
+    """B13 round 48 ruling 218 (C3509): --launcher's path and the `source:` line printed a path holding U+3000
+    or U+0085 raw, while the re-run words spell it with q_word's $'..' word: the usage error for a bundle that
+    is no folder, the codesign refusal and `source:` now spell it the same way, with no raw C2 85 byte."""
+    odd = tmp_path / "Contoso\u3000x\u0085y"
+    odd.mkdir()
+    run = {**stubs, "LC_ALL": locale, "LANG": locale}
+
+    def raw(*args: str) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.run(
+            [BASH32, str(INSTALL_SH), *args],
+            capture_output=True,
+            check=False,
+            timeout=120,
+            env=run,
+            stdin=subprocess.DEVNULL,
+        )
+
+    fake = odd / "AgentSyncLauncher.app"
+    (fake / "Contents" / "MacOS").mkdir(parents=True)
+    refused = raw("--launcher", str(fake), "--confirm-install-agent")
+    assert refused.returncode == 1, refused.stderr
+    assert f"--launcher {_c_word(str(fake))} does not pass codesign".encode() in refused.stderr, (
+        refused.stderr
+    )
+    notdir = odd / "Not A Bundle.app"
+    notdir.write_text("")
+    usage = raw("--launcher", str(notdir), "--confirm-install-agent")
+    want = f"--launcher is not an app bundle directory: {_c_word(str(notdir))}"
+    assert usage.returncode == 2 and want.encode() in usage.stderr, usage.stderr
+    wheel = odd / "agentsync-0.1.0-py3-none-any.whl"
+    wheel.write_text("")
+    source = raw(str(wheel))
+    assert f"source: {_c_word(str(wheel))} (wheel)".encode() in source.stdout, source.stdout
+    for cp in (refused, usage, source):
+        assert b"\xc2\x85" not in cp.stdout + cp.stderr, cp
+
+
 # ---- the setup log `agentsync setup-report` reads -------------------------------------------------------
 
 _LOG_LINE = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ run=(?P<run>\d{8}T\d{6}Z-\d+) (?P<rest>.*)$")

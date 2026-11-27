@@ -12832,7 +12832,9 @@ if [ "$DEBUG_RUN" -eq 1 ]; then
 fi
 if [ -n "$LAUNCHER_SRC" ]; then
 	[ "$INSTALL_AGENT" -eq 1 ] || usage_error "--launcher only applies with --confirm-install-agent (the launcher is for background sync)"
-	[ -d "$LAUNCHER_SRC" ] || usage_error "--launcher is not an app bundle directory: $LAUNCHER_SRC"
+	# every print of the launcher's path goes through q_word, as its re-run words do (B13 round 48 ruling 218,
+	# C3509: a bundle path holding U+0085 printed that byte raw, no UTF-8 a copy keeps)
+	[ -d "$LAUNCHER_SRC" ] || usage_error "--launcher is not an app bundle directory: $(q_word "$LAUNCHER_SRC")"
 	LAUNCHER_SRC="$(cd "$LAUNCHER_SRC" && pwd)"
 fi
 # Each --source-local folder: absolute (a quoted "~/..." expanded), and an existing directory, checked before
@@ -12987,7 +12989,7 @@ fi
 log_start
 
 [ "$DRY_RUN" -eq 1 ] && say "dry run: nothing below is changed"
-say "source: $SOURCE ($SOURCE_KIND)"
+say "source: $(q_word "$SOURCE") ($SOURCE_KIND)" # q_word, as install.log's source= (C3509)
 say "config: $CONFIG"
 # each folder in list_name's spelling, as step 1's list and the refusals show it: no control byte reaches the
 # terminal or install.out, and both reports alias that spelling (B13 round 38 C1414, ruling 126; privacy)
@@ -13334,9 +13336,9 @@ LAUNCHER_STATE="missing"
 if [ "$INSTALL_AGENT" -eq 0 ]; then
 	LAUNCHER_RESULT="skipped" LAUNCHER_NOTE="not-requested" LAUNCHER_STATE="not-requested"
 elif [ -n "$LAUNCHER_SRC" ]; then
-	launcher_valid "$LAUNCHER_SRC" || fail "--launcher $LAUNCHER_SRC does not pass codesign --verify --strict"
+	launcher_valid "$LAUNCHER_SRC" || fail "--launcher $(q_word "$LAUNCHER_SRC") does not pass codesign --verify --strict"
 	if [ -d "$APP_DEST" ] && launcher_valid "$APP_DEST" && [ "$(cdhash_of "$APP_DEST")" = "$(cdhash_of "$LAUNCHER_SRC")" ]; then
-		say "launcher: $APP_DEST is up to date (same cdhash as $LAUNCHER_SRC)"
+		say "launcher: $APP_DEST is up to date (same cdhash as $(q_word "$LAUNCHER_SRC"))"
 		LAUNCHER_RESULT="skipped" LAUNCHER_NOTE="up-to-date"
 	else
 		install_app "$LAUNCHER_SRC"
