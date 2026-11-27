@@ -3591,7 +3591,7 @@ redaction_pairs() {
 	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x links walked lk
 	local cfg_cut tilde port k ph b auth sep tail rw keys key m sp top raw folder_keys=$'\n' FUZZY lib_n=0
 	local tables=0 ids=" " hp beside own_state own_docs own_cache own_logs fl fuzzy_keys=$'\n' folded_vals=$'\n'
-	local cts cfg_ids="" remote_docs eff_docs inbox_at=0 sv ref_docs="" ref_state="" ref_cache="" ref_logs="" head rest bx cand gb pre
+	local cts cfg_ids="" esc_defer="" esc_later="" part_names="" remote_docs eff_docs inbox_at=0 sv ref_docs="" ref_state="" ref_cache="" ref_logs="" head rest bx cand gb pre
 	local -a known=() logged_late=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=() listed=() rooted=() placed=() cfgpaths=() parents=()
 	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
 	# (written with printf %q, which read without -r undoes; a $'..' form is unquoted by the loop after it).
@@ -3742,6 +3742,35 @@ redaction_pairs() {
 	# never fuzzily: the fuzzy pattern reads its backslash as a separator, so `\342\201\240Music` matched from its
 	# 342 and printed `\<folder-1>` (B13 round 40 C1802, found by ruling 133's property test). FLAG otherwise.
 	spelled_flag() { case "$1" in *\\*) ;; *) printf '%s' "$2" ;; esac; } # SPELLING FLAG
+	# B13 round 48 ruling 217 (C3526): a folder's list spellings (step 1's escaped form and its "?" form), while
+	# the configured and listed folders register (esc_defer set), wait in esc_later until every name is
+	# registered, as setup_report._add_listed aliases an escaped spelling only after its loop (C3082); then
+	# esc_flush emits each, a spelling that is another folder's own name under the number of whichever of the two
+	# folders registered first, and one emitted before under that earlier number. Emitted at once, an exact `Project\177Ledger` alias of an on-disk DEL folder outweighed the
+	# plain `Project\177Ledger` folder's own pair in redact_stream's length sort, whatever the row order.
+	esc_alias() { # SPELLING PLACEHOLDER FLAG
+		if [ -n "$esc_defer" ]; then esc_later+="$1"$'\t'"$2"$'\t'"$3"$'\n'; else emit_pair "$1" "$2" "$3" utf8; fi
+	}
+	esc_flush() {
+		local v m f got seen=""
+		esc_defer=""
+		while IFS=$'\t' read -r v m f; do
+			[ -n "$v" ] || continue
+			case $'\n'"$seen" in *$'\n'"$v"$'\t'*) continue ;; esac
+			# the first folder registered of the two: one whose own name is the spelling, or the spelling's own
+			got="$(V="$v" M="$m" NAMES="$part_names" LC_ALL=C awk 'BEGIN {
+				n = split(ENVIRON["NAMES"], l, "\n")
+				for (i = 1; i <= n; i++) {
+					t = index(l[i], "\t")
+					if (t && (substr(l[i], 1, t - 1) == ENVIRON["V"] || substr(l[i], t + 1) == ENVIRON["M"])) { printf "%s", substr(l[i], t + 1); exit }
+				}
+				printf "%s", ENVIRON["M"]
+			}')"
+			seen+="$v"$'\t'"$got"$'\n'
+			emit_pair "$v" "$got" "$f" utf8
+		done <<<"$esc_later"
+		esc_later=""
+	}
 	add_forms() { # VALUE PLACEHOLDER [w]: emit_pair for the value as written, in NFC and in NFD, as the Python
 		# report matches it: a Finder-made name is NFD on disk and an agent types it NFC, or the reverse.
 		# iconv's UTF-8-MAC is macOS's decomposed form; a value that is not UTF-8 adds no other form. Printable
@@ -3756,7 +3785,7 @@ redaction_pairs() {
 		*\\[0-3][0-7][0-7]*)
 			v="$(LIST_NAME="$1" LC_ALL=C awk 'BEGIN { s = ENVIRON["LIST_NAME"]; gsub(/\\[013][0-7][0-7]/, "\001", s)
 				gsub(/\001(\\2[0-7][0-7])+/, "\001", s); gsub(/\001/, "?", s); printf "%s", s }')"
-			[ "$v" = "$1" ] || emit_pair "$v" "$2" "${3:-}" utf8
+			[ "$v" = "$1" ] || esc_alias "$v" "$2" "${3:-}"
 			;;
 		esac
 		# and as add-source's TOML echo writes it (config.toml_string: json.dumps's escapes, DEL as \u007F), in each
@@ -3818,7 +3847,7 @@ redaction_pairs() {
 		if [ -n "${LIST_ESC_AWK:-}" ]; then
 			# one per line: neither spelling holds a newline, which each escapes
 			while IFS= read -r v; do
-				[ -z "$v" ] || [ "$v" = "$1" ] || emit_pair "$v" "$2" "$(spelled_flag "$v" "${3:-}")" utf8
+				[ -z "$v" ] || [ "$v" = "$1" ] || esc_alias "$v" "$2" "$(spelled_flag "$v" "${3:-}")"
 			done <<<"$(LIST_NAME="$1" LC_ALL=C awk "$LIST_ESC_AWK"'BEGIN { s = ENVIRON["LIST_NAME"]; gsub(/\n/, "\036", s)
 				o = esc(s); escq = 1; q = esc(s); print o; if (q != o) print q }')"
 		fi
@@ -4172,6 +4201,7 @@ redaction_pairs() {
 				whole="$FUZZY"
 				if generic_folder "$part"; then whole=w; fi # "Documents" is kept inside "MyDocuments", byte for byte
 				add_pair "$part" "$m" "$whole"
+				part_names+="$part"$'\t'"$m"$'\n' # C3526: a name esc_flush gives its number to
 				# a library new here is registered fuzzily, so in any case, a two-letter one too: setup_report
 				# applies the two-letter-word rule to a folder, never a library, so a library `IT` is cut in any
 				# case where a folder `IT` keeps the pronoun `it` (B13 round 43 C2471)
@@ -4185,8 +4215,10 @@ redaction_pairs() {
 		done
 	}
 	n=0
+	esc_defer=1
 	folder_parts "" ${known[@]+"${known[@]}"}
 	folder_parts listed ${listed[@]+"${listed[@]}"}
+	esc_flush
 	# A folder outside CloudStorage (a project checkout), configured or a vanished source's, as
 	# setup_report._project_values registers it (B13 round 18 V46: the shell printed both in clear): below the
 	# home folder, the path from its first part that names something, and that part alone, each in any case

@@ -5542,6 +5542,35 @@ def test_both_reports_cut_a_project_folders_fuzzy_spellings_alike_c3289(
     assert arm == "joined" or shell_private == python_private, (shell_private, python_private)
 
 
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize("plain", ["OneDrive-Fabrikam", "OneDrive-Wingtip"])
+def test_both_reports_number_a_plain_row_spelled_as_an_escaped_one_alike_c3526(
+    env: dict[str, str],  # noqa: F811
+    plain: str,
+    locale: str,
+) -> None:
+    """B13 round 48 ruling 217 (C3526): a folder named `Project\\177Ledger` (a backslash) under one
+    provider and `Project<DEL>Ledger` on disk under another, whose list spelling is the first one's name. The
+    shell emitted the DEL folder's escaped alias at once, exact and one byte longer than the plain folder's
+    own pair, so with the plain row first `step 1 listed Project\\177Ledger twice` read another number than
+    the agentsync report, which aliases an escaped spelling only after every name (C3082). The shell's
+    escaped aliases now wait for every name, an equal spelling keeping the earlier folder's number: the
+    same rows in both orders."""
+    cloud = _cloud(env)
+    (cloud / plain / "Project\\177Ledger").mkdir(parents=True)
+    (cloud / "OneDrive-Northwind" / "Project\x7fLedger").mkdir(parents=True)
+    said = ["step 1 listed Project\\177Ledger twice", "Project Alpha went on"]
+    texts: list[str] = []
+    shell, python_rows, shell_private, python_private = _both_reports(
+        env, [], said, locale, listed=["Project Alpha"], texts_out=texts
+    )
+    assert re.fullmatch(r"step 1 listed <folder-\d+> twice", python_rows[0]), python_rows
+    assert shell == python_rows and shell_private == python_private, (shell, python_rows)
+    for label, text in zip(("shell", "agentsync"), texts, strict=True):
+        leaks = [ln for ln in text.splitlines() if "Ledger" in ln]
+        assert not leaks, (label, leaks)
+
+
 def _wal_frames_no_shm(db: Path) -> None:
     """Leave ``db`` with a -wal that holds frames and no -shm, which any open of it would make."""
     conn = sqlite3.connect(db)
