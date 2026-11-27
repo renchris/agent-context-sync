@@ -2728,6 +2728,8 @@ prints the no-change note only when the commit holds no mirror/ path (C3228). Ro
 022, then status ok; a page chmod 644 republished with no commit; a mode-000 page through one sync and, after chmod 600,
 a commit; two blocked runs then a clean one titled `0a 2m` naming runs 4-5, and a change undone by git checkout not
 counted.
+Amended 2026-11-27, §16.297 C3448: the restore advice reads `(umask 077 && git --literal-pathspecs -C <docs_repo> checkout
+-- <path>)` followed by `(the agent's step: it puts back agentsync's own page and discards only the hand edit)` (C3421).
 (213) The report, status and the guides credit step 3's question and the no-folder NEXT only on the route the attempt's
 own runs took (lanes RA, B, RB and D; C3237 with C3204, C3306 and C3337, C3272 with C3248 and C3328, C3202, C3209,
 C3241, C3270 with C3327, C3271, C3282 with C3309). Lane RA: _reached_step_3 returns False when the attempt's last

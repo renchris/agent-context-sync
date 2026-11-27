@@ -213,8 +213,38 @@ def test_hand_edited_body_is_blocking(repo: Path) -> None:
     [finding] = lints.lint_mirror_frontmatter(repo)
     assert finding.blocking and "rendered_sha256" in finding.message
     # B13 round 47 C3226, ruling 212: git writes the page under the shell's umask, so the command sets 077
-    command = f"(umask 077 && git -C {doctor._shell_path(repo)} checkout -- 'mirror/src/a.docx.md')"
-    assert finding.message.endswith(f"restore it with `{command}`")
+    # B13 round 48 C3448, ruling 223: the page's name is a literal pathspec, never a glob
+    command = (
+        f"(umask 077 && git --literal-pathspecs -C {doctor._shell_path(repo)} checkout -- "
+        "'mirror/src/a.docx.md')"
+    )
+    # B13 round 48 C3421, ruling 223: the checkout names its owner and what it discards
+    owner = "(the agent's step: it puts back agentsync's own page and discards only the hand edit)"
+    assert finding.message.endswith(f"restore it with `{command}` {owner}")
+
+
+def test_the_checkout_puts_back_only_the_page_it_names_c3448(repo: Path) -> None:
+    """B13 round 48 C3448, ruling 223: git reads a pathspec as a glob, so the advised checkout of a page named
+    ``a[b].md`` also put back ``ab.md``, discarding a second hand edit the finding never named. Run through
+    ``sh -c`` as the agent runs it, the command puts back only the page it names."""
+    for name in ("a[b].md", "ab.md"):
+        write(repo, f"mirror/src/{name}", page())
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True, capture_output=True)
+    who = ["-c", "user.name=t", "-c", "user.email=t@example.com"]
+    subprocess.run(
+        ["git", "-C", str(repo), *who, "commit", "-qm", "pages"],
+        check=True,
+        capture_output=True,
+    )
+    edited = page().replace("hello", "hello, edited by an agent")
+    for name in ("a[b].md", "ab.md"):
+        write(repo, f"mirror/src/{name}", edited)
+    found = {f.path: f for f in lints.lint_mirror_frontmatter(repo) if "rendered_sha256" in f.message}
+    assert set(found) == {"mirror/src/a[b].md", "mirror/src/ab.md"}
+    command = found["mirror/src/a[b].md"].message.split("`")[1]
+    subprocess.run(["/bin/sh", "-c", command], check=True, capture_output=True)
+    assert (repo / "mirror/src/a[b].md").read_text(encoding="utf-8") == page()
+    assert (repo / "mirror/src/ab.md").read_text(encoding="utf-8") == edited
 
 
 def test_body_without_trailing_newline_hash_is_accepted(repo: Path) -> None:

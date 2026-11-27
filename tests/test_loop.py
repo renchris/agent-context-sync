@@ -4779,3 +4779,27 @@ def test_a_missing_or_refused_root_wait_names_no_listing_warn_c938(tmp_path: Pat
     root.rmdir()
     step = loop.next_step(config)
     assert step is None or "source.gone.listable" not in step.checks, step
+
+
+def test_land_gate_step_with_no_command_sends_the_agent_to_the_report_c3421() -> None:
+    """B13 round 48 C3421, ruling 223: a blocking finding whose fix names no command in backticks (a symlink,
+    a bad front matter) left the agent a sync that blocks again; it now says to show the BLOCKING lines and go
+    to the report, and a finding with a command keeps the sync after it."""
+    from agentsync.model import LintFinding  # noqa: PLC0415
+
+    bare = LintFinding("SYMLINK", "topics/a/x.md", "a symlink", blocking=True)
+    assert loop.land_gate_step([bare]) == (
+        "the land gate blocked this sync's commit (1 blocking finding, the BLOCKING lines above): "
+        "topics/a/x.md: a symlink; this finding has no fix for the agent: show the BLOCKING lines to the "
+        "person and go to the report"
+    )
+    fix = (
+        "restore it with `(umask 077 && git checkout -- 'mirror/s/a.md')` (the agent's step: x), "
+        "then sync again"
+    )
+    run = LintFinding("FRONTMATTER", "mirror/s/a.md", fix, blocking=True)
+    assert loop.land_gate_step([run, bare]) == (
+        "the land gate blocked this sync's commit (2 blocking findings, the BLOCKING lines above): "
+        "mirror/s/a.md: restore it with `(umask 077 && git checkout -- 'mirror/s/a.md')` (the agent's step: "
+        "x); then run `~/.local/bin/agentsync sync`"
+    )

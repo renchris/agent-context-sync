@@ -2236,7 +2236,8 @@ def test_state_md_next_is_the_blocking_finding_that_held_the_commit(env: Env) ->
         env.config,
         fixes=[
             "the land gate blocked this sync's commit (1 blocking finding, the BLOCKING lines under ## Lint "
-            "findings): topics/a/x.md: a symlink; then run `~/.local/bin/agentsync sync`"
+            "findings): topics/a/x.md: a symlink; this finding has no fix for the agent: show the BLOCKING "
+            "lines to the person and go to the report"
         ],
     )
     assert want.rule == 1
@@ -2246,7 +2247,8 @@ def test_state_md_next_is_the_blocking_finding_that_held_the_commit(env: Env) ->
     env.pub.write_state(blocked(finding, other), [status("src")])
     assert _state_next_block(env.text("_sync/STATE.md"))[0] == (
         "NEXT: the land gate blocked this sync's commit (2 blocking findings, the BLOCKING lines under ## "
-        "Lint findings): topics/a/x.md: a symlink; then run `~/.local/bin/agentsync sync`"
+        "Lint findings): topics/a/x.md: a symlink; this finding has no fix for the agent: show the BLOCKING "
+        "lines to the person and go to the report"
     )
     env.pub.write_state(report(findings=(dataclasses.replace(finding, blocking=False),)), [status("src")])
     assert _state_next_block(env.text("_sync/STATE.md")) == loop.next_step(env.config).lines()

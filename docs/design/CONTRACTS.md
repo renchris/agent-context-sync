@@ -48007,6 +48007,9 @@ pages a sync already writes, still no change and no commit. Tests: `test_hand_ed
 `test_the_lints_checkout_command_puts_a_hand_edited_page_back_owner_only_c3226` (the printed command under umask
 022, then docs_repo.permissions OK) and
 `test_a_page_republished_with_unchanged_bytes_is_made_owner_only_and_is_no_change_c3226`.
+Amended 2026-11-27, §16.297 C3448: the finding now reads ``restore it with `(umask 077 && git --literal-pathspecs -C
+<docs_repo> checkout -- '<page>')` (the agent's step: it puts back agentsync's own page and discards only the hand edit)``
+(C3421), so a page named `a[b].md` no longer puts back `ab.md` as well.
 
 **A blocked sync says it was blocked, and an unreadable page names its chmod** (C3227; ruling 212; amends item 13
 of §14). A page the land gate could not read was `unreadable file`, the run line `commit none (no content change)`,

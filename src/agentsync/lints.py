@@ -247,14 +247,25 @@ def lint_no_symlinks(repo: Path) -> list[LintFinding]:
     return _sorted(findings)
 
 
+CHECKOUT_OWNER = "(the agent's step: it puts back agentsync's own page and discards only the hand edit)"
+"""Whose step the hand-edit finding's checkout is, after its command: a mirror page is written only by
+agentsync, so putting it back is the agent's, and the words say what it discards (B13 round 48 C3421, ruling
+223: the finding named no owner, against the setup prompt's never-edit and no-reset rules)."""
+
+
 def _checkout_advice(repo: Path, path: str) -> str:
     """The command that puts a hand-edited page back: ``git checkout`` under ``umask 077`` in a subshell,
     since git writes a working-tree file under the shell's umask whatever ``core.sharedRepository`` says, so a
     plain checkout under umask 022 left the page 644 and docs_repo.permissions failing (B13 round 47 C3226,
-    ruling 212). Both paths are written as doctor writes a path in a fix."""
+    ruling 212). Both paths are written as doctor writes a path in a fix. ``--literal-pathspecs`` makes the
+    page's name a path, never a glob: ``mirror/src/a[b].md`` put back ``mirror/src/ab.md`` too (B13 round 48
+    C3448, ruling 223)."""
     from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module
 
-    return f"(umask 077 && git -C {doctor._shell_path(repo)} checkout -- {doctor._quoted(path)})"
+    return (
+        f"(umask 077 && git --literal-pathspecs -C {doctor._shell_path(repo)} checkout -- "
+        f"{doctor._quoted(path)})"
+    )
 
 
 def _unreadable_page(repo: Path, path: str, exc: OSError) -> str:
@@ -317,7 +328,7 @@ def _lint_one_page(repo: Path, path: str) -> list[LintFinding]:
                 "FRONTMATTER",
                 path,
                 f"body does not match rendered_sha256: {top}/ is written only by agentsync (hand edit?); "
-                f"restore it with `{_checkout_advice(repo, path)}`",
+                f"restore it with `{_checkout_advice(repo, path)}` {CHECKOUT_OWNER}",
             )
         )
     # A tombstone opens with the banner, then its heading (B13 round 4 Q9); one written before that opens

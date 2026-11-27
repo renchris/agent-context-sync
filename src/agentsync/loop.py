@@ -131,22 +131,31 @@ LINT_FINDINGS_BELOW = "under ## Lint findings"
 """Where STATE.md's land-gate step points: its findings follow ``## Next`` (:func:`land_gate_step`)."""
 
 
+LAND_GATE_NO_FIX = (
+    "this finding has no fix for the agent: show the BLOCKING lines to the person and go to the report"
+)
+"""How :func:`land_gate_step` ends when its first blocking finding names no command (B13 round 48 C3421)."""
+
+
 def land_gate_step(findings: Sequence[LintFinding], *, where: str = "above") -> str | None:
     """The step of a sync whose commit the land gate blocked, None when no finding is blocking: the count,
     where the BLOCKING lines are (``above`` on a sync's screen, :data:`LINT_FINDINGS_BELOW` in STATE.md), the
     first one's page and fix, then the sync. ``sync`` prints it in place of the loop's NEXT and STATE.md's
     ``## Next`` takes it as rule 1's fix, one text for both (B13 round 47 C3227, ruling 212: a blocked sync
     read ``commit none (no content change)`` and then the loop's step, a baseline question, as if it had
-    landed)."""
+    landed). A first finding whose message holds no command in backticks gives :data:`LAND_GATE_NO_FIX` in
+    place of the sync: the agent has nothing to run, and a sync would block again (B13 round 48 C3421, ruling
+    223)."""
     blocking = [f for f in findings if f.blocking]
     if not blocking:
         return None
     first = blocking[0]
     fix = first.message.removesuffix(", then sync again")
     count = plural(len(blocking), "blocking finding")
+    then = f"then run `{BIN} sync`" if re.search(r"`[^`]+`", fix) else LAND_GATE_NO_FIX
     return (
         f"the land gate blocked this sync's commit ({count}, the BLOCKING lines {where}): {first.path}: "
-        f"{fix}; then run `{BIN} sync`"
+        f"{fix}; {then}"
     )
 
 

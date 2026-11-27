@@ -400,9 +400,9 @@ def test_the_lints_checkout_command_puts_a_hand_edited_page_back_owner_only_c322
     repo, page = initialised.docs_repo, _a_mirror_page(initialised)
     page.write_text(page.read_text(encoding="utf-8") + "\nedited by an agent\n", encoding="utf-8")
     [finding] = [f for f in lints.lint_mirror_frontmatter(repo) if "rendered_sha256" in f.message]
-    command = re.fullmatch(r".*restore it with `(.+)`", finding.message)
+    command = re.fullmatch(r".*restore it with `([^`]+)` \(the agent's step: .*\)", finding.message)
     assert command is not None, finding.message
-    assert command[1].startswith("(umask 077 && git -C "), command[1]
+    assert command[1].startswith("(umask 077 && git --literal-pathspecs -C "), command[1]
     old = os.umask(0o022)
     try:
         subprocess.run(command[1], shell=True, check=True, capture_output=True)
