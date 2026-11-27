@@ -48911,6 +48911,30 @@ own WARNING: `attempt N has no end line yet: the person chose no folder, so step
 as the WARNINGs beside it spell it); the waiting WARNING is unchanged. Test:
 `test_a_completed_none_is_never_said_to_be_waiting_for_the_folder_answer_c3498`.
 
+**install.sh's own `--source-local` phrases survive the recut** (C3499; ruling 221, completing ruling 214; makes worse
+True for cutting path-shaped words only or skipping by first word; privacy; `agentsync.report_cuts`,
+`agentsync.setup_report`; amends §16.290 C3203). The recut turned install.sh's held tail, `--source-local leaves it
+so: setting a folder to live is ...`, into `--source-local <path>` and dropped the rest. `report_cuts.SOURCE_LOCAL_KEPT`
+holds `per folder)` and `leaves it so:`, and, measured on contact, the same NEXT's other clauses after its quote,
+`for each)`, `keeps whatever` and `only adds` (with ruling 221's two alone, a later clause holding `/` still cut
+`for each)` and the words after it), each kept only where the phrase ends, so `leaves it so:/Wombat Ledger` is still
+cut; the generated `CUT_SOURCE_LOCAL_KEPT` is regenerated for the shell report's typed_note_cut (§16.296, C3434).
+Tests: `test_setup_report.py::test_install_shs_per_folder_phrase_is_kept_after_source_local_c3203` (the real NEXT,
+built from install.sh's own literals, comes back unchanged) and
+`test_every_source_local_clause_install_sh_writes_is_a_kept_row_or_a_placeholder_c3499` (every `--source-local
+<word>` clause install.sh writes is a kept row, a `<...>` placeholder or a value, or one of a named set printed with
+no quote before it, the set held equal to what install.sh writes).
+
+**The Loop line keeps a held folder's path whole and home-relative** (C3504; ruling 221; `agentsync.setup_report`).
+The Loop line ran `loop_next_text` over the whole NEXT, so a held folder's path was cut to its folder placeholder
+alone (`at <folder-1>/<folder-2>`, or `at Wombat`). It runs only before `; not live: `, and each held path is written
+home-relative (`~/...`) with step 1's list escaping and the doubled braces, then cut by the report's normal pass as the
+install.out excerpt is: `; not live: <source-1> (paused) at ~/Library/CloudStorage/OneDrive-<org-1>/<folder-1>/<folder-2>:
+setting a folder to live is the person's own edit of sources.toml, never the agent's`. Tests:
+`test_setup_report.py::test_the_loop_line_says_install_shs_own_form_on_status_rule_2_next_c3003`,
+`test_the_loop_line_shows_a_held_folders_path_as_the_install_out_excerpt_does_c3504` and
+`test_report_redaction.py::test_the_loop_line_cuts_the_names_in_a_held_folders_whole_path_c3504`.
+
 ### 16.296 Round 48: the installer: the shell halves of ruling 217, no value printed that it could not register, step 1's escapes and marks, the single-quoted placeholder, a failed sync told apart from a blocked one, and C2060 waits on the operator (2026-11-27, wave B13 round 48 lane RB)
 
 The installer's items of round 48 (`docs/plans/bring-back-ocr.md`, "B13 round 48"; each item's verifier's corrected
