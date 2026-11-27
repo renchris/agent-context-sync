@@ -21430,8 +21430,16 @@ def test_a_docs_repo_path_that_is_not_a_folder_is_the_persons_c3529(
     docs.symlink_to(docs.with_name("Contoso gone"))
     assert setup_report.docs_repo_state(docs)[0] == "not_a_folder"
     assert sort().unexpected == [], sort()
-    # a docs repo that is a folder: the same FAILs stay unexpected, whatever their words say
+    # a path that cannot be created (nothing there, the folder above it not writable): ruling 226 gives its
+    # docs_repo.git fix the person too, so it is filed the same way
     docs.unlink()
+    docs.parent.chmod(0o500)
+    try:
+        assert setup_report.docs_repo_state(docs)[0] == "uncreatable"
+        assert sort().unexpected == [], sort()
+    finally:
+        docs.parent.chmod(0o700)
+    # a docs repo that is a folder: the same FAILs stay unexpected, whatever their words say
     docs.mkdir()
     got = sort()
     assert got.unexpected == ["docs_repo.git FAIL", "docs_repo.permissions FAIL"], got

@@ -48962,11 +48962,13 @@ docs_repo.git, whose fix is the person's move aside, and an older doctor FAILs d
 doctor FAILs: docs_repo.git, docs_repo.permissions` and scored the attempt worked with help. `_sort_doctor` now reads
 `paths.docs_repo_state(expand(config.docs_repo))` itself (`_docs_repo_not_folder`, the reading doctor's docs_repo.git
 check shares, never the FAIL's words) and, on `not_a_folder`, files both FAILs as `from the docs repo path that is not
-a folder (2 checks): docs_repo.git FAIL (the person's; see Doctor), docs_repo.permissions FAIL (not checked: the docs
-repo path is not a folder)`, the state folder's not-a-folder form (A23), lane B's doctor giving that check `not
+a folder or cannot be created (2 checks): docs_repo.git FAIL (the person's; see Doctor), docs_repo.permissions FAIL
+(not checked: the docs repo path is not a folder)`, the state folder's not-a-folder form (A23), lane B's doctor giving that check `not
 checked` there. The outcome names that bucket as a known cause. A docs repo that is a folder keeps a docs_repo.git
-FAIL unexpected, and a dangling link at the path reads `not_a_folder` and is filed the same way. Test:
-`test_setup_report.py::test_a_docs_repo_path_that_is_not_a_folder_is_the_persons_c3529`.
+FAIL unexpected, and a dangling link at the path reads `not_a_folder` and is filed the same way; so is a path that
+cannot be created (`uncreatable`: nothing there and the nearest path above it a file or a folder this account cannot
+write), whose docs_repo.git fix ruling 226 gives the person too, hence the bucket's `or cannot be created`, in
+PERSONS_KINDS' words. Test: `test_setup_report.py::test_a_docs_repo_path_that_is_not_a_folder_is_the_persons_c3529`.
 
 **A [[source]] root that is not a folder or refuses a search is the person's on the Doctor line** (C3513; ruling
 226; `agentsync.setup_report`). With a file at the kept inbox's name (g1) or a source under a folder at mode 000 (g6),

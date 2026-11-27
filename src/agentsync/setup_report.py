@@ -14922,11 +14922,13 @@ def _sign_in_stop_fails(r: _Run, att: Attempt | None, runs: Sequence[InstallRun]
 def _docs_repo_not_folder(c: Config | None) -> bool:
     """Whether :func:`paths.docs_repo_state` reads the configured docs repo path ``not_a_folder``: something
     there, or a link (a dangling one too), that is not a folder, the reading doctor's docs_repo.git check
-    gives its FAIL on (B13 round 48 C3529, ruling 226). A read that raises says no."""
+    gives its FAIL on (B13 round 48 C3529, ruling 226), or ``uncreatable``: nothing there and the nearest
+    path above it a file or a folder this account cannot write, whose docs_repo.git fix ruling 226 gives the
+    person too (move the anchor aside, chmod it, or set docs_repo elsewhere). A read that raises says no."""
     if c is None:
         return False
     try:
-        return docs_repo_state(expand(c.docs_repo))[0] == "not_a_folder"
+        return docs_repo_state(expand(c.docs_repo))[0] in ("not_a_folder", "uncreatable")
     except OSError:
         return False
 
@@ -15725,13 +15727,14 @@ _SOURCE_ROOT_WORDS = "from a [[source]] folder that is not a folder or that this
 refuses this account a search (B13 round 48 C3513, ruling 226; :func:`_source_root_fails`): the kept inbox
 with a file at its name (g1) or a folder above a source at mode 000 (g6), whose fixes status and step 2
 call the person's, each entry so labelled, while the outcome counted them unexpected."""
-_DOCS_NOT_FOLDER_WORDS = "from the docs repo path that is not a folder"
+_DOCS_NOT_FOLDER_WORDS = "from the docs repo path that is not a folder or cannot be created"
 """The Doctor line's bucket when something other than a folder sits at the docs repo path, a dangling link
 too (B13 round 48 C3529, ruling 226): docs_repo.git's FAIL, the person's move aside, and an older doctor's
 docs_repo.permissions FAIL, not checked (:data:`_DOCS_NOT_FOLDER_UNCHECKED`), whose ``agentsync sync`` fix
-cannot run there. Keyed on the report's own :func:`paths.docs_repo_state` reading ``not_a_folder``, the one
-doctor's docs_repo.git check shares (:func:`_docs_repo_not_folder`), never on doctor's words: the outcome
-counted both FAILs unexpected and scored the attempt worked with help."""
+cannot run there; and a path that cannot be created (``uncreatable``), whose docs_repo.git fix ruling 226
+gives the person too, in PERSONS_KINDS' words. Keyed on the report's own :func:`paths.docs_repo_state`
+reading, the one doctor's docs_repo.git check shares (:func:`_docs_repo_not_folder`), never on doctor's
+words: the outcome counted both FAILs unexpected and scored the attempt worked with help."""
 _DOCS_NOT_FOLDER_UNCHECKED = " (not checked: the docs repo path is not a folder)"
 """An older doctor's docs_repo.permissions FAIL beside it: lane B's doctor gives that check ``not checked: the
 docs repo path is not a folder (see docs_repo.git)`` there (B13 round 48 C3529, C3545)."""
