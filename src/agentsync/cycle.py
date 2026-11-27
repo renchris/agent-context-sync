@@ -4876,11 +4876,13 @@ class _Cycle:
         none of this run's changes names and that is no deletion notice (an orphan, a page recovery's repair
         removed, a name a redaction moved off), so the subject's ``d`` counts every page the commit deletes:
         it said ``0d`` over a ``D`` (C3534, ruling 224). A page deleted by hand and not put back is in
-        neither, so ``commit_cycle`` refuses it."""
+        neither, so ``commit_cycle`` refuses it. A path the subject's netted changes (``_commit_view``) name
+        is counted there already: a blocked rename a→b this run's edit of b continues read ``1r 1d`` (B13
+        round 48 C3534 with C3443)."""
         said = self._said_removals()
         _owned, unowned = self._unsaid_deletions()
         accounted = _with_sidecar_folders(said | set(unowned))
-        named = _paths_of([*self._carried, *self.changes]) | set(self._notices_gone)
+        named = _paths_of([*self._commit_view, *self._carried, *self.changes]) | set(self._notices_gone)
         gone = gitops.deleted_since_head(self.repo)
         present = set(gone)
         pages = [

@@ -1653,6 +1653,30 @@ def test_a_page_a_blocked_run_changed_and_the_person_deleted_is_put_back_c3534(
     assert git(repo, "log", "--name-status", "--format=", f"{head}..HEAD", "--", "mirror") == ""
 
 
+def test_a_blocked_rename_this_run_continues_counts_its_old_path_once_c3534(
+    sample_config: Config, local_source_dir: Path
+) -> None:
+    """B13 round 48 C3534 with C3443: the extra-delete count named only this run's and the carried changes'
+    paths, so a blocked rename a→b that this run's edit of b continues (left out of the carried, netted into
+    the subject) also counted a as an uncounted deletion: ``1r 1d`` for one renamed page. The paths the
+    subject's netted changes name are never counted again."""
+    repo = sample_config.docs_repo
+    for _ in range(3):
+        run(sample_config)
+    hand = _hand_edit(repo)
+    src = local_source_dir / "projects"
+    (src / "sample.txt").rename(src / "renamed.txt")
+    blocked = run(sample_config)
+    assert blocked.commit_sha is None and [c.op for c in blocked.changes] == [ChangeOp.RENAMED]
+    _undo(repo, hand)
+    (src / "renamed.txt").write_text("edited after the rename\n", encoding="utf-8")
+    report = run(sample_config)
+    assert report.commit_sha is not None and [c.op for c in report.changes] == [ChangeOp.MODIFIED]
+    old, new = f"mirror/{SID}/projects/sample.txt.md", f"mirror/{SID}/projects/renamed.txt.md"
+    assert sorted(_mirror_name_status(repo)) == [f"A\t{new}", f"D\t{old}"]
+    assert git(repo, "log", "-1", "--format=%s").strip() == f"sync: 0a 0m 1r 0d {SID}"
+
+
 INBOX_SOURCE = """
 [[source]]
 id = "inbox"
