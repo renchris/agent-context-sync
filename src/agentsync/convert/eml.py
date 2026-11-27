@@ -7,7 +7,7 @@ import email
 import email.policy
 import hashlib
 from collections.abc import Iterator, Mapping
-from email.message import EmailMessage, Message
+from email.message import Message
 from pathlib import Path
 
 from agentsync.config import ConvertConfig
@@ -20,6 +20,7 @@ from agentsync.convert._common import (
     _escape_plain,
     _gfm_table,
     _python_version,
+    _replace_controls,
 )
 from agentsync.convert.base import OptionValue, make_unit
 from agentsync.convert.pandoc import _pandoc_options, _PandocRunner
@@ -28,11 +29,16 @@ from agentsync.model import RenderedUnit, UnitKind
 from agentsync.policy import ZERO_BYTES_REASON
 from agentsync.text import plural
 
-_EMITTER_VERSION = "1.1.4"
-"""B13 round 47 C3321 (ruling 215): a UTF-32 part with its mark decodes, where it took the lenient fallback's
-garbage, a cached OK page, so the same bytes miss it; msg's versions carry this one, so .msg moves with it,
-and no page is read again.  1.1.3: round 43 C2450, C2451 (a cut fence always closes)."""
+_EMITTER_VERSION = "1.1.5"
+"""B13 round 48 C3533 with C3532 (ruling 229): every inline text part of a message reaches its page, each part
+after the first under its own heading, where only the first was rendered and the rest dropped unmentioned, and
+no C0 control is left in a part's text, where a NUL made the page a binary file to git; the cached pages are
+missed, msg's versions carrying this one.  1.1.4: round 47 C3321 (ruling 215): a UTF-32 part with its mark
+decodes, where it took the lenient fallback's garbage, a cached OK page, so the same bytes miss it; msg's
+versions carry this one, so .msg moves with it, and no page is read again.  1.1.3: round 43 C2450, C2451 (a
+cut fence always closes)."""
 _HEADERS: tuple[str, ...] = ("From", "To", "Cc", "Date", "Subject", "Message-ID", "In-Reply-To", "References")
+_BODY_SUBTYPES = frozenset({"plain", "html"})  # the text leaves a page renders as its body
 _SMIME_ENCRYPTED = frozenset({"application/pkcs7-mime", "application/x-pkcs7-mime"})
 # codecs.lookup() names of the labels Windows mail clients put on cp1252 bytes.
 _WINDOWS_PRONE_CODECS = frozenset({"utf-8", "ascii", "iso8859-1", "cp1252"})
@@ -65,8 +71,16 @@ def _decode_part(part: Message) -> str:
     decode turns its smart quotes and accents into replacement characters.  Any other declared charset is
     decoded by its label (a legacy CJK label by its Windows superset): strictly, then as UTF-8, then leniently
     by the label, so one out-of-label character costs one replacement, not the whole body.  An unknown or
-    bytes-only label falls back to the ``_decode_text`` order.
+    bytes-only label falls back to the ``_decode_text`` order.  Whichever way it decoded, each C0 control but
+    tab, newline, form feed and carriage return, and DEL, is U+FFFD in the text returned: the lenient fallback
+    keeps a NUL byte, and a part labelled UTF-16 or UTF-32 decodes to U+0000, and a page holding one is a
+    binary file to git (B13 round 48 C3532).
     """
+    return _replace_controls(_decoded_payload(part))
+
+
+def _decoded_payload(part: Message) -> str:
+    """``_decode_part``'s decode, before its controls are replaced."""
     payload = part.get_payload(decode=True)
     if not isinstance(payload, bytes):
         return ""
@@ -145,12 +159,32 @@ def _attachment_name(part: Message, index: int) -> str:
     return f"unnamed-{index} ({part.get_content_type()})"
 
 
+def _body_parts(msg: Message) -> list[Message]:
+    """The text leaves the page renders as its body, in MIME order, walked from the MIME tree (B13 round 48
+    C3533): one child of a multipart/alternative (the first that renders as plain text, else the first that
+    renders at all: its other children are the same message in another form), every child of any other
+    multipart (mixed, related, signed, ...) that is not an attachment, and a text/plain or text/html leaf
+    that is not one.  Another text leaf (text/calendar, say) is not rendered; ``_attachments`` lists it."""
+    if _is_attachment(msg):
+        return []
+    if not msg.is_multipart():
+        return [msg] if msg.get_content_subtype() in _BODY_SUBTYPES else []
+    payload = msg.get_payload()
+    children = [sub for sub in payload if isinstance(sub, Message)] if isinstance(payload, list) else []
+    if msg.get_content_subtype() == "alternative":
+        forms = [found for found in map(_body_parts, children) if found]
+        plain = [found for found in forms if found[0].get_content_subtype() == "plain"]
+        return (plain or forms or [[]])[0]
+    return [part for child in children for part in _body_parts(child)]
+
+
 class EmlConverter:
     """RFC 822 message via the stdlib email package.
 
     Header table (From, To, Cc, Date, Subject, Message-ID, In-Reply-To, References) then the text/plain part
-    (or text/html through pandoc -> gfm); attachments are listed by name, size and sha256, not converted (save
-    one into the inbox to convert it). Never emits raw MIME or base64.
+    (or text/html through pandoc -> gfm), each further inline text/plain or text/html part after it under
+    ``### Part <n> (<type>)``; attachments, and any other inline text part, are listed by name, size and
+    sha256, not converted (save one into the inbox to convert it). Never emits raw MIME or base64.
     """
 
     converter_id = "eml-stdlib"
@@ -194,18 +228,20 @@ class EmlConverter:
         if present:
             out += _gfm_table(["Header", "Value"], ([h, _cell(v)] for h, v in present))
             out.append("")
-        body_part = self._body_part(msg)
+        body_parts = _body_parts(msg)
         out += ["## Body", ""]
-        if body_part is None:
+        if not body_parts:
             out += ["[no text body]", ""]
-        else:
-            text = _decode_part(body_part)
-            if body_part.get_content_subtype() == "html":
+        for number, part in enumerate(body_parts, start=1):
+            if number > 1:  # every text part after the first under its own heading (C3533)
+                out += [f"### Part {number} ({part.get_content_type()})", ""]
+            text = _decode_part(part)
+            if part.get_content_subtype() == "html":
                 rendered = self._pandoc.html_to_gfm(text).strip("\n")
             else:
                 rendered = _escape_plain(text)
-            out += [rendered if rendered.strip() else "[empty body]", ""]
-        attachments = self._attachments(msg, body_part)
+            out += [rendered if rendered.strip() else ("[empty body]" if number == 1 else "[empty part]"), ""]
+        attachments = self._attachments(msg, body_parts)
         if attachments:
             out += ["## Attachments", ""]
             out += _gfm_table(["#", "Name", "Type", "Size (bytes)", "sha256"], attachments)
@@ -250,33 +286,16 @@ class EmlConverter:
                 raise UnreadableSourceError("IRM-protected")
 
     @staticmethod
-    def _body_part(msg: Message) -> Message | None:
-        """The text/plain body, else the text/html one (never an attachment)."""
-        if isinstance(msg, EmailMessage):
-            try:
-                found = msg.get_body(preferencelist=("plain", "html"))
-            except (KeyError, ValueError):
-                found = None
-            if found is not None and not found.get_filename():
-                return found
-        for want in ("plain", "html"):
-            for part in _leaves(msg):
-                if (
-                    part.get_content_maintype() == "text"
-                    and part.get_content_subtype() == want
-                    and not _is_attachment(part)
-                ):
-                    return part
-        return None
-
-    @staticmethod
-    def _attachments(msg: Message, body_part: Message | None) -> list[list[str]]:
-        """Rows (index, name, type, size, sha256) for every attachment in MIME order."""
+    def _attachments(msg: Message, body_parts: list[Message]) -> list[list[str]]:
+        """Rows (index, name, type, size, sha256) for every attachment in MIME order, and for every text leaf
+        the body does not render that is neither plain nor HTML (a text/calendar part, say), so the page names
+        it (B13 round 48 C3533); a plain or HTML leaf left out is an alternative of what the body renders."""
+        rendered = {id(part) for part in body_parts}
         rows: list[list[str]] = []
         for part in _leaves(msg):
-            if part is body_part:
+            if id(part) in rendered:
                 continue
-            if not _is_attachment(part):
+            if not _is_attachment(part) and part.get_content_subtype() in _BODY_SUBTYPES:
                 continue
             payload = _payload_bytes(part)
             index = len(rows) + 1

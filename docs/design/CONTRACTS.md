@@ -2728,8 +2728,9 @@ class EmlConverter:
     """RFC 822 message via the stdlib email package.
 
     Header table (From, To, Cc, Date, Subject, Message-ID, In-Reply-To, References) then the text/plain part
-    (or text/html through pandoc -> gfm); attachments are listed by name, size and sha256, not converted (save
-    one into the inbox to convert it). Never emits raw MIME or base64.
+    (or text/html through pandoc -> gfm), each further inline text/plain or text/html part after it under
+    ``### Part <n> (<type>)``; attachments, and any other inline text part, are listed by name, size and
+    sha256, not converted (save one into the inbox to convert it). Never emits raw MIME or base64.
     """
     converter_id = "eml-stdlib"
     extensions: tuple[str, ...] = (".eml",)
@@ -48296,6 +48297,10 @@ unmarked UTF-32 file as before) and
 `test_convert_family.py::test_a_utf16_part_opening_u0000_still_takes_emls_lenient_fallback_c3268` and
 `test_convert_family.py::test_a_marked_file_misses_the_answer_an_older_build_cached_c3321` (eml, vtt and HTML: the
 older build's cached answer, served at its version, missed at the new one, which holds the text; every HTML mark).
+Amended 2026-11-27, §16.298 C3532: the lenient fallback's text no longer reaches the page as it decodes: every return
+of `_decode_part` makes each C0 control but tab, newline, form feed and carriage return, and DEL, U+FFFD, so the
+C3268 part's page holds no NUL byte, where it held four and git stored it as a binary file; eml's
+`_EMITTER_VERSION` moves to 1.1.5 (ruling 229).
 
 **The family check's fallback drops C3098's UTF-32 return, which changed no UTF-32 answer** (C3266; ruling 215;
 `agentsync.convert._common`; amends §16.283 C2854 and §16.288 C3098). C3098 moved the parse before the decode, which
@@ -48604,7 +48609,48 @@ Reserved for round 48 lane B of B13.
 
 ### 16.298 Round 48: the converters: every text part of a message reaches its page with no control byte left (eml's emitter 1.1.5), and text.py's sentences move with their §15 copies (2026-11-27, wave B13 round 48 lane E)
 
-Reserved for round 48 lane E of B13.
+Round 48's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 48"; specs `round48/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's rulings 217 to 231 settle it). A dated line this round writes reads
+`Amended 2026-11-27, §16.298 C<n>`.
+
+**Every inline text part of a message reaches its page** (C3533; ruling 229, data integrity;
+`agentsync.convert.eml`). `_body_part` returned one leaf, the first text/plain one (else text/html), and
+`_attachments` skipped every text leaf that was not an attachment, so a second inline text/plain part of a
+multipart/mixed message was dropped from its page with no mention, and so were a text/calendar part and inline text
+in a later mixed section. `_body_parts` walks the MIME tree: of a multipart/alternative it takes one child, the first
+that renders as plain text, else the first that renders at all (the others are the same message in another form, so
+an ordinary plain and HTML message still shows its body once); of any other multipart (mixed, related, signed) every
+child that is not an attachment, in order; and a text/plain or text/html leaf that is not one. The first part renders
+under `## Body` as before; each further part follows under `### Part <n> (<type>)` (`[empty part]` when it holds no
+text). Any other inline text leaf (text/calendar, say) is a row in Attachments, `unnamed-<n> (<type>)`, so the page
+names it; a plain or HTML leaf left out is an alternative of what the body renders and gets no row. The class
+docstring and its §15 copy say so word for word. Tests:
+`test_convert_formats.py::test_every_inline_text_part_of_a_message_reaches_its_page_c3533` (two text/plain parts in
+mixed, each once with a part heading between; plain and HTML alternatives rendered once with no part heading, the
+regression the walk must not bring; an alternative then a plain part and a text/calendar part: the alternative's plain
+text and the trailing text, never the HTML, the calendar part a row).
+
+**No control byte is left in a message part's text** (C3532; ruling 229; `agentsync.convert.eml`,
+`agentsync.convert.msg`, `agentsync.convert._common`; amends §16.293 C3268). `_decode_part`'s last fallback,
+`payload.decode("utf-8", errors="replace")`, kept every NUL byte of a part `_decode_text` refused (the C3268 part
+`FF FE 00 00 41 00 42 00`, labelled utf-8 or not, or an unmarked part holding a NUL), and a part labelled UTF-16 or
+UTF-32 decoded strictly by its label to U+0000, so the page held NULs and git stored it as a binary file
+(`Bin 0 -> 976 bytes`, `git diff --numstat` printing a dash for each count). Every return of `_decode_part` now passes
+`_common._replace_controls`, which makes each match of `[\x00-\x08\x0b\x0e-\x1f\x7f]` (pdf.py's `_CONTROL_RE`
+without its two noncharacters: tab, newline, form feed and carriage return kept) U+FFFD, so a mixed body stays
+readable and the HTML body pandoc reads is cleaned too. Its twin, `MsgConverter._body`, the `.msg` body read from the
+compound file (a stored PT_UNICODE body keeps a NUL inside it, only trailing ones stripped), takes the same cleaning
+for its plain and its HTML body. eml's `_EMITTER_VERSION` moves once, to 1.1.5, for C3533 and C3532 together, so a
+page cached with a dropped part or a NUL is missed; msg-olefile's and msg-mime's versions carry eml's, so `.msg` pages
+follow, msg's own version and `_REREAD_BELOW` unmoved; no published page is read again. §16.293's C3268 paragraph
+takes a dated line. Tests: `test_convert_formats.py::test_no_control_byte_is_left_in_a_message_page_c3532` (the C3268
+part unlabelled and labelled utf-8, the same bytes labelled utf-16, an unmarked `a\x00b\x01`, and a us-ascii part
+with BEL, ESC and DEL: no control left, the text around each kept),
+`test_convert_formats.py::test_a_message_page_with_a_nul_part_is_text_to_git_and_msg_s_body_alike_c3532` (the C3268
+page committed to a scratch repository counts its lines in `git diff --numstat`; an `.eml` and a `.msg` whose bodies
+hold the same controls give the same body, no control left) and
+`test_convert_family.py::test_a_utf16_part_opening_u0000_still_takes_emls_lenient_fallback_c3268` (its page now
+holds the fallback's text with U+FFFD for each NUL).
 
 ### 16.299 Round 48: the prompt goes to v45 (the land gate's fix run once per page, step 1's stop only with no synced line, a chosen folder that came back paused, a failed step 2 outside the none), dated lines, and the guides (2026-11-27, wave B13 round 48 lane D)
 

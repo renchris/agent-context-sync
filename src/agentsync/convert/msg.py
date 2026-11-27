@@ -42,6 +42,7 @@ from agentsync.convert._common import (
     _escape_plain,
     _gfm_table,
     _python_version,
+    _replace_controls,
 )
 from agentsync.convert.base import OptionValue, make_unit
 from agentsync.convert.eml import EmlConverter
@@ -339,11 +340,17 @@ class MsgConverter:
         )
 
     def _body(self, msg: _Msg) -> str:
-        plain = msg.raw_text(_BODY)
+        """The plain body, else the HTML one through pandoc, each control but tab, newline, form feed and
+        carriage return made U+FFFD as an ``.eml`` part's is (B13 round 48 C3532): a stored NUL inside the
+        body made the page a binary file to git.  The key moves with eml's emitter, which ``version``
+        carries."""
+        plain = _replace_controls(msg.raw_text(_BODY))
         if plain.strip():
             return _escape_plain(plain)
         html = msg.stream(_BODY_HTML, _PT_BINARY)
-        html_text = msg.decode(html, html=True) if html is not None else msg.raw_text(_BODY_HTML)
+        html_text = _replace_controls(
+            msg.decode(html, html=True) if html is not None else msg.raw_text(_BODY_HTML)
+        )
         if html_text.strip():
             rendered = self._pandoc.html_to_gfm(html_text).strip("\n")
             return rendered if rendered.strip() else "[empty body]"

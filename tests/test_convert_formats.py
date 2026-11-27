@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import copy
 import csv
 import ctypes
@@ -4491,6 +4492,159 @@ def test_eml_protected_and_empty(tmp_path: Path) -> None:
         EmlConverter(CFG).convert(_write(tmp_path, "i.eml", irm), name="i.eml")
     with pytest.raises(ConversionError, match="empty"):
         EmlConverter(CFG).convert(_write(tmp_path, "e.eml", b"  \n"), name="e.eml")
+
+
+_PARTS_HEAD = b"From: a@contoso.com\r\nSubject: Contoso parts\r\nMIME-Version: 1.0\r\n"
+
+
+def _multipart(subtype: str, boundary: str, *parts: bytes) -> bytes:
+    """A multipart entity (its own Content-Type line, then each part, each opening with its headers)."""
+    sep = f"--{boundary}\r\n".encode()
+    return (
+        f'Content-Type: multipart/{subtype}; boundary="{boundary}"\r\n\r\n'.encode()
+        + b"".join(sep + part + b"\r\n" for part in parts)
+        + f"--{boundary}--\r\n".encode()
+    )
+
+
+def _text_part(subtype: str, text: str) -> bytes:
+    return f"Content-Type: text/{subtype}; charset=utf-8\r\n\r\n{text}".encode()
+
+
+@pytest.mark.parametrize(
+    "shape", ["two plain parts", "plain and html alternatives", "an alternative then plain"]
+)
+def test_every_inline_text_part_of_a_message_reaches_its_page_c3533(tmp_path: Path, shape: str) -> None:
+    """B13 round 48 C3533 (ruling 229, data integrity): the body was the first text/plain leaf and nothing
+    else, and ``_attachments`` skipped every text leaf that is not an attachment, so a second inline
+    text/plain part was dropped from the page with no mention.  The body is walked from the MIME tree: one
+    child of an alternative, plain first, and every non-attachment child of a mixed part, each part after the
+    first under ``### Part <n> (<type>)``; another text leaf (text/calendar) is a row in Attachments."""
+    if shape == "two plain parts":
+        tree = _multipart(
+            "mixed",
+            "b1",
+            _text_part("plain", "Contoso first part"),
+            _text_part("plain", "Contoso second part"),
+        )
+        shown, hidden, heads = ["Contoso first part", "Contoso second part"], [], 1
+    elif shape == "plain and html alternatives":
+        tree = _multipart(
+            "alternative",
+            "b1",
+            _text_part("plain", "Contoso plain"),
+            _text_part("html", "<p>Contoso html</p>"),
+        )
+        shown, hidden, heads = ["Contoso plain"], ["Contoso html"], 0
+    else:
+        alternative = _multipart(
+            "alternative",
+            "b2",
+            _text_part("plain", "Contoso plain"),
+            _text_part("html", "<p>Contoso html</p>"),
+        )
+        tree = _multipart(
+            "mixed",
+            "b1",
+            alternative,
+            _text_part("plain", "Contoso trailing"),
+            _text_part("calendar", "BEGIN:VCALENDAR"),
+        )
+        shown, hidden, heads = ["Contoso plain", "Contoso trailing"], ["Contoso html", "BEGIN:VCALENDAR"], 1
+    body = _one(EmlConverter(CFG).convert(_write(tmp_path, "p.eml", _PARTS_HEAD + tree), name="p.eml")).body
+    for text in shown:
+        assert body.count(text) == 1, (text, body)
+    for text in hidden:
+        assert text not in body, (text, body)
+    assert body.count("### Part ") == heads, body
+    if heads:
+        assert "\n\n### Part 2 (text/plain)\n\n" in body, body
+        assert body.index(shown[0]) < body.index("### Part 2 (text/plain)") < body.index(shown[1]), body
+    if shape == "an alternative then plain":
+        calendar = b"BEGIN:VCALENDAR"
+        row = (
+            f"| 1 | unnamed-1 (text/calendar) | text/calendar | 15 | {hashlib.sha256(calendar).hexdigest()} |"
+        )
+        assert row in body, body
+        assert "text/html" not in body, "an alternative's other form is no attachment"
+
+
+_NO_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0e-\x1f\x7f]")
+_C3268_PART = b"\xff\xfe\x00\x00\x41\x00\x42\x00"  # UTF-16LE "\x00AB", opening UTF-32LE's mark
+
+
+@pytest.mark.parametrize(
+    ("label", "payload", "said"),
+    [
+        ("text/plain", _C3268_PART, "A\ufffdB"),
+        ("text/plain; charset=utf-8", _C3268_PART, "A\ufffdB"),
+        ("text/plain; charset=utf-16", _C3268_PART, "\ufffdAB"),
+        ("text/plain", b"a\x00b\x01", "a\ufffdb\ufffd"),
+        ("text/plain; charset=us-ascii", b"Contoso\x07 bell\x1b[0m\x7f", "Contoso\ufffd bell\ufffd[0m\ufffd"),
+    ],
+)
+def test_no_control_byte_is_left_in_a_message_page_c3532(
+    tmp_path: Path, label: str, payload: bytes, said: str
+) -> None:
+    """B13 round 48 C3532 (ruling 229): ``_decode_part``'s lenient UTF-8 fallback kept every NUL byte of a
+    part ``_decode_text`` refused (the C3268 part, labelled utf-8 or not), and a part labelled UTF-16 decoded
+    strictly to U+0000, so the page held NULs and git stored it as a binary file.  Every return of
+    ``_decode_part`` makes each C0 control but tab, newline, form feed and carriage return, and DEL,
+    U+FFFD."""
+    raw = (
+        _PARTS_HEAD
+        + f"Content-Type: {label}\r\nContent-Transfer-Encoding: base64\r\n\r\n".encode()
+        + base64.b64encode(payload)
+        + b"\r\n"
+    )
+    body = _one(EmlConverter(CFG).convert(_write(tmp_path, "c.eml", raw), name="c.eml")).body
+    assert not _NO_CONTROL_RE.search(body), repr(body)
+    assert said in body, repr(body)
+
+
+def test_a_message_page_with_a_nul_part_is_text_to_git_and_msg_s_body_alike_c3532(tmp_path: Path) -> None:
+    """B13 round 48 C3532 (ruling 229), git's view and the twin: the C3268 message's page committed to a
+    repository counts its lines in ``git diff --numstat`` (``-\t-`` was a binary file), and a ``.msg``
+    whose stored body holds the same controls as an ``.eml`` part gives the same body text, no control
+    left (msg's ``_body``, the twin of eml's ``_decode_part``)."""
+    raw = (
+        _PARTS_HEAD
+        + b"Content-Type: text/plain\r\nContent-Transfer-Encoding: base64\r\n\r\n"
+        + base64.b64encode(_C3268_PART)
+        + b"\r\n"
+    )
+    page = _one(EmlConverter(CFG).convert(_write(tmp_path, "c.eml", raw), name="c.eml")).body
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", "-c", "user.name=Contoso", "-c", "user.email=a@contoso.com", *args],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+
+    git("init", "-q")
+    git("commit", "-q", "--allow-empty", "-m", "start")
+    (repo / "contoso-parts.md").write_text(page, encoding="utf-8")
+    git("add", "contoso-parts.md")
+    git("commit", "-q", "-m", "page")
+    [numstat] = git("diff", "--numstat", "HEAD~1", "HEAD").splitlines()
+    added, removed, path = numstat.split("\t")
+    assert (added, removed, path) == (str(page.count("\n")), "0", "contoso-parts.md"), numstat
+    text = "Contoso a\x00b\x01c\x7f end\n"
+    eml_body = _one(
+        EmlConverter(CFG).convert(_write(tmp_path, "t.eml", eml_bytes(plain=text)), name="t.eml")
+    ).body
+    msg_body = _one(
+        MsgConverter(CFG).convert(_write(tmp_path, "t.msg", msg_bytes(plain=text)), name="t.msg")
+    ).body
+    shown = "Contoso a\ufffdb\ufffdc\ufffd end"
+    for body in (eml_body, msg_body):
+        assert not _NO_CONTROL_RE.search(body), repr(body)
+        assert f"## Body\n\n{shown}\n" in body, repr(body)
 
 
 # ---------------------------------------------------------------------------------------------------------

@@ -2813,7 +2813,8 @@ def test_a_utf16_part_opening_u0000_still_takes_emls_lenient_fallback_c3268(tmp_
     src = tmp_path / "parts.eml"
     src.write_bytes(raw)
     units = EmlConverter(CFG).convert(src, name="Contoso parts.eml")
-    lenient = b"\xff\xfe\x00\x00\x41\x00\x42\x00".decode("utf-8", errors="replace")
+    # B13 round 48 C3532 (ruling 229): the lenient fallback's NUL bytes are U+FFFD on the page.
+    lenient = "\ufffd\ufffd\ufffd\ufffdA\ufffdB\ufffd"
     assert units and lenient in units[0].body, "the part read by eml's lenient fallback, never a failure"
 
 

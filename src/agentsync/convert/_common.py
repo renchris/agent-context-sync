@@ -386,6 +386,17 @@ def _decode_text(data: bytes) -> str:
     return unicodedata.normalize("NFC", text.replace("\r\n", "\n").replace("\r", "\n"))
 
 
+# C0 controls and DEL a decoded text part may still hold; tab, newline, form feed and carriage return
+# are kept, as pdf.py's _CONTROL_RE keeps them.  A page holding U+0000 is a binary file to git (B13 round
+# 48 C3532).
+_TEXT_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0e-\x1f\x7f]")
+
+
+def _replace_controls(text: str) -> str:
+    """``text`` with each C0 control but tab, newline, form feed and carriage return, and DEL, made U+FFFD."""
+    return _TEXT_CONTROL_RE.sub("\ufffd", text)
+
+
 def _longest_run(text: str, char: str) -> int:
     """The length of the longest run of ``char`` (a backtick or a tilde) in ``text``; 0 when it has none."""
     return max((len(m.group(0)) for m in re.finditer(re.escape(char) + "+", text)), default=0)
