@@ -3011,12 +3011,6 @@ def _env_log_refusal(env: str) -> str:
     return f"${env} names another account's home; export it as an absolute path (not read)"
 
 
-def default_friction_path() -> Path:
-    """``$AGENTSYNC_FRICTION_LOG``, else ``~/agent-context/setup/friction.md`` (the setup prompt's file);
-    never raising: a refused ``~name`` value is returned unexpanded (:func:`_env_log`)."""
-    return _env_log(FRICTION_ENV, FRICTION_DEFAULT)[0]
-
-
 def read_friction(path: Path) -> Friction | None:
     """The parsed friction log at ``path`` (at most :data:`FRICTION_MAX_BYTES`), with the file's
     modification time; None when there is none."""
@@ -20973,8 +20967,10 @@ def _build_report(
     """The report text and the redactor that produced it (its ``total`` is the redaction count, numbered
     placeholders as the report shows them: :meth:`Redactor.recount`), always
     redacted (KISS K16b: the ``redact`` argument went with ``--no-redact``, its last caller). Never
-    raises for a failed probe or section. ``friction_path`` (default :func:`default_friction_path`) is the
-    agent's friction log, embedded redacted under :data:`FRICTION_HEADING` and summarised first. The last
+    raises for a failed probe or section. ``friction_path`` (default
+    ``_env_log(FRICTION_ENV, FRICTION_DEFAULT)``, the report's own resolver, a ``~name`` value refused and not
+    read; B13 round 48 C3408) is the agent's friction log, embedded redacted under :data:`FRICTION_HEADING`
+    and summarised first. The last
     line is the prefilled issue link (:func:`issue_link` returns it), except in a private-only copy
     (``red.private_only``: a word-named placeholder shown, or a CloudStorage listing that did not finish,
     B13 round 8 J69), which ends after its Redaction section (B13 round 7 H75)."""

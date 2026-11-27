@@ -5650,7 +5650,8 @@ class Outcome:
 def parse_time(text: str) -> datetime | None: ...  # ISO-8601 -> aware UTC
 def parse_friction(text: str) -> Friction: ...
 def read_friction(path: Path) -> Friction | None: ...  # None when the file does not exist; records its mtime
-def default_friction_path() -> Path: ...
+# SUPERSEDED (2026-11-27, §16.295 C3408): default_friction_path() -> Path: removed, a4ff95f5f took its last caller;
+# build_report and the report's own reads resolve the friction log with _env_log(FRICTION_ENV, FRICTION_DEFAULT)
 def read_install_runs(log: Path) -> list[InstallRun]: ...
 def runs_for_attempt(friction: Friction | None, index: int, runs: Sequence[InstallRun]) -> list[InstallRun]: ...
 def install_runs_only(runs: Sequence[InstallRun]) -> list[InstallRun]: ...  # without --list-folders runs
@@ -5716,7 +5717,8 @@ def build_report(config_path: Path | None = None, *, hooks: ReportHooks | None =
                  friction_path: Path | None = None, now: datetime | None = None,
                  budget_s: float = TIME_BUDGET_S) -> tuple[str, Redactor]:
     """The report and the redactor that produced it; never raises for a failed probe or section.
-    friction_path defaults to default_friction_path()."""
+    friction_path defaults to the report's own resolver, _env_log(FRICTION_ENV, FRICTION_DEFAULT), a ~name value
+    refused and not read (amended 2026-11-27, §16.295 C3408; was default_friction_path())."""
 
 def write_report(path: Path, text: str) -> None:
     """Atomic write (same-directory temp file, 0600, os.replace); creates the parent; raises OSError."""

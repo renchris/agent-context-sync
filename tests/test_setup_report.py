@@ -30932,3 +30932,26 @@ def test_the_docs_repo_line_says_not_a_folder_never_missing_c3238(
         "linked": "(exists, not a git repo yet)",
     }[case]
     assert line.endswith(want), line
+
+
+def test_the_friction_log_has_one_resolver_and_no_dead_default_c3408(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 48 C3408 (ruling 228): ``default_friction_path`` had no caller left once a4ff95f5f moved
+    build_report to the report's own resolver, so it is gone, and CONTRACTS keeps its signature only as a
+    dated SUPERSEDED comment. The default build_report reads is ``_env_log(FRICTION_ENV, FRICTION_DEFAULT)``,
+    whose ``~name`` value is refused, never read."""
+    assert not hasattr(setup_report, "default_friction_path")
+    contracts = (Path(__file__).resolve().parents[1] / "docs/design/CONTRACTS.md").read_text(encoding="utf-8")
+    assert "\ndef default_friction_path() -> Path: ...\n" not in contracts
+    assert "# SUPERSEDED (2026-11-27, §16.295 C3408): default_friction_path() -> Path" in contracts
+    monkeypatch.setenv(setup_report.FRICTION_ENV, "~kestrel/friction.md")
+    assert setup_report._env_log(setup_report.FRICTION_ENV, setup_report.FRICTION_DEFAULT) == (
+        Path("~kestrel/friction.md"),
+        "~kestrel/friction.md",
+    )
+    monkeypatch.setenv(setup_report.FRICTION_ENV, str(tmp_path / "f.md"))
+    assert setup_report._env_log(setup_report.FRICTION_ENV, setup_report.FRICTION_DEFAULT) == (
+        tmp_path / "f.md",
+        None,
+    )
