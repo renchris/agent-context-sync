@@ -4101,8 +4101,10 @@ def compute_outcome(
     # B13 round 47 C3209 (ruling 213): the latest attempt's last bare run ended 0 and completed, but
     # sources.toml holds no live folder but the inbox (``not_live``, the caller's, each held folder's words):
     # its NEXT sends the agent back to the folder question, so it is never fully one command; with a step 1
-    # deviation logged after it (the prompt's re-ask with no answer) it stopped there
-    if not_live is not None and last is not None and _bare_run(last) and last.completed_none:
+    # deviation logged after it (the prompt's re-ask with no answer) it stopped there. B13 round 48 C3508
+    # (ruling 227): any last run without --no-folder, a --source-local over a held folder too, which ends on
+    # the same NEXT: the person's none is the only route the branch leaves to the two above
+    if not_live is not None and last is not None and not last.chose_no_folder and last.completed_none:
         if (
             attempt is not None
             and last.started is not None
@@ -4371,18 +4373,8 @@ NO_LIVE_FOLDER_WHY = (
     "install.sh ended 0 with no folder synced (its NEXT: sends the agent back to the folder question)"
 )
 """The worked-with-help reason of a latest bare run that ended 0 over a sources.toml with no live folder but
-the inbox (B13 round 47 C3209, ruling 213)."""
-
-
-def _bare_run(run: InstallRun) -> bool:
-    """Whether an install run named no folder answer: no ``--source-local`` and no ``--no-folder`` word."""
-    if run.chose_no_folder:
-        return False
-    try:
-        words = shlex.split(run.args)
-    except ValueError:
-        words = run.args.split()
-    return not any(w == "--source-local" or w.startswith("--source-local=") for w in words)
+the inbox (B13 round 47 C3209, ruling 213); since B13 round 48 C3508 (ruling 227) of any such last run
+without ``--no-folder``, a ``--source-local`` one too."""
 
 
 def _no_folder_cause(run: InstallRun) -> str:

@@ -30644,13 +30644,76 @@ def test_a_bare_run_that_ended_0_with_no_live_folder_is_never_fully_one_command_
     else:
         assert outcome.kind == "worked with help" and setup_report.NO_LIVE_FOLDER_WHY in outcome.why, outcome
         assert ("wombat (paused)" in " ".join(outcome.why)) is bool(not_live), outcome
-    for args in ("--source-local x", "--no-folder"):  # a run that named an answer is scored as before
-        other = setup_report.read_install_runs(
-            _write(tmp_path / "o.log", _N14.replace("args=", f"args={args}"))
-        )
-        assert (
-            setup_report.NO_LIVE_FOLDER_WHY not in setup_report.compute_outcome(att, other, not_live=[]).why
-        )
+    # the person's none is scored as before; a --source-local run takes the branch since B13 round 48 C3508
+    other = setup_report.read_install_runs(
+        _write(tmp_path / "o.log", _N14.replace("args=", "args=--no-folder"))
+    )
+    assert setup_report.NO_LIVE_FOLDER_WHY not in setup_report.compute_outcome(att, other, not_live=[]).why
+
+
+_C3508_ROUTES = {  # the last run's install.log, then the outcome kind over a held-only or inbox-only config
+    "completed-none": (_R213_NONE, "stopped"),
+    "failed-none": (_r213_run(1, "--no-folder", 1, config="rc=1 result=failed"), "failed"),
+    "bare": (_N14, "worked with help"),
+    "source-local-paused": (
+        _N14.replace("args=", "args=--source-local '/c/Project Alpha'"),
+        "worked with help",
+    ),
+    "source-local-failed": (
+        _r213_run(1, "--source-local '/c/Project Alpha'", 1, config="rc=1 result=failed"),
+        "failed",
+    ),
+}
+
+
+@pytest.mark.parametrize("not_live", [["project-alpha (paused)"], [], None])
+@pytest.mark.parametrize("route", list(_C3508_ROUTES))
+def test_any_last_run_without_no_folder_that_ended_0_with_no_live_folder_worked_with_help_c3508(
+    tmp_path: Path, route: str, not_live: list[str] | None
+) -> None:
+    """B13 round 48 C3508 (ruling 227): C3209's branch took only a bare last run, so a `--source-local` run
+    over a paused folder that ended 0 on install.sh's no-folder NEXT read "fully one command". Any last run
+    without --no-folder that completed takes it; the person's none, completed or failed, and a failed run keep
+    their own words on every route, and a config with a live folder (``not_live`` None) keeps fully one
+    command."""
+    logged, kind = _C3508_ROUTES[route]
+    runs = setup_report.read_install_runs(_write(tmp_path / "install.log", logged))
+    [att] = setup_report.parse_friction("Attempt: 2026-11-25T09:59:00Z\nPrompt: v44\n").attempts
+    outcome = setup_report.compute_outcome(att, runs, not_live=not_live)
+    if not_live is None and kind == "worked with help":
+        kind = "fully one command"
+    assert outcome.kind == kind, (route, outcome)
+    assert (setup_report.NO_LIVE_FOLDER_WHY in outcome.why) is (kind == "worked with help"), outcome
+    if kind == "worked with help" and not_live:
+        assert outcome.why[-1].startswith("not live: project-alpha (paused): "), outcome
+
+
+def test_a_source_local_last_run_over_a_paused_folder_reads_worked_with_help_twice_c3508(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 48 C3508 (ruling 227): the Summary and the attempt line of a `--source-local` last run
+    over a sources.toml holding the inbox and a paused project-alpha both read the worked-with-help sentence
+    with the held folder named."""
+    cfg = fake_mac["config"]
+    home = Path.home()
+    cfg.write_text(
+        default_config_text()
+        + inbox_source_table("inbox", home / "agent-context" / "inbox")
+        + local_source_table("project-alpha", home / "Project Alpha").replace(
+            'kind = "local"', 'kind = "local"\nstate = "paused"'
+        ),
+        encoding="utf-8",
+    )
+    logged = _N14.replace("args=", f"args=--source-local '{home}/Project Alpha'")
+    (fake_mac["setup"] / "install.log").write_text(logged, encoding="utf-8")
+    r = setup_report._Run(cfg, setup_report.ReportHooks(), 60.0)
+    r.friction = setup_report.parse_friction("Attempt: 2026-11-25T09:59:00Z\nPrompt: v44\n")
+    r.install_runs = setup_report.read_install_runs(fake_mac["setup"] / "install.log")
+    held = setup_report.NOT_LIVE_CLAUSE.removeprefix("; ").format(folders="project-alpha (paused)")
+    reasons = f"install.sh exit 0; {setup_report.NO_LIVE_FOLDER_WHY}; {held}"
+    attempt = setup_report._attempt_outcome(r, 0)
+    assert (attempt.text, "; ".join(attempt.why)) == ("worked with help", reasons), attempt
+    assert setup_report._summary(r, header=[])[0] == f"- **outcome: worked with help** (computed: {reasons})"
 
 
 def _write(path: Path, text: str) -> Path:
