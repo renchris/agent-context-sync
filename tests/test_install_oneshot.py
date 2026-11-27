@@ -7338,6 +7338,47 @@ def test_bring_back_sends_local_work_whenever_it_cannot_tell(
     assert _local_work(env) == "~~~~~~~~~~diff\n+def ocr(): ...\n~~~~~~~~~~\n", why
 
 
+@pytest.mark.parametrize(
+    ("value", "where"),
+    [
+        (" \t~/Kestrel Logs/{name} \n", "Kestrel Logs/{name}"),
+        ("~/Kestrel Logs/{name}", "Kestrel Logs/{name}"),
+        (" \t\n", "agent-context/setup/{name}"),
+    ],
+    ids=["padded", "tilde", "blank"],
+)
+def test_both_logs_resolve_as_paths_env_log_path_does_c3468(
+    env: dict[str, str], tmp_path: Path, value: str, where: str
+) -> None:
+    """B13 round 48 ruling 228 (C3468): install.sh read AGENTSYNC_SETUP_LOG raw, with no `~/`, and the
+    friction log's variable with no trim, while the report and the loop read them through lane B's
+    paths.env_log_path: CONFIG_BLANKS trimmed at both ends, an empty value the default, `~` and `~/` the home.
+    Both logs are written there, and a refused `~name` value is never written to (no folder named so is made
+    below the current one)."""
+    home = Path(env["HOME"])
+    for var, name, args in (
+        ("AGENTSYNC_SETUP_LOG", "install.log", ("--source-local", str(tmp_path / "not-there"))),
+        ("AGENTSYNC_FRICTION_LOG", "friction.md", ("--log-start", "Claude Code, claude-opus-5-5")),
+    ):
+        cp = install_sh({**env, var: value.format(name=name)}, *args)
+        assert cp.returncode == 2, cp.stdout + cp.stderr
+        want = home / where.format(name=name)
+        assert want.is_file() and want.read_text(encoding="utf-8"), (var, list(home.rglob(name)))
+        work = tmp_path / f"work-{var}"
+        work.mkdir()
+        subprocess.run(
+            [BASH32, str(INSTALL_SH), *args],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=120,
+            env={**env, var: "~nobody/Kestrel Logs/x.log"},
+            cwd=work,
+            stdin=subprocess.DEVNULL,
+        )
+        assert not list(work.iterdir()), (var, list(work.iterdir()))
+
+
 def test_bring_back_does_not_count_the_report_of_a_stopped_copy(env: dict[str, str]) -> None:
     """An attempt ``--log-start`` stopped (a copy of the prompt that is not this installer's) closes itself,
     and its report's NEXT says not to bring it back. So its end line is no report that took the patch."""

@@ -505,12 +505,24 @@ set -euo pipefail
 # --log-start / --log (see "Friction log" in the header), handled before anything else: no uv, no
 # git, no install.log, no install.out, no report. Every argument is written with printf '%s', never evaluated.
 # The setup prompt's friction log (the path `agentsync setup-report` reads too).
-friction_file() {
-	local f="${AGENTSYNC_FRICTION_LOG:-$HOME/agent-context/setup/friction.md}"
-	case "$f" in
-	\~/*) f="$HOME/${f#\~/}" ;;
+# B13 round 48 ruling 228 (C3468): the log a variable names, as paths.env_log_path reads AGENTSYNC_SETUP_LOG and
+# AGENTSYNC_FRICTION_LOG for the report and the loop: the six ASCII blanks of paths.CONFIG_BLANKS trimmed at both
+# ends (never [[:space:]] nor str.strip's table), an empty value the default, `~` and `~/` the home; a ~name value
+# (another account's home), which the resolver refuses, as written, and no writer appends to it (log_refused).
+env_log_path() { # VALUE DEFAULT
+	local b=$' \t\n\r\v\f' v="$1"
+	v="${v#"${v%%[!"$b"]*}"}"
+	v="${v%"${v##*[!"$b"]}"}"
+	[ -n "$v" ] || v="$2"
+	case "$v" in
+	\~) v="$HOME" ;;
+	\~/*) v="$HOME/${v#\~/}" ;;
 	esac
-	printf '%s' "$f"
+	printf '%s' "$v"
+}
+log_refused() { case "$1" in \~*) return 0 ;; esac; return 1; } # PATH: a ~name value env_log_path kept as written
+friction_file() {
+	env_log_path "${AGENTSYNC_FRICTION_LOG:-}" "$HOME/agent-context/setup/friction.md"
 }
 FRICTION_KINDS="question, click, approval, deviation, error or prompt"
 PROMPT_UNSTATED=7 # the last setup prompt whose --log-start named no version: a copy that names none is that or older
@@ -544,6 +556,7 @@ warn_setup_tree_open() { # DIR
 friction_append() {
 	local f d
 	f="$(friction_file)"
+	! log_refused "$f" || return 1 # never a folder named ~name below the current one (C3468)
 	d="${f%/*}"
 	[ "$d" != "$f" ] || d="."
 	umask 077
@@ -2448,7 +2461,7 @@ run() {
 }
 
 # Setup log (see the header): appended to, never printed; a log that cannot be written is ignored.
-SETUP_LOG="${AGENTSYNC_SETUP_LOG:-$HOME/agent-context/setup/install.log}"
+SETUP_LOG="$(env_log_path "${AGENTSYNC_SETUP_LOG:-}" "$HOME/agent-context/setup/install.log")" # C3468
 # One clock read for the run id and its start time, so the Installer section shows one second for both
 # (B13 round 13 O4): the start line used to be stamped later, after the commit read.
 RUN_STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -2460,6 +2473,8 @@ STEP_AT=""
 STARTED=0
 utc_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 SETUP_DIR="$(dirname "$SETUP_LOG")"
+# a refused ~name setup log is not written to, and install.out stays in the default setup folder (C3468)
+! log_refused "$SETUP_LOG" || SETUP_DIR="$HOME/agent-context/setup"
 INSTALL_OUT="$SETUP_DIR/install.out"
 # The setup directory 0700 and its install.log, friction.md and install.out 0600, also when an earlier run or
 # the agent made them looser; only what this user owns (never $HOME itself, never through a symlink).
@@ -2476,6 +2491,7 @@ log_at() { # STAMP TEXT...: one line "<stamp> run=<id> <text>"; nothing in a dry
 	local stamp="$1"
 	shift
 	[ "$DRY_RUN" -eq 0 ] && [ "$REPORT_ONLY" -eq 0 ] || return 0
+	! log_refused "$SETUP_LOG" || return 0
 	(
 		umask 077 # a created log directory (and ~/agent-context) is 0700, the log 0600
 		mkdir -p "$SETUP_DIR" && printf '%s run=%s %s\n' "$stamp" "$RUN_ID" "$*" >>"$SETUP_LOG"
@@ -2581,6 +2597,7 @@ step_end() { # RESULT [RC] [NOTE]: close the open step (done | skipped | failed)
 # log's last line, with the report step's line and the final end line; else append the report step's line.
 finish_setup_log() { # RC
 	[ -n "$REPORT_LINE" ] && [ "$DRY_RUN" -eq 0 ] && [ "$REPORT_ONLY" -eq 0 ] || return 0
+	! log_refused "$SETUP_LOG" || return 0
 	(
 		umask 077
 		if [ -f "$SETUP_LOG" ] && [ ! -L "$SETUP_LOG" ] && [ "$(tail -n 1 "$SETUP_LOG")" = "$END_LINE" ]; then
