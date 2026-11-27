@@ -3992,6 +3992,7 @@ def compute_outcome(
     earlier: bool = False,
     late_stops: Sequence[_SyncStop] = (),
     not_live: Sequence[str] | None = None,
+    not_read: Sequence[str] = (),
 ) -> Outcome:
     """Computed from what the person saw and did, never from the agent's own friction lines. Judged on the
     attempt's install runs (``--list-folders`` runs are not install runs):
@@ -4028,7 +4029,9 @@ def compute_outcome(
     ``persons_fails``, the doctor FAILs in a person's bucket now, for one whose record was not measured).
     ``earlier``: an attempt before the latest, whose person's stop counts on its own record (B13 round 27
     P123). ``late_stops``: the stops logged after the end line (:func:`_late_stops`), which change no outcome
-    kind but say when a person's bucketed FAIL came (B13 round 27 P101)."""
+    kind but say when a person's bucketed FAIL came (B13 round 27 P101). ``not_read``: the logs the report
+    refused to read (``"friction log"``, ``"install log"``, :func:`_unread_logs`), which an unknown outcome's
+    reason names as not read, never as absent (B13 round 48 C3403, ruling 228)."""
     installs = install_runs_only(runs)
     last = installs[-1] if installs else None
     layout = attempt.layout if attempt is not None else prompt_layout(None)
@@ -4127,8 +4130,9 @@ def compute_outcome(
         )
     if last is not None and last.rc == 0:
         why: list[str] = []
-        if attempt is None:
-            why.append("no friction log, so the human turns are unknown")
+        if attempt is None:  # B13 round 48 C3403 (ruling 228): a refused log is named as not read
+            unseen = "friction log not read" if "friction log" in not_read else "no friction log"
+            why.append(f"{unseen}, so the human turns are unknown")
         else:
             stop = stopping_error(attempt, runs)
             if stop is not None:
@@ -4290,7 +4294,18 @@ def compute_outcome(
             detail = f"install.sh exited {last.rc}{where or _status_fail_words(last)}"
         return Outcome("failed", layout.install_step, (detail,), version)
     if attempt is None:
-        return Outcome("unknown", None, ("no friction log and no install run in install.log",), version)
+        if not not_read:
+            return Outcome("unknown", None, ("no friction log and no install run in install.log",), version)
+        # B13 round 48 C3403 (ruling 228): a refused log is named as not read, never as absent
+        friction = "friction log not read" if "friction log" in not_read else "no friction log"
+        install = "install log not read" if "install log" in not_read else "no install run in install.log"
+        envs = [
+            env
+            for log, env in (("friction log", FRICTION_ENV), ("install log", SETUP_LOG_ENV))
+            if log in not_read
+        ]
+        whys = [f"${env} names another account's home" for env in envs]
+        return Outcome("unknown", None, (f"{friction} and {install}", *whys), version)
     error = _unresolved_error(attempt) or next(iter(attempt.of_kind("error")[::-1]), None)
     if error is not None:
         why_error = f"no install run; step {error.step} logged an error"
@@ -6923,6 +6938,10 @@ def _build_redactor(r: _Run) -> Redactor:
     # as install.sh's late folder_parts skips them: the shell report numbered `Kestrel Quarry/Zephyr Plans`
     # where this one printed it whole
     with contextlib.suppress(Exception):
+        # B13 round 48 C3436 (ruling 228; makes worse True for gating it): read even when
+        # $AGENTSYNC_SETUP_LOG was refused. This read only adds cuts and prints nothing, and install.sh writes
+        # a ~name value as that literal relative path (bash expands no ~ inside a variable), so the file it
+        # reads can be the real log; every reader that prints a fact from the log checks setup_log_refused.
         for comps, library in _logged_cloud_folders(r.install_log):
             for i, c in enumerate(comps):
                 if c in _GENERIC_FOLDERS or _agent_words(c):
@@ -7387,7 +7406,8 @@ def _install_source(r: _Run) -> str:
         # ``commit=-`` before reading their source's commit, so they say nothing about the installed copy.
         starts = [
             (fields["start"], lines)
-            for _id, fields, lines in _install_runs(r.install_log)
+            # B13 round 48 C3436 (ruling 228): a refused log gives no fact, so no commit from a ./~name file
+            for _id, fields, lines in (_install_runs(r.install_log) if r.setup_log_refused is None else [])
             if "start" in fields and any(k not in ("start", "end", "report", "list-folders") for k in fields)
         ]
         if starts:
@@ -8943,6 +8963,8 @@ def _run_list(runs: Sequence[InstallRun], *, signed: InstallRun | None = None) -
 
 
 def _installer_runs(r: _Run) -> list[str]:
+    if r.setup_log_refused is not None:  # B13 round 48 C3436 with C3403 (ruling 228): before any look at it
+        return [f"Install log not read: {_env_log_refusal(SETUP_LOG_ENV)}."]
     log = r.install_log
     if not log.exists():
         return [
@@ -14281,7 +14303,11 @@ def _stop_shape(r: _Run, stop: _SyncStop) -> str:
 
 def _measured_stops(r: _Run, lo: datetime, hi: datetime, until: datetime | None = None) -> list[_SyncStop]:
     """The sync-stops.log lines from ``lo`` to before ``hi``, each paired with the first later sync the
-    runs table records as ended ok, before ``until`` when given (:func:`_step3_stops`' reads)."""
+    runs table records as ended ok, before ``until`` when given (:func:`_step3_stops`' reads). None when
+    ``$AGENTSYNC_SETUP_LOG`` was refused: the folder beside a ``~name`` value is the working directory's,
+    never install.log's (B13 round 48 C3436, ruling 228)."""
+    if r.setup_log_refused is not None:
+        return []
     stops = _read_sync_stops(r.install_log, lo, hi)
     if not stops:
         return []
@@ -14504,6 +14530,13 @@ def _not_live_folders(r: _Run) -> list[str] | None:
     return [f"{s.id} ({s.state.value})" for s in config.sources if s.kind is not SourceKind.INBOX]
 
 
+def _unread_logs(r: _Run) -> tuple[str, ...]:
+    """The logs whose ``~name`` variable the report refused (:func:`_env_log`), as :func:`compute_outcome`'s
+    ``not_read`` names them (B13 round 48 C3403, ruling 228)."""
+    pairs = (("friction log", r.friction_refused), ("install log", r.setup_log_refused))
+    return tuple(log for log, refused in pairs if refused is not None)
+
+
 def _attempt_outcome(r: _Run, index: int) -> Outcome:
     """Attempt ``index``'s outcome; the latest attempt's also counts this Mac's doctor FAILs (doctor shows
     the state now, which is the latest attempt's)."""
@@ -14521,6 +14554,7 @@ def _attempt_outcome(r: _Run, index: int) -> Outcome:
         earlier=not latest,  # B13 round 27 P123
         late_stops=[s for s, _e in _late_stops(r, index)] if latest else (),  # B13 round 27 P101
         not_live=_not_live_folders(r) if latest else None,  # B13 round 47 C3209: today's config, the latest's
+        not_read=_unread_logs(r),  # B13 round 48 C3403
     )
     rerun = _rerun_note(fr, index)
     if rerun is not None and (outcome.kind, outcome.step) == ("failed", 1):
@@ -17298,7 +17332,10 @@ def _first_sync_line(
         )
     pool = [run for run in (runs or r.install_runs) if run.step("first-sync") is not None]
     borrowed = scoped and not runs and bool(pool)
-    missing = not r.install_log.is_file()
+    # B13 round 48 C3403 with C3436 (ruling 228): a refused log is named as not read, never as absent
+    unread = r.setup_log_refused is not None
+    missing = not unread and not r.install_log.is_file()
+    no_log = " (install log not read)" if unread else " (no install log)"
     parts: list[str] = []
     counts: tuple[int, int, int] | None = None
     label = "first sync"
@@ -17338,7 +17375,7 @@ def _first_sync_line(
     elif scoped and not runs:
         # the tag names install.log only when there is one, as the install.sh line does (B13 round 12 N24)
         parts.append(
-            "no install run during this attempt" + (" (no install log)" if missing else " (install.log)")
+            "no install run during this attempt" + (no_log if unread or missing else " (install.log)")
         )
     elif scoped and not install_runs_only(runs):
         # a list-only attempt never reaches a first-sync step (B13 round 11 M22)
@@ -17353,8 +17390,8 @@ def _first_sync_line(
         parts.append(f"no install run of this attempt reached its first sync (install.log{where})")
     else:
         parts.append(
-            "no install run (no install log)"
-            if missing
+            f"no install run{no_log}"
+            if unread or missing
             else "no install run with a first-sync step (install.log)"
         )
     source = (
@@ -19312,6 +19349,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
         sync_stops=stops,
         persons_fails=persons_fails,
         late_stops=[s for s, _e in late_stops],  # B13 round 27 P101
+        not_read=_unread_logs(r),  # B13 round 48 C3403
     )
     run_type = compute_run_type(runs, home_path())
     r.outcome, r.run_type = outcome, run_type
@@ -19693,7 +19731,8 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
         out += [_sync_stop_line(s, account.get(id(s))) for s in stops]  # B13 round 23 A9; round 24 ruling 9
         out += [_item_line(r, att, e) for e in (*told, *items)]
     else:
-        out.append("- none" + ("" if att is not None else " (no friction log)"))
+        unseen = " (friction log not read)" if r.friction_refused is not None else " (no friction log)"
+        out.append("- none" + ("" if att is not None else unseen))  # B13 round 48 C3403
     # B13 round 25 D5: a stop logged after the end line, with the agent's line for it, in a block of its own
     if att is not None and late_stops:
         out += [
@@ -20639,7 +20678,9 @@ def _issue_link(r: _Run, red: Redactor) -> str:
     att = fr.latest if fr is not None else None
     agent = att.said("Agent") if att is not None else ""
     agent = re.sub(r"[^\w .:/()+,@<>-]", "", red.scrub_agent(" ".join(agent.split())))[:100].strip()
-    outcome = r.outcome or compute_outcome(att, _latest_runs(r))  # the Summary's, else by the same runs
+    outcome = r.outcome or compute_outcome(
+        att, _latest_runs(r), not_read=_unread_logs(r)
+    )  # the Summary's, else
     return build_issue_url(
         outcome=outcome.form_label,
         title_outcome=outcome.title_label,

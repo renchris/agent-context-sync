@@ -30838,6 +30838,27 @@ def test_a_tilde_name_log_variable_is_named_as_a_log_not_read_and_the_report_wri
         assert raw not in text, (raw, [ln for ln in text.splitlines() if raw in ln])
     if env_name == setup_report.FRICTION_ENV:
         assert f"friction log not read: {said}" in printed, printed
+    # B13 round 48 C3403 with C3436 (ruling 228): a refused log is named as not read, never as absent
+    summary = section(text, "Summary")
+    if env_name == setup_report.SETUP_LOG_ENV:
+        for absent in (
+            "has not run on this Mac",
+            "no install run (no install log)",
+            "no friction log and no install run in install.log",
+        ):
+            assert absent not in text, (absent, [ln for ln in text.splitlines() if absent in ln])
+        assert f"Install log not read: {said}." in section(text, "Installer"), section(text, "Installer")
+        assert "- first sync: no install run (install log not read)" in summary, summary
+        assert summary.strip().splitlines()[0] == (
+            "- **outcome: unknown** (computed: no friction log and install log not read; "
+            "$AGENTSYNC_SETUP_LOG names another account's home)"
+        ), summary
+    else:
+        assert summary.strip().splitlines()[0] == (
+            "- **outcome: worked with help** (computed: install.sh exit 0; friction log not read, so the "
+            "human turns are unknown)"
+        ), summary
+        assert "- none (friction log not read)" in summary.splitlines(), summary
     assert setup_report._env_log(env_name, "~/x") == (
         Path("~kestrel/Zephyr Quarry/f.md"),
         "~kestrel/Zephyr Quarry/f.md",
@@ -30846,6 +30867,97 @@ def test_a_tilde_name_log_variable_is_named_as_a_log_not_read_and_the_report_wri
     assert setup_report._env_log(env_name, "~/x") == (Path.home() / "elsewhere" / "f.md", None)
     monkeypatch.delenv(env_name)
     assert setup_report._env_log(env_name, "~/x") == (Path.home() / "x", None)
+
+
+def test_a_refused_setup_log_gives_no_fact_from_a_working_directory_file_and_still_cuts_c3436(
+    fake_mac: dict[str, Path],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """B13 round 48 C3436 (ruling 228; makes worse True for gating the redactor): a refused
+    `AGENTSYNC_SETUP_LOG=~kestrel/install.log` is a relative path, so a real `./~kestrel/install.log` gave the
+    install-source line its commit while the Summary said the log was not read, and the Installer section
+    said it had no install.sh lines. Every fact reader names the refusal and reads nothing; the redactor's
+    cut-only read stays (install.sh writes that literal path itself), so a friction mention of a folder only
+    that log names is still cut."""
+    work = tmp_path / "work"
+    (work / "~kestrel").mkdir(parents=True)
+    monkeypatch.chdir(work)
+    run = "2026-09-29T10:00:00Z run=20260929T100000Z-4242"
+    cs = f"~/Library/CloudStorage/OneDrive-{ORG}"
+    (work / "~kestrel" / "install.log").write_text(
+        f"{run} start install.sh commit=feedfacecafe kind=checkout source=- "
+        f"args=--source-local {cs}/Quillbrookzz\n"
+        f"{run} step=config seconds=1 rc=0 result=done note=created\n"
+        f"{run} end rc=0 seconds=1\n",
+        encoding="utf-8",
+    )
+    write_friction(fake_mac, V5_HAPPY.replace("1 folder chosen", "chose Quillbrookzz"))
+    monkeypatch.setenv(setup_report.SETUP_LOG_ENV, "~kestrel/install.log")
+    rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert rc == 0
+    for absent in ("feedfacecafe", "last install.sh run: commit", "has no install.sh lines", "Quillbrookzz"):
+        assert absent not in text, (absent, [ln for ln in text.splitlines() if absent in ln])
+    said = setup_report._env_log_refusal(setup_report.SETUP_LOG_ENV)
+    assert f"Install log not read: {said}." in section(text, "Installer"), section(text, "Installer")
+
+
+@pytest.mark.parametrize(
+    ("unread", "why"),
+    [
+        ((), ("no friction log and no install run in install.log",)),
+        (
+            ("install log",),
+            (
+                "no friction log and install log not read",
+                "$AGENTSYNC_SETUP_LOG names another account's home",
+            ),
+        ),
+        (
+            ("friction log",),
+            (
+                "friction log not read and no install run in install.log",
+                "$AGENTSYNC_FRICTION_LOG names another account's home",
+            ),
+        ),
+        (
+            ("friction log", "install log"),
+            (
+                "friction log not read and install log not read",
+                "$AGENTSYNC_FRICTION_LOG names another account's home",
+                "$AGENTSYNC_SETUP_LOG names another account's home",
+            ),
+        ),
+    ],
+)
+def test_an_unknown_outcome_names_a_refused_log_as_not_read_c3403(
+    unread: tuple[str, ...], why: tuple[str, ...]
+) -> None:
+    """B13 round 48 C3403 (ruling 228): with no attempt and no install run, compute_outcome said "no friction
+    log and no install run in install.log" for a log the report refused to read. ``not_read`` names each one
+    as not read, and why; with nothing refused the old reason stands."""
+    outcome = setup_report.compute_outcome(None, [], not_read=unread)
+    assert (outcome.kind, outcome.why) == ("unknown", why)
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_a_bare_tilde_name_setup_log_reads_no_stop_from_the_working_directory_c3436(
+    fake_mac: dict[str, Path],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """B13 round 48 C3436 (ruling 228): a bare `AGENTSYNC_SETUP_LOG=~kestrel` has `.` for its parent, so the
+    stop reader took `./sync-stops.log` for the one beside install.log. A refused log reads no stop."""
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.chdir(work)
+    (work / setup_report._SYNC_STOPS_NAME).write_text(_LOCK_STOP, encoding="utf-8")
+    write_friction(fake_mac, V12_HAPPY)
+    monkeypatch.setenv(setup_report.SETUP_LOG_ENV, "~kestrel")
+    rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert rc == 0
+    assert "lock file" not in text, [ln for ln in text.splitlines() if "lock file" in ln]
+    assert "sync-stop" not in section(text, "Summary"), section(text, "Summary")
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root reaches every folder")
