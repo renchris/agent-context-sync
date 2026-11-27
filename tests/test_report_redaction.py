@@ -3435,6 +3435,8 @@ def test_an_escaped_name_is_read_every_way_it_allows_within_the_cap_c3114_c3036(
         ["Alder29\x1eBirch29", "Alder30\x7fBirch30"],
         ["Alder31\tBirch31", "Q3\x08Plans"],
         ["Wombat\\tQuokka\x7f", "Wombat\\177Quokka\x7f", "Q3\\101\\tPlans"],  # B13 round 46 C3114
+        # B13 round 48 C3401 (rulings 218 and 220): a blank at a part's edge, which step 1 still escapes
+        ["Kestrel Plans\u00a0", "\u3000Kestrel Ledger", "Kestrel Notes\u202f"],
     ],
 )
 @pytest.mark.xfail(
@@ -3468,6 +3470,35 @@ def test_both_reports_cut_a_folder_step_1_listed_but_not_configured_ruling_142(
         assert shell == python and shell_private == python_private, [
             (a, b) for a, b in zip(shell, python, strict=True) if a != b
         ][:8]
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize("name", ["Kestrel Plans\u00a0", "\u3000Kestrel Plans", "Kestrel\x1fPlans"])
+@pytest.mark.parametrize("vanish", [True, False])
+def test_the_shell_report_goes_private_over_an_escaped_listed_folder_gone_from_disk_c3401(
+    env: dict[str, str],  # noqa: F811
+    vanish: bool,
+    name: str,
+    locale: str,
+) -> None:
+    """B13 round 48 ruling 218 (C3401; privacy): a folder step 1 listed escaped (a blank at a part's edge,
+    a control character) and gone from disk before the report was known to the shell only escaped, which it
+    decodes no name of while decision c0777e12a523 is open, so the name printed in clear in a public report.
+    Such a row now makes the shell report private only, with its own line; a folder still on disk is
+    registered by its own bytes, so that report stays public and prints no part of the name."""
+    said = [f"the person named {name}", f"saw ~/Library/CloudStorage/OneDrive-Contoso/{name}"]
+    texts: list[str] = []
+    _shell, _python, shell_private, python_private = _both_reports(
+        env, ["Juniper Notes"], said, locale, listed=[name], vanish=vanish, texts_out=texts
+    )
+    line = (
+        "Private only: a folder step 1 listed with an escaped character is no longer in"
+        " ~/Library/CloudStorage,"
+    )
+    assert (line in texts[0]) == vanish == shell_private, texts[0]
+    assert line not in texts[1] and not python_private, texts[1]
+    if not vanish:
+        assert not [ln for ln in texts[0].splitlines() if "Kestrel" in ln], texts[0]
 
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])

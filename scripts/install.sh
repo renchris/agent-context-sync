@@ -3027,6 +3027,29 @@ listed_folder_lines() {
 			n = length(ENVIRON["CS"]) + 1
 			if (substr($0, 1, n) == ENVIRON["CS"] "/" && index(substr($0, n + 1), "/")) print }' "$INSTALL_OUT" 2>/dev/null || true
 }
+# B13 round 48 ruling 218 (C3401; privacy): whether one of those rows holds a list escape (a backslash and three
+# octal digits, \t, \n or \r, as LIST_ESC_AWK writes one) in its folder parts and no CloudStorage folder on disk
+# spells it, as redaction_pairs skips a row that spells one (cshown): its name is then known only escaped, and
+# the shell decodes no listed name while decision c0777e12a523 is open. A folder still on disk is registered by
+# its own bytes, so it never counts.
+listed_escaped_gone() {
+	local line rows shown="" cs="$HOME/Library/CloudStorage/"
+	local -a cl=()
+	rows="$(listed_folder_lines)"
+	[ -n "$rows" ] || return 1
+	while IFS= read -r line; do
+		printf -v line '%b' "$line"
+		cl+=("$line")
+	done < <(cloud_listed | LC_ALL=C sed 1d)
+	if [ "${#cl[@]}" -gt 0 ] && command -v list_plain >/dev/null 2>&1; then
+		shown="$(for line in "${cl[@]}"; do printf '%s\n' "${line//$'\n'/$LIST_RS}"; done | list_plain 2>/dev/null)" || shown=""
+	fi
+	while IFS= read -r line; do
+		case $'\n'"$shown"$'\n' in *$'\n'"$line"$'\n'*) continue ;; esac
+		printf '%s\n' "${line#"$cs"}" | LC_ALL=C grep -qE '\\([0-7][0-7][0-7]|[tnr])' && return 0
+	done <<<"$rows"
+	return 1
+}
 # Each name part of those paths, as folder_parts reads them: "skip<TAB><name>" for one it does not register
 # (every drive's name, or coding-agent product words only), else "keep<TAB><name>" (B13 round 11 M3). Printed
 # once, after the loop, so a write a SIGCHLD breaks is one write, never one a row (B13 round 45 C2877).
@@ -8254,6 +8277,14 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	if [ "$(cloud_listed | LC_ALL=C sed -n 1p)" = unread ] && [ -z "$(listed_folder_lines)" ]; then
 		say "Private only: the listing of ~/Library/CloudStorage for redaction did not finish and install.out holds"
 		say "no folder list of step 1, so a folder name may show in clear."
+		PRIVATE_ONLY=1
+	fi
+	# B13 round 48 ruling 218 (C3401; privacy): while decision c0777e12a523 is open the shell decodes no listed
+	# name, so a folder step 1 listed escaped that no CloudStorage folder now spells is cut only as listed; a
+	# shell-only line, the divergence the ruling-142 strict xfail holds
+	if listed_escaped_gone; then
+		say "Private only: a folder step 1 listed with an escaped character is no longer in ~/Library/CloudStorage,"
+		say "and this report cannot read its name back, so the name may show in clear."
 		PRIVATE_ONLY=1
 	fi
 	# a sources.toml that does not parse, in setup_report.py's sentence word for word: the agentsync report's
