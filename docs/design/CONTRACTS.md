@@ -9309,6 +9309,8 @@ at (`cycle._own_paths`):
 - `mirror/` and `.git` are still not walked: the publisher writes pages 0600, and git writes under
   `core.sharedRepository`, which `gitops.ensure_repo` sets to `0600` in every non-dry cycle and in `init` and
   `add-source`. A docs repo from before that setting gets it there, with no command of its own.
+  Amended 2026-11-27, §16.297 C3536: `mirror/` is walked now, under `_OWN_WALK` and never through a symlink, so a
+  page made 644 by hand is 600 after any sync; `.git` is still not walked.
 - A cache or log folder that is the home folder, or holds it, is left out: a config may name any folder
   there, and that one is not agentsync's alone. The check still reports it, with the chmod. The file system
   says which folder a path is, not its spelling (`cycle._holds_home`, private: the same device and inode as
@@ -9394,6 +9396,8 @@ written `~/x/..`: no `tightened` line and no mode changed), `tests/test_install_
 agentsync behind a stub uv: the field layout, then the field's command: no `[FAIL]` line, a sync, exit 0, the
 modes, `core.sharedRepository` and every step's log line; then a page inside `mirror/`: exit 1 at status with
 the chmod, no sync, and the `_eval` folder still cleared).
+Amended 2026-11-27, §16.297 C3536: a page inside `mirror/` is cleared by the sync too, and status's fix for it names
+the sync, not a chmod.
 
 ### 16.30 Fixes from the second bring-back (2026-10-07)
 
@@ -48087,6 +48091,8 @@ another cause and left its pages uncommitted is carried under the same words. Te
 titled `0a 2m` naming runs 4-5), `test_a_blocked_change_undone_by_git_checkout_is_not_carried_c3228`, `test_blocked_runs_changes_net_per_page_c3228`,
 `test_a_commit_that_lands_blocked_runs_pages_says_so_not_that_no_source_changed_one_c3228` and
 `test_a_commit_that_holds_a_mirror_page_never_says_no_source_changed_one_c3228`.
+Amended 2026-11-27, §16.297 C3444: a carried run is said by its cause, `blocked` (its counts hold
+`land_gate_blocked: 1`) or `failed`, in the commit body and on the run line, never `blocked` for every failed run.
 
 **A file at the docs path reads baseline missing** (C3239; ruling 211). With a file where the docs repo belongs, the
 read of `_eval/questions.md` raised NotADirectoryError, which `loop._eval_status` logged as unreadable and returned
@@ -48784,6 +48790,94 @@ fix on its [FAIL] line below says`. Tests: `test_status_after_a_sync_the_land_ga
 clauses, not install-blocking; after the chmod a sync commits and status is [ok] on it and exits as before) and
 `test_a_sync_that_fails_after_the_land_gate_passed_never_says_the_gate_blocked_it_c3227` (now also: no block kept,
 status [ok] on the check).
+
+**A crashed run forgets only its own rows** (C3411; ruling 224). The run after a crash cleared every failed run's
+run_changes rows, so a run the land gate blocked before the crash was neither counted nor named by the commit that
+landed its pages. It now forgets only the crashed run's rows (`Manifest.clear_run_changes_of`). Test:
+`tests/test_cycle.py::test_a_crashed_run_after_a_blocked_one_forgets_only_its_own_rows_c3411`.
+
+**The commit subject nets the carried rows with this run's changes, and a chain names every run** (C3443 and C3445;
+ruling 224). A page added in a blocked run and edited in the run that landed it was counted as both an add and a
+modify, and a three-run rename chain lost its middle run. The subject nets the blocked runs' kept rows of the pages
+this run changed too with this run's changes against HEAD (`Cycle._commit_view`), the report, the body and the
+CHANGELOG staying per run (C3443); `_net_changes_runs` keeps beside each net change every run it passed through, and
+`_carried_runs` is their union, so a chain names its middle run (C3445). Tests:
+`test_a_page_a_blocked_run_added_and_this_run_edited_is_an_add_in_the_subject_c3443` and
+`test_a_net_change_names_every_run_it_passed_through_c3445`.
+
+**Carried runs are said by cause** (C3444; ruling 222; amends §16.292 C3228). Every failed run's carried pages read
+`from blocked runs`, though a run whose cycle raised after the gate passed was never blocked. A run the land gate
+blocked stores `land_gate_blocked: 1` in its run counts (no column, so an older installed build reads the manifest);
+`Manifest.failed_runs_by_cause` reads each failed run's cause, and the commit body (`carried from blocked runs 4-5:`,
+`carried from failed run 6:`) and the run line (`... from blocked runs 4-5 and 1 mirror page from failed run 6 land
+in this commit`) say each cause apart; `CycleReport.carried_failed` and `carried_failed_runs` hold the failed ones.
+Tests: `test_a_run_that_failed_after_the_gate_is_carried_as_failed_never_as_blocked_c3444` and
+`test_the_carried_notes_say_each_cause_apart_c3444`.
+
+**A sync makes a page chmod 644 by hand owner-only** (C3536; ruling 224; amends §16.292 C3226). `Publisher._write_bytes`
+cleared group and other bits only on a page a sync republished, so a page made 644 by hand stayed 644 through every
+sync that did not write it, and status's docs_repo.permissions fix named a chmod. `cycle._tighten_own_paths` walks
+`mirror/` (`_WALKED_TREES`) under `_OWN_WALK`, never following a symlink, so such a page is 600 after any sync, and
+status's fix names the sync; `.git` is still not walked. Its dated lines in §16.29's permission paragraphs are pinned.
+Tests: `test_a_page_chmod_644_by_hand_is_600_after_a_sync_that_does_not_write_it_c3536` and
+`test_tightening_follows_no_symlink_and_walks_the_mirror_c3536`.
+
+**A hand commit's run trailer is named** (C3540; ruling 224; makes worse True for changing either rule). A hand-made
+commit whose message keeps an `Agentsync-Run` trailer still moves the published tag and the run numbers (the trailer
+rule, P137: moving the tag only for agentsync's own commits broke the crash-between-commit-and-tag recovery, and
+ignoring hand trailers reused run numbers). The console now says why: the tag WARNING names HEAD's trailer, and a jump
+on a manifest with runs names the commit whose trailer set it (`_where_run_recorded`); E9's new start stays quiet at
+DEBUG. Tests: `test_a_hand_commit_with_a_run_trailer_moves_the_tag_and_the_numbers_and_says_why_c3540` and
+`test_a_new_start_continues_the_numbers_with_no_warning_c3540`.
+
+**One bounded read of the kept inbox** (C3414 with C3442; ruling 225). every reader of the kept inbox takes one bounded read, `config.kept_inbox_read(config)`,
+which runs `canonical_source_root` and `inbox_entry` of `inbox` beside the docs repo together under
+`bounded_inbox_read` and returns `(typed, kept, entry)`. A read held past the listings' limit answers
+`(typed, None, INBOX_ENTRY_TIMED_OUT)` (`unread: timed out`), never absent or not a folder, and that timeout is kept
+for the process, so one `status` meets a held stat once and returns in about one limit, not one limit per reader.
+An answer read in time is not kept (spec correction, measured: caching every answer per process left 75 of 151 inbox
+tests stale, since an entry may change between readers in one process); `ensure_inbox` drops the kept timeout once
+it may have made the folder (`config.forget_kept_inbox_reads`). inbox_state, live_inbox, kept_inbox_entry (a timeout
+reads `(typed, unread: timed out)` for every inbox source, never None), loop._inbox_root_not_a_folder, status_line
+(the named folders' is_dir under the same limit; a timeout prints `inbox ?` with no WARNING) and doctor's listable
+hint and heartbeat rows read it. The cycle's root probe (`cycle._kept_inbox_shown`) reads a kept timeout as held,
+so the walk keeps `reading the root did not return within <N>s` and never names the link's target (C3007).
+Tests: tests/test_loop.py::test_one_status_waits_one_limit_for_a_held_kept_inbox_read_c3414;
+test_the_kept_inbox_probe_is_bounded_and_run_only_by_a_failed_root_read_c3311 forgets the kept timeout before each
+command it runs in one process.
+
+**Status reads the kept entry only under a live inbox source** (C3415; ruling 225). status's loop line matches the kept folder first and reads the kept entry only when a live
+inbox source is on it. `loop.status_line`'s inbox part takes the one bounded read (`config.kept_inbox_read`), then,
+under one `bounded_inbox_read`, matches each live inbox source against the kept folder (`paths.same_folder`) and
+checks the named folders' `is_dir`: `inbox ?` (no WARNING) for an entry this account cannot read and
+`inbox not a folder` only when a live inbox source is on the kept folder; with the kept source paused and a live
+inbox source elsewhere, the part reads that source (`inbox on`), whatever sits at the kept name. A kept read past the
+limit still reads `inbox ?` (C3414). Test:
+tests/test_loop.py::test_status_line_reads_the_kept_entry_only_when_a_live_inbox_source_is_on_it_c3415 (a link into
+a mode-0 folder, and a file, at the kept name).
+
+**A denied root that lists again gives no partial note** (C3510; ruling 225; makes worse True for a stat). an inbox whose last walk could not read its root
+(`root_unlisted:<id>` with no stored kind, or `UNKNOWN_MODE`, `UNKNOWN_PRIVACY` or `UNKNOWN_OTHER`, and no folder
+below it unlisted) gives no `was not fully listed` note once its root lists again: `loop._inbox_root_readable_again`
+runs a live `os.scandir` of the root under `config.bounded_inbox_read`, and only a listing that returns clears the
+note (C3212's rule on this path). A stat never decides it: an inbox folder that is itself mode 0 stats as a folder
+and still lists nothing, so a note stays; any OSError or a listing past the limit keeps it. Test:
+tests/test_loop.py::test_a_denied_inbox_root_that_lists_again_gives_no_partial_note_c3510 (a link into a mode-0
+folder replaced by a folder; a mode-0 inbox folder made readable).
+
+**An inbox root this account cannot read gets its own note** (C3514; ruling 225; amends §16.292 C3211). an inbox whose root this account cannot read gets its own loop note, never the generic
+`was not fully listed` one. `loop._inbox_root_readable_again` now returns `(lists, refused)`: its live, bounded
+listing (C3510) refused with EACCES or EPERM, under a stored kind of none, `UNKNOWN_MODE` or `UNKNOWN_PRIVACY`, gives
+`refused`, the listing's `strerror` (`cannot be read` when it has none). The note names the kept inbox by its typed
+name (`loop._inbox_shown`, on `config.kept_inbox_read`; never the link's target) and any other inbox by its own path:
+``the inbox (<id>) is not read: ~/agent-context/inbox: Permission denied; no later sync lists it until this account can read it again: the fix on the source.<id>.listable line says what to do; it does not block the next step``.
+It points at the listable line, not at `agentsync status` (which prints this note too), and does not repeat the
+walk's "nothing is deleted". A kept read past the limit, or a listing past it, keeps the generic note; a root that
+lists again gives none. CONTRACTS dated lines: after the "Any other incomplete inbox keeps one `note:`" paragraph
+(§16.22 area, :12086) and after the C3311/C3312/C3211 paragraph. Test:
+tests/test_loop.py::test_an_inbox_root_this_account_cannot_read_gets_its_own_note_c3514 (a link into a mode-0 folder;
+a mode-0 inbox folder): `sync` and `status` each print the note once and no `was not fully listed`, status prints the
+listable line, and no inbox note once a folder is back.
 
 ### 16.298 Round 48: the converters: every text part of a message reaches its page with no control byte left (eml's emitter 1.1.5), and text.py's sentences move with their §15 copies (2026-11-27, wave B13 round 48 lane E)
 

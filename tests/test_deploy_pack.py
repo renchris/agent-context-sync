@@ -9946,9 +9946,18 @@ _ROUND_48_D_PARAGRAPH_AMENDS = (
 E's round 47 range running to 5262647cd (ruling 230)."""
 _ROUND_48_B_PARAGRAPH_AMENDS = (
     ("15", "Amended 2026-11-27, §16.297 C3534: `commit_cycle` takes a keyword `accounted`", "§16.297 C3534"),
+    ("16.29", "`mirror/` and `.git` are still not walked: the publisher writes pages 0600", "§16.297 C3536"),
+    ("16.29", "`mirror/` not walked, and the chmod as the fix for what is left", "§16.297 C3536"),
+    (
+        "16.39",
+        "Amended 2026-11-27, §16.297 C3514: an inbox whose root this account cannot read",
+        "§16.297 C3514",
+    ),
 )
 """Round 48 lane B's dated lines no claim holds: C3534's in §15's `agentsync.gitops` reference, commit_cycle's
-``accounted`` refusal of a staged mirror deletion no change accounts for (ruling 224)."""
+``accounted`` refusal of a staged mirror deletion no change accounts for (ruling 224); C3536's two in §16.29's
+permission paragraphs, ``mirror/`` walked now; C3514's in §16.39's incomplete-inbox paragraph, the unreadable
+root's own note (ruling 225)."""
 _ROUND_45_RB_PARAGRAPH_AMENDS = (
     (
         "16.116",
