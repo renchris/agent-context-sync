@@ -21431,10 +21431,13 @@ def test_a_docs_repo_path_that_is_not_a_folder_is_the_persons_c3529(
     assert "docs_repo.git" in doctor_text and "docs_repo.permissions" in doctor_text, doctor_text
     summary = section(text, "Summary")
     line = _line(summary, "- doctor: ")
+    # lane B's doctor (C3545) gives docs_repo.permissions `not checked` there, so only docs_repo.git FAILs; an
+    # older
+    # doctor's permissions FAIL is the sort() case below
     assert (
-        f"{setup_report._DOCS_NOT_FOLDER_WORDS} (2 checks): docs_repo.git FAIL (the person's; see Doctor), "
-        "docs_repo.permissions FAIL (not checked: the docs repo path is not a folder)"
-    ) in line, line
+        f"{setup_report._DOCS_NOT_FOLDER_WORDS} (1 check): docs_repo.git FAIL (the person's; see Doctor)"
+        in line
+    ), line
     assert "docs_repo" not in line.rsplit(" · unexpected ", 1)[1], line
     outcome = _line(summary, "- **outcome: ")
     assert "unexpected doctor FAIL" not in outcome, outcome
@@ -31739,6 +31742,8 @@ def _install_shs_choose_next() -> str:
         "$vback": "2",
         "$CONFIG": "~/agent-context/sources.toml",
         "$vpaths": "<folder-1>, <folder-2>",
+        "$INSIDE_PAUSED_MARK": "[inside a paused folder]",
+        "$INSIDE_RETIRED_MARK": "[inside a retired folder]",
         '\\"': '"',
     }
     parts = {
@@ -31750,12 +31755,20 @@ def _install_shs_choose_next() -> str:
         ),
     }
     text = _install_sh_assigned("NEXT_MSG", "choose the folders to sync")
+    # lane RB's C3506 held-inside tail, when this install.sh appends it to the held tail (a row inside a
+    # paused
+    # or retired folder was listed): its `--source-local leaves it so too` is a kept row
+    shell = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
+    inside = (
+        _install_sh_assigned("HELD_INSIDE_TAIL", "; a folder marked") if "HELD_INSIDE_TAIL=" in shell else ""
+    )
+    parts["${heldin:+$HELD_INSIDE_TAIL}"] = inside  # after $heldtail, which holds it
     for name, value in (*parts.items(), *words.items()):
         text = text.replace(name, value)
     assert "$" not in text and all(
         f"--source-local {kept}" in text
         for kept in report_cuts.SOURCE_LOCAL_KEPT
-        if kept != "leaves it so too"  # lane RB's HELD_INSIDE_TAIL, not on this NEXT
+        if inside or kept != "leaves it so too"  # lane RB's HELD_INSIDE_TAIL, when install.sh has it
     ), text
     return text
 
@@ -32327,7 +32340,7 @@ _C3403_REFUSED = (("install log", "$AGENTSYNC_SETUP_LOG names another account's 
 def test_an_attempt_whose_install_log_was_not_read_never_reads_no_install_run_c3403(
     text: str, not_read: tuple[tuple[str, str], ...], want: tuple[str, tuple[str, ...]]
 ) -> None:
-    """B13 round 48 C3403 (ruling 228; a review of its first build): only the no-attempt return named a log the
+    """B13 round 48 C3403 (ruling 228; review): only the no-attempt return named a log the
     report did not read; with a friction attempt, every later return said "no install run" (failed on a step
     error), which an unread install log cannot say. The attempt is unknown and names the unread log; an
     install log that was read keeps today's words exactly."""
@@ -32341,7 +32354,7 @@ def test_an_attempt_whose_install_log_was_not_read_never_reads_no_install_run_c3
 def test_the_summarys_friction_line_names_a_log_it_did_not_read_c3403_c3404(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch, value: str
 ) -> None:
-    """B13 round 48 C3403 and C3404 (ruling 228; a review of its first build): with the friction log refused or not
+    """B13 round 48 C3403 and C3404 (ruling 228; review): with the friction log refused or not
     a regular file, the Summary printed `- friction log: none at <path>` beside its own `friction log not
     read`. It names the log as not read and why; a log that is truly absent still reads `none at`."""
     if value == "refused":
@@ -32367,7 +32380,7 @@ def test_the_summarys_friction_line_names_a_log_it_did_not_read_c3403_c3404(
 def test_the_one_log_reader_opens_with_no_controlling_terminal_c3404(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """B13 round 48 C3404 (a review of its first build): read_log opened without O_NOCTTY, so a terminal named by
+    """B13 round 48 C3404 (review): read_log opened without O_NOCTTY, so a terminal named by
     `AGENTSYNC_SETUP_LOG` could become the controlling terminal of a report run that had none."""
     seen: list[int] = []
     real_open = os.open
