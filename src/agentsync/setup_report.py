@@ -895,6 +895,7 @@ _TWO_LETTER_WORDS = frozenset(
         *("mp", "ms", "mv", "my", "nf", "no", "np", "nr", "oe", "of", "ok", "on", "or", "os", "ou", "ps"),
         *("py", "rb", "rc", "rd", "re", "rm", "ro", "rw", "rx", "sh", "sm", "so", "sw", "sz", "ta", "to"),
         *("tr", "ts", "tz", "up", "us", "uv", "vb", "vn", "wc", "we", "xm", "xz", "ya", "za", "me"),
+        *("wx",),  # doctor's `chmod u+wx <anchor>` (B13 round 48 C3545, ruling 226)
     }
 )
 """Every two-letter word either report prints, lower-case, in any case (B13 round 26 E72): what a scan of
@@ -8287,7 +8288,8 @@ config's and the state file's ``FAIL_NEXT``, the first sync's refusal and the no
 
 _PERSONS_KINDS_COPY = (
     "a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or "
-    "[governance] value, a docs-repo remote to remove or allow, a state file that is damaged, missing after "
+    "[governance] value, a docs-repo remote to remove or allow, a docs-repo path that is not a folder or "
+    "cannot be created, a state file that is damaged, missing after "
     "earlier syncs, another account's or not a file, a hold the hold list lost, a purge queue or suppression "
     "list that lost a purge the audit trail or purge-record.json records, a state folder that is not a "
     "folder, or a state file or folder that an ACL, a privacy setting, a folder above it or a read-only "

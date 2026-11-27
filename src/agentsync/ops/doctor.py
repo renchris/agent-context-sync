@@ -1376,6 +1376,35 @@ def _check_config(config: Config) -> list[CheckResult]:
     ]
 
 
+DOCS_PATH_UNCHECKED = "not checked: the docs repo path is not a folder (see docs_repo.git)"
+"""docs_repo.permissions' and governance.time_machine's line while the docs path is not a folder or cannot
+be created: no walk, no sync fix, since a sync stops on that path (B13 round 48 C3545 with C3529, ruling
+226)."""
+
+
+def _docs_uncreatable(repo: Path, anchor: Path) -> tuple[str, str]:
+    """docs_repo.git's detail and fix for a docs path that cannot be created (``docs_repo_state``
+    ``uncreatable``), by its anchor, each fix the person's ("the person ", a PERSONS_FIX_RE opening), as
+    rule 1's NEXT says, never ``mkdir -p``, which stops on a file above, and never a delete (B13 round 48
+    C3545 with C3449 and C3479, ruling 226): a file, or a link to nothing, moved aside or another docs_repo;
+    a folder this account owns but cannot write or search, its chmod; another account's, another docs_repo,
+    since a chmod there is not this account's to run."""
+    if not anchor.is_dir():
+        return (
+            f"{repo} does not exist and {anchor}, a path above it, is not a folder",
+            f"the person moves {_shell_path(anchor)} aside, keeping a copy, or sets [agentsync] docs_repo to "
+            "another path",
+        )
+    detail = f"{repo} does not exist and this account cannot write to or search {anchor}"
+    try:
+        owned = anchor.stat().st_uid == os.getuid()
+    except OSError:
+        owned = False
+    if owned:
+        return detail, f"the person runs chmod u+wx {_shell_path(anchor)}"
+    return detail, "the person sets [agentsync] docs_repo to a folder this account can write"
+
+
 def _check_docs_repo(config: Config) -> list[CheckResult]:
     """docs_repo outside CloudStorage, a git repo (or creatable), no symlinks."""
     repo = expand(config.docs_repo)
@@ -1400,19 +1429,16 @@ def _check_docs_repo(config: Config) -> list[CheckResult]:
     if state == "creatable":
         out.append(_ok("docs_repo.git", f"{repo} does not exist yet; `{BIN} add-source <folder>` creates it"))
     elif state == "uncreatable":
-        out.append(
-            _bad(
-                "docs_repo.git",
-                f"{repo} does not exist and {anchor} is not writable",
-                fix=f"mkdir -p {_shell_path(repo)}",
-            )
-        )
+        detail, fix = _docs_uncreatable(repo, anchor)
+        out.append(_bad("docs_repo.git", detail, fix=fix))
     elif state == "not_a_folder":
+        # the person's, by PERSONS_FIX_RE's "the person " opening, as rule 1's NEXT says (B13 round 48 C3545
+        # with C3479, ruling 226)
         out.append(
             _bad(
                 "docs_repo.git",
                 f"{repo} exists but is not a directory",
-                fix=f"move {_shell_path(repo)} aside",
+                fix=f"the person moves {_shell_path(repo)} aside, keeping a copy",
             )
         )
     elif is_git:
@@ -2933,10 +2959,13 @@ PERSONS_FIX_RE = re.compile(
 # (ruling 27: C122, C197, C206) a hold the hold list lost, whose governance.hold FAIL's fix is the person's,
 # and since round 30 (ruling 40: C311) a purge queue or suppression list that lost a purge the audit trail
 # records, whose governance.purge_queue or governance.suppressed FAIL's is; or purge-record.json, which keeps
-# it once the folder or the trail is gone (round 32 ruling 63; round 33 ruling 82: C712).
+# it once the folder or the trail is gone (round 32 ruling 63; round 33 ruling 82: C712). Since round 48
+# (ruling 226: C3545, C3529) a docs-repo path that is not a folder or cannot be created, whose docs_repo.git
+# FAIL's fix opens "the person ".
 PERSONS_KINDS = (
     "a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or "
-    "[governance] value, a docs-repo remote to remove or allow, a state file that is damaged, missing after "
+    "[governance] value, a docs-repo remote to remove or allow, a docs-repo path that is not a folder or "
+    "cannot be created, a state file that is damaged, missing after "
     "earlier syncs, another account's or not a file, a hold the hold list lost, a purge queue or suppression "
     "list that lost a purge the audit trail or purge-record.json records, a state folder that is not a "
     "folder, or a state file or folder that an ACL, a privacy setting, a folder above it or a read-only "
@@ -3242,17 +3271,30 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
             out.append(
                 _bad(f"{base}.listable", f"{shown} is not a folder", fix=inbox_not_a_folder_fix(typed_inbox))
             )
+        elif src.kind is SourceKind.INBOX and exc.errno == errno.ELOOP:
+            # any other inbox source on a link that loops: not a folder, as the walk's alarm says it, with
+            # its own remedy, the person's; its sentinel and volume rows point here (B13 round 48 C3511,
+            # ruling 226); a local source keeps the generic row (ruling 204)
+            not_folder = True
+            out.append(
+                _bad(
+                    f"{base}.listable",
+                    f"{shown} is not a folder",
+                    fix=other_inbox_not_a_folder_fix(config, src),
+                )
+            )
         else:
             unread = (exc.strerror or type(exc).__name__).lower()
             out.append(_bad(f"{base}.listable", f"{shown}: {exc.strerror or exc}", fix=look_fix))
 
     if src.sentinel and not_folder:
-        assert typed_inbox is not None
-        # spelled from the folder as typed, never root (the link's target)
+        # spelled from the folder as typed, never root (the link's target); another inbox source's loop has
+        # no target to read, so its root is the path as configured (C3511)
+        folder = typed_inbox if typed_inbox is not None else root
         out.append(
             _ok(
                 f"{base}.sentinel",
-                f"{list_spelling(typed_inbox / src.sentinel)} not checked: {shown} is not a folder; the "
+                f"{list_spelling(folder / src.sentinel)} not checked: {shown} is not a folder; the "
                 "listable line above says what to do",
             )
         )
@@ -3316,18 +3358,20 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
     # The value is the APFS volume's UUID (getattrlist ATTR_VOL_UUID of the mount point), for a File Provider
     # domain as for a plain folder: nothing in it is the domain's, so it is labelled as what it is.
     kind = "volume"
-    if not listed and (not_folder or (typed_inbox is None and _is_missing(root))):
-        # an entry at the kept inbox that is not a folder is not a folder here too, as the listable row and
-        # inbox state say, never "missing" or a UUID (B13 round 46 C3009 with C3094, ruling 204; round 47
-        # C3256)
-        said = "is missing" if typed_inbox is None else "is not a folder"
+    if not listed and not_folder:
+        # an inbox entry that is not a folder is not a folder here too, as the listable row and inbox state
+        # say, never "missing" or a UUID (B13 round 46 C3009 with C3094, ruling 204; round 47 C3256); an [ok]
+        # pointer at the listable line, as the sentinel row's, never a second [FAIL] with the same fix (B13
+        # round 48 C3515, C3511, ruling 226)
         out.append(
-            _bad(
+            _ok(
                 f"{base}.volume",
-                f"{kind} UUID not checked: {shown} {said}",
-                fix=missing_fix() if typed_inbox is None else inbox_not_a_folder_fix(typed_inbox),
+                f"{kind} UUID not checked: {shown} is not a folder; the listable line above says what to do",
             )
         )
+        return out
+    if not listed and typed_inbox is None and _is_missing(root):
+        out.append(_bad(f"{base}.volume", f"{kind} UUID not checked: {shown} is missing", fix=missing_fix()))
         return out
     if unread is not None:
         # the listing could not read the folder: the volume probe would only repeat it in raw errno text,
@@ -4483,8 +4527,15 @@ def _check_permissions(config: Config) -> list[CheckResult]:
 
     A cache or log folder that is the home folder or holds it (the sync's own rule, ``cycle._holds_home``) is
     not agentsync's alone: it is neither walked nor named in a chmod, and gets a FAIL of its own,
-    ``config.<key>``, whose fix is to give the key a folder of its own (§16.45 R79)."""
+    ``config.<key>``, whose fix is to give the key a folder of its own (§16.45 R79).
+
+    While the docs path is not a folder or cannot be created (``docs_repo_state``), one line points at
+    docs_repo.git, no walk and no fix: the sync the fix named stops on that path before it changes a mode,
+    and a file the person put there is not a path agentsync owns (B13 round 48 C3545 with C3529, ruling
+    226)."""
     repo = expand(config.docs_repo)
+    if docs_repo_state(repo)[0] in ("not_a_folder", "uncreatable"):
+        return [_ok("docs_repo.permissions", DOCS_PATH_UNCHECKED)]
     out: list[CheckResult] = []
     roots = [repo, repo / ".git" / "objects", repo / "mirror"]
     for key, folder, default in (

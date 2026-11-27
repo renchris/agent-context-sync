@@ -31,7 +31,7 @@ from typing import NoReturn
 
 import pytest
 
-from agentsync import arm_local, cli, gitops, governance, lints, net, setup_report
+from agentsync import arm_local, cli, gitops, governance, lints, net, paths, setup_report
 from agentsync import loop as loop_mod
 from agentsync.config import RETIRE_ADVICE, Config, local_source_table, parse_config
 from agentsync.convert import media, ocr, speech
@@ -1604,26 +1604,29 @@ def test_shell_path_quotes_by_content_and_every_shell_reads_the_path_back(shell:
 
 
 def test_docs_repo_fixes_quote_the_path(sample_config: Config) -> None:
-    """§16.45 R78: the docs repo fixes print the path as one shell word; ``mkdir -p`` then makes that folder,
-    not one folder per word."""
-    ro = Path.home() / "ro"
+    """§16.45 R78: the docs repo fixes print the path as one shell word. Since B13 round 48 C3449 (ruling 226)
+    the uncreatable fix is the person's chmod of the folder that refuses, never ``mkdir -p``: its command,
+    run as printed, makes the docs path creatable."""
+    ro = Path.home() / "Contoso's Docs"
     ro.mkdir()
-    repo = ro / "Contoso's Docs" / "docs"
+    repo = ro / "docs"
     ro.chmod(0o500)
     try:
         r = by_name(doctor._check_docs_repo(dataclasses.replace(sample_config, docs_repo=repo)))[
             "docs_repo.git"
         ]
+        assert r.fix == 'the person runs chmod u+wx ~/"Contoso\'s Docs"', r.fix
+        command = r.fix.removeprefix("the person runs ")
+        done = subprocess.run(
+            ["sh", "-c", command], capture_output=True, text=True, cwd=Path.home(), check=False
+        )
+        assert done.returncode == 0, done.stderr
+        assert paths.docs_repo_state(repo)[0] == "creatable"
     finally:
         ro.chmod(0o700)
-    assert r.fix == 'mkdir -p ~/"ro/Contoso\'s Docs/docs"'
-    done = subprocess.run(["sh", "-c", r.fix], capture_output=True, text=True, cwd=Path.home(), check=False)
-    assert done.returncode == 0 and repo.is_dir(), done.stderr
-    shutil.rmtree(ro / "Contoso's Docs")
-    repo.parent.mkdir()
     repo.write_text("")
     r = by_name(doctor._check_docs_repo(dataclasses.replace(sample_config, docs_repo=repo)))["docs_repo.git"]
-    assert r.fix == 'move ~/"ro/Contoso\'s Docs/docs" aside'
+    assert r.fix == 'the person moves ~/"Contoso\'s Docs/docs" aside, keeping a copy'
 
 
 def test_the_permissions_fix_under_home_runs_as_the_report_shows_it(tmp_path: Path) -> None:

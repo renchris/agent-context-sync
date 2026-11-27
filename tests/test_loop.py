@@ -26,7 +26,7 @@ from typing import Any
 
 import pytest
 
-from agentsync import arm_local, cli, governance, loop, materialise, publish, setup_report, skill
+from agentsync import arm_local, cli, governance, loop, materialise, paths, publish, setup_report, skill
 from agentsync import config as config_module
 from agentsync import cycle as cycle_module
 from agentsync.arm_local import exclude_globs
@@ -188,8 +188,11 @@ def _docs_path_state(config: Config, state: str) -> None:
     elif state == "parent a file":
         shutil.rmtree(docs.parent)
         docs.parent.write_text("not a folder\n", encoding="utf-8")
-    elif state == "parent not writable":
+    elif state in ("parent not writable", "parent another account's"):
         docs.parent.chmod(0o555)
+    elif state == "dangling parent":  # B13 round 48 C3466: ~/agent-context a link to nothing
+        shutil.rmtree(docs.parent)
+        docs.parent.symlink_to(docs.parent.parent / "gone")
     else:
         assert state == "missing", state
 
@@ -205,23 +208,37 @@ def _docs_path_state(config: Config, state: str) -> None:
         ("dangling link", loop.DOCS_NOT_A_FOLDER_STEP),
         ("parent a file", loop.DOCS_PARENT_STEP),
         ("parent not writable", loop.DOCS_PARENT_STEP),
+        ("parent another account's", loop.DOCS_PARENT_STEP),
+        ("dangling parent", loop.DOCS_PARENT_STEP),
     ],
 )
 def test_rule_1_and_doctor_read_the_docs_path_alike_c3238(
-    tmp_path: Path, state: str, route: str | None
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, state: str, route: str | None
 ) -> None:
     """B13 round 47 C3238 (ruling 211): rule 1 sent the agent to add-source whenever ``<docs>/.git`` was not
     there, so a file at the docs path, or ``~/agent-context`` itself a file, got add-source, which wrote a
     [[source]] table and then failed on the path, while doctor's docs_repo.git FAILed it with the person's
     fix. Both now read ``paths.docs_repo_state``: add-source only where docs_repo.git is ok, the person's
     NEXT (no add-source, no step chained after it) where it FAILs, and a git repo passes rule 1's docs
-    check."""
+    check.
+
+    B13 round 48 C3545 with C3449 and C3479 (ruling 226): the two FAILs' fixes were ``move <repo> aside``
+    and ``mkdir -p <repo>``, which PERSONS_FIX_RE read as the agent's while this NEXT called them the
+    person's, and the ``mkdir -p`` stops on the same file above. Each now opens ``the person `` and names
+    the repair by the anchor; C3466: a link to nothing above the docs path is not a folder, never creatable.
+    """
     config = _setup(tmp_path)
     _docs_path_state(config, state)
+    real_uid = os.getuid()
     try:
-        if state == "parent not writable" and os.access(config.docs_repo.parent, os.W_OK):
+        if state in ("parent not writable", "parent another account's") and os.access(
+            config.docs_repo.parent, os.W_OK
+        ):
             pytest.skip("this account writes a mode-0555 folder")
-        [check] = [r for r in doctor._check_docs_repo(config) if r.name == "docs_repo.git"]
+        with monkeypatch.context() as m:
+            if state == "parent another account's":  # the folder's owner stubbed as another account
+                m.setattr(doctor.os, "getuid", lambda: real_uid + 1)
+            [check] = [r for r in doctor._check_docs_repo(config) if r.name == "docs_repo.git"]
         step = loop.next_step(config)
         if route is None:
             assert check.ok and step.step not in (loop.DOCS_NOT_A_FOLDER_STEP, loop.DOCS_PARENT_STEP)
@@ -234,8 +251,47 @@ def test_rule_1_and_doctor_read_the_docs_path_alike_c3238(
             assert step.rule == 1 and step.step == route, step
             assert "add-source" not in step.step and "run `" not in step.step
             assert "not a step for the agent" in step.step
+            # the person's words, by the anchor, never ``mkdir`` or a delete (C3545, C3449, C3479)
+            repo = config.docs_repo
+            shown, above = doctor._shell_path(repo), Path(os.path.realpath(repo.parent))
+            want = {
+                "file": (
+                    f"{repo} exists but is not a directory",
+                    f"the person moves {shown} aside, keeping a copy",
+                ),
+                "parent a file": (
+                    f"{repo} does not exist and {above}, a path above it, is not a folder",
+                    f"the person moves {doctor._shell_path(above)} aside, keeping a copy, or sets "
+                    "[agentsync] docs_repo to another path",
+                ),
+                "dangling parent": (
+                    f"{repo} does not exist and {repo.parent}, a path above it, is not a folder",
+                    f"the person moves {doctor._shell_path(repo.parent)} aside, keeping a copy, or sets "
+                    "[agentsync] docs_repo to another path",
+                ),
+                "parent not writable": (
+                    f"{repo} does not exist and this account cannot write to or search {above}",
+                    f"the person runs chmod u+wx {doctor._shell_path(above)}",
+                ),
+                "parent another account's": (
+                    f"{repo} does not exist and this account cannot write to or search {above}",
+                    "the person sets [agentsync] docs_repo to a folder this account can write",
+                ),
+            }
+            want["dangling link"] = want["file"]
+            assert (check.detail, check.fix) == want[state], check
+            assert doctor.is_persons_fix(check.fix), check.fix
+            assert not (check.fix or "").startswith("mkdir") and "delete" not in (check.fix or ""), check.fix
+            if state in (
+                "parent a file",
+                "dangling parent",
+            ):  # the fix's move clears the path: no Not a directory
+                moved = repo.parent.with_name(repo.parent.name + ".aside")
+                repo.parent.rename(moved)  # moved aside, kept
+                assert paths.docs_repo_state(repo)[0] == "creatable"
+                repo.mkdir(parents=True)  # what add-source then does over the cleared path
     finally:
-        if state == "parent not writable":
+        if state in ("parent not writable", "parent another account's"):
             config.docs_repo.parent.chmod(0o755)
 
 
@@ -3671,6 +3727,61 @@ def test_a_second_inbox_that_is_not_a_folder_reads_not_a_folder_with_its_own_rem
         assert "is not a directory" not in text or "zz" not in text, text
 
 
+@pytest.mark.parametrize("entry", ["self-link", "two-link-loop", "dangling-link", "link-to-folder"])
+def test_a_second_inbox_that_loops_reads_not_a_folder_with_the_persons_fix_c3511(
+    tmp_path: Path, entry: str
+) -> None:
+    """B13 round 48 C3511 (ruling 226): a second inbox source that is a self-link (INBOX2L's ``gamma ->
+    gamma``) read ``Too many levels of symbolic links`` with a look-in-Finder fix, the agent's, and a
+    dangling one ``does not exist``. A link at a second inbox source that leads to no folder now gets the
+    not-a-folder words and the person's fix (``other_inbox_not_a_folder_fix``), its sentinel and volume rows
+    an [ok] pointer at that line; a link to a real folder stays listable."""
+    root = tmp_path / "Contoso Gamma"
+    (root / "Gamma Empty").mkdir(parents=True)
+    config = _synced(tmp_path, root)
+    config, box = ensure_inbox(config.config_path)
+    assert box is not None
+    drop = tmp_path / "zz" / "inbox"
+    drop.mkdir(parents=True)
+    cfg = config.config_path
+    cfg.write_text(cfg.read_text(encoding="utf-8") + inbox_source_table("zz-drop", drop), encoding="utf-8")
+    assert run_cycle(load_config(cfg), mode=None).exit_code == 0
+    drop.rename(tmp_path / "drop-moved")  # moved aside, never removed
+    _put_entry(drop, entry)
+    with _bounded(60):
+        config = load_config(cfg)
+        on = dataclasses.replace(config.source("zz-drop"), sentinel="README.txt")
+        rows = {r.name: r for r in doctor._check_local_source(config, on, Path(sys.executable))}
+    assert on.path is not None
+    listable = rows["source.zz-drop.listable"]
+    sentinel, volume = rows["source.zz-drop.sentinel"], rows["source.zz-drop.volume"]
+    if entry == "link-to-folder":  # a link to a real folder: listable, as before (empty is its normal state)
+        assert listable.ok and "is not a folder" not in listable.detail, listable
+        assert volume.ok and volume.detail.startswith("volume UUID "), volume
+        return
+    if entry == "dangling-link":
+        # config load resolves the path to the link's target, which does not exist: that path's own row,
+        # the person's fix, never "Too many levels" or a look in Finder
+        assert listable.detail.endswith(" does not exist") and doctor.is_persons_fix(listable.fix), listable
+        assert all(
+            "Too many levels" not in r.detail and "opens in Finder" not in (r.fix or "")
+            for r in rows.values()
+        )
+        return
+    shown = doctor.list_spelling(expand(on.path))
+    assert listable.detail == f"{shown} is not a folder", listable.detail
+    fix = doctor.other_inbox_not_a_folder_fix(config, on)
+    assert listable.fix == fix and fix.startswith("restore ") and doctor.is_persons_fix(fix), listable.fix
+    pointer = "is not a folder; the listable line above says what to do"
+    assert (
+        sentinel.ok and sentinel.fix is None and sentinel.detail.endswith(f"not checked: {shown} {pointer}")
+    )
+    assert volume.ok and volume.fix is None and volume.detail == f"volume UUID not checked: {shown} {pointer}"
+    for row in rows.values():
+        for words in ("Too many levels", "opens in Finder", "is a symlink", "does not exist", "is missing"):
+            assert words not in row.detail + (row.fix or ""), row
+
+
 @pytest.mark.parametrize("entry", ["self-link", "two-link-loop"])
 def test_a_second_inbox_that_loops_reads_not_a_folder_in_the_walk_as_its_note_does_c3511(
     tmp_path: Path, entry: str
@@ -3794,8 +3905,12 @@ def test_doctor_checks_no_sentinel_or_volume_under_a_kept_inbox_that_is_not_a_fo
             f"{doctor.list_spelling(kept / 'README.txt')} not checked: {doctor.list_spelling(kept)} is not a "
             "folder; the listable line above says what to do"
         ), sentinel
-        assert volume.detail == f"volume UUID not checked: {doctor.list_spelling(kept)} is not a folder"
-        assert not volume.ok and volume.fix == doctor.inbox_not_a_folder_fix(kept), volume
+        # an [ok] pointer at the listable line (B13 round 48 C3515, ruling 226)
+        assert volume.detail == (
+            f"volume UUID not checked: {doctor.list_spelling(kept)} is not a folder; the listable line above "
+            "says what to do"
+        ), volume.detail
+        assert volume.ok and volume.fix is None, volume
         for row in rows.values():
             assert "contoso-" not in row.detail + (row.fix or ""), row
     else:

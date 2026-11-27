@@ -358,13 +358,14 @@
 #      of time the fix is this same command again, then what to do if the same line comes back. When every
 #      [FAIL] that stops them is the person's (a folder or file to put back or sync, a [[source]] path or
 #      sentinel, a [[source]] block to put back, a [policy] or [governance] value, a docs-repo remote to
-#      remove or allow, a state file that is damaged, missing after earlier syncs, another account's or not
+#      remove or allow, a docs-repo path that is not a folder or cannot be created, a state file that is
+#      damaged, missing after earlier syncs, another account's or not
 #      a file, a hold the hold list lost, a purge queue or suppression list that lost a purge the audit trail
 #      or purge-record.json records, a state folder that is not a folder, or a state file or folder that an ACL, a privacy setting,
 #      a folder above it or a read-only volume refuses, a sign-in, a [convert] pandoc_path, Rosetta to install
 #      or a native pandoc copy), the NEXT says so and sends the agent on to the report (B13 round 13 O11, O30;
 #      round 16 T5, T9; round 17 lane E; round 18 V53; round 22 Z65; round 23 ruling 6; round 24 ruling 7;
-#      round 29 ruling 27; round 30 ruling 40)
+#      round 29 ruling 27; round 30 ruling 40; round 48 ruling 226)
 #   6. first-sync, whenever the config has a folder to sync (a [[source]] other than the inbox) and step 5 has
 #      no [FAIL] that stops it: agentsync sync --once --materialise-budget 0 (a non-zero exit fails the run;
 #      75, a cycle already running, skips): no downloads, so the files already on this Mac are converted now,
@@ -2724,7 +2725,7 @@ two_letter_word() {
 	case "$1" in
 	ad | ai | an | as | at | be | bf | bv | by | bz | ca | cd | cf | cr | cs | db | dd | df | do | ds | dt | en | eq | fa | fc | ff | fm | gb | gc | gh | go | gp) return 0 ;;
 	gz | id | if | im | in | is | it | js | kt | lc | ld | le | ls | mb | md | me | ml | mp | ms | mv | my | nf | no | np | nr | oe | of | ok | on | or | os | ou | ps) return 0 ;;
-	py | rb | rc | rd | re | rm | ro | rw | rx | sh | sm | so | sw | sz | ta | to | tr | ts | tz | up | us | uv | vb | vn | wc | we | xm | xz | ya | za) return 0 ;;
+	py | rb | rc | rd | re | rm | ro | rw | rx | sh | sm | so | sw | sz | ta | to | tr | ts | tz | up | us | uv | vb | vn | wc | we | wx | xm | xz | ya | za) return 0 ;;
 	esac
 	return 1
 }
@@ -14466,7 +14467,7 @@ mixed_chmods() { # STATUS_OUTPUT
 	state_chmods_of "$rest"
 }
 STATE_CHMODS="agentsync's state folder or a file in it (the manifest, its -wal or -shm, the lock, the heartbeat, a governance file or another file there) has a mode that is wrong for it, one this account cannot open or one others can read (a mode, not damage; the [FAIL] lines above name it): the fix is the agent's: run"
-PERSONS_FAILS="the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a docs-repo remote to remove or allow, a state file that is damaged, missing after earlier syncs, another account's or not a file, a hold the hold list lost, a purge queue or suppression list that lost a purge the audit trail or purge-record.json records, a state folder that is not a folder, or a state file or folder that an ACL, a privacy setting, a folder above it or a read-only volume refuses, a sign-in, a [convert] pandoc_path, Rosetta to install or a native pandoc copy), not a step for the agent, so show them those lines and go on to the report; once fixed"
+PERSONS_FAILS="the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a docs-repo remote to remove or allow, a docs-repo path that is not a folder or cannot be created, a state file that is damaged, missing after earlier syncs, another account's or not a file, a hold the hold list lost, a purge queue or suppression list that lost a purge the audit trail or purge-record.json records, a state folder that is not a folder, or a state file or folder that an ACL, a privacy setting, a folder above it or a read-only volume refuses, a sign-in, a [convert] pandoc_path, Rosetta to install or a native pandoc copy), not a step for the agent, so show them those lines and go on to the report; once fixed"
 # The pandoc status is about to check: [convert] pandoc_path, else the one the converters run, the native
 # arm64 copy when the operator installed one and the one bundled with the tool otherwise (the rule of
 # ops/doctor.py's pandoc check, B13 round 14 Q60), read by the tool step 2 installed. A tool older than

@@ -32,7 +32,7 @@ from agentsync import fsutil
 from agentsync.errors import GitError, PublishError
 from agentsync.model import ChangeOp, MirrorChange, counted_op
 from agentsync.ops import deadline
-from agentsync.paths import expand, is_cloud_path
+from agentsync.paths import dangling_link_above, expand, is_cloud_path
 from agentsync.text import plural
 
 log = logging.getLogger(__name__)
@@ -334,7 +334,9 @@ def ensure_repo(repo: Path) -> bool:
     """``git init -b main`` (empty template: no hooks) if needed; set core.precomposeunicode=true,
     core.quotepath=false and a local user.name/user.email (``agentsync``/``agentsync@localhost``) only if
     unset; rewrite ``info/exclude`` to agentsync's content.  Returns True if created.
-    Refuses (PublishError) a repo under ~/Library/CloudStorage."""
+    Refuses (PublishError) a repo under ~/Library/CloudStorage, a path that is not a folder, and a link to
+    nothing at the repo's path or a folder above it, named as the link, where ``mkdir`` raised
+    FileExistsError, read as a bug in agentsync (B13 round 48 C3466, ruling 226)."""
     repo = expand(repo)
     resolved = repo.resolve() if repo.exists() else repo
     if is_cloud_path(repo) or is_cloud_path(resolved):
@@ -344,6 +346,13 @@ def ensure_repo(repo: Path) -> bool:
         )
     if repo.exists() and not repo.is_dir():
         raise PublishError(f"{repo}: exists and is not a directory")
+    if not repo.exists():
+        link = repo if repo.is_symlink() else dangling_link_above(repo)
+        if link is not None:
+            raise PublishError(
+                f"{link}: a symlink to something that does not exist, where the docs repo or a folder above "
+                "it belongs; the person moves it aside, keeping a copy"
+            )
     if not repo.exists():
         # The docs repo is a plaintext copy of tenant data: owner-only (0700) whatever the umask.
         for parent in reversed(repo.parents):

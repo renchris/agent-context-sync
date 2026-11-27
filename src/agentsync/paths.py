@@ -121,6 +121,20 @@ def nearest_existing(path: Path) -> Path:
     return p
 
 
+def dangling_link_above(path: Path) -> Path | None:
+    """The first folder above ``path``, from ``/`` down, that is a link leading to nothing (a link to a path
+    that does not exist, or a loop), else None: ``nearest_existing`` reads through it to its target's
+    parent, so a docs path under ``~/agent-context -> nowhere`` read as creatable while ``mkdir`` stops on
+    the link (B13 round 48 C3466, ruling 226). The link as typed, never its target."""
+    for parent in reversed(expand(path).parents):
+        try:
+            if parent.is_symlink() and not parent.exists():
+                return parent
+        except OSError:  # a folder above that refuses a search: nearest_existing's to step past
+            return None
+    return None
+
+
 DocsRepoState = Literal["creatable", "uncreatable", "not_a_folder", "folder", "git"]
 """Where the docs repo's path stands (:func:`docs_repo_state`)."""
 
@@ -133,7 +147,9 @@ def docs_repo_state(repo: Path) -> tuple[DocsRepoState, Path]:
     - ``creatable``: nothing is there, not even a link, and the nearest existing path above it is a folder
       this account can write and search (add-source creates it);
     - ``uncreatable``: nothing is there, and that nearest existing path is not a folder (``~/agent-context``
-      itself a file) or this account cannot write or search it;
+      itself a file) or this account cannot write or search it, or a folder above it is a link to nothing
+      (or a loop), given back as that link: add-source's mkdir stops on it, so it is no folder (B13 round 48
+      C3466, ruling 226);
     - ``not_a_folder``: something is there, or a link (a dangling one too), and it is not a folder;
     - ``folder``: a folder, or a link to one, with no ``.git`` (add-source runs git init);
     - ``git``: a git repository.
@@ -141,6 +157,9 @@ def docs_repo_state(repo: Path) -> tuple[DocsRepoState, Path]:
     The path given back is that nearest existing path for the two missing states, else ``repo`` expanded."""
     repo = expand(repo)
     if not repo.exists() and not repo.is_symlink():
+        dangling = dangling_link_above(repo)
+        if dangling is not None:
+            return "uncreatable", dangling
         anchor = nearest_existing(repo.parent)
         writable = anchor.is_dir() and os.access(anchor, os.W_OK | os.X_OK)
         return ("creatable" if writable else "uncreatable"), anchor

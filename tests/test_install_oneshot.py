@@ -1028,8 +1028,9 @@ PANDOC_PERSONS = ("rosetta", "native", "native-bad-cpu", "configured", "not-abso
 PERSONS_NEXT = (
     "NEXT: the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back "
     "or sync, a [[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a "
-    "docs-repo remote to remove or allow, a state file that is damaged, missing after earlier syncs, another "
-    "account's or not a file, a hold the hold list lost, a purge queue or suppression list that lost a purge "
+    "docs-repo remote to remove or allow, a docs-repo path that is not a folder or cannot be created, a "
+    "state file that is damaged, missing after earlier syncs, another account's or not a file, a hold the "
+    "hold list lost, a purge queue or suppression list that lost a purge "
     "the audit trail or purge-record.json records, a state folder that is not a folder, or a state file or "
     "folder that an ACL, a privacy setting, a folder above it or a read-only volume refuses, a sign-in, a "
     "[convert] pandoc_path, Rosetta to install or a native pandoc copy), not a step for the "

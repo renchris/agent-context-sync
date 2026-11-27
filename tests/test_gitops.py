@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from agentsync import gitops
+from agentsync import gitops, paths
 from agentsync.errors import GitError, PublishError
 from agentsync.model import ChangeOp, MirrorChange
 from agentsync.ops import deadline
@@ -301,6 +301,28 @@ def test_ensure_repo_refuses_a_file(tmp_path: Path) -> None:
     f.write_text("x")
     with pytest.raises(PublishError, match="not a directory"):
         gitops.ensure_repo(f)
+
+
+@pytest.mark.parametrize("where", ["the docs path", "a folder above it"])
+def test_ensure_repo_names_a_link_to_nothing_c3466(tmp_path: Path, where: str) -> None:
+    """B13 round 48 C3466 (ruling 226): over a link to nothing at a folder above the docs path, ensure_repo's
+    ``parent.mkdir`` raised FileExistsError, read as a bug in agentsync. It raises a PublishError naming the
+    link, and docs_repo_state calls the path uncreatable by that link, not creatable."""
+    ctx = tmp_path / "agent-context"
+    link = ctx if where == "a folder above it" else ctx / "docs"
+    if where == "the docs path":
+        ctx.mkdir()
+    link.symlink_to(tmp_path / "contoso-gone")
+    repo = ctx / "docs"
+    with pytest.raises(PublishError) as raised:
+        gitops.ensure_repo(repo)
+    assert str(raised.value) == (
+        f"{link}: a symlink to something that does not exist, where the docs repo or a folder above it "
+        "belongs; the person moves it aside, keeping a copy"
+    ), raised.value
+    assert link.is_symlink() and not (tmp_path / "contoso-gone").exists()  # nothing made, nothing removed
+    want = ("not_a_folder", repo) if where == "the docs path" else ("uncreatable", link)
+    assert paths.docs_repo_state(repo) == want
 
 
 # ---- HEAD --------------------------------------------------------------------------------------------------

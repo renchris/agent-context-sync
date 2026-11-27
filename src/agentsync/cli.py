@@ -154,6 +154,7 @@ from agentsync.paths import (
     StatePaths,
     default_config_path,
     default_state_dir,
+    docs_repo_state,
     expand,
     is_under,
     same_folder,
@@ -3685,7 +3686,13 @@ def _time_machine_checks(config: Config) -> list[doctor.CheckResult]:
     """``governance.time_machine``: a warn for each tenant-data path not excluded from Time Machine, and an
     [info] line, no warn, for one this account cannot read the exclusion of (a file it cannot open, a folder
     it cannot look inside): it was excluded, and the sync the warn named could not fix a mode; the state_dir
-    lines give that fix when the path is in the state folder (B13 round 20 X12, X27)."""
+    lines give that fix when the path is in the state folder (B13 round 20 X12, X27).
+
+    While the docs path is not a folder or cannot be created, one [info] line points at docs_repo.git and
+    nothing is judged: the sync a warn names stops on that path before it adds an exclusion, as the state
+    file's guard below has it (B13 round 48 C3545 with C3529, ruling 226)."""
+    if docs_repo_state(expand(config.docs_repo))[0] in ("not_a_folder", "uncreatable"):
+        return [_check("governance.time_machine", False, doctor.DOCS_PATH_UNCHECKED, doctor.Severity.INFO)]
     transient = ("-wal", "-shm")
     status = [(p, ok) for p, ok in governance.time_machine_status(config) if not p.name.endswith(transient)]
     root = expand(config.state_paths.root)

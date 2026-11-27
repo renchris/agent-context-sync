@@ -473,8 +473,10 @@ DOCS_PARENT_STEP = (
 )
 """Rule 1's NEXT for a missing docs path whose nearest existing path above is not a writable folder
 (``paths.docs_repo_state`` ``uncreatable``; ``~/agent-context`` itself a file): the person's, pointed at the
-[FAIL] line without its ``mkdir -p`` fix, which cannot work over a file, and never add-source or a step
-chained after the fix (B13 round 47 C3238, ruling 211)."""
+[FAIL] line, and never add-source or a step chained after the fix (B13 round 47 C3238, ruling 211). That
+line's fix names the repair by the path above that stops it, never a step that stops on the same entry: a
+file or a link to nothing moved aside or another docs_repo, a folder's chmod when this account owns it, else
+another docs_repo, each opening "the person " (B13 round 48 C3449 with C3545, ruling 226)."""
 
 EMPTY_ROOT_GRANT_STATUS = (
     f"`{BIN} status`'s source.{{sid}}.listable [warn] line names the folder and the Python"

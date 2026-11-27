@@ -4502,8 +4502,14 @@ def test_the_inbox_sources_fix_over_a_non_folder_is_the_persons_move_aside_c2809
             assert words not in row.detail + (row.fix or ""), row
         assert not re.match(r"volume UUID [0-9A-F]{8}-", row.detail), row  # never a UUID probed (C3256)
     volume = next(r for r in rows if r.name.endswith(".volume"))  # every entry (C3256)
-    assert volume.detail == f"volume UUID not checked: {doctor.list_spelling(folder)} is not a folder"
-    assert volume.fix == want and not volume.ok and volume.severity is doctor.Severity.ERROR, volume
+    # B13 round 48 C3515 (ruling 226): an [ok] pointer at the listable line, never a second [FAIL] with the
+    # same fix
+    assert volume.detail == (
+        f"volume UUID not checked: {doctor.list_spelling(folder)} is not a folder; the listable line above "
+        "says what to do"
+    ), volume.detail
+    assert volume.ok and volume.fix is None, volume
+    assert sum(not r.ok for r in rows) == 1, rows
     if sentinel is not None:  # spelled from the typed path, never the link's target (C3253)
         row = next(r for r in rows if r.name.endswith(".sentinel"))
         assert row.ok and row.detail == (
@@ -5097,13 +5103,58 @@ def test_a_file_at_the_docs_path_is_the_persons_in_status_c3238(
     lines = out.splitlines()
     assert lines[0] == loop.NEXT_PREFIX + loop.DOCS_NOT_A_FOLDER_STEP, out
     fail = next(i for i, ln in enumerate(lines) if ln.startswith("[FAIL] docs_repo.git"))
-    assert "exists but is not a directory (fix: move " in lines[fail] and fail > 0, out
+    # the person's fix by its first words (B13 round 48 C3545 with C3479, ruling 226)
+    assert "exists but is not a directory (fix: the person moves " in lines[fail] and fail > 0, out
+    assert ", keeping a copy)" in lines[fail], out
+    # no line on this layout names a sync that stops on the same file (C3545, C3529)
+    assert not [ln for ln in lines if ln.startswith(("[FAIL]", "[warn]")) and "agentsync sync" in ln], out
     assert "add-source" not in lines[0] and "baseline draft" not in out, out
     assert initialised.config_path.read_bytes() == before
     cli.main(["status", "--json", "--config", cfg])
     doc = json.loads(capsys.readouterr().out)["status"]
     document_form = loop.DOCS_NOT_A_FOLDER_STEP.replace(loop.DOCS_FAIL_BELOW, loop.DOCS_FAIL_DOC)
     assert doc["next"][0]["when"] == document_form, doc
+
+
+@pytest.mark.parametrize("layout", ["docs a file", "a file above the docs path"])
+def test_no_docs_path_line_names_a_sync_that_stops_on_the_same_file_c3545(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, layout: str
+) -> None:
+    """B13 round 48 C3545 with C3529 (ruling 226): with ``~/agent-context`` at 0755 and a 0644 file where
+    the docs repo belongs, docs_repo.permissions FAILed both paths with ``run agentsync sync``, and
+    governance.time_machine warned with the same sync, which stops on that file before it changes a mode.
+    While the docs path is not a folder or cannot be created, each gives one [ok]/[info] line pointing at
+    docs_repo.git, no walk and no fix."""
+    ctx = initialised.config_path.parent
+    if layout == "docs a file":
+        config = initialised
+        shutil.rmtree(config.docs_repo)
+        config.docs_repo.write_text("not a folder\n", encoding="utf-8")
+        config.docs_repo.chmod(0o644)
+    else:
+        above = ctx / "contoso-note"
+        above.write_text("not a folder\n", encoding="utf-8")
+        config = dataclasses.replace(initialised, docs_repo=above / "docs")
+    ctx.chmod(0o755)
+    cache = expand(config.cache_dir)
+    monkeypatch.setattr(
+        governance, "time_machine_status", lambda c: [(config.docs_repo / "mirror", False), (cache, False)]
+    )
+    words = "not checked: the docs repo path is not a folder (see docs_repo.git)"
+    [perm] = [r for r in doctor._check_permissions(config) if r.name == "docs_repo.permissions"]
+    assert perm.ok and perm.detail == words and perm.fix is None, perm
+    [tm] = cli._time_machine_checks(config)
+    assert tm.ok is False and tm.severity is doctor.Severity.INFO and tm.detail == words and tm.fix is None, (
+        tm
+    )
+    # the folder again: both checks read their paths as before (the walk, the warn and its sync)
+    if layout == "docs a file":
+        config.docs_repo.unlink()
+        config.docs_repo.mkdir()
+        config.docs_repo.chmod(0o755)
+        [perm] = [r for r in doctor._check_permissions(config) if r.name == "docs_repo.permissions"]
+        assert not perm.ok and "agentsync sync" in (perm.fix or ""), perm
+        assert any("agentsync sync" in (r.fix or "") for r in cli._time_machine_checks(config))
 
 
 def test_a_link_to_a_real_docs_folder_beside_a_refused_remote_keeps_the_governance_next_c3238(

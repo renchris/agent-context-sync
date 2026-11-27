@@ -46511,6 +46511,9 @@ Amended 2026-11-24, §16.287 C3008: `<folder>` in `restore <folder> as a folder`
 (`doctor._prose_path`), never `_shell_path`'s `~/'<rest>'` word.
 Amended 2026-11-25, §16.292 C3313, C3253, C3256: the volume row reads `volume UUID not checked: <folder> is not a
 folder` with that fix for every entry that is not a folder (a file and a link to a file too), never a probed UUID.
+Amended 2026-11-27, §16.297 C3515: the volume row of a kept inbox that is not a folder is `[ok] volume UUID not checked:
+<folder> is not a folder; the listable line above says what to do`, no fix, as the sentinel row's, never a second [FAIL]
+with the same fix (amends ruling 204's and 210's same fix on both rows).
 
 **A sync names an inbox that is not a folder in a note of its own** (C2814; ruling 194). LocalArm records
 `arm_local.UNKNOWN_NOTDIR` for "." when its root is a file or a link, and the cycle stores it in the unlisted kinds.
@@ -47306,6 +47309,9 @@ permission denied` with `_parent_fix(<sentinel>)`, the person's, naming the subf
 Amended 2026-11-25, §16.292 C3313, C3253, C3256: the volume row says `is not a folder` for all five entries (a
 file and a link to a file too), and a configured sentinel there reads `[ok] <folder>/<sentinel> not checked: <folder>
 is not a folder; the listable line above says what to do`, spelled from the typed path, never probed.
+Amended 2026-11-27, §16.297 C3515: the volume row of a kept inbox that is not a folder is `[ok] volume UUID not checked:
+<folder> is not a folder; the listable line above says what to do`, no fix, as the sentinel row's, never a second [FAIL]
+with the same fix (amends ruling 204's and 210's same fix on both rows).
 Amended 2026-11-25, §16.292 C3252: that EACCES under a listable root keeps `_parent_fix(<sentinel>)` only when a
 folder above refuses a search; else the fix names the sentinel and `chmod -N` (`doctor._sentinel_fix`).
 
@@ -48129,6 +48135,15 @@ sync stops on such a path before it prints a NEXT, so only status prints these. 
 `test_rule_1_names_the_docs_fail_as_the_persons_c3238`, `test_a_docs_path_under_the_cloud_folder_reads_as_doctor_reads_it_c3238`,
 `test_a_file_at_the_docs_path_is_the_persons_in_status_c3238` and
 `test_a_link_to_a_real_docs_folder_beside_a_refused_remote_keeps_the_governance_next_c3238`.
+Amended 2026-11-27, §16.297 C3545, C3449, C3479, C3466: doctor's docs_repo.git fixes open `the person ` (a
+PERSONS_FIX_RE opening), `the person moves <repo> aside, keeping a copy`, and for a path that cannot be created, by its
+anchor, `the person moves <anchor> aside, keeping a copy, or sets [agentsync] docs_repo to another path` (a file or a
+link to nothing), `the person runs chmod u+wx <anchor>` (a folder this account owns), else `the person sets [agentsync]
+docs_repo to a folder this account can write`, never `mkdir -p` and never a delete; `uncreatable` also holds a link to
+nothing above the docs path, given back as that link (`paths.dangling_link_above`), and `gitops.ensure_repo` refuses
+one at or above the path with a PublishError naming it; PERSONS_KINDS gains `a docs-repo path that is not a folder or
+cannot be created`; docs_repo.permissions and governance.time_machine read `not checked: the docs repo path is not a
+folder (see docs_repo.git)` (`doctor.DOCS_PATH_UNCHECKED`) on such a path, no walk and no sync fix.
 
 **A corrupt heartbeat's warning names its path once** (C3216). `write_heartbeat`'s and the cycle's `_after` WARNING
 read `heartbeat <path> is corrupt (<path>: not valid JSON: ...)`, the path twice, since read_heartbeat's ValueError
@@ -48269,6 +48284,10 @@ opening), never `inbox_not_a_folder_fix` or step 2 (makes worse True for those).
 sits on a volume), and a local source keeps `is not a directory`. Test:
 `test_a_second_inbox_that_is_not_a_folder_reads_not_a_folder_with_its_own_remedy_c3215` (eleven kinds of entry, under
 a timeout).
+Amended 2026-11-27, §16.297 C3511: a second inbox source on a link that loops (ELOOP) reads `<path> is not a folder`
+with `other_inbox_not_a_folder_fix` too, never `Too many levels of symbolic links` with a look-in-Finder fix, its
+sentinel and volume rows an [ok] `not checked: <path> is not a folder; the listable line above says what to do`; a
+file's volume row stays unchanged, and a link to a real folder stays listable.
 
 **A kept inbox linked to a real folder is shown by its typed path** (C3217; ruling 210; amends §16.282 C2807). The
 source on the kept inbox stores canonical_source_root's answer, the link's target, so with a link to a real folder
@@ -48293,6 +48312,9 @@ folder` with `inbox_not_a_folder_fix`. The flag is never keyed on NotADirectoryE
 `[[source]]` whose path is a file keeps `is not a directory` and both probes. Tests:
 `test_doctor_checks_no_sentinel_or_volume_under_a_kept_inbox_that_is_not_a_folder_c3313` (eleven kinds of entry,
 under a timeout) and the C2809 test (a sentinel axis, the volume row asserted for every entry).
+Amended 2026-11-27, §16.297 C3515: the volume row of a kept inbox that is not a folder is `[ok] volume UUID not checked:
+<folder> is not a folder; the listable line above says what to do`, no fix, as the sentinel row's, never a second [FAIL]
+with the same fix (amends ruling 204's and 210's same fix on both rows).
 
 **The sentinel row's fix names the sentinel when nothing above it refuses a search** (C3252; ruling 210; amends
 §16.287 C3043). An EACCES on a sentinel under a listable root always got `_parent_fix(<sentinel>)`, which, with no

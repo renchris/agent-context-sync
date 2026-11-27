@@ -2556,6 +2556,9 @@ on a link's target) (C3088). Lane D: a dated line under §16.282 C2808 says no r
 lane B rewords cli.INBOX_NOT_READ's docstring in its own commit (C3051). Lane B sends lanes RA, RB and D the new alarm,
 doctor and note words first; the CONTRACTS lines that quote them (ruling 130, C2809, C2814) take dated lines in lane B's
 commits.
+Amended 2026-11-27, §16.297 C3515: the volume row of a kept inbox that is not a folder is `[ok] volume UUID not checked:
+<folder> is not a folder; the listable line above says what to do`, no fix, as the sentinel row's, never a second [FAIL]
+with the same fix (amends ruling 204's and 210's same fix on both rows).
 (2026-11-25) Ruling 210 amends this one: every reader decides the kept inbox's state by one check (9cc1f3a06),
 canonical_source_root stops at the first repeated link (54c3c1cbc), the alarm and notes say `a file or a link that
 does not lead to a folder`, the alarm pointing at the note that gives the remedy and each note carrying its own until
@@ -2699,6 +2702,11 @@ lines that quote them (the C3007 and C3044 paragraphs, ruling 204's) take dated 
 `~/.local/bin/agentsync status` says what to do)` (C3211, e74669240); and the same commit named the probe
 LocalArm.root_probe, so the four branches read root_probe through _probe_root, and ruling 204's shown_root is
 root_probe too (round 48 C3520 and C3479, CONTRACTS §16.299).
+Amended 2026-11-27, §16.297 C3515, C3511: the volume row of a kept inbox that is not a folder is `[ok] volume UUID not
+checked: <folder> is not a folder; the listable line above says what to do`, no fix, as the sentinel row's, never a
+second [FAIL] with the same fix (amends ruling 204's and 210's same fix on both rows); a second inbox source on a link
+that loops reads `not a folder` with its own remedy, its sentinel and volume rows the same [ok] pointer, a file's volume
+row unchanged.
 (211) A file where the docs repo belongs is the person's to move aside, and status, the report and step 2 all say so
 (lanes B, RA and RB; turn C3236, C3238, C3239). Lane B: loop._eval_status reads NotADirectoryError as missing, every
 other OSError still logged (C3239); next_step's rule 1 sends the agent to add-source only where doctor's docs_repo.git
