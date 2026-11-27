@@ -4495,7 +4495,7 @@ def container_reason(kind: ContainerKind, *, office_name: bool) -> str | None:
     """The stub reason the container alone gives (encrypted-office, encrypted-pdf, empty-output, not-ooxml) or None."""
 
 def has_banner(body: str) -> bool:
-    """True when the banner line is among the first lines of ``body``."""
+    """True when the banner is ``body``'s first line, leading blank lines aside."""
 
 def is_agent_instruction_name(name: str) -> bool:
     """True when ``name`` (one path segment) is a leading-dot name or has an instruction-file stem."""
@@ -48752,6 +48752,13 @@ words, was false too, since `PptxConverter.outdated` returns False for every stu
 the five keeps its words and takes a dated line saying so; pptx's `_EMITTER_VERSION` stays 1.0.4 (the ruling's
 choice: a move would cost a cache miss per deck for a cosmetic noun). Test:
 `tests/test_deploy_pack.py::test_a_pptx_stub_keeps_its_older_noun_while_its_bytes_do_not_change_c3417`.
+
+**§15's `agentsync.policy` stub says has_banner's rule as policy.py does** (C3453; ruling 230; `docs/design/CONTRACTS.md`
+§15). The stub still said the banner line counts when it is "among the first lines" of the body, the eight-line
+scan round 45's C2929 replaced: `policy.has_banner` is True only when the banner is the body's first line, leading blank
+lines aside. A §15 mirror moves word for word with its source, so the stub now carries the docstring's first sentence,
+`True when the banner is ``body``'s first line, leading blank lines aside.`, as §16.283's C2929 paragraph says it; no
+code moves. Test: `tests/test_deploy_pack.py::test_section_15s_policy_stub_says_has_banners_rule_as_policy_py_does_c3453`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

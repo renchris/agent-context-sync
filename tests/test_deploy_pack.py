@@ -5109,6 +5109,20 @@ def test_the_governance_guides_banner_sentence_covers_the_pages_this_build_write
     assert not policy.has_banner(heading_first) and policy.has_banner(f"{policy.UNTRUSTED_BANNER}\n\nbody\n")
 
 
+def test_section_15s_policy_stub_says_has_banners_rule_as_policy_py_does_c3453() -> None:
+    """B13 round 48 C3453 (ruling 230): §15's ``agentsync.policy`` stub still said has_banner is True when
+    the banner line is among the body's first lines, the scan round 45's C2929 replaced. A §15 mirror moves
+    word for word with its source: the stub's docstring is policy.has_banner's first sentence."""
+    from agentsync import policy  # noqa: PLC0415
+
+    first = " ".join((policy.has_banner.__doc__ or "").split()).split(".  ")[0].split(". ")[0] + "."
+    assert first == "True when the banner is ``body``'s first line, leading blank lines aside."
+    text = CONTRACTS.read_text(encoding="utf-8")
+    stub = text[text.index("def has_banner(body: str) -> bool:\n") :].split("\n\n", 1)[0]
+    assert stub == f'def has_banner(body: str) -> bool:\n    """{first}"""', stub
+    assert "among the first lines" not in stub
+
+
 def test_the_v43_not_used_rule_covers_a_step2_refused_before_agentsync_ran_c3018(tmp_path: Path) -> None:
     """B13 round 46 C3018 (ruling 205): H26 let a stop before step 2 write one ``## Not used`` line, since no
     part of agentsync had run; a step 2 refused on AGENTSYNC_CONFIG exits 2 before record_flush, installing
