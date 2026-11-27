@@ -4312,6 +4312,19 @@ def compute_outcome(
         whys = list(logs.values())
         return Outcome("unknown", None, (f"{friction} and {install}", *whys), version)
     error = _unresolved_error(attempt) or next(iter(attempt.of_kind("error")[::-1]), None)
+    install_unread = dict(not_read).get("install log")
+    if install_unread is not None:
+        # B13 round 48 C3403 (ruling 228; review): every return below reads "no install run", which an
+        # install log the report did not read cannot say, so the attempt is unknown, its steps' words kept
+        steps_logged = [e.step for e in attempt.events if e.step is not None]
+        said = (
+            f"; step {error.step} logged an error"
+            if error is not None
+            else f"; the last step logged is {steps_logged[-1]}"
+            if steps_logged
+            else ""
+        )
+        return Outcome("unknown", None, (f"install log not read{said}", install_unread), version)
     if error is not None:
         why_error = f"no install run; step {error.step} logged an error"
         return Outcome("failed", error.step, (why_error,), version)
@@ -19432,7 +19445,12 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
     if att is not None and att.header.get("Outcome"):
         out.append(f"- agent said: {att.header['Outcome']}")
     out.append(r.loop_line if r.loop_line is not None else _loop_line(r))
-    if fr is None:
+    friction_unread = dict(_unread_logs(r)).get("friction log")
+    if fr is None and friction_unread is not None:
+        # B13 round 48 C3403, C3404 (ruling 228; review): a refused log, or one that is no regular file, is
+        # named as not read, never as absent beside the outcome's own "friction log not read"
+        out.append(f"- friction log: not read ({friction_unread})")
+    elif fr is None:
         out.append(f"- friction log: none at {r.friction_path}")
     elif att is None:
         out.append(f"- friction log: {r.friction_path} has no attempt (no Attempt:, Prompt: or event line)")

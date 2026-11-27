@@ -31386,6 +31386,11 @@ def test_a_fifo_at_a_log_or_beside_one_never_blocks_the_report_and_is_named_c340
         assert f"friction log at {elsewhere / 'friction.md'}: {said})" in cp.stdout, cp.stdout
         summary = section(out.read_text(encoding="utf-8"), "Summary")
         assert "friction log not read" in summary and "no friction log" not in summary, summary
+        # B13 round 48 review of C3404: the Summary's own friction line named the unread log as absent
+        assert "friction log: none at" not in summary, summary
+        assert "- friction log: not read (the friction log is not a regular file)" in summary.splitlines(), (
+            summary
+        )
     if where == "setup log":
         summary = section(out.read_text(encoding="utf-8"), "Summary")
         assert f"- install.sh: the install log is {said}" in summary.splitlines(), summary
@@ -31535,3 +31540,105 @@ def test_the_friction_log_has_one_resolver_and_no_dead_default_c3408(
         tmp_path / "f.md",
         None,
     )
+
+
+_C3403_STEPS = (
+    "Attempt: 2026-11-27T09:00:00Z\n"
+    "Prompt: v44\n"
+    "Agent: Claude Code, claude-opus-5-5\n"
+    "2026-11-27T09:00:05Z | step 1 | start | preflight and code | -\n"
+    "2026-11-27T09:00:40Z | step 1 | end | clone ok | -\n"
+)
+_C3403_ERROR = _C3403_STEPS + "2026-11-27T09:01:00Z | step 2 | error | install.sh exited 1 | -\n"
+_C3403_REFUSED = (("install log", "$AGENTSYNC_SETUP_LOG names another account's home"),)
+
+
+@pytest.mark.parametrize(
+    ("text", "not_read", "want"),
+    [
+        (
+            _C3403_ERROR,
+            _C3403_REFUSED,
+            (
+                "unknown",
+                (
+                    "install log not read; step 2 logged an error",
+                    "$AGENTSYNC_SETUP_LOG names another account's home",
+                ),
+            ),
+        ),
+        (
+            _C3403_STEPS,
+            (("install log", "the install log is not a regular file"),),
+            (
+                "unknown",
+                ("install log not read; the last step logged is 1", "the install log is not a regular file"),
+            ),
+        ),
+        (_C3403_ERROR, (), ("failed", ("no install run; step 2 logged an error",))),
+        (_C3403_STEPS, (), ("failed", ("no install run and no error; the last step logged is 1",))),
+        (
+            _C3403_ERROR,
+            (("friction log", "$AGENTSYNC_FRICTION_LOG names another account's home"),),
+            ("failed", ("no install run; step 2 logged an error",)),
+        ),
+    ],
+    ids=["refused-error", "not-a-file-steps", "read-error", "read-steps", "friction-only-unread"],
+)
+def test_an_attempt_whose_install_log_was_not_read_never_reads_no_install_run_c3403(
+    text: str, not_read: tuple[tuple[str, str], ...], want: tuple[str, tuple[str, ...]]
+) -> None:
+    """B13 round 48 C3403 (ruling 228; a review of cdea8d739): only the no-attempt return named a log the
+    report did not read; with a friction attempt, every later return said "no install run" (failed on a step
+    error), which an unread install log cannot say. The attempt is unknown and names the unread log; an
+    install log that was read keeps today's words exactly."""
+    attempt = setup_report.parse_friction(text).attempts[-1]
+    outcome = setup_report.compute_outcome(attempt, [], not_read=not_read)
+    assert (outcome.kind, outcome.why) == want
+
+
+@pytest.mark.usefixtures("clean_doctor")
+@pytest.mark.parametrize("value", ["refused", "folder", "absent"])
+def test_the_summarys_friction_line_names_a_log_it_did_not_read_c3403_c3404(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    """B13 round 48 C3403 and C3404 (ruling 228; a review of e02b0022a): with the friction log refused or not
+    a regular file, the Summary printed `- friction log: none at <path>` beside its own `friction log not
+    read`. It names the log as not read and why; a log that is truly absent still reads `none at`."""
+    if value == "refused":
+        monkeypatch.setenv(setup_report.FRICTION_ENV, "~kestrel/f.md")
+        want = "- friction log: not read ($AGENTSYNC_FRICTION_LOG names another account's home)"
+    elif value == "folder":
+        (tmp_path / "ff").mkdir()
+        monkeypatch.setenv(setup_report.FRICTION_ENV, str(tmp_path / "ff"))
+        want = "- friction log: not read (the friction log is not a regular file)"
+    else:
+        monkeypatch.setenv(setup_report.FRICTION_ENV, str(tmp_path / "missing.md"))
+        want = "- friction log: none at "  # the path itself is cut by the report's redaction
+    rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert rc == 0
+    summary = section(text, "Summary")
+    if value != "absent":
+        assert "friction log: none at" not in summary, summary
+    assert any(ln.startswith(want) if value == "absent" else ln == want for ln in summary.splitlines()), (
+        summary
+    )
+
+
+def test_the_one_log_reader_opens_with_no_controlling_terminal_c3404(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 48 C3404 (a review of e02b0022a): read_log opened without O_NOCTTY, so a terminal named by
+    `AGENTSYNC_SETUP_LOG` could become the controlling terminal of a report run that had none."""
+    seen: list[int] = []
+    real_open = os.open
+
+    def spy(path: object, flags: int, *args: object) -> int:
+        seen.append(flags)
+        return real_open(path, flags, *args)  # type: ignore[arg-type]
+
+    log = tmp_path / "install.log"
+    log.write_text("x\n", encoding="utf-8")
+    monkeypatch.setattr(os, "open", spy)
+    assert install_log.read_log(log).data == b"x\n"
+    assert seen and all(f & os.O_NOCTTY for f in seen), seen

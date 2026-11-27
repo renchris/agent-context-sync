@@ -63,13 +63,14 @@ def read_log(path: Path, *, head: int | None = None, tail: int | None = None) ->
     """The one reader of install.log, the friction log and the files beside them (install.out,
     sync-stops.log, proxy-hosts, the log folder's files), read so nothing there can block it (B13 round 48
     C3404, ruling 228): a plain open of a FIFO at ``$AGENTSYNC_SETUP_LOG`` or ``$AGENTSYNC_FRICTION_LOG``
-    waited forever, so ``setup-report`` never ended. Opened ``O_RDONLY | O_NONBLOCK | O_CLOEXEC``, links
+    waited forever, so ``setup-report`` never ended. Opened ``O_RDONLY | O_NONBLOCK | O_CLOEXEC |
+    O_NOCTTY`` (a terminal at the path never becomes the report's controlling terminal), links
     followed, then judged on the open descriptor (``fstat``, no race with a separate stat): anything but a
     regular file raises :class:`NotARegularFileError`, a link loop and a socket's refused open too;
     FileNotFoundError, NotADirectoryError (a link through a file) and every other OSError are the open's own.
     Then blocking again, and read: the first ``head`` bytes, the last ``tail`` bytes, else all of it."""
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC | os.O_NOCTTY)
     except OSError as exc:
         if exc.errno in (errno.ELOOP, errno.EOPNOTSUPP, errno.ENXIO):  # a link loop; a socket (macOS, Linux)
             raise NotARegularFileError(errno.EINVAL, NOT_A_REGULAR_FILE, str(path)) from None

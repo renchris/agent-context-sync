@@ -48827,7 +48827,13 @@ only in that log whole. Tests: `test_setup_report.py`'s
 `test_a_tilde_name_log_variable_is_named_as_a_log_not_read_and_the_report_written_c3292` (extended),
 `test_a_refused_setup_log_gives_no_fact_from_a_working_directory_file_and_still_cuts_c3436`,
 `test_a_bare_tilde_name_setup_log_reads_no_stop_from_the_working_directory_c3436` and
-`test_an_unknown_outcome_names_a_refused_log_as_not_read_c3403`.
+`test_an_unknown_outcome_names_a_refused_log_as_not_read_c3403`. A review found two more readers that called an unread
+log absent, built with it: with a friction attempt and an install log not read, every later `compute_outcome` return
+said `no install run` (a step error scoring failed); such an attempt is unknown, `install log not read; step <n>
+logged an error` (or `; the last step logged is <n>`) and why; and the Summary's friction line reads `- friction log:
+not read (<why>)`, `none at <path>` only for a log that is absent. Tests:
+`test_an_attempt_whose_install_log_was_not_read_never_reads_no_install_run_c3403` and
+`test_the_summarys_friction_line_names_a_log_it_did_not_read_c3403_c3404`.
 
 **One non-blocking reader for both logs and the files beside them** (C3404; ruling 228; `agentsync.install_log`,
 `agentsync.setup_report`, `agentsync.cli`). A FIFO at `AGENTSYNC_SETUP_LOG` or `AGENTSYNC_FRICTION_LOG`, or at
@@ -48844,7 +48850,9 @@ and so does the CLI's written line; a folder at either log reads the same, where
 or a link through a file stays a missing file. Tests:
 `test_a_fifo_at_a_log_or_beside_one_never_blocks_the_report_and_is_named_c3404` (four places, a subprocess under a
 timeout) and `test_the_one_log_reader_answers_each_kind_of_path_as_the_report_names_it_c3404` (a file, a folder, a link
-to each, a dangling link, a link to itself, a two-link loop, a link through a file and a FIFO, under an alarm).
+to each, a dangling link, a link to itself, a two-link loop, a link through a file and a FIFO, under an alarm). It
+opens with `O_NOCTTY` too, so a terminal at the path never becomes the report's controlling terminal
+(`test_the_one_log_reader_opens_with_no_controlling_terminal_c3404`).
 
 **`default_friction_path` goes** (C3408; ruling 228; `agentsync.setup_report`). It had no caller once a4ff95f5f moved
 build_report to the report's own resolver, `_env_log(FRICTION_ENV, FRICTION_DEFAULT)`, whose `~name` value is
