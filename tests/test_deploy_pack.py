@@ -1094,6 +1094,41 @@ def test_the_c3329_lines_take_a_dated_line_naming_the_pdf_scan_apart_c3452_c3462
         assert c3329 < line and said in para[line:], para[line:]
 
 
+def test_a_pptx_stub_keeps_its_older_noun_while_its_bytes_do_not_change_c3417() -> None:
+    """B13 round 48 C3417 (ruling 230): §16.293's C3230 paragraph and its four dated copies said a stub cached
+    under the older noun keeps it "until it is read again", and that moving pptx's version would re-convert
+    every deck; but the cache serves the same bytes under pptx's unchanged key, and ``PptxConverter.outdated``
+    returns False for any stub without reading the version. Each of the five keeps its words and a round 48
+    line after it says so; the version stays 1.0.4."""
+    from agentsync.convert import pptx  # noqa: PLC0415
+
+    assert pptx._EMITTER_VERSION == "1.0.4"
+    outdated = inspect.getsource(pptx.PptxConverter.outdated)
+    assert (
+        "if reason is not None:\n            return False" in outdated and "_EMITTER_VERSION" not in outdated
+    )
+    copy = "Amended 2026-11-25, §16.293 C3230: the expected side takes its family's own noun now"
+    line = "Amended 2026-11-27, §16.299 C3417: one cached under the older words keeps them while its bytes"
+    text = CONTRACTS.read_text(encoding="utf-8")
+    paras = [" ".join(p.split()) for p in re.split(r"\n\s*\n", text)]
+    copies = [p for p in paras if copy in p and "not a PowerPoint deck" in p]
+    assert len(copies) == 4
+    for para in copies:
+        at = para.index(copy)
+        assert "until it is read again" in para[at : para.index(line)], para[at:]
+        assert "pptx's action key did not move, so the cache serves the same bytes the older stub." in para
+    [own] = [
+        p for p in paras if p.startswith("**Each Office family takes one noun on both sides of a stub**")
+    ]
+    c3417 = own.index(
+        "Amended 2026-11-27, §16.299 C3417: a pptx stub cached under the older words keeps them"
+    )
+    assert "it keeps its words until it is read again, a cosmetic difference" in own[:c3417]
+    assert "a re-conversion of every deck would cost more than the words" in own[:c3417]
+    assert "`PptxConverter.outdated` never reads it" in own[c3417:]
+    assert "pptx's version stays 1.0.4." in own[c3417:]
+
+
 def test_ruling_166_keeps_its_words_and_a_dated_line_records_call_5s_decline_c2673() -> None:
     """B13 round 44 C2673: ruling 166 still described C2470's v2 pass as built, and §16.273 said C2470 is not
     built "by the lead's ruling" with no record of it. As C2069 did for ruling 138, the ruling keeps its

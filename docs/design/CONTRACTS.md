@@ -32690,6 +32690,8 @@ MiB uncompressed, in whichever encoding it is stored); near the cap the twins ca
 Amended 2026-11-25, §16.293 C3230: the expected side takes its family's own noun now, so this stub reads `not-ooxml:
 a Word document, not a PowerPoint deck (not the type its name says)`; one cached under the older words keeps them
 until it is read again, and `FAMILY_MISMATCH_RE` matches both.
+Amended 2026-11-27, §16.299 C3417: one cached under the older words keeps them while its bytes do not change, not
+until it is read again: pptx's action key did not move, so the cache serves the same bytes the older stub.
 
 **A new start continues after the run STATE.md records (I22; `agentsync.cycle`).** Runs that change nothing commit
 nothing and write no CHANGELOG heading, so only `_sync/STATE.md`'s `run:` line records them, and a new start
@@ -45885,6 +45887,8 @@ hand-built package's stub cached under the older rule stays until its bytes chan
 Amended 2026-11-25, §16.293 C3230: the expected side takes its family's own noun now, so this stub reads `not-ooxml:
 a Word document, not a PowerPoint deck (not the type its name says)`; one cached under the older words keeps them
 until it is read again, and `FAMILY_MISMATCH_RE` matches both.
+Amended 2026-11-27, §16.299 C3417: one cached under the older words keeps them while its bytes do not change, not
+until it is read again: pptx's action key did not move, so the cache serves the same bytes the older stub.
 Amended 2026-11-25, §16.293 C3264: under a `<Types>` with no namespace its direct children in the content-types
 namespace are read too, so "in none when it has none" now reads "in none or the content-types namespace".
 
@@ -46800,6 +46804,8 @@ is, and holds the token unset until a pass reads it.
 Amended 2026-11-25, §16.293 C3230: the expected side takes its family's own noun now, so this stub reads `not-ooxml:
 a Word document, not a PowerPoint deck (not the type its name says)`; one cached under the older words keeps them
 until it is read again, and `FAMILY_MISMATCH_RE` matches both.
+Amended 2026-11-27, §16.299 C3417: one cached under the older words keeps them while its bytes do not change, not
+until it is read again: pptx's action key did not move, so the cache serves the same bytes the older stub.
 Amended 2026-11-25, §16.293 C3231: a row the walk queued this pass (a file touched or readable again) is not read by
 this pass; it waits for the first sync whose walk does not queue it, the token unset until it is read, as
 `_reread_family_stubs` says.
@@ -47439,6 +47445,8 @@ first; none of these moves anything on the same bytes, so nothing loops.
 Amended 2026-11-25, §16.293 C3230: the expected side takes its family's own noun now, so this stub reads `not-ooxml:
 a Word document, not a PowerPoint deck (not the type its name says)`; one cached under the older words keeps them
 until it is read again, and `FAMILY_MISMATCH_RE` matches both.
+Amended 2026-11-27, §16.299 C3417: one cached under the older words keeps them while its bytes do not change, not
+until it is read again: pptx's action key did not move, so the cache serves the same bytes the older stub.
 Amended 2026-11-27, §16.299 C3452: the C3329 line's PDF answer is two reads, never one window: `%PDF-` in the
 first 1024 bytes and `/Encrypt` anywhere in the file give `encrypted-pdf`, as §16.293's C3316 paragraph and
 `policy.screen_file` say.
@@ -48402,6 +48410,12 @@ stub text is the only change, and a re-conversion of every deck would cost more 
 to 1.0.7, for C3025's note and this noun together (C3263 below). Test:
 `test_convert_family.py::test_each_family_takes_one_noun_on_both_sides_of_a_stub_c3230` (`.potx` and `.xlsx` stubs,
 the `.vsdx` deck, the older words still matched and classed), with the stub literals of every family test moved.
+Amended 2026-11-27, §16.299 C3417: a pptx stub cached under the older words keeps them while its bytes do not
+change, not until it is read again: pptx's action key did not move, so a conversion of the same bytes (a rename, a
+copy, an unchanged re-save, any re-read) is served the cached stub, and only new bytes get the new noun, a cosmetic
+difference. Nor would moving the version re-read a deck: `PptxConverter.outdated` never reads it, so a move would
+read no published page again and would only cost a cache miss on each new conversion of a deck's same bytes, for
+words `FAMILY_MISMATCH_RE` and `quarantine_class` already accept. pptx's version stays 1.0.4.
 
 **xlsx's emitter moves to 1.0.7 once, and no published page is read again** (C3263, C3283 and C3318, one defect;
 ruling 215; `agentsync.convert.xlsx`; amends §16.288 C3025). C3025 changed the capped index's object-list note but
@@ -48728,6 +48742,16 @@ bytes" gives `encrypted-pdf`, while `policy.screen_file` reads two things: `%PDF
 (`_PDF_HEADER_WINDOW`) and then `_PDF_ENCRYPT_RE` over the whole file, as §16.293's C3316 paragraph says. Each line
 keeps its words and takes a dated line saying so; no code moves. Test:
 `tests/test_deploy_pack.py::test_the_c3329_lines_take_a_dated_line_naming_the_pdf_scan_apart_c3452_c3462`.
+
+**A pptx stub keeps its older noun while its bytes do not change, and pptx's version stays** (C3417; ruling 230; amends
+§16.196 I39, §16.278 C2708, §16.283 C2925, §16.288 C3096 and §16.293 C3230). §16.293's C3230 paragraph and its four
+dated copies said a stub cached under `not a deck` keeps its words until it is read again, but a stub is a cached
+answer under pptx's unchanged action key, so any conversion of the same bytes is served it, and only new bytes get the
+new noun; the paragraph's reason for leaving the version, that a re-conversion of every deck would cost more than the
+words, was false too, since `PptxConverter.outdated` returns False for every stub and never reads the version. Each of
+the five keeps its words and takes a dated line saying so; pptx's `_EMITTER_VERSION` stays 1.0.4 (the ruling's
+choice: a move would cost a cache miss per deck for a cosmetic noun). Test:
+`tests/test_deploy_pack.py::test_a_pptx_stub_keeps_its_older_noun_while_its_bytes_do_not_change_c3417`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
