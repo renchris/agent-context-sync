@@ -14918,6 +14918,18 @@ def _sign_in_stop_fails(r: _Run, att: Attempt | None, runs: Sequence[InstallRun]
     return gone
 
 
+def _docs_repo_not_folder(c: Config | None) -> bool:
+    """Whether :func:`paths.docs_repo_state` reads the configured docs repo path ``not_a_folder``: something
+    there, or a link (a dangling one too), that is not a folder, the reading doctor's docs_repo.git check
+    gives its FAIL on (B13 round 48 C3529, ruling 226). A read that raises says no."""
+    if c is None:
+        return False
+    try:
+        return docs_repo_state(expand(c.docs_repo))[0] == "not_a_folder"
+    except OSError:
+        return False
+
+
 def _on_disk(path: Path) -> bool:
     """Whether ``path`` is on disk as install.sh's ``[ -e ]`` reads it: a link to nothing is not, and a path
     under a folder this process cannot read is not either (False, never an error)."""
@@ -15654,6 +15666,16 @@ folder, not checked (:data:`_NOT_FOLDER_UNCHECKED`), keyed on the report's own s
 (:func:`_not_a_folder_at`), never on doctor's words: an older doctor FAILs heartbeat and governance there
 too."""
 _NOT_FOLDER_UNCHECKED = " (not checked: the state folder is not a folder)"
+_DOCS_NOT_FOLDER_WORDS = "from the docs repo path that is not a folder"
+"""The Doctor line's bucket when something other than a folder sits at the docs repo path, a dangling link
+too (B13 round 48 C3529, ruling 226): docs_repo.git's FAIL, the person's move aside, and an older doctor's
+docs_repo.permissions FAIL, not checked (:data:`_DOCS_NOT_FOLDER_UNCHECKED`), whose ``agentsync sync`` fix
+cannot run there. Keyed on the report's own :func:`paths.docs_repo_state` reading ``not_a_folder``, the one
+doctor's docs_repo.git check shares (:func:`_docs_repo_not_folder`), never on doctor's words: the outcome
+counted both FAILs unexpected and scored the attempt worked with help."""
+_DOCS_NOT_FOLDER_UNCHECKED = " (not checked: the docs repo path is not a folder)"
+"""An older doctor's docs_repo.permissions FAIL beside it: lane B's doctor gives that check ``not checked: the
+docs repo path is not a folder (see docs_repo.git)`` there (B13 round 48 C3529, C3545)."""
 _STATE_NOT_FILE_WORDS = "from the state file that is not a file"
 """The Doctor line's bucket for something other than a file where the manifest belongs (B13 round 22 Z12; B13
 round 25 ruling 12, D23, D78): the person's, as Doctor's state_dir.manifest FAIL and the report's other lines
@@ -15865,6 +15887,7 @@ class _DoctorSort:
     helper_late: list[str] = dataclasses.field(default_factory=list)  # each late helper's name, once
     from_trail_lost: list[str] = dataclasses.field(default_factory=list)  # B13 round 33 ruling 82
     trail_lost_words: str = ""
+    from_docs_notfolder: list[str] = dataclasses.field(default_factory=list)  # B13 round 48 C3529
 
 
 def _state_shut(c: Config, read_error: BaseException | None = None) -> str:
@@ -16662,6 +16685,8 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
     # B13 round 23 A23: a state folder (or a folder above it) that is not a folder comes before the file tests
     notfolder = r.config is not None and _not_a_folder_at(expand(r.config.state_paths.root)) is not None
     from_notfolder: list[str] = []
+    docs_notfolder = _docs_repo_not_folder(r.config)  # B13 round 48 C3529
+    from_docs_notfolder: list[str] = []
     unreadable = not notfolder and r.config is not None and _state_unreadable(r.config, read_error)
     notfile = not notfolder and not unreadable and r.config is not None and _state_not_file(r.config)
     # B13 round 23 A44: a folder (or a fifo) where the -wal or -shm belongs is the person's, as doctor says;
@@ -16809,6 +16834,12 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
             from_notfolder.append(f"{name} {tag}{whose_words}")
             if tag == "FAIL":
                 fails.append((name, _NOT_FOLDER_WORDS))
+            continue
+        # B13 round 48 C3529 (ruling 226): the person's move aside, by the report's own docs_repo_state
+        if docs_notfolder and tag == "FAIL" and name in ("docs_repo.git", "docs_repo.permissions"):
+            whose_words = _PERSONS if name == "docs_repo.git" else _DOCS_NOT_FOLDER_UNCHECKED
+            from_docs_notfolder.append(f"{name} {tag}{whose_words}")
+            fails.append((name, _DOCS_NOT_FOLDER_WORDS))
             continue
         if tag == "FAIL" and name in signed_out:  # B13 round 13 O13: the stop's, not unexpected
             from_stop.append(name)
@@ -17155,6 +17186,7 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         helper_late=helper_late,
         from_trail_lost=from_trail_lost,
         trail_lost_words=trail_lost_words,
+        from_docs_notfolder=from_docs_notfolder,
     )
     r.doctor_sorted = (key, sort)
     return sort
@@ -17293,6 +17325,11 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
         parts.append(
             f"{_NOT_FOLDER_WORDS} ({_plural(len(sort.from_notfolder), 'check')}): "
             + ", ".join(_fold(sort.from_notfolder))
+        )
+    if sort.from_docs_notfolder:  # B13 round 48 C3529
+        parts.append(
+            f"{_DOCS_NOT_FOLDER_WORDS} ({_plural(len(sort.from_docs_notfolder), 'check')}): "
+            + ", ".join(_fold(sort.from_docs_notfolder))
         )
     if sort.from_refused:  # B13 round 21 Y45
         parts.append(

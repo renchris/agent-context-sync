@@ -48955,6 +48955,19 @@ setting a folder to live is the person's own edit of sources.toml, never the age
 `test_the_loop_line_shows_a_held_folders_path_as_the_install_out_excerpt_does_c3504` and
 `test_report_redaction.py::test_the_loop_line_cuts_the_names_in_a_held_folders_whole_path_c3504`.
 
+**A docs repo path that is not a folder is the person's on the Doctor line** (C3529; ruling 226;
+`agentsync.setup_report`). With a file (or a link to no folder) where the docs repo belongs, doctor FAILs
+docs_repo.git, whose fix is the person's move aside, and an older doctor FAILs docs_repo.permissions with an
+`agentsync sync` fix that cannot run there; `_sort_doctor` had no bucket for either, so the outcome read `2 unexpected
+doctor FAILs: docs_repo.git, docs_repo.permissions` and scored the attempt worked with help. `_sort_doctor` now reads
+`paths.docs_repo_state(expand(config.docs_repo))` itself (`_docs_repo_not_folder`, the reading doctor's docs_repo.git
+check shares, never the FAIL's words) and, on `not_a_folder`, files both FAILs as `from the docs repo path that is not
+a folder (2 checks): docs_repo.git FAIL (the person's; see Doctor), docs_repo.permissions FAIL (not checked: the docs
+repo path is not a folder)`, the state folder's not-a-folder form (A23), lane B's doctor giving that check `not
+checked` there. The outcome names that bucket as a known cause. A docs repo that is a folder keeps a docs_repo.git
+FAIL unexpected, and a dangling link at the path reads `not_a_folder` and is filed the same way. Test:
+`test_setup_report.py::test_a_docs_repo_path_that_is_not_a_folder_is_the_persons_c3529`.
+
 ### 16.296 Round 48: the installer: the shell halves of ruling 217, no value printed that it could not register, step 1's escapes and marks, the single-quoted placeholder, a failed sync told apart from a blocked one, and C2060 waits on the operator (2026-11-27, wave B13 round 48 lane RB)
 
 The installer's items of round 48 (`docs/plans/bring-back-ocr.md`, "B13 round 48"; each item's verifier's corrected

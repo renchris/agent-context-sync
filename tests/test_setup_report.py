@@ -21209,6 +21209,62 @@ def test_a_state_folder_that_is_not_a_folder_is_the_persons_and_named_so(
     )
 
 
+def test_a_docs_repo_path_that_is_not_a_folder_is_the_persons_c3529(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 48 C3529 (ruling 226): with a file where the docs repo belongs, doctor FAILs docs_repo.git
+    (its fix the person's move aside) and, an older doctor, docs_repo.permissions with a sync that cannot run
+    there; the outcome counted both as unexpected doctor FAILs and scored the attempt worked with help. The
+    report's own paths.docs_repo_state reading not_a_folder files them in a bucket of their own, docs_repo.git
+    the person's and docs_repo.permissions not checked, so nothing is unexpected; a docs repo that IS a folder
+    keeps a docs_repo.git FAIL unexpected (keyed on disk, never on doctor's words), and a dangling link at the
+    path reads not_a_folder on this branch, so it is filed the same way."""
+    cfg = fake_mac["config"]
+    docs = expand(load_config(cfg).docs_repo)
+    if docs.exists():
+        docs.rename(docs.with_name("kept-docs"))
+    docs.parent.mkdir(parents=True, exist_ok=True)
+    docs.write_text("not a folder\n", encoding="utf-8")
+    docs.chmod(0o644)
+    _rc, text, _ = report(tmp_path, cfg)
+    doctor_text = section(text, "Doctor")
+    assert "docs_repo.git" in doctor_text and "docs_repo.permissions" in doctor_text, doctor_text
+    summary = section(text, "Summary")
+    line = _line(summary, "- doctor: ")
+    assert (
+        f"{setup_report._DOCS_NOT_FOLDER_WORDS} (2 checks): docs_repo.git FAIL (the person's; see Doctor), "
+        "docs_repo.permissions FAIL (not checked: the docs repo path is not a folder)"
+    ) in line, line
+    assert "docs_repo" not in line.rsplit(" · unexpected ", 1)[1], line
+    outcome = _line(summary, "- **outcome: ")
+    assert "unexpected doctor FAIL" not in outcome, outcome
+    assert f"with a known cause, {setup_report._DOCS_NOT_FOLDER_WORDS}: docs_repo.git" in outcome, outcome
+
+    git_fail = ("FAIL", "docs_repo.git", f"{docs} exists but is not a directory (fix: move {docs} aside)")
+    perm_fail = ("FAIL", "docs_repo.permissions", f"group/other can read tenant data: {docs} (fix: run sync)")
+
+    def sort() -> setup_report._DoctorSort:
+        r = setup_report._Run(cfg, setup_report.ReportHooks(), 12.0)
+        r.facts.doctor = Counter({"FAIL": 2})
+        r.facts.doctor_problems = [git_fail, perm_fail]
+        return setup_report._sort_doctor(r, [])
+
+    got = sort()
+    words = setup_report._DOCS_NOT_FOLDER_WORDS
+    assert got.unexpected == [] and [w for _n, w in got.fails] == [words, words], got
+    # a dangling link at the docs path: docs_repo_state on this branch reads it not_a_folder
+    docs.unlink()
+    docs.symlink_to(docs.with_name("Contoso gone"))
+    assert setup_report.docs_repo_state(docs)[0] == "not_a_folder"
+    assert sort().unexpected == [], sort()
+    # a docs repo that is a folder: the same FAILs stay unexpected, whatever their words say
+    docs.unlink()
+    docs.mkdir()
+    got = sort()
+    assert got.unexpected == ["docs_repo.git FAIL", "docs_repo.permissions FAIL"], got
+    assert got.from_docs_notfolder == [] and [w for _n, w in got.fails] == [None, None], got
+
+
 def test_a_folder_where_the_wal_or_shm_belongs_is_the_persons(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
