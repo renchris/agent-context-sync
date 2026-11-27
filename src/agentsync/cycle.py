@@ -2467,6 +2467,11 @@ class _Cycle:
         self._withheld: dict[str, tuple[frozenset[str], frozenset[str]]] = {}
         self._kept_settling: list[str] = []
         self._swept: set[str] = set()  # kept pages this run's complete passes removed, said there (P117)
+        # the pages recovery's repair removed (no output row owns them), the committed pages a redaction
+        # moved off a credential-bearing name, and the pages put back from HEAD per source (C3534)
+        self._recovered_orphans: set[str] = set()
+        self._redacted_gone: set[str] = set()
+        self._hand_deleted: dict[str, set[str]] = {}
         self._fresh_orphans: list[
             str
         ] = []  # those pages, each said at DEBUG: any not written back is a WARNING
@@ -2552,6 +2557,7 @@ class _Cycle:
         if recovery is not RecoveryAction.NONE:
             log.log(logging.DEBUG if fresh else logging.WARNING, "recovery: %s", recovery.value)
         self.new_manifest_pages = len(orphaned) if fresh else 0
+        self._recovered_orphans = set(orphaned)
         self._fresh_orphans = orphaned if fresh else []
         self._fresh_notices = notices if fresh else set()
         self._refuse_vanished_sources()
@@ -2649,6 +2655,7 @@ class _Cycle:
                     source_ids=self._subject_sources(),
                 )
             self.lock.beat(LockStage.LAND_GATE)
+            self._put_back_deleted_pages()
             dirty = gitops.has_changes(self.repo)
             if dirty or self.mode is CycleMode.RECONCILE:
                 changed_paths = sorted(
@@ -4600,6 +4607,97 @@ class _Cycle:
         text = path.read_text(encoding="utf-8") if path.is_file() else ""
         _write_atomic(path, text.rstrip("\n") + "\n\n" + "\n".join(lines).rstrip("\n") + "\n")
 
+    # ---- pages deleted by hand (B13 round 48 C3534, ruling 224) ------------------------------------------
+    def _said_removals(self) -> set[str]:
+        """The mirror pages this run's own bookkeeping removes: every page its changes (and the changes of the
+        earlier runs the land gate blocked, which this commit holds) name, a rename's old path too, the
+        deletion notices and orphans a new start removed, the kept pages a complete pass swept, the pages
+        recovery's repair removed, and the committed pages a redaction moved off a credential-bearing name."""
+        blocked = [
+            c
+            for run in self.manifest.failed_runs_with_changes(self.run_id)
+            for c in self.manifest.run_changes(run)
+        ]
+        said = _paths_of([*self._carried, *self.changes, *blocked])
+        said |= {*self._notices_gone, *(self._orphans_gone or []), *self._swept}
+        return said | self._recovered_orphans | self._redacted_gone
+
+    def _unsaid_deletions(self) -> tuple[list[str], list[str]]:
+        """``(owned, unowned)``: the mirror files deleted since HEAD that no removal of this run accounts for
+        (:meth:`_said_removals`, a page's ``.files/`` sidecars with it), split by whether a page an output row
+        owns (or a new start keeps, P117) holds them: an owned one was deleted by hand, an unowned one is an
+        orphan, which recovery's repair would remove all the same."""
+        gone = gitops.deleted_since_head(self.repo)
+        if not gone:
+            return [], []
+        said = _with_sidecar_folders(self._said_removals())
+        kept = _kept_pages(self.config, self.manifest)
+        owned: list[str] = []
+        unowned: list[str] = []
+        for rel in gone:
+            if gitops.covered(rel, said):
+                continue
+            page = _page_of(rel, lambda p: self.manifest.output_by_path(p) is not None or p in kept)
+            (owned if page is not None else unowned).append(rel)
+        return owned, unowned
+
+    def _put_back_deleted_pages(self) -> None:
+        """Put back from HEAD, just before the land gate, every mirror page (or sidecar) deleted in the
+        worktree that no removal of this run accounts for: a page moved away by hand while its source is
+        unchanged was committed as a deletion under ``sync: 0a 0m 0r 0d`` and never written back, as an
+        unchanged row is settled without a fetch (B13 round 48 C3534, ruling 224). HEAD's bytes are the
+        committed page, which hashes to its row, so nothing is fetched and nothing new is committed; each is
+        made owner-only, said by a WARNING, and counted per source for the commit body's note."""
+        owned, _unowned = self._unsaid_deletions()
+        if not owned:
+            return
+        made = sorted({d for rel in owned for d in _missing_folders(self.repo, rel)})
+        try:
+            back = gitops.restore_from_head(self.repo, owned)
+        except AgentSyncError as exc:  # left deleted: commit_cycle refuses to commit them
+            log.warning("mirror pages deleted by hand could not be put back from HEAD: %s", exc)
+            return
+        for folder in made:
+            with contextlib.suppress(OSError):
+                folder.chmod(0o700)
+        for rel in back:
+            path = self.repo / rel
+            with contextlib.suppress(OSError):
+                if path.is_file() and not path.is_symlink():
+                    path.chmod(0o600)
+            page = _sidecar_page(rel, lambda p: (self.repo / p).is_file()) or rel
+            sid = self._page_source(page)
+            self._hand_deleted.setdefault(sid, set()).add(page)
+            log.warning(
+                "%s: %s was deleted by hand; restored from the last commit (to drop a page, exclude its "
+                "source file)",
+                sid,
+                rel,
+            )
+
+    def _accounted_deletions(self) -> tuple[set[str], list[MirrorChange]]:
+        """For the commit: the mirror paths its deletions may hold (:meth:`_said_removals`, each page's
+        sidecar folder, and the orphans no output row owns), and a ``DELETED`` change for each deleted page
+        none of this run's changes names and that is no deletion notice (an orphan, a page recovery's repair
+        removed, a name a redaction moved off), so the subject's ``d`` counts every page the commit deletes:
+        it said ``0d`` over a ``D`` (C3534, ruling 224). A page deleted by hand and not put back is in
+        neither, so ``commit_cycle`` refuses it."""
+        said = self._said_removals()
+        _owned, unowned = self._unsaid_deletions()
+        accounted = _with_sidecar_folders(said | set(unowned))
+        named = _paths_of([*self._carried, *self.changes]) | set(self._notices_gone)
+        gone = gitops.deleted_since_head(self.repo)
+        present = set(gone)
+        pages = [
+            rel
+            for rel in gone
+            if rel not in named
+            and gitops.covered(rel, accounted)
+            and rel.endswith(".md")
+            and _sidecar_page(rel, lambda p: p in present or (self.repo / p).is_file()) is None
+        ]
+        return accounted, [MirrorChange(ChangeOp.DELETED, rel, self._page_source(rel), "") for rel in pages]
+
     # ---- commit -------------------------------------------------------------------------------------------
     def _commit(self, statuses: Sequence[SourceStatus], *, dirty: bool | None = None) -> str | None:
         if not (gitops.has_changes(self.repo) if dirty is None else dirty):
@@ -4620,9 +4718,18 @@ class _Cycle:
             for sid, n in sorted(by_source.items())
         ]
         notes += _carried_notes(self._carried, self._carried_runs)
-        body = gitops.commit_body(self.changes, run_id=self.run_id, mode=self.mode.value, notes=notes)
-        subject = gitops.commit_subject([*self._carried, *self.changes], source_ids)
-        sha = gitops.commit_cycle(self.repo, subject, body)
+        notes += [
+            f"{sid}: {plural(len(pages), 'mirror page')} deleted by hand "
+            f"{'was' if len(pages) == 1 else 'were'} restored; to drop a page, exclude its source file"
+            for sid, pages in sorted(self._hand_deleted.items())
+        ]
+        accounted, uncounted = self._accounted_deletions()
+        source_ids += [c.source_id for c in uncounted]
+        body = gitops.commit_body(
+            [*self.changes, *uncounted], run_id=self.run_id, mode=self.mode.value, notes=notes
+        )
+        subject = gitops.commit_subject([*self._carried, *self.changes, *uncounted], source_ids)
+        sha = gitops.commit_cycle(self.repo, subject, body, accounted=accounted)
         if sha is not None:
             self._commit_holds_mirror = _commit_holds_mirror(self.repo, sha)
             tree = gitops.head_tree_sha(self.repo)
@@ -8310,6 +8417,7 @@ class _Cycle:
             self.changes.append(MirrorChange(op, path, sid, stable))
         if head_paths - {c.path for c in self.changes}:
             # the committed page under the credential-bearing name is removed (named nowhere in CHANGELOG)
+            self._redacted_gone |= head_paths - {c.path for c in self.changes}
             self._acc(self.config.source(sid)).alarms.append(
                 "a page named after a credential was removed from the tree; "
                 f"`{skill.AGENTSYNC_BIN} purge` it from history"
@@ -8435,6 +8543,41 @@ def _paths_of(changes: Iterable[MirrorChange]) -> set[str]:
 def _touches(change: MirrorChange, paths: Collection[str]) -> bool:
     """Whether ``change``'s page, or a rename's old path, is one of ``paths``."""
     return change.path in paths or (change.prev_path is not None and change.prev_path in paths)
+
+
+_SIDECARS = ".files"
+
+
+def _with_sidecar_folders(pages: Collection[str]) -> set[str]:
+    """``pages`` and the ``<page minus .md>.files`` sidecar folder of each ``.md`` one (C3534)."""
+    return {*pages, *(p[:-3] + _SIDECARS for p in pages if p.endswith(".md"))}
+
+
+def _page_of(rel: str, is_page: Callable[[str], bool]) -> str | None:
+    """The page ``rel`` belongs to by ``is_page``: ``rel`` itself, else :func:`_sidecar_page` (C3534)."""
+    return rel if is_page(rel) else _sidecar_page(rel, is_page)
+
+
+def _sidecar_page(rel: str, is_page: Callable[[str], bool]) -> str | None:
+    """The page by ``is_page`` of a ``<page>.files/`` sidecar folder above ``rel`` (the outermost first);
+    None when ``rel`` is in no such folder (C3534)."""
+    parts = rel.split("/")
+    for i, part in enumerate(parts[:-1]):
+        if part.endswith(_SIDECARS) and len(part) > len(_SIDECARS):
+            page = "/".join([*parts[:i], part[: -len(_SIDECARS)] + ".md"])
+            if is_page(page):
+                return page
+    return None
+
+
+def _missing_folders(repo: Path, rel: str) -> list[Path]:
+    """The folders above ``rel`` under ``repo`` that do not exist (a put-back makes them, C3534)."""
+    out: list[Path] = []
+    parent = (repo / rel).parent
+    while parent != repo and repo in parent.parents and not parent.exists():
+        out.append(parent)
+        parent = parent.parent
+    return out
 
 
 def _net_changes(rows: Sequence[MirrorChange]) -> list[MirrorChange]:

@@ -3140,6 +3140,11 @@ def push_if_allowed(repo: Path, *, allow: bool, remote: str = "origin") -> str:
     exists; returns ``disabled`` | ``no-remote`` | ``refused: …`` | ``pushed …`` (no config key allows it yet)."""
 ```
 
+Amended 2026-11-27, §16.297 C3534: `commit_cycle` takes a keyword `accounted` (the cycle always passes it) and
+raises PublishError, committing nothing, on a staged `mirror/` deletion that no path in it covers;
+`covered(path, accounted)` is that test (the path or a folder above it, a page's `.files` sidecar folder);
+`deleted_since_head(repo, pathspecs=("mirror",))` lists the files HEAD holds that the worktree or index no longer does.
+
 W2 note: the cycle reads HEAD's ``Agentsync-Run: <run_id>`` trailer (written by ``commit_body``) in ``recover`` to
 tell "the commit of the run that staged these pending cursors landed" from "HEAD moved by hand".
 

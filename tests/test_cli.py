@@ -561,13 +561,18 @@ def test_a_commit_that_holds_a_mirror_page_never_says_no_source_changed_one_c322
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """B13 round 47 C3228, ruling 212: the ``(no source changed a mirror page; ...)`` note was decided by this
-    run's change count alone, so a commit that removes a mirror page no source change named (here one deleted
-    by hand) said no mirror page changed. It is printed only when the commit holds no mirror/ path."""
+    run's change count alone, so a commit that removes a mirror page no source change named said no mirror
+    page changed. It is printed only when the commit holds no mirror/ path. A page deleted by hand is put back
+    now (B13 round 48 C3534), so the page removed here is one no output row owns, committed by hand, which
+    recovery's repair removes."""
     cfg = str(initialised.config_path)
+    repo = initialised.docs_repo
     assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
-    page = _a_mirror_page(initialised)
-    rel = page.relative_to(initialised.docs_repo).as_posix()
-    page.unlink()
+    page = _a_mirror_page(initialised).with_name("stray-by-hand.md")
+    page.write_text("# stray\n", encoding="utf-8")
+    rel = page.relative_to(repo).as_posix()
+    git(repo, "add", rel)
+    git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "by hand")
     capsys.readouterr()
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
     (run_line,) = [x for x in capsys.readouterr().out.splitlines() if x.startswith("run ")]

@@ -23,7 +23,7 @@ import shutil
 import subprocess
 import sys
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -464,10 +464,64 @@ def _ignored_generated(repo: Path) -> list[str]:
     return sorted(lost)
 
 
+def deleted_since_head(repo: Path, pathspecs: Sequence[str] = ("mirror",)) -> list[str]:
+    """Files under ``pathspecs`` that HEAD holds and the worktree or the index no longer does (``D`` in either
+    ``git status`` column), sorted; empty on an unborn branch. The cycle's put-back of a page deleted by hand
+    and its subject's ``d`` count read this (B13 round 48 C3534, ruling 224)."""
+    if head_sha(repo) is None:
+        return []
+    out = run_git(
+        repo,
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--no-renames",
+        "--untracked-files=no",
+        "--",
+        *_literal(pathspecs),
+    ).stdout
+    return sorted(e[3:] for e in out.split("\0") if len(e) > 3 and "D" in e[:2])
+
+
+def _staged_deletions(repo: Path, pathspecs: Sequence[str]) -> list[str]:
+    """Files under ``pathspecs`` the index deletes against HEAD, sorted (no rename pairing)."""
+    if head_sha(repo) is None:
+        return []
+    out = run_git(
+        repo,
+        "diff",
+        "--cached",
+        "--name-only",
+        "--no-renames",
+        "--diff-filter=D",
+        "-z",
+        "HEAD",
+        "--",
+        *_literal(pathspecs),
+    ).stdout
+    return sorted(p for p in out.split("\0") if p)
+
+
+def covered(path: str, accounted: Collection[str]) -> bool:
+    """True when ``path`` or a folder above it (a page's ``.files/`` sidecar folder) is in ``accounted``."""
+    parts = path.split("/")
+    return any("/".join(parts[:i]) in accounted for i in range(len(parts), 0, -1))
+
+
 def commit_cycle(
-    repo: Path, subject: str, body: str = "", pathspecs: Sequence[str] = COMMIT_PATHSPECS
+    repo: Path,
+    subject: str,
+    body: str = "",
+    pathspecs: Sequence[str] = COMMIT_PATHSPECS,
+    *,
+    accounted: Collection[str] | None = None,
 ) -> str | None:
-    """Stage ``pathspecs`` and commit once; return the new sha, or None (and no commit) if nothing staged."""
+    """Stage ``pathspecs`` and commit once; return the new sha, or None (and no commit) if nothing staged.
+
+    ``accounted`` (the cycle always passes it): the mirror paths the run's changes account for, a page's
+    sidecar folder covering the files in it. A staged ``mirror/`` deletion outside them raises PublishError
+    and nothing is committed: one went in under ``sync: 0a 0m 0r 0d`` with nothing to say so (B13 round 48
+    C3534, ruling 224)."""
     specs = _stageable_specs(repo, pathspecs)
     if not specs:
         return None
@@ -485,6 +539,15 @@ def commit_cycle(
         return None
     if staged.returncode != 1:
         raise GitError(["diff", "--cached", "--quiet"], staged.returncode, staged.stderr)
+    if accounted is not None:
+        held = set(accounted)
+        loose = [p for p in _staged_deletions(repo, ("mirror",)) if not covered(p, held)]
+        if loose:
+            raise PublishError(
+                f"{plural(len(loose), 'mirror file')} would be committed as deleted with no change of "
+                f"this run to count {'it' if len(loose) == 1 else 'them'} (first: {loose[0]}); "
+                "nothing was committed"
+            )
     one_line = " ".join(subject.split())
     if not one_line:
         raise PublishError("empty commit subject")

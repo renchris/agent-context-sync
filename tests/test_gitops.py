@@ -448,6 +448,52 @@ def test_commit_cycle_rejects_an_empty_subject(repo: Path) -> None:
         gitops.commit_cycle(repo, "  \n ")
 
 
+def test_commit_cycle_refuses_a_staged_mirror_deletion_no_change_accounts_for(repo: Path) -> None:
+    """B13 round 48 C3534, ruling 224: a mirror file deleted with no change of the run to count it is never
+    committed (it went in as ``sync: 0a 0m 0r 0d`` over a ``D``); one the run accounts for is, and a sidecar
+    goes with its page's folder."""
+    write(repo, "mirror/src/a.md", "a\n")
+    write(repo, "mirror/src/b.md", "b\n")
+    write(repo, "mirror/src/b.files/pic.png", "p\n")
+    write(repo, "mirror/src/c.md", "c\n")
+    write(repo, "mirror/src/c.files/pic.png", "p\n")
+    seed = gitops.commit_cycle(repo, "sync: seed")
+    (repo / "mirror/src/a.md").unlink()
+    write(repo, "INDEX.md", "# i\n")
+    with pytest.raises(
+        PublishError, match=r"1 mirror file .*\(first: mirror/src/a\.md\); nothing was committed"
+    ):
+        gitops.commit_cycle(repo, "sync: 0a 0m 0r 0d", accounted=())
+    assert gitops.head_sha(repo) == seed
+    (repo / "mirror/src/c.files/pic.png").unlink()  # a sidecar of a page no change names
+    with pytest.raises(PublishError, match=r"1 mirror file .*\(first: mirror/src/c\.files/pic\.png\)"):
+        gitops.commit_cycle(repo, "sync: 0a 0m 0r 1d src", accounted=["mirror/src/a.md"])
+    assert gitops.head_sha(repo) == seed
+    write(repo, "mirror/src/c.files/pic.png", "p\n")
+    (repo / "mirror/src/b.md").unlink()
+    (repo / "mirror/src/b.files/pic.png").unlink()
+    accounted = ["mirror/src/a.md", "mirror/src/b.md", "mirror/src/b.files"]
+    sha = gitops.commit_cycle(repo, "sync: 0a 0m 0r 2d src", accounted=accounted)
+    assert sha is not None and gitops.tracked_files(repo, ["mirror"]) == [
+        "mirror/src/c.files/pic.png",
+        "mirror/src/c.md",
+    ]
+
+
+def test_deleted_since_head_lists_worktree_and_staged_deletions(repo: Path) -> None:
+    """C3534: the one read the cycle's put-back and its subject count make (``D`` in either status column)."""
+    assert gitops.deleted_since_head(repo) == []  # unborn HEAD: nothing to delete
+    write(repo, "mirror/src/a.md", "a\n")
+    write(repo, "mirror/src/b.md", "b\n")
+    write(repo, "INDEX.md", "# i\n")
+    gitops.commit_cycle(repo, "sync: seed")
+    (repo / "mirror/src/a.md").unlink()
+    git(repo, "rm", "-q", "mirror/src/b.md")
+    (repo / "INDEX.md").unlink()  # outside mirror/
+    write(repo, "mirror/src/new.md", "n\n")
+    assert gitops.deleted_since_head(repo) == ["mirror/src/a.md", "mirror/src/b.md"]
+
+
 # ---- recovery ----------------------------------------------------------------------------------------------
 
 

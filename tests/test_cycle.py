@@ -1060,6 +1060,103 @@ def test_git_log_holds_only_real_change(sample_config: Config, local_source_dir:
     assert subprocess.run(["git", "-C", str(repo), "diff", "--quiet", "HEAD"], check=False).returncode == 0
 
 
+def _head_bytes(repo: Path, rel: str) -> bytes:
+    return subprocess.run(
+        ["git", "-C", str(repo), "show", f"HEAD:{rel}"], check=True, capture_output=True
+    ).stdout
+
+
+def _mirror_name_status(repo: Path) -> list[str]:
+    """The ``git diff --name-status`` lines of HEAD's own commit under ``mirror/``."""
+    out = git(repo, "diff", "--name-status", "--no-renames", "HEAD~1", "HEAD", "--", "mirror")
+    return out.splitlines()
+
+
+def test_a_mirror_page_deleted_by_hand_is_put_back_from_head_with_a_warning_and_a_body_note(
+    sample_config: Config, local_source_dir: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """B13 round 48 C3534, ruling 224: a page moved away by hand while its source is unchanged was committed
+    as a deletion under ``sync: 0a 0m 0r 0d`` and never written back. The cycle puts it back from HEAD
+    before the land gate, byte for byte and owner-only, says it by a WARNING and a commit-body note, and the
+    commit holds no deletion of it."""
+    repo = sample_config.docs_repo
+    run(sample_config)
+    gone = f"mirror/{SID}/projects/sample.docx.md"
+    changed = f"mirror/{SID}/projects/sample.txt.md"
+    committed = _head_bytes(repo, gone)
+    (repo / gone).unlink()
+    (local_source_dir / "projects" / "sample.txt").write_text("new\n", encoding="utf-8")
+    with caplog.at_level(logging.WARNING, logger="agentsync"):
+        report = run(sample_config)
+    assert report.exit_code == 0 and report.commit_sha is not None
+    assert (repo / gone).read_bytes() == committed
+    assert mode(repo / gone) == 0o600
+    assert _mirror_name_status(repo) == [f"M\t{changed}"]
+    assert git(repo, "log", "-1", "--format=%s").strip() == f"sync: 0a 1m 0r 0d {SID}"
+    body = git(repo, "log", "-1", "--format=%B")
+    note = f"{SID}: 1 mirror page deleted by hand was restored; to drop a page, exclude its source file"
+    assert note in body.splitlines(), body
+    said = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert any(gone in m and "deleted by hand" in m for m in said), said
+    assert porcelain(repo) == ""
+
+
+def test_a_mirror_page_deleted_by_hand_alone_is_put_back_and_nothing_is_committed(
+    sample_config: Config,
+) -> None:
+    """C3534: with no other change the page put back leaves nothing to land: no commit, HEAD unchanged."""
+    repo = sample_config.docs_repo
+    run(sample_config)
+    head = git(repo, "rev-parse", "HEAD").strip()
+    gone = f"mirror/{SID}/projects/sample.docx.md"
+    committed = _head_bytes(repo, gone)
+    git(repo, "rm", "-q", gone)  # staged by hand too: the index is put back with the file
+    report = run(sample_config)
+    assert report.exit_code == 0 and report.commit_sha is None
+    assert git(repo, "rev-parse", "HEAD").strip() == head
+    assert (repo / gone).read_bytes() == committed
+    assert porcelain(repo) == ""
+
+
+def test_a_page_the_run_renames_is_still_deleted_when_it_was_also_deleted_by_hand(
+    sample_config: Config, local_source_dir: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """C3534's sibling: a deletion the run accounts for (a rename's old path) is committed, never put back."""
+    repo = sample_config.docs_repo
+    run(sample_config)
+    old = f"mirror/{SID}/projects/sample.pptx.md"
+    new = f"mirror/{SID}/projects/acme/q3-deck.pptx.md"
+    (repo / old).unlink()
+    (local_source_dir / "projects" / "sample.pptx").rename(
+        local_source_dir / "projects" / "acme" / "Q3 Deck.pptx"
+    )
+    with caplog.at_level(logging.WARNING, logger="agentsync"):
+        report = run(sample_config)
+    assert report.exit_code == 0 and report.commit_sha is not None
+    assert not (repo / old).exists() and (repo / new).is_file()
+    assert sorted(_mirror_name_status(repo)) == [f"A\t{new}", f"D\t{old}"]
+    assert git(repo, "log", "-1", "--format=%s").strip() == f"sync: 0a 0m 1r 0d {SID}"
+    assert not any("deleted by hand" in r.getMessage() for r in caplog.records)
+
+
+def test_a_page_recovery_removes_is_counted_in_the_subject_it_is_committed_under(
+    sample_config: Config,
+) -> None:
+    """C3534, ruling 224: the subject counts every mirror page the commit deletes. A page no output row owns,
+    committed by hand, is removed by recovery's repair; the commit said ``0d`` over its ``D``."""
+    repo = sample_config.docs_repo
+    run(sample_config)
+    stray = f"mirror/{SID}/projects/stray.md"
+    (repo / stray).write_text("# stray\n", encoding="utf-8")
+    git(repo, "add", stray)
+    git(repo, "commit", "-q", "-m", "manual: a page no source holds")
+    report = run(sample_config)
+    assert report.exit_code == 0 and report.commit_sha is not None
+    assert not (repo / stray).exists()
+    assert _mirror_name_status(repo) == [f"D\t{stray}"]
+    assert git(repo, "log", "-1", "--format=%s").strip() == f"sync: 0a 0m 0r 1d {SID}"
+
+
 def test_a_walk_that_times_out_on_a_privacy_prompt_tombstones_nothing(
     sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

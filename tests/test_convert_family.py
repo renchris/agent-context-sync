@@ -804,6 +804,10 @@ def test_a_zero_byte_first_read_whose_publish_fails_counts_nothing_c2923(
     counts = _run_counts(config)
     assert counts.get("converted") == 0, counts
     assert not {"converted_unreadable", "reread_first", "reread"} & set(counts), counts
+    # the failed run put the page deleted by hand back from HEAD (B13 round 48 C3534): gone again, the next
+    # re-read is a first read once more
+    assert (config.docs_repo / out.output_path).is_file()
+    (config.docs_repo / out.output_path).unlink()
     report = run(config)
     assert report.exit_code == 0
     assert _row(config, "Contoso a.docx").state_reason == policy_mod.ZERO_BYTES_REASON
