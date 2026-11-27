@@ -1617,6 +1617,42 @@ def test_the_carried_notes_say_each_cause_apart_c3444() -> None:
     ]
 
 
+def _hand_edit(repo: Path) -> str:
+    """Edit ``sample.csv.md`` by hand, which blocks the land gate; its path, for ``git checkout`` after."""
+    hand = next(p for p in (repo / "mirror").rglob("sample.csv.md"))
+    hand.write_text(hand.read_text(encoding="utf-8") + "edited by hand\n", encoding="utf-8")
+    return hand.relative_to(repo).as_posix()
+
+
+def _undo(repo: Path, *rels: str) -> None:
+    subprocess.run(["git", "-C", str(repo), "checkout", "--", *rels], check=True)
+
+
+def test_a_page_a_blocked_run_changed_and_the_person_deleted_is_put_back_c3534(
+    sample_config: Config, local_source_dir: Path
+) -> None:
+    """B13 round 48 C3534, ruling 224: a page a blocked run rewrote was "accounted for" by that run's
+    ``MODIFIED`` row, so once deleted by hand it was committed as a deletion under ``sync: 0a 1m 0r 0d``
+    while its row stayed live. Only a delete's path or a rename's old path accounts for a removal: the page is
+    put back from HEAD and no deletion of it is committed."""
+    repo = sample_config.docs_repo
+    for _ in range(3):
+        run(sample_config)
+    head = git(repo, "rev-parse", "HEAD").strip()
+    hand = _hand_edit(repo)
+    page = f"mirror/{SID}/projects/sample.txt.md"
+    committed = _head_bytes(repo, page)
+    (local_source_dir / "projects" / "sample.txt").write_text("changed in a blocked run\n", encoding="utf-8")
+    blocked = run(sample_config)
+    assert blocked.commit_sha is None and [c.path for c in blocked.changes] == [page]
+    _undo(repo, hand)
+    (repo / page).unlink()
+    report = run(sample_config)
+    assert report.exit_code == 0
+    assert (repo / page).read_bytes() == committed == _head_bytes(repo, page)
+    assert git(repo, "log", "--name-status", "--format=", f"{head}..HEAD", "--", "mirror") == ""
+
+
 INBOX_SOURCE = """
 [[source]]
 id = "inbox"

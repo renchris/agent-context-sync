@@ -4797,18 +4797,25 @@ class _Cycle:
 
     # ---- pages deleted by hand (B13 round 48 C3534, ruling 224) ------------------------------------------
     def _said_removals(self) -> set[str]:
-        """The mirror pages this run's own bookkeeping removes: every page its changes (and the changes of the
-        earlier failed runs (blocked or not), which this commit holds) name, a rename's old path too, the
-        deletion notices and orphans a new start removed, the kept pages a complete pass swept, the pages
-        recovery's repair removed, and the committed pages a redaction moved off a credential-bearing name."""
+        """The mirror paths this run's own bookkeeping removes, each page's ``.files/`` sidecar folder with
+        it: a delete's page and a rename's old path among its changes (and the changes of the earlier failed
+        runs (blocked or not), which this commit holds), the deletion notices and orphans a new start removed,
+        the kept pages a complete pass swept, the pages recovery's repair removed, and the committed pages a
+        redaction moved off a credential-bearing name. An add's or a change's page is never one: a page a
+        blocked run rewrote and the person deleted is put back, not committed as gone under an ``m`` (B13
+        round 48 C3534, ruling 224); only its sidecar folder is, which a rewrite prunes, while the page is
+        there."""
         blocked = [
             c
             for run in self.manifest.failed_runs_with_changes(self.run_id)
             for c in self.manifest.run_changes(run)
         ]
-        said = _paths_of([*self._carried, *self.changes, *blocked])
+        rows = [*self._carried, *self.changes, *blocked]
+        said = _removed_paths(rows)
         said |= {*self._notices_gone, *(self._orphans_gone or []), *self._swept}
-        return said | self._recovered_orphans | self._redacted_gone
+        said |= self._recovered_orphans | self._redacted_gone
+        rewritten = {c.path for c in rows if c.op is not ChangeOp.DELETED and (self.repo / c.path).is_file()}
+        return _with_sidecar_folders(said) | (_with_sidecar_folders(rewritten) - rewritten)
 
     def _unsaid_deletions(self) -> tuple[list[str], list[str]]:
         """``(owned, unowned)``: the mirror files deleted since HEAD that no removal of this run accounts for
@@ -8732,6 +8739,14 @@ def _removal_reason(why: str) -> str:
 def _paths_of(changes: Iterable[MirrorChange]) -> set[str]:
     """Every page ``changes`` name, a rename's old path too."""
     return {c.path for c in changes} | {c.prev_path for c in changes if c.prev_path}
+
+
+def _removed_paths(changes: Iterable[MirrorChange]) -> set[str]:
+    """The pages ``changes`` remove: a delete's page and a rename's old path, never an add's or a change's
+    (B13 round 48 C3534, ruling 224)."""
+    return {c.path for c in changes if c.op is ChangeOp.DELETED} | {
+        c.prev_path for c in changes if c.op is ChangeOp.RENAMED and c.prev_path
+    }
 
 
 def _touches(change: MirrorChange, paths: Collection[str]) -> bool:
