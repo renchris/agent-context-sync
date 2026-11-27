@@ -44769,6 +44769,7 @@ it does not or in a dry run (C2463: the finder's say-nothing clause hid a drop f
 `test_a_refused_step_2_names_its_docs_repo_and_inbox_when_the_config_loads_c2463`.
 Amended 2026-11-22, §16.275 C2601: the setup report's `- Loop:` line says the same no-folder NEXT where install.sh
 does, from the one constant `setup_report.NO_FOLDER_NEXT`, which a test holds this literal to.
+Amended 2026-11-27, §16.296 C3544: the placeholder reads `--source-local '<folder>'`, single-quoted as step 2 gives it.
 
 **The installer's smaller words** (C2534, C2423, C2437, C2473, C2439, C2506, C2541; C2423's dated lines at §16.41 H33
 and §16.141 W31 are §16.274's, written by lane D). `AGENTSYNC_CONFIG` is trimmed and its `~` and `~/` expanded as `paths.default_config_path` reads it, and an
@@ -45508,6 +45509,7 @@ doctor-FAIL control, a failed-run control, a live-folder control and a paused fo
 run: install.sh's NEXT and the report's Loop line).
 Amended 2026-11-23, §16.280 C2946, C2802, C2842: the Loop line says whichever NEXT install.sh printed, the person's
 none and the no-folder first run included, read from the latest install run, list runs skipped.
+Amended 2026-11-27, §16.296 C3544: the placeholder reads `--source-local '<folder>'`, single-quoted as step 2 gives it.
 
 **`_CWD_KEPT` is assigned once** (C2640 with C2702 and C2733). Round 43's quoted-head change left `_CWD_KEPT`
 assigned twice in a row, the first copy dead; the first line is deleted and the second kept, its docstring right
@@ -45629,6 +45631,7 @@ Amended 2026-11-23, §16.281 C2910, C2945, C2838, C2860, C2909: the same NEXT en
 whose status says `no folder is synced yet` (inbox-only with a current skill, or every folder paused or retired) or
 whose words say `no folder to sync yet`, whatever HAVE_SOURCES counts, and never a run whose step or status failed,
 which ends exit 1 on its own NEXT; the shell variable is `NO_FOLDER_CHOSEN_NEXT`.
+Amended 2026-11-27, §16.296 C3544: the placeholder reads `--source-local '<folder>'`, single-quoted as step 2 gives it.
 
 **A refused config step keeps the inbox it could not add** (C2701; ruling 179). The added-then-refused closes end
 with ` inbox=not-added` after their counts, and a failed or refused init or add-source that saw the warning closes
@@ -46357,6 +46360,7 @@ still turns it the person's choice; loop.py's rule 2 is unchanged. Tests:
 Amended 2026-11-25, §16.291 C3332, C3206: each held folder in that clause reads `<id> (<state>) at <path>`, and with
 EXIT_RC 0 and no `--no-folder` step 2's own `nothing to draft yet` NEXT names its `<SELF><BASE_ARGS> --source-local
 "<folder>"` run in place of add-source, loop.py's words unchanged.
+Amended 2026-11-27, §16.296 C3544: the placeholder reads `--source-local '<folder>'`, single-quoted as step 2 gives it.
 
 **A state read that did not finish says so, and the shell report never guesses the inbox** (C2948 with C2868 and
 C2935, C2810, C2808's installer half; ruling 194; data integrity; makes worse True for an explicit live line and for
@@ -47888,6 +47892,7 @@ words; amends ruling 191's NEXT, dated line at §16.281). With EXIT_RC 0 and no 
 `agentsync sync` outside setup keeps loop.py's add-source words. Tests:
 `test_install_oneshot.py::test_step_2s_nothing_to_draft_next_names_its_source_local_run_c3206` and
 `test_a_failed_step_2_never_names_the_source_local_run_for_nothing_to_draft_c3206`.
+Amended 2026-11-27, §16.296 C3544: the placeholder reads `--source-local '<folder>'`, single-quoted as step 2 gives it.
 
 **A cut folder list keeps every top folder** (C3336's installer half; ruling 216; dated lines under §16.29's list
 bullet and §16.300.18's options). Under the default cap every depth-1 row (each provider's top folders and each library) is
@@ -49853,6 +49858,7 @@ the branch's note word (`denied`, `tcc_pending`, `not_signed_in`, `no_folders`; 
 run is one line too, `{"status":"error","reason","message"}`, reason `usage` (exit 2), `canceled` (a signal) or
 `failed`. JSON is written by `json_str`, `json_step`, `json_error` and `list_rows_json` (one awk over the rows)
 under `LC_ALL=C`, with no jq and no python3; `json_end` writes it last in `on_exit`, to fd 9 or fd 8.
+Amended 2026-11-27, §16.296 C3544: the placeholder reads `--source-local '<folder>'`, single-quoted as step 2 gives it.
 
 `--json` is read by a pre-scan before the option loop (`JSON_RUN`; a word after `--` is SOURCE), so a usage error
 the loop raises is the one JSON line too; its arm records nothing in `ORIG_ARGS`, so the `--list-folders` guard

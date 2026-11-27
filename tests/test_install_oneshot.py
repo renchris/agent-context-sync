@@ -1733,7 +1733,7 @@ def test_confirm_install_agent_without_any_source_exits_1(env: dict[str, str], w
         if again:
             assert last_line(cp).startswith(
                 f"NEXT: choose a folder to sync, then re-run: {INSTALL_SH} {wheel} --confirm-install-agent "
-                '--source-local "<folder>"'
+                "--source-local '<folder>'"
             )
         else:
             assert last_line(cp).startswith(
@@ -1777,7 +1777,7 @@ def test_a_sourceless_first_run_exits_2_and_a_rerun_exits_0(env: dict[str, str],
     assert first.returncode == 2, first.stdout + first.stderr
     assert last_line(first) == (
         f"NEXT: no folder to sync yet: list them with {INSTALL_SH} --list-folders, choose the folders to "
-        f'sync, then run: {INSTALL_SH} {wheel} --source-local "<folder>" (one --source-local per folder) '
+        f"sync, then run: {INSTALL_SH} {wheel} --source-local '<folder>' (one --source-local per folder) "
         f"[setup report: {report_path(env)}]"
     )
     assert not any(c.startswith("agentsync sync") for c in calls(env))
@@ -1807,7 +1807,7 @@ def test_a_bare_rerun_over_an_inbox_only_config_says_no_folder_is_synced_yet_c24
     assert again.returncode == 0, again.stdout + again.stderr
     assert last_line(again) == (
         f"NEXT: no folder is synced yet: list them with {INSTALL_SH} --list-folders, choose the folders to "
-        f'sync, then run: {INSTALL_SH} {wheel} --source-local "<folder>" (one --source-local per folder) '
+        f"sync, then run: {INSTALL_SH} {wheel} --source-local '<folder>' (one --source-local per folder) "
         f"[setup report: {report_path(env)}]"
     ), again.stdout
     assert one_next(again) and "skill is missing" not in last_line(again)
@@ -1883,7 +1883,7 @@ def test_no_folder_records_the_persons_none_and_exits_0_c2658(env: dict[str, str
     never the no-folder words the prompt's folder rule reads; over the inbox-only config it made, the same."""
     want = (
         "NEXT: the person chose no folder, so this Mac syncs none of their folders: go on to the report; if "
-        f'they choose one later, the run is: {INSTALL_SH} {wheel} --source-local "<folder>" (one '
+        f"they choose one later, the run is: {INSTALL_SH} {wheel} --source-local '<folder>' (one "
         f"--source-local per folder) [setup report: {report_path(env)}]"
     )
     first = install_sh(env, str(wheel), "--no-folder")
@@ -10442,7 +10442,7 @@ def test_list_folders_prints_depth_2_and_3_folders_sorted(env: dict[str, str]) -
     ]
     assert lines[-1] == (
         "NEXT: choose the folders to sync from the list above (project folders rather than a whole library), "
-        f'then run: {INSTALL_SH} --source-local "<folder>" (one --source-local per folder)'
+        f"then run: {INSTALL_SH} --source-local '<folder>' (one --source-local per folder)"
     ), "KISS K11b: the setup path never passes --confirm-install-agent"
     assert calls(env) == [], "no uv, agentsync or launchctl: names only"
     assert not report_path(env).exists(), "no report for --list-folders"
@@ -10472,7 +10472,7 @@ def test_a_checkout_under_home_is_named_with_a_tilde(env: dict[str, str]) -> Non
     )
     assert cp.returncode == 0, cp.stdout + cp.stderr
     tilde = "~/src/agent-context-sync/scripts/install.sh"
-    assert f'then run: {tilde} --source-local "<folder>"' in last_line(cp)
+    assert f"then run: {tilde} --source-local '<folder>'" in last_line(cp)
     run = _bash_run(
         [BASH32, "-c", f"{tilde} --version"], capture_output=True, text=True, check=False, env=env
     )
@@ -10608,7 +10608,7 @@ def _inbox(env: dict[str, str]) -> str:
 
 LIST_NEXT = (
     "NEXT: choose the folders to sync from the list above (project folders rather than a whole library), "
-    f'then run: {INSTALL_SH} --source-local "<folder>" (one --source-local per folder)'
+    f"then run: {INSTALL_SH} --source-local '<folder>' (one --source-local per folder)"
 )
 """--list-folders' NEXT: on a Mac that syncs no folder yet."""
 
@@ -10685,7 +10685,7 @@ def test_list_folders_marks_the_folders_this_mac_already_syncs(env: dict[str, st
     assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
     keep = (
         f"NEXT: this Mac already syncs 2 folders, and a re-run keeps them: run {INSTALL_SH}, with one "
-        '--source-local "<folder>" for each unmarked folder to add from the list above (none is needed)'
+        "--source-local '<folder>' for each unmarked folder to add from the list above (none is needed)"
         f"{HELD_LIST_NEXT}"
     )
     assert cp.stdout.splitlines() == [
@@ -12378,7 +12378,7 @@ def test_list_folders_names_a_mirrored_folder_whose_block_is_gone(env: dict[str,
     ]
     assert last_line(cp) == (
         f"NEXT: this Mac already syncs 1 folder, and a re-run keeps it: run {INSTALL_SH}, with one "
-        '--source-local "<folder>" for each unmarked folder to add from the list above; 1 folder in the list '
+        "--source-local '<folder>' for each unmarked folder to add from the list above; 1 folder in the list "
         f"above is still mirrored but has no [[source]] block in {cfg}: {beta}. Step 2's status fails on it "
         f'until it is added again (one --source-local "{beta}") or its [[source]] block is put back, as it '
         "was or retired"
@@ -13781,7 +13781,7 @@ def test_list_folders_is_as_before_when_the_vanished_source_reader_reads_nothing
         f"[synced] {alpha}",
         f"{beta}",
         f"NEXT: this Mac already syncs 1 folder, and a re-run keeps it: run {INSTALL_SH}, with one "
-        f'--source-local "<folder>" for each unmarked folder to add from the list above{tail}',
+        f"--source-local '<folder>' for each unmarked folder to add from the list above{tail}",
     ]
     assert install_log(env)[-2].endswith(f" result=done note=listed-2 synced=1{logged}")
 
@@ -27889,7 +27889,7 @@ def _chosen_next(env: dict[str, str], wheel: Path) -> str:
     """install.sh's NO_FOLDER_CHOSEN_NEXT as a --no-folder run over ``wheel`` ends on it."""
     return (
         "NEXT: the person chose no folder, so this Mac syncs none of their folders: go on to the report; if "
-        f'they choose one later, the run is: {INSTALL_SH} {wheel} --source-local "<folder>" (one '
+        f"they choose one later, the run is: {INSTALL_SH} {wheel} --source-local '<folder>' (one "
         f"--source-local per folder) [setup report: {report_path(env)}]"
     )
 
@@ -27903,7 +27903,7 @@ def _bare_no_folder_next(env: dict[str, str], wheel: Path, held: str = "") -> st
     clause = f"; not live: {held}{_HELD_TAIL}" if held else ""
     return (
         f"NEXT: no folder is synced yet: list them with {INSTALL_SH} --list-folders, choose the folders to "
-        f'sync, then run: {INSTALL_SH} {wheel} --source-local "<folder>" (one --source-local per folder)'
+        f"sync, then run: {INSTALL_SH} {wheel} --source-local '<folder>' (one --source-local per folder)"
         f"{clause} [setup report: {report_path(env)}]"
     )
 
@@ -28409,6 +28409,27 @@ def test_config_path_values_trims_leading_blanks_only_c3439(tmp_path: Path) -> N
         if w is not None
     ]
     assert cp.stdout.decode("utf-8").split("\n")[:-1] == want, cp.stdout
+
+
+def test_every_source_local_placeholder_the_installer_prints_is_single_quoted_c3544() -> None:
+    """B13 round 48 (C3544 with C3501, C3521, C3525 and C3538): v44's step 2 gives `--source-local
+    '<folder>'`, single-quoted so `$` and a backquote in a name stay as typed, while every installer NEXT
+    that names the placeholder printed it double-quoted, so "run a NEXT's command as given" disagreed with the
+    step. No string install.sh prints (an inner quote there is `\\"`) and no setup_report constant holds
+    `--source-local "<` any more; json_step's argv word stays `<folder>`, and the concrete-folder form,
+    double-quoted with its escapes (q_word, shown_arg), and DRAFT_ADD_FROM are left as they are."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    code = [ln for ln in script.split("\n") if not ln.lstrip().startswith("#")]
+    bad = [ln for ln in code if '--source-local \\"<' in ln]
+    assert not bad, bad
+    assert 'json_step "$SELF --source-local \'<folder>\'" "$SELF_FILE" --source-local "<folder>"' in script
+    for name in ("NO_FOLDER_NEXT", "NO_FOLDER_CHOSEN_NEXT", "NO_FOLDER_FIRST_NEXT"):
+        value = getattr(setup_report, name)
+        assert "--source-local '<folder>' (one --source-local per folder)" in value, (name, value)
+    assert script.count("--source-local '<folder>'") >= 9
+    assert "DRAFT_ADD_FROM='(`~/.local/bin/agentsync add-source \"<folder>\"`)'" in script
 
 
 _R46_HEADERS = ["[[source]]", '[[ "source" ]]', "[[ 'source' ]]"]
@@ -29133,7 +29154,7 @@ def test_step_2s_nothing_to_draft_next_names_its_source_local_run_c3206(
     assert last_line(cp) == (
         "NEXT: nothing to draft yet: the synced folders hold no converted document yet (no file, only empty "
         f"subfolders, or files not read); adding a folder that holds documents ({INSTALL_SH} {wheel} "
-        '--source-local "<folder>", one --source-local per folder) or putting files in a synced folder is '
+        "--source-local '<folder>', one --source-local per folder) or putting files in a synced folder is "
         f"the operator's choice, not a step for the agent: show them this line; session done{tail}"
     ), last_line(cp)
     assert one_next(cp) and "add-source" not in cp.stdout + cp.stderr, cp.stdout

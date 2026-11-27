@@ -17922,7 +17922,7 @@ def _one_bracket(text: str, words: str) -> str:
 
 NO_FOLDER_NEXT = (
     "no folder is synced yet: list them with {install_sh} --list-folders, choose the folders to sync, "
-    'then run: {rerun} --source-local "<folder>" (one --source-local per folder)'
+    "then run: {rerun} --source-local '<folder>' (one --source-local per folder)"
 )
 """install.sh's NEXT in place of status's skill-missing one on a config with no folder but the inbox (B13
 round 43 ruling 163, C2401), ``{install_sh}`` its own path and ``{rerun}`` that path with the run's other
@@ -17932,7 +17932,7 @@ _SKILL_MISSING_NEXT = "NEXT: the agentsync-docs skill is missing or out of date"
 NO_FOLDER_CHOSEN_NEXT = (
     NO_FOLDER_CHOSEN
     + ", so this Mac syncs none of their folders: go on to the report; if they choose one later, "
-    'the run is: {rerun} --source-local "<folder>" (one --source-local per folder)'
+    "the run is: {rerun} --source-local '<folder>' (one --source-local per folder)"
 )
 """install.sh's NEXT for a run that recorded the person's none (``--no-folder``, B13 round 44 ruling 178), in
 place of status's skill-missing NEXT or a no-folder NEXT (ruling 191), ``{rerun}`` its path with the run's
@@ -17940,7 +17940,7 @@ other arguments: the one copy of its words, which a test holds install.sh's ``NO
 to by content (B13 round 45 C2946 with C2801, C2836 and C2932; ruling 192)."""
 NO_FOLDER_FIRST_NEXT = (
     "no folder to sync yet: list them with {install_sh} --list-folders, choose the folders to sync, "
-    'then run: {rerun} --source-local "<folder>" (one --source-local per folder)'
+    "then run: {rerun} --source-local '<folder>' (one --source-local per folder)"
 )
 """install.sh's NEXT for a bare run that created the config and found no folder (C2605's no-folder first run,
 exit 2), held to install.sh's ``next=`` literal by content (B13 round 45 C2802, ruling 192)."""

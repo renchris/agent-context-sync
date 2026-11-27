@@ -682,7 +682,7 @@ def test_install_sh_full_run_is_idempotent(stubs: dict[str, str], launcher_app: 
     assert not any(c.startswith("launchctl") for c in log1), "no launchctl call without the flag"
     assert first.stdout.strip().splitlines()[-1] == (
         f"NEXT: no folder to sync yet: list them with {INSTALL_SH} --list-folders, choose the folders to "
-        f'sync, then run: {INSTALL_SH} --source-local "<folder>" (one --source-local per folder){report}'
+        f"sync, then run: {INSTALL_SH} --source-local '<folder>' (one --source-local per folder){report}"
     )
 
     second = install_sh(stubs)

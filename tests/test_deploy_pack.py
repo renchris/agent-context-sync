@@ -5448,7 +5448,7 @@ def test_the_v44_step3_nothing_to_draft_rule_names_step_2s_source_local_run_c320
 
     script = SCRIPTS[0].read_text(encoding="utf-8")
     assert r"""DRAFT_ADD_FROM='(`~/.local/bin/agentsync add-source "<folder>"`)'""" in script
-    assert r"--source-local \"<folder>\", one --source-local per folder)" in script
+    assert "--source-local '<folder>', one --source-local per folder)" in script
     assert loop.BIN == "~/.local/bin/agentsync"
     assert '(`{BIN} add-source "<folder>"`)' in inspect.getsource(loop), "loop.py's words, unchanged"
     step3 = " ".join(_prompt_steps()[3].split())

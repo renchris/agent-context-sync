@@ -2223,7 +2223,7 @@ json_end() { # RC
 		for w in $LIST_NEXT; do
 			case "$w" in
 			keep) w="$(json_step "$SELF" "$SELF_FILE")" ;;
-			add) w="$(json_step "$SELF --source-local \"<folder>\"" "$SELF_FILE" --source-local "<folder>")" ;;
+			add) w="$(json_step "$SELF --source-local '<folder>'" "$SELF_FILE" --source-local "<folder>")" ;;
 			esac
 			next="${next:+$next,}$w"
 		done
@@ -12473,7 +12473,7 @@ list_folders() {
 		elif [ "$total" -eq 0 ]; then
 			NEXT_MSG="this Mac already syncs $sn, and a re-run keeps $them: run $SELF (no folder to add is listed: no folders are synced yet in $cs)"
 		else
-			NEXT_MSG="this Mac already syncs $sn, and a re-run keeps $them: run $SELF, with one --source-local \"<folder>\" for each unmarked folder to add from the list above"
+			NEXT_MSG="this Mac already syncs $sn, and a re-run keeps $them: run $SELF, with one --source-local '<folder>' for each unmarked folder to add from the list above"
 			# none is needed, unless a source still mirrored has no block (T6, T30) or step 2 will stop on the
 			# config (U12)
 			[ -n "$vtail$ctail$rtail" ] || NEXT_MSG="$NEXT_MSG (none is needed)"
@@ -12526,7 +12526,7 @@ list_folders() {
 		NEXT_MSG="no folder can be added until the config is fixed: run $SELF with no --source-local, which shows the error$kept"
 		step_end "done" 0 "listed-$total$unread"
 	else
-		NEXT_MSG="choose the folders to sync from the list above (project folders rather than a whole library), then run: $SELF --source-local \"<folder>\" (one --source-local per folder)$heldtail$vtail$ctail$kept"
+		NEXT_MSG="choose the folders to sync from the list above (project folders rather than a whole library), then run: $SELF --source-local '<folder>' (one --source-local per folder)$heldtail$vtail$ctail$kept"
 		step_end "done" 0 "listed-$total${synced:+ synced=$synced}$unread$vlog$clog"
 	fi
 	NEXT_MSG="$NEXT_MSG$rtail" # every branch: step 2 refuses the setting whatever the list found (C2816)
@@ -15406,7 +15406,7 @@ EXIT_RC=0
 # (B13 round 44 ruling 178, C2658); never "no folder is synced yet" or "no folder to sync yet", so the setup
 # prompt's folder rule never fires on it. Named as the report's setup_report.NO_FOLDER_CHOSEN_NEXT; the report's
 # NO_FOLDER_NEXT is the bare run's "no folder is synced yet" literal below (B13 round 45 ruling 191, C2849)
-NO_FOLDER_CHOSEN_NEXT="the person chose no folder, so this Mac syncs none of their folders: go on to the report; if they choose one later, the run is: $SELF$BASE_ARGS --source-local \"<folder>\" (one --source-local per folder)"
+NO_FOLDER_CHOSEN_NEXT="the person chose no folder, so this Mac syncs none of their folders: go on to the report; if they choose one later, the run is: $SELF$BASE_ARGS --source-local '<folder>' (one --source-local per folder)"
 LOOP_STOPPED="" # the closing status's rc when a signal stopped it: install.log's report line says so (P14)
 TCC_CLICK="turn on agentsync-launcher in System Settings > Privacy & Security > Files and Folders" # a click, not a command
 # A status that timed out or blocks ends the run on its own NEXT (exit 1) before the two first-run branches
@@ -15441,11 +15441,11 @@ elif [ "$NO_FOLDER" -eq 1 ] && [ "$CONFIG_STATE" = "created" ] && [ "$HAVE_SOURC
 	next="$NO_FOLDER_CHOSEN_NEXT" # the person's none, exit 0: never the no-folder words the prompt's folder rule reads
 elif [ "$CONFIG_STATE" = "created" ] && [ "$HAVE_SOURCES" -eq 0 ]; then
 	EXIT_RC=2 # a first run with no folder: an existing config (inbox-only too) ends on status's NEXT below
-	next="no folder to sync yet: list them with $SELF --list-folders, choose the folders to sync, then run: $SELF$BASE_ARGS --source-local \"<folder>\" (one --source-local per folder)"
+	next="no folder to sync yet: list them with $SELF --list-folders, choose the folders to sync, then run: $SELF$BASE_ARGS --source-local '<folder>' (one --source-local per folder)"
 elif [ "$INSTALL_AGENT" -eq 1 ] && [ "$WAIT_RESULT" != "ok" ] && [ "$WAIT_RESULT" != "running" ]; then
 	EXIT_RC=1 # --confirm-install-agent asked for background sync: anything short of it is a failure
 	if [ "$HAVE_SOURCES" -eq 0 ]; then
-		next="choose a folder to sync, then re-run: $SELF$BASE_ARGS --source-local \"<folder>\""
+		next="choose a folder to sync, then re-run: $SELF$BASE_ARGS --source-local '<folder>'"
 	elif [ "$AGENT_RC" -ne 0 ]; then
 		next="read the install-agent error above, then re-run: $SELF$RERUN_ARGS"
 	elif [ "$WAIT_RESULT" = "tcc" ]; then
@@ -15470,7 +15470,7 @@ else # the loop's NEXT, after the background-sync result when it was asked for
 	if [ "$HAVE_SOURCES" -eq 0 ] && [ "$EXIT_RC" -eq 0 ]; then
 		case "$next" in
 		"the agentsync-docs skill is missing or out of date"*)
-			next="no folder is synced yet: list them with $SELF --list-folders, choose the folders to sync, then run: $SELF$BASE_ARGS --source-local \"<folder>\" (one --source-local per folder)"
+			next="no folder is synced yet: list them with $SELF --list-folders, choose the folders to sync, then run: $SELF$BASE_ARGS --source-local '<folder>' (one --source-local per folder)"
 			[ "$NO_FOLDER" -eq 0 ] || next="$NO_FOLDER_CHOSEN_NEXT" # the person chose none (B13 round 44 C2658)
 			;;
 		esac
@@ -15483,7 +15483,7 @@ else # the loop's NEXT, after the background-sync result when it was asked for
 	if [ "$EXIT_RC" -eq 0 ]; then
 		case "$next" in
 		"no folder is synced yet: ask the operator"*)
-			next="no folder is synced yet: list them with $SELF --list-folders, choose the folders to sync, then run: $SELF$BASE_ARGS --source-local \"<folder>\" (one --source-local per folder)$(held_sources_clause "$CONFIG")"
+			next="no folder is synced yet: list them with $SELF --list-folders, choose the folders to sync, then run: $SELF$BASE_ARGS --source-local '<folder>' (one --source-local per folder)$(held_sources_clause "$CONFIG")"
 			;;
 		esac
 	fi
@@ -15498,7 +15498,7 @@ else # the loop's NEXT, after the background-sync result when it was asked for
 	if [ "$EXIT_RC" -eq 0 ] && [ "$NO_FOLDER" -eq 0 ]; then
 		case "$next" in
 		"nothing to draft yet: "*"$DRAFT_ADD_FROM"*)
-			next="${next%%"$DRAFT_ADD_FROM"*}($SELF$BASE_ARGS --source-local \"<folder>\", one --source-local per folder)${next#*"$DRAFT_ADD_FROM"}"
+			next="${next%%"$DRAFT_ADD_FROM"*}($SELF$BASE_ARGS --source-local '<folder>', one --source-local per folder)${next#*"$DRAFT_ADD_FROM"}"
 			;;
 		esac
 	fi

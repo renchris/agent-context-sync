@@ -60,7 +60,7 @@ def test_list_folders_json_is_one_document(env: dict[str, str]) -> None:  # noqa
     assert doc["pagination"] == {"next": None}
     assert doc["next"] == [
         {
-            "command": f'{INSTALL_SH} --source-local "<folder>"',
+            "command": f"{INSTALL_SH} --source-local '<folder>'",
             "argv": [str(INSTALL_SH), "--source-local", "<folder>"],
         }
     ]

@@ -7369,7 +7369,7 @@ def test_a_marked_folder_list_in_the_installer_output_names_no_folder(
     first = "already synced on this Mac: 5 folders (marked [synced] below: first the 2 outside the list, "
     keep = (
         "NEXT: this Mac already syncs 5 folders, and a re-run keeps them: run "
-        f'{fake_mac["home"]}/src/agent-context-sync/scripts/install.sh, with one --source-local "<folder>" '
+        f"{fake_mac['home']}/src/agent-context-sync/scripts/install.sh, with one --source-local '<folder>' "
         "for each unmarked folder to add from the list above (none is needed)"
     )
     lines = [

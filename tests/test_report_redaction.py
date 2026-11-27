@@ -4610,6 +4610,22 @@ def test_both_reports_keep_a_tilde_quantity_word_c3406(
 
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+def test_both_reports_keep_the_single_quoted_folder_placeholder_c3544(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+) -> None:
+    """B13 round 48 (C3544's group): the installer's NEXTs now print `--source-local '<folder>'`; a friction
+    line quoting one keeps the placeholder whole in both reports, the same rows and one verdict."""
+    said = [
+        "the NEXT said: run install.sh --source-local '<folder>' (one --source-local per folder)",
+        "then run: ~/src/agent-context-sync/scripts/install.sh --source-local '<folder>'",
+    ]
+    shell, python, shell_private, python_private = _both_reports(env, ["Juniper Notes"], said, locale)
+    assert python == said, python
+    assert shell == python and shell_private == python_private, (shell, python)
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
 def test_both_reports_cut_a_quoted_foreign_path_to_its_unescaped_quote_c3435(
     env: dict[str, str],  # noqa: F811
     locale: str,

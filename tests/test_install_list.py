@@ -171,7 +171,7 @@ def test_a_paused_or_retired_folder_is_marked_and_never_counted_c3332(
         ]
         nxt = (
             f"NEXT: this Mac already syncs 2 folders, and a re-run keeps them: run {INSTALL_SH}, with one "
-            '--source-local "<folder>" for each unmarked folder to add from the list above (none is needed)'
+            "--source-local '<folder>' for each unmarked folder to add from the list above (none is needed)"
         )
         gamma = [f"[synced] {lib}/Gamma", f"[inside a synced folder] {lib}/Gamma/In"]
     else:
