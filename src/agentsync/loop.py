@@ -2061,7 +2061,10 @@ def next_step(
         config
     )  # the baseline draft's, also status's when the state cannot be read (D11)
     waits += draft_waits
-    if skill_state(docs) != "current":
+    # the skill rule yields to a completed none: no sync runs after it, so the skill is never written and the
+    # rule would send the reader to a sync the setup never runs; sign-in and fixes still come first (B13
+    # round 48 C3546, ruling 227)
+    if skill_state(docs) != "current" and not _person_chose_no_folder(config):
         return done(
             f"the agentsync-docs skill is missing or out of date: run `{BIN} sync` (it writes the skill; "
             "if this line is still here after that sync, the skills folder cannot be written: tell the "

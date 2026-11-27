@@ -434,6 +434,33 @@ def test_rule_2_reads_no_choice_from_an_install_log_that_is_no_file_c3241(
         assert _lines(config)[0].startswith("NEXT: no folder is synced yet"), kind
 
 
+@pytest.mark.parametrize(
+    ("log", "chosen"), [(_NONE_CLEAN, True), ("", False)], ids=["completed-none", "no-log"]
+)
+def test_a_completed_none_gives_the_choice_with_the_skill_not_written_c3546(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, log: str, chosen: bool
+) -> None:
+    """B13 round 48 C3546 (ruling 227): no sync runs after the person's none, so the skill is never written,
+    and status's skill rule sent the reader to run a sync the setup never runs. The skill rule yields to a
+    completed none; a doctor fix still comes first, and with no none the skill rule stands."""
+    config = _setup(tmp_path)
+    ensure_inbox(config.config_path)
+    config = load_config(config.config_path)
+    assert loop.skill_state(expand(config.docs_repo)) != "current"
+    setup_log = tmp_path / "setup" / "install.log"
+    setup_log.parent.mkdir(parents=True, exist_ok=True)
+    if log:
+        setup_log.write_text(log, encoding="utf-8")
+    monkeypatch.setenv(loop.SETUP_LOG_ENV, str(setup_log))
+    skill_next = (
+        f"NEXT: the agentsync-docs skill is missing or out of date: run `{BIN} sync` (it writes the skill; "
+        "if this line is still here after that sync, the skills folder cannot be written: tell the operator)"
+    )
+    assert _lines(config) == [f"NEXT: {loop.NO_FOLDER_CHOSEN_LOOP_NEXT}" if chosen else skill_next]
+    fixed = loop.next_step(config, fixes=["run the fix doctor names"]).lines()
+    assert fixed[0] == ("NEXT: run the fix doctor names" if chosen else skill_next)
+
+
 # ---- rule 3: the sync has not caught up --------------------------------------------------------------------
 
 

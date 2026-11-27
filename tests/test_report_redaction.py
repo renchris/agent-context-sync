@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from agentsync import arm_local, cli, net, report_cuts, setup_report
+from agentsync import loop as loop_module
 from agentsync.config import default_config_text, load_config, local_source_table, toml_string
 from agentsync.ops import doctor
 from agentsync.text import safe_text
@@ -4035,7 +4036,10 @@ def test_one_real_no_folder_runs_next_is_the_loop_lines_c2946(
     ]
     kept = setup_report.INSTALL_SH
     want = setup_report.NO_FOLDER_CHOSEN_NEXT.format(rerun=kept)
-    assert f"NEXT: {want}" in loop, loop
+    # B13 round 48 C3546 (ruling 227): status's skill rule yields to a completed none, so the Loop line is
+    # status's own choice NEXT (loop.NO_FOLDER_CHOSEN_LOOP_NEXT, kept by _CHOSEN_LOOP_OPENER), never a patched
+    # skill-missing line; its opening words are install.sh's
+    assert f"NEXT: {loop_module.NO_FOLDER_CHOSEN_LOOP_NEXT}" in loop, loop
     assert "no folder is synced yet" not in loop and "choose the folders" not in loop, loop
     assert (
         said.replace(str(INSTALL_SH), kept).split(" the run is: ", 1)[0]
