@@ -226,6 +226,22 @@ no-break space (U+00A0) or an ideographic space (U+3000) sits inside the token, 
 the Python cut there and printed ``PrivateBackup`` after it. ``setup_report._CUT_TOKEN_END`` adds ``\n``,
 which the shell never sees inside a line."""
 
+TILDE_QUANTITY_WORDS = frozenset(
+    {
+        *("zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"),
+        *("eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen"),
+        *("nineteen", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"),
+        *("hundred", "thousand", "million", "dozen", "half", "a", "an", "few", "several"),
+    }
+)
+"""Quantity words, lower-case, that both reports leave after a bare ``~`` (B13 round 48 C3406, ruling 217;
+makes worse True for cutting registered logins only): ruling 207's C3224 cuts a bare ``~login`` by its
+shape, another account's included, so ``took ~twenty seconds`` read ``took ~<user> seconds``. A word of this
+list in any case right after ``~``, with nothing but a path's end after it, is prose:
+``setup_report._other_login_re``'s bare branch and install.sh's ``tilde()`` (``CUT_TILDE_QUANTITY_WORDS``)
+skip it. ``~ten/x`` is still cut to ``~<user>/<path>``, and a refused ``~a`` value still by its literal,
+which comes first."""
+
 FREE_PROVIDER_HEAD = "~/Library/CloudStorage/"
 """Where both reports run the provider rule over free text (B13 round 40 C1862): a part right after this head
 that begins with a :data:`PROVIDER_APPS` name and a hyphen and that :func:`provider_kept_pattern` does not
@@ -400,7 +416,8 @@ def shell_block() -> str:
     ``CUT_CONFIG_DEFAULT`` (:data:`CONFIG_DEFAULT`), ``CUT_TOML_BREAKS`` (:data:`TOML_BREAKS`, each one UTF-8
     alternative in octal) and
     ``CUT_TOML_BREAKS_ESCAPED`` (each one's :func:`toml_break_spellings`, ``,``-joined, in the same order,
-    ``|`` between characters)."""
+    ``|`` between characters); since B13 round 48 C3406 ``CUT_TILDE_QUANTITY_WORDS``
+    (:data:`TILDE_QUANTITY_WORDS`, sorted, ``|``-joined, read as ``CUT_AGENT`` is, between two ``|``)."""
     values = {
         "AGENTSYNC_VERBS": "|".join(agentsync_verbs()),
         "CUT_DRIVE": "|".join(sorted(GENERIC_FOLDERS)),
@@ -439,6 +456,7 @@ def shell_block() -> str:
         "CUT_CONFIG_DEFAULT": CONFIG_DEFAULT,
         "CUT_TOML_BREAKS": "|".join(_octal(ch) for ch in TOML_BREAKS),
         "CUT_TOML_BREAKS_ESCAPED": "|".join(",".join(toml_break_spellings(ch)) for ch in TOML_BREAKS),
+        "CUT_TILDE_QUANTITY_WORDS": "|".join(sorted(TILDE_QUANTITY_WORDS)),  # B13 round 48 C3406
     }
     assert not any("'" in v or "\n" in v for v in values.values())
     assert all(h and "|" not in h for h, _r in PATH_HEADS) and all("|" not in h for h in REFUSED_HEADS)

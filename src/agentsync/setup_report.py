@@ -823,6 +823,10 @@ _TILDE_LOGIN = r"(?:[A-Za-z_][A-Za-z0-9._-]*|<(?!(?:user|path)>)[a-z]+(?:-[0-9]+
 ``<org-1>``, never ``<user>`` or ``<path>``), as install.sh's ``foreign_home_cut`` reads one."""
 
 
+_TILDE_QUANTITY = "|".join(sorted(report_cuts.TILDE_QUANTITY_WORDS, key=lambda w: (-len(w), w)))
+"""B13 round 48 C3406: :data:`report_cuts.TILDE_QUANTITY_WORDS` as one alternation, longest first."""
+
+
 def _other_login_re(logins: Iterable[str], spaced: Iterable[str] = ()) -> str:
     """B13 round 47 C3224 (ruling 207; privacy): the pattern of a ``~login/`` path, another account's home
     written with its login, cut whole as :func:`_other_home_re` cuts a ``/Users/`` one, configured or not: a
@@ -830,11 +834,15 @@ def _other_login_re(logins: Iterable[str], spaced: Iterable[str] = ()) -> str:
     ``~~~text`` fence), then a login-shaped
     word that is none of ``logins`` (this account's, left alone as ``/Users/<user>`` is) and a ``/`` or the
     path's end; right after a quote or a backtick to the closing one, else its components and the words after
-    a blank as :func:`_home_rest` reads them. ``~/``, ``~+`` and ``~-`` hold no login."""
+    a blank as :func:`_home_rest` reads them. ``~/``, ``~+`` and ``~-`` hold no login. B13 round 48 C3406
+    (ruling 217): the bare form, a login with only a path's end after it, spares a
+    :data:`report_cuts.TILDE_QUANTITY_WORDS` word in any case (``took ~twenty seconds``), as install.sh's
+    ``tilde()`` does; the ``/`` and quoted forms do not."""
     login = "".join(f"(?!{re.escape(u)}{_PATH_END})" for u in logins)
     head = rf"~{login}{_TILDE_LOGIN}"
     quoted = "".join(rf"(?<={q}){head}/(?:[^{q}\n\\]|\\.)+(?={q})|" for q in ('"', "'", "`"))
-    return rf"{quoted}(?<![A-Za-z0-9_.~-]){head}(?:/{_home_rest(spaced)}|{_PATH_END})"
+    bare = rf"~(?!(?i:{_TILDE_QUANTITY}){_PATH_END}){login}{_TILDE_LOGIN}{_PATH_END}"
+    return rf"{quoted}(?<![A-Za-z0-9_.~-])(?:{head}/{_home_rest(spaced)}|{bare})"
 
 
 def _home_rest(spaced: Iterable[str] = ()) -> str:

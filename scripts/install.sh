@@ -2800,6 +2800,7 @@ CUT_SOURCE_LOCAL_KEPT='per folder)'
 CUT_CONFIG_DEFAULT='~/agent-context/sources.toml'
 CUT_TOML_BREAKS='\302\205|\342\200\250|\342\200\251'
 CUT_TOML_BREAKS_ESCAPED='\u0085|\u2028|\u2029'
+CUT_TILDE_QUANTITY_WORDS='a|an|dozen|eight|eighteen|eighty|eleven|few|fifteen|fifty|five|forty|four|fourteen|half|hundred|million|nine|nineteen|ninety|one|seven|seventeen|seventy|several|six|sixteen|sixty|ten|thirteen|thirty|thousand|three|twelve|twenty|two|zero'
 CUT_REFUSED_HEADS="this is a row step 1 marked |step 1 shows this folder's name |its name is step 1's escaped form |this is how step 1 shows a folder "
 # END report_cuts
 }

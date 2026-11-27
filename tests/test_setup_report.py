@@ -5604,6 +5604,7 @@ def test_the_report_cuts_table_is_what_both_reports_read_ruling_133() -> None:
         "CUT_CONFIG_DEFAULT",
         "CUT_TOML_BREAKS",
         "CUT_TOML_BREAKS_ESCAPED",
+        "CUT_TILDE_QUANTITY_WORDS",  # B13 round 48 C3406 (ruling 217)
         "CUT_REFUSED_HEADS",
     ]
     folders = [

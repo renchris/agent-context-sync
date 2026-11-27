@@ -4473,6 +4473,91 @@ def test_both_reports_cut_an_unconfigured_tilde_login_path_whole_c3224(
     assert shell == python and shell_private == python_private, (shell, python)
 
 
+_C3406_ROWS = [
+    ("install took ~twenty seconds", "install took ~twenty seconds"),
+    ("it took ~ten, then", "it took ~ten, then"),
+    ("took ~a minute", "took ~a minute"),
+    ("took ~Twenty seconds", "took ~Twenty seconds"),
+    ("ran ls ~olga to check", "ran ls ~<user> to check"),
+    ("cd ~olga then", "cd ~<user> then"),
+    ("~ten/x is here", "~<user>/<path> is here"),
+    ("~tenth is no quantity", "~<user> is no quantity"),
+]
+
+
+def test_one_tilde_quantity_word_list_is_read_by_both_reports_c3406() -> None:
+    """B13 round 48 C3406 (ruling 217): one :data:`report_cuts.TILDE_QUANTITY_WORDS`, lower-case, spares
+    ``~twenty`` and its kin from the bare-login cut in both reports: the agentsync report's alternation and
+    the shell block's ``CUT_TILDE_QUANTITY_WORDS`` (as bash reads it) hold the same words, the ones the
+    ruling lists."""
+    words = set(report_cuts.TILDE_QUANTITY_WORDS)
+    teens = "eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen"
+    tens = "twenty thirty forty fifty sixty seventy eighty ninety"
+    listed = f"zero one two three four five six seven eight nine ten {teens} {tens} hundred thousand million"
+    assert words == {*listed.split(), "dozen", "half", "a", "an", "few", "several"}
+    assert all(w == w.lower() and w.isalpha() for w in words)
+    assert set(setup_report._TILDE_QUANTITY.split("|")) == words
+    script = report_cuts.shell_block() + 'printf "%s" "$CUT_TILDE_QUANTITY_WORDS"\n'
+    cp = subprocess.run(["/bin/bash", "-c", script], capture_output=True, check=True)
+    assert set(cp.stdout.decode("utf-8").split("|")) == words
+
+
+@pytest.mark.parametrize(("said", "want"), _C3406_ROWS)
+def test_a_tilde_quantity_word_is_no_login_c3406(said: str, want: str) -> None:
+    """B13 round 48 C3406 (ruling 217; makes worse True for cutting registered logins only, which would print
+    another account's bare ``~olga``): ruling 207's C3224 cut ``took ~twenty seconds`` to ``took ~<user>
+    seconds``. A quantity word right after ``~`` with a path's end after it is kept, in any case; an
+    unregistered bare login (``~olga``, ``~tenth``) is still cut by its shape, and ``~ten/x`` by the ``/``
+    branch."""
+    red = setup_report.Redactor()
+    red.add_cut("/Users/contosouser", "/Users/<user>")
+    assert red.redact(said) == want
+
+
+_C3406_SHELL = pytest.param(
+    True,
+    id="shell",
+    marks=pytest.mark.xfail(strict=True, reason="lane RB's C3406 shell half"),
+)
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize("shell", [pytest.param(False, id="python"), _C3406_SHELL])
+def test_both_reports_keep_a_tilde_quantity_word_c3406(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+    shell: bool,
+) -> None:
+    """B13 round 48 C3406 (ruling 217), the rows of
+    test_both_reports_cut_an_unconfigured_tilde_login_path_whole_c3224 for a quantity word: ``took ~twenty
+    seconds`` and ``took ~ten, then`` are kept, ``ran ls ~olga to check`` reads ``ran ls ~<user> to check``
+    and ``~ten/x`` is still cut to ``~<user>/<path>``. The agentsync report's half is asserted in every run;
+    the shell half (the two reports' parity, under both locales) is lane RB's, a strict xfail until
+    install.sh's tilde() reads ``CUT_TILDE_QUANTITY_WORDS``."""
+    juniper = _cloud(env) / "OneDrive-Contoso" / "Juniper Notes"
+    juniper.mkdir(parents=True)
+    body = default_config_text() + local_source_table("juniper", juniper)
+    said = ["took ~twenty seconds", "took ~ten, then", "ran ls ~olga to check", "~ten/x is here"]
+    home = Path(env["HOME"])
+    lines, python, shell_private, python_private = _both_reports(
+        env,
+        [],
+        said,
+        locale,
+        shell=shell,
+        config=home / "agent-context" / "sources.toml",
+        config_body=body,
+    )
+    assert python == [
+        "took ~twenty seconds",
+        "took ~ten, then",
+        "ran ls ~<user> to check",
+        "~<user>/<path> is here",
+    ], python
+    if shell:
+        assert lines == python and shell_private == python_private, (lines, python)
+
+
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
 @pytest.mark.parametrize("head", ["~jd", "~a", "~JD", "~it", "~me"])
 def test_both_reports_cut_a_short_tilde_name_head_alike_c3247(
