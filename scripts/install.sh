@@ -5747,6 +5747,18 @@ foreign_home_cut() {
 		}
 		return 0
 	}
+	# B13 round 48 ruling 217 (C3435; privacy): where a quoted path closes, as setup_report\047s quoted patterns
+	# read it, `(?:[^q\n\\]|\\.)+(?=q)`: the first p at or after k that no backslash escapes, a backslash
+	# taking the byte after it, else 0, so `"~login/a\" b/c"` is cut to its last quote, not its first.
+	function qend(s, k, p,    ch) {
+		while (k <= length(s)) {
+			ch = substr(s, k, 1)
+			if (ch == "\\") { if (k == length(s)) return 0; k += 2; continue }
+			if (ch == p) return k
+			k++
+		}
+		return 0
+	}
 	function more(w) { # C981: a word after an unquoted blank that carries the cut on
 		return w != "" && index(w, "/") && !index(w, "=") && !index(w, "://") && substr(w, 1, 1) !~ /[-\/~]/ && w !~ /^[0-9\/]+$/
 	}
@@ -5795,8 +5807,8 @@ foreign_home_cut() {
 			if (match(r, /^[A-Za-z_][A-Za-z0-9._-]*/)) n = RLENGTH
 			else if (match(r, /^<[a-z]+(-[0-9]+)?>/) && substr(r, 1, RLENGTH) != "<user>" && substr(r, 1, RLENGTH) != "<path>") n = RLENGTH
 			k = i + 1 + n; b = substr(s, k, 1)
-			if (n && p != "" && index("\"\047`", p) && b == "/" && (q = index(substr(s, k + 1), p)) > 1) {
-				out = out substr(s, 1, i - 1) "~<user>/<path>"; ncut++; s = substr(s, k + q); continue
+			if (n && p != "" && index("\"\047`", p) && b == "/" && (q = qend(s, k + 1, p)) > k + 1) {
+				out = out substr(s, 1, i - 1) "~<user>/<path>"; ncut++; s = substr(s, q); continue
 			}
 			if (n && p !~ /[A-Za-z0-9_.~-]/) {
 				if (b == "/" && (e = upto(s, k + 1, 1)) > k + 1) {
@@ -5825,7 +5837,7 @@ foreign_home_cut() {
 				from = h; continue # from the run\047s last slash: a /Users/ that starts there is read (B13 round 38 C1440)
 			}
 			out = out substr(s, 1, ps - 1) (vol ? "/Volumes/<path>" : "/Users/<path>"); ncut++
-			if (pre != "" && index("\"\047`", pre) && (q = index(substr(s, h + 1), pre))) { s = substr(s, h + q); from = 1; continue }
+			if (pre != "" && index("\"\047`", pre) && (q = qend(s, h + 1, pre)) > h + 1) { s = substr(s, q); from = 1; continue }
 			s = substr(s, rest(s, k, comp)); from = 1
 		}
 		print tilde(out s)

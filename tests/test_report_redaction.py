@@ -4578,6 +4578,47 @@ def test_both_reports_keep_a_tilde_quantity_word_c3406(
 
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+def test_both_reports_cut_a_quoted_foreign_path_to_its_unescaped_quote_c3435(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+) -> None:
+    """B13 round 48 C3435 (ruling 217; privacy): the shell's quoted `~login/` and `/Users/` cuts closed at
+    the first quote byte, so `"~contoso/Zephyr\\" Quarry/notes"` printed ` Quarry/notes"` in clear, where the
+    agentsync report's quoted patterns step over a backslash escape. Both cut to the first quote no
+    backslash escapes, in both quote marks and both heads."""
+    juniper = _cloud(env) / "OneDrive-Contoso" / "Juniper Notes"
+    juniper.mkdir(parents=True)
+    body = default_config_text() + local_source_table("juniper", juniper)
+    said = [
+        'see "~contoso/Zephyr\\" Quarry/notes" end',
+        'see "/Users/contoso/Zephyr\\" Quarry/notes" end',
+        "see '~contoso/Zephyr\\' Quarry/notes' end",
+        "see '/Users/contoso/Zephyr\\' Quarry/notes' end",
+    ]
+    home = Path(env["HOME"])
+    texts: list[str] = []
+    shell, python, shell_private, python_private = _both_reports(
+        env,
+        [],
+        said,
+        locale,
+        config=home / "agent-context" / "sources.toml",
+        config_body=body,
+        texts_out=texts,
+    )
+    assert python == [
+        'see "~<user>/<path>" end',
+        'see "/Users/<path>" end',
+        "see '~<user>/<path>' end",
+        "see '/Users/<path>' end",
+    ], python
+    for name, text in zip(("shell", "agentsync"), texts, strict=True):
+        leaks = [ln for ln in text.splitlines() if re.search("(?i)zephyr|quarry", ln)]
+        assert not leaks, (name, leaks)
+    assert shell == python and shell_private == python_private, (shell, python)
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
 @pytest.mark.parametrize("head", ["~jd", "~a", "~JD", "~it", "~me"])
 def test_both_reports_cut_a_short_tilde_name_head_alike_c3247(
     env: dict[str, str],  # noqa: F811
