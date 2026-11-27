@@ -2050,6 +2050,26 @@ def _cmd_accept_deletions(args: argparse.Namespace) -> int:
     return report.exit_code
 
 
+def _nothing_stored(config: Config, sid: str, stored: int, stopped: Sequence[str]) -> str:
+    """What exclude-empty's bare ``nothing to exclude`` read, said (B13 round 48 C3547): the folders the
+    last sync stored, never a folder read here, so one made or emptied since then waits for the next sync,
+    or, while a [FAIL] the sync stops on stands, for that line's fix (the stop pointer's words, as
+    :func:`loop._named` says them); folders it stored that today's exclude prunes are excluded already."""
+    if stored:
+        one = stored == 1
+        what = "the empty cloud folder" if one else f"the {stored} empty cloud folders"
+        return f": {what} {sid}'s last sync stored {'is' if one else 'are'} excluded already"
+    found = f"the next `{loop.BIN} sync`"
+    if stopped:
+        when = (
+            f"once {loop.fail_lines(stopped)}, {found} finds one made or emptied since then; until then "
+            f"no sync runs{loop.lost_hold_first(config, stopped)}"
+        )
+    else:
+        when = f"one made or emptied since then is found by {found}"
+    return f": {sid}'s last sync stored no empty cloud folder ({when})"
+
+
 def _cmd_exclude_empty(args: argparse.Namespace) -> int:
     """Add SOURCE's empty cloud folders to its ``exclude`` in sources.toml (B13 round 4 Q71): the folders its
     last walk stored as zero-child (manifest meta, never a folder read here) that today's exclude does not
@@ -2166,7 +2186,8 @@ def _cmd_exclude_empty(args: argparse.Namespace) -> int:
             else ""
         )
         if not clear:
-            _out(f"exclude-empty {src.id}: nothing to exclude{held}")
+            said = held or _nothing_stored(config, src.id, found.stored, stopped)
+            _out(f"exclude-empty {src.id}: nothing to exclude{said}")
             return EXIT_OK
         exclude = exclude_globs(src, clear)
         try:

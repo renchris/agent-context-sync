@@ -61,7 +61,11 @@ def test_every_empty_folder_is_excluded_once_and_the_listing_completes(
     assert out.rstrip().endswith("the next sync lists work without those folders"), out  # B13 round 12 N40
     src = load_config(cfg).source("work")
     assert src.exclude == ("*.bak", *(f"/Empty {n}/" for n in range(6)), "/Plans ?old]/")
-    assert _exclude_empty(cfg, "work", capsys) == (cli.EXIT_OK, "exclude-empty work: nothing to exclude\n")
+    assert _exclude_empty(cfg, "work", capsys) == (
+        cli.EXIT_OK,
+        "exclude-empty work: nothing to exclude: the 7 empty cloud folders work's last sync stored are "
+        "excluded already\n",  # B13 round 48 C3547
+    )
     config = load_config(cfg)
     run_cycle(config, mode=None)
     with Manifest(config.state_paths.db) as manifest:
@@ -203,6 +207,42 @@ def test_a_folder_that_held_mirrored_files_is_left_and_named_as_a_count(
     assert "Gone" not in out
     assert load_config(cfg).source("work").exclude[-1] == "/Empty/"
     assert "/Gone/" not in load_config(cfg).source("work").exclude
+
+
+def test_nothing_to_exclude_says_what_the_last_sync_stored_c3547(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 48 C3547: exclude-empty reads the folders the last sync stored, never a folder, so empty
+    folders made after that sync drew a bare `nothing to exclude` while they sat on disk. It says the last
+    sync stored none and that the next sync finds one made since, or, beside a [FAIL] the sync stops on, the
+    stop pointer's words; once the stored folders are all excluded, it says they are excluded already."""
+    root = _root()
+    cfg = _setup(tmp_path, local_source_table("work", root))
+    run_cycle(load_config(cfg), mode=None)
+    for name in ("Empty 0", "Empty 1"):
+        (root / name).mkdir()
+    none = (
+        "exclude-empty work: nothing to exclude: work's last sync stored no empty cloud folder (one made or "
+        "emptied since then is found by the next `~/.local/bin/agentsync sync`)\n"
+    )
+    assert _exclude_empty(cfg, "work", capsys) == (cli.EXIT_OK, none)
+    holds = governance._holds_file(expand(load_config(cfg).state_paths.root))
+    holds.mkdir(parents=True)
+    assert _exclude_empty(cfg, "work", capsys) == (
+        cli.EXIT_OK,
+        "exclude-empty work: nothing to exclude: work's last sync stored no empty cloud folder (once the "
+        "governance.hold [FAIL] line is fixed, the next `~/.local/bin/agentsync sync` finds one made or "
+        "emptied since then; until then no sync runs)\n",
+    )
+    holds.rmdir()
+    run_cycle(load_config(cfg), mode=None)
+    rc, out = _exclude_empty(cfg, "work", capsys)
+    assert rc == cli.EXIT_OK and "(2 empty cloud folders added)" in out, out
+    assert _exclude_empty(cfg, "work", capsys) == (
+        cli.EXIT_OK,
+        "exclude-empty work: nothing to exclude: the 2 empty cloud folders work's last sync stored are "
+        "excluded already\n",
+    )
 
 
 def test_nothing_stored_and_an_unknown_source(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

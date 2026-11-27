@@ -14799,6 +14799,12 @@ adds them to that source's exclude in <sources.toml>; an excluded folder is not 
 files)`; the gone case's line is unchanged. The operator still runs it (README unchanged); decision
 71d3e66ef726's rule is unchanged. Dated line in §16.45. Tests: `tests/test_exclude_empty.py`,
 `test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4`.
+**Amended 2026-11-27, §16.297 C3547:** a bare `nothing to exclude` says what the last sync stored:
+`nothing to exclude: <id>'s last sync stored no empty cloud folder (one made or emptied since then is found by the
+next `~/.local/bin/agentsync sync`)`, or, beside a [FAIL] the sync stops on, `(once the <check> [FAIL] line is
+fixed, the next ... sync finds one made or emptied since then; until then no sync runs)`; and, when every folder
+it stored is excluded now, `nothing to exclude: the N empty cloud folders <id>'s last sync stored are excluded
+already`. The left-folders form (`nothing to exclude; ...`) and the no-manifest form are unchanged.
 
 **Q74: rule 5 points at the waits without a place (`agentsync.loop`, `agentsync.setup_report`,
 scripts/install.sh).** Rule 5 reads `stop: the operator confirms the baseline questions (see the WAITING ON YOU
