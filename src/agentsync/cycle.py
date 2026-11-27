@@ -2309,6 +2309,9 @@ def _cycle_registry(
     return Registry.default(config.convert, policy=policy, ocr=engine, **extra)
 
 
+_EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
+"""The content hash of a zero-byte file, whose conversion never reads or writes the converter cache
+(C1466)."""
 _ROW_TALLY_KEYS = (
     "converted",
     "converted_failed",
@@ -2319,6 +2322,8 @@ _ROW_TALLY_KEYS = (
     "rescreened",
     "rescreened_unchanged",
     "rescreened_reader",
+    "cache_recorded",
+    "cache_served",
 )
 """``_Cycle._tally``'s conversion keys one row's conversion moves, kept and put back with
 :meth:`_SourceAcc.row_counts`.  Never the OCR tallies (``ocr_*``): a helper failure or an OCR outage seen
@@ -4576,6 +4581,11 @@ class _Cycle:
         ``rescreened_unchanged``: of those, the ones whose pages came out the same; ``rescreened_reader``: of
         ``rescreened``, the mail the label reader's re-screen marked (``_RESCREEN_READER_META``), never in
         ``converted_seen``: the reader's revision is no converter option (B13 round 31 C517, C518).
+        ``cache_served``: conversions served from the converter cache (``ConversionResult.from_cache``) whose
+        cache index row an earlier run made (``Manifest.record_cache``), there, 0 included, whenever the run
+        recorded a cache row: an Office container rejection or a zero-byte file reads no cache, though its row
+        is recorded, so the setup report counts serves from this key and, for a run without it, from the cache
+        index as before (B13 round 48 C3450, lead call 12).
         ``reread`` and ``reread_kept``: files read again for what their converter has gained, and those
         of them that kept their page.  ``reread_first``: of the ``reread``, those whose bytes were read for
         the first time (a no-converter stub's re-read is the first read of its bytes), so they are in
@@ -4600,6 +4610,11 @@ class _Cycle:
         one, and so knows a record an earlier build or another engine left from one this build wrote."""
         tally = Counter({key: count for key, count in self._tally.items() if count})
         tally["converted"] = self._tally["converted"]
+        # there whenever the run recorded a cache row, so a record without it beside a moved row is an earlier
+        # build's (B13 round 48 C3450)
+        tally.pop("cache_recorded", None)
+        if self._tally["cache_recorded"]:
+            tally["cache_served"] = self._tally["cache_served"]
         if self._reread_n:
             tally["reread"] = self._reread_n
         if self._reread_first:
@@ -4656,6 +4671,23 @@ class _Cycle:
         if not key or all(o.action_key != key for o in outs):
             return None
         return self.manifest.cache_last_used(key)
+
+    @staticmethod
+    def _stored_conversion(name: str, staged: Path, result: ConversionResult) -> bool:
+        """Whether ``convert_file`` stored ``result`` in the converter cache, so the cache index row describes
+        it: not served from the cache, and neither a zero-byte file (C1466) nor an Office name's container
+        rejection (bytes not a ZIP at offset 0, ``convert._container_screen``, C2924), which are answered
+        before the cache and never stored (B13 round 48 C3450, lead call 12)."""
+        if result.from_cache or result.content_sha256 == _EMPTY_SHA256:
+            return False
+        if result.status is ConversionStatus.UNREADABLE and name.lower().endswith(
+            content_policy.OOXML_SUFFIXES
+        ):
+            try:
+                return content_policy.zip_at_offset_0(staged)
+            except OSError:
+                return False
+        return True
 
     def _tally_converted(self, result: ConversionResult, prior: int | None) -> None:
         """Count one conversion (``_run_tally``).  ``prior``: the run that last converted the file's bytes
@@ -7748,7 +7780,9 @@ class _Cycle:
         # label reader's re-screen converted, which keeps its action key (B13 round 31 C517, C544)
         prior = None if reader else self._converted_before(outs, result.action_key)
         if result.action_key and result.status in (ConversionStatus.OK, ConversionStatus.UNREADABLE):
-            self.manifest.record_cache(
+            # every keyed result still recorded (C1821); a serve counted from from_cache (B13 round 48 C3450)
+            self._tally["cache_recorded"] += 1
+            self._tally["cache_served"] += self.manifest.record_cache(
                 result.action_key,
                 converter_id=result.converter_id,
                 converter_version=result.converter_version,
@@ -7758,6 +7792,8 @@ class _Cycle:
                 unit_count=len(result.units),
                 size=sum(len(u.body.encode("utf-8")) for u in result.units),
                 run_id=self.run_id,
+                served=result.from_cache,
+                stored=self._stored_conversion(row.name, fetched.path, result),
             )
         lacks = self._lacks(row.name, result)
         self._tally_ocr(result, lacks=lacks, plain=registry is not self.registry)

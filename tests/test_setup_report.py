@@ -29118,6 +29118,58 @@ def test_a_zero_byte_conversion_is_no_converter_cache_serve_c1821(fake_mac: dict
     assert line.startswith("- converter cache: 1 conversion was used again"), line
 
 
+def _cache_line(fake_mac: dict[str, Path]) -> str:
+    part = " ".join(status_parts(fake_mac)[1]["Repeat conversions"].split())
+    return "- converter cache: " + part.split("- converter cache: ", 1)[1]
+
+
+def _newest_counts(cfg: Path) -> dict[str, int]:
+    with Manifest(expand(load_config(cfg).state_paths.db)) as m:
+        (raw,) = m._db.execute("SELECT counts_json FROM runs ORDER BY run_id DESC LIMIT 1").fetchone()
+    return dict(json.loads(raw))
+
+
+@pytest.mark.parametrize("order", ["clean first", "preamble first"])
+@pytest.mark.usefixtures("roomy_calls")
+def test_an_uncached_office_rejection_is_no_converter_cache_serve_c3450(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, order: str
+) -> None:
+    """B13 round 48 C3450 (lead call 12): an Office name's container rejection shares the clean package's
+    action key but never reads or writes the converter cache, yet record_cache moved the row's last run, and
+    the report counted every row used after the run that made it as a serve. A serve is counted from
+    ``from_cache`` in the run record's ``cache_served`` key: one file whose bytes gain or lose a junk preamble
+    a run apart is no serve in either order, the record still counts it converted again, and the row
+    describes the clean page the cache holds. A copy of the clean package a run later is one serve."""
+    from openpyxl import Workbook  # noqa: PLC0415
+
+    _governance_only(monkeypatch)
+    cfg = fake_mac["config"]
+    book = Workbook()
+    book.active.append(["Contoso", "plan"])
+    book.save(fake_mac["home"] / "clean.xlsx")
+    clean = (fake_mac["home"] / "clean.xlsx").read_bytes()
+    junk = b"\x00Contoso junk" * 10 + clean
+    path = fake_mac["one"] / "Contoso book.xlsx"
+    for data in (clean, junk) if order == "clean first" else (junk, clean):
+        path.write_bytes(data)
+        assert cli.main(["sync", "--config", str(cfg)]) == 0
+    line = _cache_line(fake_mac)
+    assert line.startswith("- converter cache: 0 conversions were used again"), line
+    counts = _newest_counts(cfg)
+    assert (counts["converted_seen"], counts["converted_again"], counts["cache_served"]) == (1, 1, 0), counts
+    with Manifest(expand(load_config(cfg).state_paths.db)) as m:
+        rows = m._db.execute("SELECT status, unit_count FROM cache").fetchall()
+    assert [(status, units > 0) for status, units in rows] == [("ok", True)], rows
+    # the positive control: a copy of the clean package, a run later, is served from the cache
+    (fake_mac["one"] / "Contoso copy.xlsx").write_bytes(clean)
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    assert _newest_counts(cfg)["cache_served"] == 1
+    assert _cache_line(fake_mac).startswith(
+        "- converter cache: 1 conversion was used again by a later run than the one that made it (the same "
+        "bytes converted again, by the same file or by a copy of it); it was used last by the newest run"
+    ), order
+
+
 def test_a_zero_byte_conversion_still_records_its_cache_row_c1821(tmp_path: Path) -> None:
     """B13 round 40 C1821 (makes worse True for the cycle dropping the row): record_cache keeps writing a
     zero-byte conversion's row, since cache_last_used feeds converted_seen and converted_again."""

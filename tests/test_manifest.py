@@ -1053,6 +1053,25 @@ def test_record_cache_is_write_once_and_touches_last_used(m: Manifest) -> None:
     assert m.cache_last_used("k") == 5 and m.cache_last_used("other") is None
 
 
+def test_record_cache_says_a_serve_by_a_later_run_and_a_stored_conversion_describes_the_row_c3450(
+    m: Manifest,
+) -> None:
+    """B13 round 48 C3450 (lead call 12): ``record_cache`` returns whether the call is a serve (``served``) of
+    a row an earlier run made, or of none; and a stored conversion's status, units and bytes replace a row an
+    uncached rejection made, which an uncached answer never does."""
+    kw = {"converter_id": "c", "converter_version": "1", "options_hash": "o", "canonical_sha256": H}
+    reject = {**kw, "status": "unreadable", "unit_count": 0, "size": 0}
+    page = {**kw, "status": "ok", "unit_count": 1, "size": 10}
+    assert m.record_cache("k", run_id=1, **reject) is False  # type: ignore[arg-type]
+    assert m.record_cache("k", run_id=2, stored=True, **page) is False  # type: ignore[arg-type]
+    assert m.record_cache("k", run_id=3, **reject) is False  # type: ignore[arg-type]
+    row = m._db.execute("SELECT status, unit_count, bytes, created_run, last_used_run FROM cache").fetchone()
+    assert tuple(row) == ("ok", 1, 10, 1, 3)
+    assert m.record_cache("k", run_id=4, served=True, **page) is True  # type: ignore[arg-type]
+    assert m.record_cache("new", run_id=4, served=True, **page) is True  # type: ignore[arg-type]
+    assert m.record_cache("new", run_id=4, served=True, **page) is False, "made by this run"  # type: ignore[arg-type]
+
+
 # ---- tombstones --------------------------------------------------------------------------------------------
 
 

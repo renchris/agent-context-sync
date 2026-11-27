@@ -3308,13 +3308,33 @@ class Manifest:
         unit_count: int,
         size: int,
         run_id: int,
-    ) -> None:
-        """Insert or touch (last_used_run) a cache index row."""
+        served: bool = False,
+        stored: bool = False,
+    ) -> bool:
+        """Insert or touch (last_used_run) a cache index row, for every keyed OK or UNREADABLE conversion:
+        the conversion history ``cache_last_used`` reads (B13 round 40 C1821). Return whether the call is a
+        converter-cache serve by a later run than the one that made the row: ``served`` (the result came from
+        the cache, ``ConversionResult.from_cache``) and the row made by an earlier run, or none there (an
+        entry an earlier build stored). ``stored``: the call's conversion is the one the cache now holds, so
+        its status, unit count and bytes replace the row's, which an uncached answer under the same key (an
+        Office container rejection, a zero-byte file) may have made; an uncached answer never replaces them
+        (B13 round 48 C3450, lead call 12)."""
+        made = None
+        if served:
+            row = self._db.execute(
+                "SELECT created_run FROM cache WHERE action_key = ?", (action_key,)
+            ).fetchone()
+            made = None if row is None else int(row[0])
+        stored_set = (
+            ", status = excluded.status, unit_count = excluded.unit_count, bytes = excluded.bytes"
+            if stored
+            else ""
+        )
         self._db.execute(
             "INSERT INTO cache (action_key, converter_id, converter_version, options_hash, canonical_sha256, "
             "status, unit_count, bytes, created_run, last_used_run) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(action_key) DO UPDATE SET "
-            "last_used_run = MAX(last_used_run, excluded.last_used_run)",
+            "last_used_run = MAX(last_used_run, excluded.last_used_run)" + stored_set,
             (
                 action_key,
                 converter_id,
@@ -3328,6 +3348,7 @@ class Manifest:
                 run_id,
             ),
         )
+        return served and (made is None or made < run_id)
 
     def cache_last_used(self, action_key: str) -> int | None:
         """The run that last used the cache index row of ``action_key`` (``record_cache``); None when it has

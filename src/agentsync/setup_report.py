@@ -12838,6 +12838,14 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     )
     running = runs[0].status == "running"
     total = 0
+    # B13 round 48 C3450 (lead call 12): a run that recorded a cache row says in its record how many it served
+    # from the cache (``cache_served``), since an Office container rejection reads no cache and still moves
+    # the row's last run; the cache index below speaks for every other run, an earlier build's among them
+    keyed = {x.run_id: x.n("cache_served") for x in runs if "cache_served" in x.counts}
+    for run_id, served in keyed.items():
+        total += served
+        if run_id in again:
+            again[run_id] += served
     # B13 round 40 C1821 (ruling 141; makes worse True for the cycle dropping the row): a zero-byte file
     # never reads the cache (§16.248 C1466), so a row of the empty file's hash is no serve; record_cache
     # still writes it, which converted_seen and converted_again read
@@ -12846,6 +12854,8 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         "AND canonical_sha256 != ? GROUP BY 1",
         (hashlib.sha256(b"").hexdigest(),),
     ):
+        if int(last_used) in keyed:
+            continue
         total += int(files)
         if last_used in again:
             again[int(last_used)] += int(files)
