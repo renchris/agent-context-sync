@@ -10487,11 +10487,12 @@ _ROUND_48_RA_PARAGRAPH_AMENDS = (
     ("16.14", "def read_friction(path: Path) -> Friction | None: ...", "§16.295 C3404"),
     ("16.14", "def compute_outcome(attempt: Attempt | None, runs: Sequence[InstallRun], *,", "§16.295 C3403"),
     ("16.290", "a run that named an answer is scored as before", "§16.295 C3508"),
+    ("16.290", "**install.sh's `per folder)` is kept whole after `--source-local`**", "§16.295 C3499"),
 )
 """Round 48 lane RA's dated lines no one claim holds alone: C3404's at §16.14's read_friction signature (a
 file that is not a regular file raises NotARegularFileError), C3403's at its compute_outcome signature
-(``not_read``), and C3508's under §16.290's C3209 sentence (any last run without ``--no-folder``) (B13
-round 48 rulings 228 and 227)."""
+(``not_read``), C3508's under §16.290's C3209 sentence (any last run without ``--no-folder``), and C3499's
+under §16.290's C3203 paragraph (SOURCE_LOCAL_KEPT's rows) (B13 round 48 rulings 228, 227 and 221)."""
 _ROUND_45_RB_PARAGRAPH_AMENDS = (
     (
         "16.116",

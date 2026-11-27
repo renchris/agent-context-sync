@@ -164,14 +164,20 @@ one of those one-word heads right after a ``'`` or ``"`` (``'--cwd=``, ``"--sour
 ``) is a quote that wraps the whole argument: its value runs to the closing quote or the line's end, split at
 any later such head after a blank, each piece cut by its own head's rule, in both reports."""
 
-SOURCE_LOCAL_KEPT = ("per folder)",)
+SOURCE_LOCAL_KEPT = ("per folder)", "leaves it so:", "for each)", "keeps whatever", "only adds")
 """install.sh's own words right after ``--source-local `` in its no-folder NEXTs (``(one --source-local per
 folder)``), which both reports keep whole after that head, by phrase, never by their first word, and only
 where the phrase ends (the line's end, a blank, ``;``, ``,`` or ``.``), so ``--source-local per diem/Wombat``
 and ``--source-local per folder)/Wombat`` are still cut (B13 round 47 C3203, ruling 214; makes worse True
 for skipping ``per`` or cutting only path-shaped words): the quoted-head span rule (ruling 173) ran the
 NEXT's ``"<folder>"`` quote on to the end and cut the phrase and C3003's ``not live:`` clause to
-``<path>``."""
+``<path>``. B13 round 48 C3499 (ruling 221; makes worse True for cutting path-shaped words only or skipping
+by first word): the held-folder tail's ``--source-local leaves it so: ...`` (install.sh's heldtail) read
+``--source-local <path>``, its words gone, so it is a row; and so are the same NEXT's other clauses after
+the quote, the vanished-folder tail's ``(one --source-local for each)`` and the unread-config tail's ``with
+no --source-local keeps whatever ...`` and ``each --source-local only adds``, cut as soon as a later clause
+held a ``/``. A test holds every ``--source-local <word>`` clause install.sh writes to a row or a
+placeholder."""
 
 CWD_USAGE = ("needs a folder, got the option", "needs a folder")
 """install.sh's own usage words right after ``--cwd `` (``usage error: --cwd needs a folder (see --help)``),

@@ -47841,6 +47841,11 @@ words; `_SOURCE_LOCAL_RE` is unchanged, and `per diem/Wombat` and `per folder)/W
 Amended 2026-11-27, §16.296 C3434: lane RB's recut half was not wired, typed_note_cut never read
 `CUT_SOURCE_LOCAL_KEPT`; it reads the rows through ENVIRON and keeps the one-word read in qheads' non-adjacent branch
 where a kept phrase ends, held to `_quoted_heads_cut` by one test in both locales.
+Amended 2026-11-27, §16.295 C3499: `SOURCE_LOCAL_KEPT` holds `per folder)` and `leaves it so:` (ruling 221), and,
+measured on contact, the same NEXT's other clauses after its quote, `for each)`, `keeps whatever` and `only adds`,
+each kept where the phrase ends; `CUT_SOURCE_LOCAL_KEPT` is regenerated, and a test holds every `--source-local
+<word>` clause install.sh writes to a row or a placeholder
+(`test_every_source_local_clause_install_sh_writes_is_a_kept_row_or_a_placeholder_c3499`).
 
 **The report's own readers** (C3208, C3292, C3315, C3330; the report cluster). A checkout other than
 ~/src/agent-context-sync, as written or resolved, is `checkout <path>` in the install-source line, its

@@ -31126,7 +31126,11 @@ def test_install_shs_per_folder_phrase_is_kept_after_source_local_c3203() -> Non
     the quoted-head span rule ran install.sh's NEXT's `"<folder>"` quote on to the line's end, so `(one
     --source-local per folder)` read `(one --source-local <path>` and C3003's `not live:` clause was cut
     with it. install.sh's whole phrase, a report_cuts row, keeps the one-word read where it ends; a folder
-    after the flag is still cut, `per diem/Wombat` and `per folder)/Wombat Ledger` among them."""
+    after the flag is still cut, `per diem/Wombat` and `per folder)/Wombat Ledger` among them. B13 round 48
+    C3499 (ruling 221; makes worse True for cutting path-shaped words only or skipping by first word): the
+    same NEXT's held-folder tail, `--source-local leaves it so: ...`, read `--source-local <path>`, and its
+    vanished-folder and unread-config clauses after the quote were cut too once a later one held a `/`; each
+    is a row, and a folder after any of them is still cut."""
     red = setup_report.Redactor()
     red.add("home", str(Path.home()))
     tail = " [setup report: ~/agent-context/setup/setup-report.md]"
@@ -31135,19 +31139,112 @@ def test_install_shs_per_folder_phrase_is_kept_after_source_local_c3203() -> Non
         setup_report.NO_FOLDER_NEXT.format(install_sh=setup_report.INSTALL_SH, rerun=setup_report.INSTALL_SH)
         + held,
         setup_report.NO_FOLDER_CHOSEN_NEXT.format(rerun=setup_report.INSTALL_SH),
+        _install_shs_choose_next(),
     ):
         line = f"NEXT: {next_}{tail}"
         assert setup_report._redact_lines(red, [line]) == line, line
-    assert report_cuts.SOURCE_LOCAL_KEPT == ("per folder)",)
-    assert "CUT_SOURCE_LOCAL_KEPT='per folder)'" in report_cuts.shell_block()
+    assert report_cuts.SOURCE_LOCAL_KEPT == (
+        "per folder)",
+        "leaves it so:",
+        "for each)",
+        "keeps whatever",
+        "only adds",
+    )
+    assert (
+        "CUT_SOURCE_LOCAL_KEPT='keeps whatever|leaves it so:|per folder)|for each)|only adds'"
+        in report_cuts.shell_block()
+    )
     for said in (
         "I ran 'install.sh --source-local per diem/Wombat' first",
         "I ran 'install.sh --source-local Wombat Ledger/x' first",
         "I ran 'install.sh --source-local per folder)/Wombat Ledger' first",
+        "I ran 'install.sh --source-local leaves it so:/Wombat Ledger' first",
+        "I ran 'install.sh --source-local leaves/Wombat Ledger' first",
+        "I ran 'install.sh --source-local for each)/Wombat Ledger' first",
+        "I ran 'install.sh --source-local only adds/Wombat Ledger' first",
     ):
         assert setup_report._redact_lines(red, [said]) == "I ran 'install.sh --source-local <path>' first", (
             said
         )
+
+
+def _install_sh_assigned(name: str, start: str) -> str:
+    """The one double-quoted value install.sh assigns ``name`` that opens with ``start``, as written."""
+    shell = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
+    [value] = re.findall(rf'(?m)\b{name}="({re.escape(start)}(?:[^"\\]|\\.)*)"', shell)
+    return value
+
+
+def _install_shs_choose_next() -> str:
+    """install.sh's no-folder NEXT (``choose the folders ...``) with the held-folder, vanished-folder and
+    unread-config tails, read from install.sh and its variables filled in, as a bare run that ended 0 prints
+    it (B13 round 48 C3499)."""
+    words = {
+        "$SELF": setup_report.INSTALL_SH,
+        "$PAUSED_MARK": "[paused]",
+        "$RETIRED_MARK": "[retired]",
+        "$vback": "2",
+        "$CONFIG": "~/agent-context/sources.toml",
+        "$vpaths": "<folder-1>, <folder-2>",
+        '\\"': '"',
+    }
+    parts = {
+        "$heldtail": _install_sh_assigned("heldtail", "; a folder marked"),
+        "$vtail": _install_sh_assigned("vtail", "; $vback folders"),
+        "$ctail": "",
+        "$kept": _install_sh_assigned(
+            "kept", "; this Mac has a config ($CONFIG) whose folders could not be read: if"
+        ),
+    }
+    text = _install_sh_assigned("NEXT_MSG", "choose the folders to sync")
+    for name, value in (*parts.items(), *words.items()):
+        text = text.replace(name, value)
+    assert (
+        "$" not in text and "--source-local leaves it so:" in text and "(one --source-local for each)" in text
+    )
+    return text
+
+
+def test_every_source_local_clause_install_sh_writes_is_a_kept_row_or_a_placeholder_c3499() -> None:
+    """B13 round 48 C3499 (ruling 221; makes worse True for cutting path-shaped words only or skipping by
+    first word): install.sh's held-folder tail added `--source-local leaves it so: ...` to the no-folder NEXT
+    after its `"<folder>"` quote, and no report_cuts row kept it, so both reports cut the clause to
+    `--source-local <path>`. Every `--source-local <word>` clause in install.sh's quoted strings (comments
+    and the generated block aside) is a report_cuts.SOURCE_LOCAL_KEPT row where the phrase ends, a
+    placeholder (`<...>`, `"<...>"` or `'<...>'`), or a value install.sh fills in (a `$` word, which is a
+    folder and is cut), save the few named below that install.sh prints on a line with no quote before them,
+    so the next new clause after a quote cannot drift past the rows."""
+    shell = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
+    generated = re.search(r"(?ms)^# BEGIN report_cuts\n.*?^# END report_cuts$", shell)
+    assert generated is not None
+    shell = shell[: generated.start()] + shell[generated.end() :]
+    no_quote_before = {  # the clause's first two words: where install.sh prints it, no quote before it
+        "needs a": "usage_error's `usage error: --source-local needs a folder`",
+        "out: the": "USAGE_NEXT's `NEXT: leave that --source-local out: ...`, a line of its own",
+        "out: setting": "USAGE_NEXT's `NEXT: leave that --source-local out: ...`, a line of its own",
+        "is not": "`--source-local is not an existing folder: `, a head that cuts the name after it",
+        "argument in": "the shell report's own legend row (say), which no report reads back",
+        "word under": "the shell report's own legend row (say), which no report reads back",
+        "word on": "the shell report's own legend row (say), which no report reads back",
+    }
+    seen: set[str] = set()
+    for line in shell.splitlines():
+        if line.lstrip().startswith("#"):
+            continue
+        for quoted in re.findall(r'"((?:[^"\\]|\\.)*)"', line):
+            for m in re.finditer(r"--source-local (\S+(?: \S+)?)", quoted):
+                rest = quoted[m.start(1) :].replace('\\"', '"')
+                if rest.startswith(("<", '"<', "'<", "$", "\\")):  # a grep pattern's `\$'` too
+                    continue
+                if any(
+                    rest.startswith(k) and rest[len(k) : len(k) + 1] in ("", " ", ";", ",", ".", "$")
+                    for k in report_cuts.SOURCE_LOCAL_KEPT
+                ):
+                    seen.add(next(k for k in report_cuts.SOURCE_LOCAL_KEPT if rest.startswith(k)))
+                    continue
+                assert m.group(1) in no_quote_before, (m.group(1), line.strip()[:160])
+                seen.add(m.group(1))
+    assert seen == {*report_cuts.SOURCE_LOCAL_KEPT, *no_quote_before}, seen
 
 
 @pytest.mark.parametrize(
