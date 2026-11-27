@@ -30512,6 +30512,7 @@ def _r213_run(
 
 
 _R213_NONE = _r213_run(1, "--no-folder", 0, first="rc=0 result=skipped note=no-sources")
+_R213_ADDED = "rc=0 result=done note=created kept=0 added=1"  # a --source-local run that added its folder
 _R213_ROWS = {  # install.log of the attempt, a step-3 friction line or not, whether step 3's question is due
     "h-none-h": (_R213_NONE, False, False),
     "n-tmo-h": (
@@ -30521,13 +30522,13 @@ _R213_ROWS = {  # install.log of the attempt, a step-3 friction line or not, whe
     ),
     "older-none": (_r213_run(1, "--no-folder", 0, status="rc=1 result=done note=fail-lines"), False, False),
     "none-step-3-line": (_R213_NONE, True, False),
-    "none-then-source": (_R213_NONE + _r213_run(2, "--source-local x", 0), False, True),
+    "none-then-source": (_R213_NONE + _r213_run(2, "--source-local x", 0, config=_R213_ADDED), False, True),
     "source-then-none": (
-        _r213_run(1, "--source-local x", 0) + _R213_NONE.replace("T10010", "T10020"),
+        _r213_run(1, "--source-local x", 0, config=_R213_ADDED) + _R213_NONE.replace("T10010", "T10020"),
         False,
         True,
     ),
-    "role-h": (_r213_run(1, "--source-local x", 0), False, True),
+    "role-h": (_r213_run(1, "--source-local x", 0, config=_R213_ADDED), False, True),
     "f-fail0-h": (_r213_run(1, "--no-folder", 1, config="rc=1 result=failed"), False, False),
     "bare-failed": (_r213_run(1, "", 1, config="rc=1 result=failed"), False, False),
     "bare-failed-logged": (_r213_run(1, "", 1, config="rc=1 result=failed"), True, True),
@@ -30857,6 +30858,115 @@ def test_step_3s_question_is_credited_only_on_the_route_the_attempt_took_ruling_
     once, plain = setup_report.STEP_3_ASKS_ONCE, setup_report.STEP_3_ASKS_V41
     assert (once in turns) is (due and version != 41), turns
     assert (plain in turns) is (due and version == 41), turns
+
+
+_R227_OLD = _r213_run(1, "", 0, config="rc=0 result=done note=exists")  # an older install.sh: no counts
+_R227_KEPT0 = "rc=0 result=done note=exists kept=0 added=0"
+_R227_ROWS = {  # install.log, a step-3 friction line or not, today's not_live (latest attempt), due
+    "bare-n14-held": (_N14, False, ["kestrel (paused)"], False),
+    "bare-n14-inbox-only": (_N14, False, [], False),
+    "bare-n14-live-today": (_N14, False, None, False),  # its own record: no live folder after its config step
+    "older-bare-held": (_R227_OLD, False, ["kestrel (paused)"], False),
+    "older-bare-inbox-only": (_R227_OLD, False, [], False),
+    "older-bare-live": (_R227_OLD, False, None, True),
+    "next-no-folder": (
+        _R227_OLD.replace("end rc=0 seconds=9", "end rc=0 seconds=9 next=no-folder"),
+        False,
+        None,
+        False,
+    ),
+    "next-no-folder-kept-1": (
+        _r213_run(1, "", 0, config="rc=0 result=done note=exists kept=1 added=0").replace(
+            "end rc=0 seconds=9", "end rc=0 seconds=9 next=no-folder"
+        ),
+        False,
+        None,
+        False,
+    ),
+    "kept0-then-failed-none": (
+        _N14 + _r213_run(2, "--no-folder", 1, status="rc=143 result=done note=timeout"),
+        False,
+        [],
+        False,
+    ),
+    "kept0-then-completed-none": (_N14 + _R213_NONE.replace("T10010", "T10020"), False, [], False),
+    "kept1-then-none": (
+        _r213_run(1, "", 0, config="rc=0 result=done note=exists kept=1 added=0")
+        + _R213_NONE.replace("T10010", "T10020"),
+        False,
+        [],
+        True,
+    ),
+    "older-bare-then-none": (_R227_OLD + _R213_NONE.replace("T10010", "T10020"), False, [], True),
+    "c2700-all-paused-rerun": (
+        _r213_run(1, "", 0, config=_R227_KEPT0),
+        False,
+        ["a (paused)", "b (retired)"],
+        False,
+    ),
+    "source-local-already-paused": (
+        _r213_run(1, "--source-local '/c/Project Alpha'", 0, config=_R227_KEPT0),
+        False,
+        ["project-alpha (paused)"],
+        False,
+    ),
+    "one-paused-one-live": (
+        _r213_run(1, "", 0, config="rc=0 result=done note=exists kept=1 added=0"),
+        False,
+        None,
+        True,
+    ),
+    "completed-none": (_R213_NONE, False, [], False),
+    "failed-none": (_r213_run(1, "--no-folder", 1, config="rc=1 result=failed"), False, [], False),
+    "held-only-step-3-line": (_N14, True, ["kestrel (paused)"], True),  # the report step's own line
+}
+
+
+@pytest.mark.parametrize("row", list(_R227_ROWS))
+def test_step_3s_question_is_credited_from_each_runs_own_record_first_c3438_c3467_c3503(
+    tmp_path: Path, row: str
+) -> None:
+    """B13 round 48 C3438 with C3467 and C3503 (ruling 227): a run that ended 0 on install.sh's no-folder NEXT
+    (a bare run over a paused-only, retired-only or inbox-only config, or a --source-local of a folder already
+    paused) was credited step 3's question, though the prompt sends it to the folder question. _loop_run reads
+    the run's own record first, an end line's `next=no-folder` and then its config step's `kept=0 added=0`,
+    and today's held folders only for the latest attempt's last run that carries neither; an earlier run with
+    neither is judged as before, and a run that kept a live folder still looped."""
+    logged, line, not_live, due = _R227_ROWS[row]
+    runs = setup_report.read_install_runs(_write(tmp_path / "install.log", logged))
+    head = "Attempt: 2026-11-25T09:59:00Z\nPrompt: v44\n"
+    step3 = "2026-11-25T10:05:00Z | step 3 | error | the report step stopped | -\n" if line else ""
+    [att] = setup_report.parse_friction(head + step3).attempts
+    assert setup_report._reached_step_3(att, runs, not_live=not_live) is due, row
+    turns = setup_report._expected_turns_line(att, "first install", reached_step_3=due)
+    assert (setup_report.STEP_3_ASKS_ONCE in turns) is due, turns
+
+
+def test_an_end_line_with_a_next_key_parses_as_one_without_it_c3438(tmp_path: Path) -> None:
+    """B13 round 48 C3438 (ruling 227): lane RB's `next=no-folder` is an extra key on install.sh's end line;
+    this build reads its exit status and seconds as before, and a line without the key is no no-folder end."""
+    plain, keyed = _R227_OLD, _R227_OLD.replace("end rc=0 seconds=9", "end rc=0 seconds=9 next=no-folder")
+    [a] = setup_report.read_install_runs(_write(tmp_path / "a.log", plain))
+    [b] = setup_report.read_install_runs(_write(tmp_path / "b.log", keyed))
+    assert (a.rc, a.seconds, a.ended_on_no_folder) == (0, 9, False)
+    assert (b.rc, b.seconds, b.ended_on_no_folder, b.completed_none) == (0, 9, True, True)
+
+
+@pytest.mark.parametrize("live", [False, True])
+def test_the_expected_turns_line_drops_step_3s_question_for_a_held_only_latest_run_c3438(
+    fake_mac: dict[str, Path], live: bool
+) -> None:
+    """B13 round 48 C3438 (ruling 227): the Summary's expected turns line read _reached_step_3 with no held
+    folders, so a latest bare run over a paused-only config logged by an older install.sh (no counts) named
+    step 3's question; the call site passes today's held folders for the latest attempt, and a config with a
+    live folder keeps the question."""
+    _held_config(fake_mac["config"], "paused", live=live)
+    (fake_mac["setup"] / "install.log").write_text(_R227_OLD, encoding="utf-8")
+    r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 60.0)
+    r.friction = setup_report.parse_friction("Attempt: 2026-11-25T09:59:00Z\nPrompt: v44\n")
+    r.install_runs = setup_report.read_install_runs(fake_mac["setup"] / "install.log")
+    turns = _line("\n".join(setup_report._summary(r, header=[])), "- expected turns: ")
+    assert (setup_report.STEP_3_ASKS_ONCE in turns) is live, turns
 
 
 def test_a_config_named_with_a_trailing_exists_is_never_an_earlier_runs_c3115(tmp_path: Path) -> None:

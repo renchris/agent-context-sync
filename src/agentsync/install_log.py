@@ -234,6 +234,17 @@ class InstallRun:
         )
 
     @property
+    def ended_on_no_folder(self) -> bool:
+        """Whether an end line of this run carries ``next=no-folder``: install.sh ended it on its no-folder
+        NEXT (no folder is synced yet, or none to sync), which sends the agent to the folder question, never
+        to step 3's sync loop (B13 round 48 C3438 with C3467, ruling 227; lane RB writes the key). An extra
+        ``key=value`` after ``seconds=``, so a line without it, and an older reader, parse as before."""
+        return any(
+            _END_RE.search(ln) is not None and dict(_KV_RE.findall(ln)).get("next") == "no-folder"
+            for ln in self.lines
+        )
+
+    @property
     def display_id(self) -> str:
         """The run id without its process-id suffix (a weak fingerprint, of no use to triage); a later run
         started in the same second as an earlier one is ``<stamp>.2``, ``.3`` (:func:`read_install_runs`)."""

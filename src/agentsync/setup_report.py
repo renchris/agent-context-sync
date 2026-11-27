@@ -15142,17 +15142,33 @@ def _expected_turns_line(
     return "- expected turns: " + " · ".join(parts)
 
 
-def _loop_run(run: InstallRun) -> bool:
+def _loop_run(run: InstallRun, *, not_live: Sequence[str] | None = None) -> bool:
     """Whether an install run sends the agent into step 3's sync loop (B13 round 47 C3306 with C3337, ruling
     213): it chose a folder answer other than none, ended 0 with no failed step and no blocking status note
     (:attr:`InstallRun.completed_none`'s test, never ``rc == 0`` alone) and did not skip its first sync for no
-    sources, where the prompt goes back to step 1's folder question."""
+    sources, where the prompt goes back to step 1's folder question.
+
+    B13 round 48 C3438 with C3467 and C3503 (ruling 227): nor did a run install.sh ended on its no-folder
+    NEXT, whose prompt step goes to the folder question, never the loop. Read from the run's own record first:
+    an end line carrying ``next=no-folder`` (:attr:`InstallRun.ended_on_no_folder`), then a config step that
+    logged ``kept=0 added=0`` (no live folder after it; paused and retired ones are not counted). ``not_live``
+    (today's held folders, :func:`_not_live_folders`) is read only for a run that carries neither, and only
+    when the caller passes it: the latest attempt's last run. Never today's config for every run, which would
+    take a step 3 question from a run that looped over a folder later paused by hand."""
     first = run.step("first-sync") or {}
     no_sources = first.get("result") == "skipped" and first.get("note") == "no-sources"
-    return not run.chose_no_folder and run.completed_none and not no_sources
+    if run.chose_no_folder or not run.completed_none or no_sources or run.ended_on_no_folder:
+        return False
+    config = run.step("config") or {}
+    kept, added = config.get("kept", ""), config.get("added", "")
+    if kept.isascii() and kept.isdigit() and added.isascii() and added.isdigit():
+        return int(kept) + int(added) > 0
+    return not_live is None
 
 
-def _reached_step_3(att: Attempt, runs: Sequence[InstallRun]) -> bool:
+def _reached_step_3(
+    att: Attempt, runs: Sequence[InstallRun], *, not_live: Sequence[str] | None = None
+) -> bool:
     """Whether the attempt reached step 3's sync loop, where its question whether to add a folder is asked
     (B13 round 46 C3029): an install run of the attempt that went on to the loop (:func:`_loop_run`), or a
     friction line logged at step 3 or later.
@@ -15163,14 +15179,21 @@ def _reached_step_3(att: Attempt, runs: Sequence[InstallRun]) -> bool:
     run without ``--no-folder`` went on to the loop, and a logged step 3 line, which the report step alone
     can write, is read only for an attempt with no ``--no-folder`` run. And only for an attempt of v41 or
     later (:data:`STEP_3_ASKS_FROM`), or one whose version is unstated, read with the newest layout as
-    :func:`prompt_layout` reads it: the question did not exist before v41."""
+    :func:`prompt_layout` reads it: the question did not exist before v41.
+
+    B13 round 48 C3438 with C3467 and C3503 (ruling 227): ``not_live``, today's held folders, the caller's
+    for the latest attempt only (None for an earlier one), reaches :func:`_loop_run` for the attempt's last
+    install run alone; every run is judged on its own record first."""
     layout = att.layout
     if layout.version < 7 or layout.report_step != 3:
         return False
     if att.version is not None and att.version < STEP_3_ASKS_FROM:
         return False
     installs = install_runs_only(runs)
-    looped = any(_loop_run(run) for run in installs)
+    looped = any(
+        _loop_run(run, not_live=not_live if i == len(installs) - 1 else None)
+        for i, run in enumerate(installs)
+    )
     if any(run.chose_no_folder for run in installs):
         return looped
     logged = any(e.step is not None and e.step >= layout.report_step for e in att.events)
@@ -19580,7 +19603,8 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
                 sign_in=sign_in,
                 sign_in_name=sign_in_name,
                 stop_list=_stopping_list(runs),
-                reached_step_3=_reached_step_3(att, runs),
+                # B13 round 48 C3438: the Summary is the latest attempt's, so today's held folders
+                reached_step_3=_reached_step_3(att, runs, not_live=_outcome_not_live(r)),
             )
         )
         why_unread = unread_why(runs)
