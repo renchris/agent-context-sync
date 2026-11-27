@@ -2976,6 +2976,12 @@ class Manifest:
         """Forget the recorded changes of ``up_to_run`` and every earlier run (their commit landed)."""
         self._db.execute("DELETE FROM run_changes WHERE run_id <= ?", (up_to_run,))
 
+    def clear_run_changes_of(self, run_id: int) -> None:
+        """Forget the recorded changes of ``run_id`` alone: a crashed run's, once the next run carried them.
+        An earlier run the land gate blocked keeps its rows until a commit lands (B13 round 48 C3411, ruling
+        224)."""
+        self._db.execute("DELETE FROM run_changes WHERE run_id = ?", (run_id,))
+
     def mark_absent(self, source_id: str, stable_ids: Iterable[str], run_id: int) -> None:
         """Record the first complete pass that did not list these rows (``extra.absent_since_run``).
 

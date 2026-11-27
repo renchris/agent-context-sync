@@ -4078,7 +4078,9 @@ class _Cycle:
     def _carry_crashed_changes(self, crashed: int) -> None:
         """A crashed run's recorded changes whose pages are still uncommitted become part of this cycle's
         change set, so its commit subject, body and CHANGELOG describe them (design 4.7: never commit a
-        dirty tree anonymously).  Changes of a run whose commit landed are simply forgotten."""
+        dirty tree anonymously).  Changes of a run whose commit landed are simply forgotten. Only the crashed
+        run's own rows are forgotten here: an earlier run the land gate blocked keeps its rows until a commit
+        lands, so this run's commit still counts and names it (B13 round 48 C3411, ruling 224)."""
         carried = self.manifest.run_changes(crashed)
         if not carried:
             return
@@ -4095,7 +4097,7 @@ class _Cycle:
             )
             self.changes = [*keep, *self.changes]
             self._flush_changes()
-        self.manifest.clear_run_changes(crashed)
+        self.manifest.clear_run_changes_of(crashed)
 
     def _flush_changes(self, *, rewrite: bool = False) -> None:
         """Record the changes produced since the last flush (all of them with ``rewrite``) in the manifest."""

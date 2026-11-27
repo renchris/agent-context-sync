@@ -1423,6 +1423,37 @@ def test_a_blocked_change_undone_by_git_checkout_is_not_carried_c3228(
     assert "carried from blocked run 5: local-fixture 0a 1m 0r 0d" in body.splitlines(), body
 
 
+def test_a_crashed_run_after_a_blocked_one_forgets_only_its_own_rows_c3411(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 48 C3411, ruling 224: the run after a crash carried the crashed run's changes and then
+    forgot every run's rows up to it, a blocked run's too, so its commit landed the blocked run's page with no
+    count and no name (C3228 again). Only the crashed run's own rows are forgotten."""
+    repo = sample_config.docs_repo
+    for _ in range(3):
+        run(sample_config)
+    pages = {p.name: p for p in (repo / "mirror").rglob("*.md")}
+    hand = pages["sample.csv.md"]
+    hand.write_text(hand.read_text(encoding="utf-8") + "edited by hand\n", encoding="utf-8")
+    (local_source_dir / "projects" / "sample.txt").write_text("changed in a blocked run\n", encoding="utf-8")
+    blocked = run(sample_config)
+    assert blocked.run_id == 4 and blocked.commit_sha is None
+    subprocess.run(["git", "-C", str(repo), "checkout", "--", hand.relative_to(repo).as_posix()], check=True)
+    (local_source_dir / "projects" / "sample.md").write_text("changed in a crashed run\n", encoding="utf-8")
+    with monkeypatch.context() as m:
+        m.setattr(cycle_mod.gitops, "commit_cycle", crash)
+        with pytest.raises(Crash):
+            run(sample_config)
+    report = run(sample_config)
+    assert report.run_id == 6 and report.commit_sha is not None
+    assert report.carried_runs == (4,)
+    subject, body = git(repo, "log", "-1", "--format=%s%n%b").split("\n", 1)
+    assert subject == "sync: 0a 2m 0r 0d local-fixture"
+    assert "carried from blocked run 4: local-fixture 0a 1m 0r 0d" in body.splitlines(), body
+    held = git(repo, "show", "--name-only", "--format=", "HEAD").splitlines()
+    assert pages["sample.txt.md"].relative_to(repo).as_posix() in held, held
+
+
 INBOX_SOURCE = """
 [[source]]
 id = "inbox"
