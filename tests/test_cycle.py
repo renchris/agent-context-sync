@@ -1483,6 +1483,63 @@ def test_a_blocked_change_undone_by_git_checkout_is_not_carried_c3228(
     assert "carried from blocked run 5: local-fixture 0a 1m 0r 0d" in body.splitlines(), body
 
 
+def test_a_hand_commit_with_a_run_trailer_moves_the_tag_and_the_numbers_and_says_why_c3540(
+    sample_config: Config, caplog: pytest.LogCaptureFixture
+) -> None:
+    """B13 round 48 C3540, ruling 224: a hand-made commit whose message carries ``Agentsync-Run: 900`` moved
+    the published tag and made the next run 901, both by rule (the trailer is how agentsync knows its own
+    commit after a crash; P137 never reuses a recorded number), with a WARNING that named neither the commit
+    nor the trailer. Both lines now say it."""
+    repo = sample_config.docs_repo
+    run(sample_config)
+    run(sample_config)
+    tagged = git(repo, "rev-parse", "published^{commit}").strip()
+    git(
+        repo,
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@t",
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "made by hand",
+        "-m",
+        "Agentsync-Run: 900",
+    )
+    head = git(repo, "rev-parse", "HEAD").strip()
+    with caplog.at_level(logging.WARNING, logger="agentsync"):
+        report = run(sample_config)
+    assert report.run_id == 901
+    said = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert (
+        f"run numbers continue after run 900, the Agentsync-Run trailer of commit {head[:12]} "
+        "(the manifest's last run was 2)"
+    ) in said, said
+    assert (
+        f"published tag moved to HEAD {head[:12]} (it lagged at {tagged[:12]}): HEAD's message carries "
+        "Agentsync-Run: 900"
+    ) in said, said
+    assert git(repo, "rev-parse", "published^{commit}").strip() == head
+
+
+def test_a_new_start_continues_the_numbers_with_no_warning_c3540(
+    sample_config: Config, caplog: pytest.LogCaptureFixture
+) -> None:
+    """C3540: E9's new start (no runs in the manifest) continues the repo's numbers quietly (B37)."""
+    run(sample_config)
+    db = sample_config.state_paths.db
+    for name in ("", "-wal", "-shm"):
+        db.with_name(db.name + name).unlink(missing_ok=True)
+    heartbeat = sample_config.state_paths.heartbeat
+    heartbeat.rename(heartbeat.with_name("heartbeat.kept.json"))
+    with caplog.at_level(logging.WARNING, logger="agentsync"):
+        report = run(sample_config)
+    assert report.run_id == 2
+    assert not any("run numbers continue" in r.getMessage() for r in caplog.records)
+
+
 def test_a_crashed_run_after_a_blocked_one_forgets_only_its_own_rows_c3411(
     sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

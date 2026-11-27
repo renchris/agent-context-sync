@@ -1289,6 +1289,43 @@ def _newest_run_trailer(repo: Path) -> int:
         return 0
 
 
+def _where_run_recorded(config: Config, run: int) -> str:
+    """Where the docs repo records ``run`` (what :func:`_highest_recorded_run` read it from), as the console
+    names it: ``the Agentsync-Run trailer of commit <sha12>`` (the newest commit whose trailer holds it, read
+    by the same prefiltered query :func:`_newest_run_trailer` makes), else ``_sync/STATE.md's run line``, else
+    ``CHANGELOG/<month>.md``; ``the docs repo`` when none says it now (B13 round 48 C3540, ruling 224)."""
+    repo = config.docs_repo
+    try:
+        if gitops.head_sha(repo) is not None:
+            out = _git_log_text(
+                repo,
+                "log",
+                "-i",
+                "-E",
+                "--grep=^agentsync-run[[:space:]]*:",
+                "--format=%H%x01" + _RUN_TRAILER_FORMAT.removeprefix("--format=") + "%x00",
+            )
+            for chunk in out.split("\x00"):
+                sha, _sep, values = chunk.lstrip("\n").partition("\x01")
+                if run in _run_values(values):
+                    return f"the Agentsync-Run trailer of commit {sha[:12]}"
+    except AgentSyncError:
+        pass
+    if _state_md_run(config) == run:
+        return "_sync/STATE.md's run line"
+    folder = config.layout.changelog_dir
+    for month in sorted(folder.glob("*.md")) if folder.is_dir() else []:
+        try:
+            text = month.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for line in text.splitlines():
+            m = _CHANGELOG_HEADING.match(line)
+            if m and _run_value(m.group(2)) == run:
+                return f"CHANGELOG/{month.name}"
+    return "the docs repo"
+
+
 _OCR_KEPT_CONVERTERS = frozenset({ImageConverter.converter_id, RecordingConverter.converter_id})
 """The converters whose pages :meth:`Cycle._keeps_ocr_page` keeps while the OCR helper fails: the image's,
 and the recording's, whose read needs the OCR helper too (B13 round 37 C1286; round 38 C1442)."""
@@ -2630,7 +2667,15 @@ class _Cycle:
         # a new manifest over a repo that names runs continues their numbers (E9), and so does one restored
         # from an older copy (P137); seed_run_sequence never lowers the sequence
         if not last or _recorded_run_hint(self.config) > last[0][0]:
-            self.manifest.seed_run_sequence(_highest_recorded_run(self.config))
+            high = _highest_recorded_run(self.config)
+            self.manifest.seed_run_sequence(high)
+            if last and high > last[0][0]:  # E9's new start stays quiet (B37); a jump says why (C3540)
+                log.warning(
+                    "run numbers continue after run %d, %s (the manifest's last run was %d)",
+                    high,
+                    _where_run_recorded(self.config, high),
+                    last[0][0],
+                )
         self.run_id = self.manifest.begin_run(self.mode, host=socket.gethostname(), pid=os.getpid())
         if crashed is not None:
             self._carry_crashed_changes(crashed)
@@ -4050,9 +4095,12 @@ class _Cycle:
 
     def _retag_published(self) -> None:
         """Keep ``published`` on HEAD when HEAD is an agentsync commit: a crash between commit_cycle and
-        tag_published (or a no-op cycle after it) must not leave readers and pushes on the previous tree."""
+        tag_published (or a no-op cycle after it) must not leave readers and pushes on the previous tree. HEAD
+        is one by its ``Agentsync-Run`` trailer alone, a hand commit that keeps one too, so the WARNING names
+        the trailer (B13 round 48 C3540, ruling 224: the rule stays, the reason is said)."""
         head = gitops.head_sha(self.repo)
-        if head is None or _head_run_id(self.repo) is None:
+        run = _head_run_id(self.repo) if head is not None else None
+        if head is None or run is None:
             return
         tagged = gitops.run_git(
             self.repo,
@@ -4064,7 +4112,13 @@ class _Cycle:
         ).stdout.strip()
         if tagged != head:
             gitops.tag_published(self.repo, head)
-            log.warning("published tag moved to HEAD %s (it lagged at %s)", head[:12], tagged[:12] or "none")
+            # the reason named: a hand commit that keeps a trailer counts as agentsync's (B13 round 48 C3540)
+            log.warning(
+                "published tag moved to HEAD %s (it lagged at %s): HEAD's message carries Agentsync-Run: %d",
+                head[:12],
+                tagged[:12] or "none",
+                run,
+            )
 
     def _carry_blocked_changes(self) -> None:
         """The changes of earlier failed runs that this commit holds: their ``run_changes`` rows outlive a run
