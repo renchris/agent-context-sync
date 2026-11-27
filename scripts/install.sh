@@ -1912,6 +1912,7 @@ UV_TMP=""      # step 1's download folder, which on_exit removes
 APP_STAGE=""   # install_app's folder beside APP_DEST: on_exit puts the old launcher back from it and removes it
 LAUNCHER_OUT="" # step 3's build folder, which on_exit removes
 END_LINE=""    # the provisional end line in install.log (set at the exit, before the report)
+END_KEY=""     # " next=no-folder" on the end line of a run that ended on a no-folder NEXT (C3467)
 REPORT_LINE="" # the report step's line, written before the end line (finish_setup_log)
 ACTION_SHOWN=0 # the ACTION line is printed once
 
@@ -2603,7 +2604,7 @@ finish_setup_log() { # RC
 		if [ -f "$SETUP_LOG" ] && [ ! -L "$SETUP_LOG" ] && [ "$(tail -n 1 "$SETUP_LOG")" = "$END_LINE" ]; then
 			{
 				sed '$d' "$SETUP_LOG"
-				printf '%s\n' "$REPORT_LINE" "$(utc_now) run=$RUN_ID end rc=$1 seconds=$SECONDS"
+				printf '%s\n' "$REPORT_LINE" "$(utc_now) run=$RUN_ID end rc=$1 seconds=$SECONDS$END_KEY"
 			} >"$SETUP_LOG.$$.tmp" && mv -f "$SETUP_LOG.$$.tmp" "$SETUP_LOG"
 		else
 			printf '%s\n' "$REPORT_LINE" >>"$SETUP_LOG"
@@ -10763,8 +10764,11 @@ on_exit() {
 	if [ "$STARTED" -eq 1 ]; then
 		END_AT="$(utc_now)"
 		secs=$SECONDS
-		log_at "$END_AT" "end rc=$rc seconds=$secs" # provisional: the report reads a finished run
-		END_LINE="$END_AT run=$RUN_ID end rc=$rc seconds=$secs"
+		# B13 round 48 ruling 227 (C3467): a run that ends on a no-folder NEXT says so on its end line, one more
+		# key=value an older reader skips, so the report credits no route from a run that asked for folders
+		case "$NEXT_MSG" in "no folder is synced yet"* | "no folder to sync yet"*) END_KEY=" next=no-folder" ;; esac
+		log_at "$END_AT" "end rc=$rc seconds=$secs$END_KEY" # provisional: the report reads a finished run
+		END_LINE="$END_AT run=$RUN_ID end rc=$rc seconds=$secs$END_KEY"
 	fi
 	unanswered_listings
 	if [ "$REPORT" -eq 1 ]; then

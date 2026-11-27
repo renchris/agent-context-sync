@@ -1923,6 +1923,29 @@ def test_no_folder_says_its_own_words_over_statuss_completed_none_step_c3546(
     assert again.returncode == 0 and last_line(again) == want, again.stdout + again.stderr
 
 
+def test_a_run_that_ends_on_a_no_folder_next_says_so_on_its_end_line_c3467(
+    env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 48 ruling 227 (C3467): the report read a run that ended on a no-folder NEXT from today's
+    config alone. Its install.log end line carries ` next=no-folder`, one more key an older reader skips; a
+    run that ends on another NEXT carries none."""
+    first = install_sh(env, str(wheel))
+    assert last_line(first).startswith("NEXT: no folder to sync yet: "), last_line(first)
+    ends = [ln for ln in install_log(env) if " end rc=" in ln]
+    assert ends and ends[-1].endswith(" next=no-folder"), ends
+    skill_next = "NEXT: the agentsync-docs skill is missing or out of date: run " + (
+        f"{env['HOME']}/.local/bin/agentsync sync"
+    )
+    bare = install_sh({**env, "STUB_STATUS_OUT": skill_next}, str(wheel))
+    assert last_line(bare).startswith("NEXT: no folder is synced yet: "), last_line(bare)
+    ends = [ln for ln in install_log(env) if " end rc=" in ln]
+    assert ends[-1].endswith(" next=no-folder"), ends
+    chose = install_sh(env, str(wheel), "--no-folder")
+    assert chose.returncode == 0, chose.stdout + chose.stderr
+    ends = [ln for ln in install_log(env) if " end rc=" in ln]
+    assert "next=" not in ends[-1], ends
+
+
 @pytest.mark.parametrize("other", ["--source-local", "--confirm-install-agent", "--list-folders"])
 def test_no_folder_is_refused_beside_a_folder_c2658(
     env: dict[str, str], folder: Path, wheel: Path, other: str
