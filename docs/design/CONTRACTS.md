@@ -5650,6 +5650,8 @@ class Outcome:
 def parse_time(text: str) -> datetime | None: ...  # ISO-8601 -> aware UTC
 def parse_friction(text: str) -> Friction: ...
 def read_friction(path: Path) -> Friction | None: ...  # None when the file does not exist; records its mtime
+# Amended 2026-11-27, §16.295 C3404: read_friction reads through install_log.read_log, so a file that is not a
+# regular file (a folder, a FIFO, a link loop) raises NotARegularFileError (an OSError); a missing file is still None
 # SUPERSEDED (2026-11-27, §16.295 C3408): default_friction_path() -> Path: removed, a4ff95f5f took its last caller;
 # build_report and the report's own reads resolve the friction log with _env_log(FRICTION_ENV, FRICTION_DEFAULT)
 def read_install_runs(log: Path) -> list[InstallRun]: ...
@@ -5658,6 +5660,8 @@ def install_runs_only(runs: Sequence[InstallRun]) -> list[InstallRun]: ...  # wi
 def stopping_error(attempt: Attempt, runs: Sequence[InstallRun] = ()) -> FrictionEvent | None: ...  # v6: runs resolve
 def compute_outcome(attempt: Attempt | None, runs: Sequence[InstallRun], *,
                     doctor_fails: Sequence[str] = ()) -> Outcome: ...  # doctor_fails: unexpected FAIL names
+# Amended 2026-11-27, §16.295 C3403: compute_outcome takes not_read: Sequence[tuple[str, str]] = (), each
+# (log, why) a log the report did not read, so an unknown outcome names it, never "no install log"
 def compute_run_type(runs: Sequence[InstallRun], home: str) -> str: ...
 def home_path() -> str: ...
 def is_sandbox_home(home: str) -> bool: ...
@@ -48802,6 +48806,45 @@ carve-out; privacy; `agentsync.setup_report`; amends §16.291 C3289). The folder
 clear. It now takes the configured loop's rule: fuzzy unless the value holds `/` or is a joined name. The shell
 reads the manifest's `scope_root` rows itself (§16.296). Test: `test_both_reports_cut_a_project_folders_fuzzy_spellings_alike_c3289`'s vanished
 arms, with the literal `KestrelAlder is mine` row, all five rows `<folder-N> is mine` in both reports.
+
+**A refused setup log gives no fact; every reader names it not read** (C3436 with C3403; ruling 228; makes worse
+True for gating the redactor; `agentsync.setup_report`). With a `~name` `AGENTSYNC_SETUP_LOG`, the report still read
+`./install.log` (the refused value unexpanded, against the working directory) for the install source, the installer
+runs, the measured stops and the first-sync line, and three lines said install.sh never ran. Each fact reader now
+returns before it opens anything: `_installer_runs` prints `Install log not read: <why>.`, `_measured_stops` reads no
+stop, `_first_sync_line` prints `(install log not read)`, and `compute_outcome`'s `not_read` (each `(log, why)` the
+report did not read, from `_unread_logs`) names the unread log in an unknown outcome's reason
+(`friction log not read and install log not read; <why>`), a refused friction log reading `friction log not read, so
+the human turns are unknown` and its Items line `- none (friction log not read)`. The redactor's cut-only
+`_logged_cloud_folders` read stays, commented: it adds cuts and prints nothing, and gating it printed a folder named
+only in that log whole. Tests: `test_setup_report.py`'s
+`test_a_tilde_name_log_variable_is_named_as_a_log_not_read_and_the_report_written_c3292` (extended),
+`test_a_refused_setup_log_gives_no_fact_from_a_working_directory_file_and_still_cuts_c3436`,
+`test_a_bare_tilde_name_setup_log_reads_no_stop_from_the_working_directory_c3436` and
+`test_an_unknown_outcome_names_a_refused_log_as_not_read_c3403`.
+
+**One non-blocking reader for both logs and the files beside them** (C3404; ruling 228; `agentsync.install_log`,
+`agentsync.setup_report`, `agentsync.cli`). A FIFO at `AGENTSYNC_SETUP_LOG` or `AGENTSYNC_FRICTION_LOG`, or at
+install.out or sync-stops.log beside the log, hung setup-report. `install_log.read_log(path, *, head=None,
+tail=None) -> LogRead` (`data`, `size`, `mtime`) opens with `O_RDONLY|O_NONBLOCK|O_CLOEXEC`, refuses anything
+`fstat` does not call a regular file with `NotARegularFileError` (an `OSError` whose strerror is
+`NOT_A_REGULAR_FILE`, `not a regular file`; a link loop and a socket map to it too), then reads blocking;
+`read_log_bytes` and `read_log_text` wrap it. Every read of either log and the files beside them goes through it:
+`_install_runs`, `read_friction` (its mtime from the same `fstat`), the redactor's friction and install.out reads,
+`_tail_cut` (install.out, the friction log, the log folder), `_read_sync_stops` and the proxy-hosts read, which only
+feeds cuts. The report names such a file `<path>: not a regular file (not read)` (`Install log at <path>: ...`,
+`Installer output at <path>: ...`, `sync-stops.log beside it: ...`, `Could not read the friction log at <path>: ...`),
+and so does the CLI's written line; a folder at either log reads the same, where it had read as no log. A dangling link
+or a link through a file stays a missing file. Tests:
+`test_a_fifo_at_a_log_or_beside_one_never_blocks_the_report_and_is_named_c3404` (four places, a subprocess under a
+timeout) and `test_the_one_log_reader_answers_each_kind_of_path_as_the_report_names_it_c3404` (a file, a folder, a link
+to each, a dangling link, a link to itself, a two-link loop, a link through a file and a FIFO, under an alarm).
+
+**`default_friction_path` goes** (C3408; ruling 228; `agentsync.setup_report`). It had no caller once a4ff95f5f moved
+build_report to the report's own resolver, `_env_log(FRICTION_ENV, FRICTION_DEFAULT)`, whose `~name` value is
+refused and not read. Its signature above is a dated SUPERSEDED comment, and build_report's docstring names the
+resolver. Lane B's C3468 makes `_env_log` delegate to `paths.env_log_path` (§16.297). Test:
+`test_the_friction_log_has_one_resolver_and_no_dead_default_c3408`.
 
 ### 16.296 Round 48: the installer: the shell halves of ruling 217, no value printed that it could not register, step 1's escapes and marks, the single-quoted placeholder, a failed sync told apart from a blocked one, and C2060 waits on the operator (2026-11-27, wave B13 round 48 lane RB)
 
