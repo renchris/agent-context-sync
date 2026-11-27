@@ -9755,12 +9755,59 @@ def test_install_log_start_line_names_the_diff_of_a_dirty_source(env: dict[str, 
 
 
 @pytest.mark.skipif(not _have_git(), reason="needs developer tools (git)")
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize("where", ["home", "outside"])
+@pytest.mark.parametrize("kind", ["gitless", "no-git", "other-owner"])
+def test_no_checkout_but_the_standard_one_is_named_by_its_path_c3470(
+    env: dict[str, str], tmp_path: Path, kind: str, where: str, locale: str
+) -> None:
+    """B13 round 48 ruling 218 (C3470; privacy): a checkout in `Contoso<U+3000>北<U+0085>x/agent-context-sync`
+    whose commit git cannot read, that has no .git, or that git refuses as another account's printed its
+    folder, the raw U+0085 included, in the shell report's install.sh line and in --version, both public.
+    Only ~/src/agent-context-sync is named by its path now; every other checkout in path-free words, the
+    `unknown (` prefix kept. Read with split("\\n"): splitlines() breaks a line at U+0085."""
+    base = Path(env["HOME"]) if where == "home" else tmp_path / "elsewhere"
+    src = base / "Contoso\u3000\u5317\u0085x" / "agent-context-sync"
+    (src / "scripts").mkdir(parents=True)
+    script = src / "scripts" / "install.sh"
+    shutil.copy2(INSTALL_SH, script)
+    extra: dict[str, str] = {}
+    if kind == "gitless":  # a .git holding only a config
+        (src / ".git").mkdir()
+        (src / ".git" / "config").write_text("[core]\n\tbare = false\n")
+    elif kind == "other-owner":
+        _git_checkout(src)
+        extra = {"GIT_TEST_ASSUME_DIFFERENT_OWNER": "1"}
+    run = {**env, **extra, "LC_ALL": locale, "LANG": locale}
+    version = install_sh(run, "--version", script=script)
+    vjson = install_sh(run, "--version", "--json", script=script)
+    assert install_sh(run, "--report-only", script=script).returncode == 0
+    text = report_path(env).read_text(encoding="utf-8")
+    [line] = [ln for ln in text.split("\n") if ln.startswith("- install.sh: ")]
+    # a checkout git refuses gives its HEAD file's commit here, no path either way (its unknown reason, on a
+    # real run's source: test_the_shell_report_says_why_a_copy_has_no_commit)
+    want = {
+        "gitless": "unknown (git cannot read its .git)",
+        "no-git": "none (the checkout has no .git: not a git checkout)",
+    }.get(kind)
+    if want is not None:
+        assert f"source commit {want}" in line, line
+    if kind == "gitless":
+        assert version.stdout.split("\n")[0] == f"source commit: {want}", version.stdout
+        assert json.loads(vjson.stdout)["sourceCommit"] == want, vjson.stdout
+    for name, out in (("report", text), ("--version", version.stdout + vjson.stdout)):
+        bad = [ln for ln in out.split("\n") if re.search("[\u0080-\u009f\u3000\u5317]|Contoso", ln)]
+        assert not bad, (name, bad)
+
+
+@pytest.mark.skipif(not _have_git(), reason="needs developer tools (git)")
 def test_the_shell_report_says_why_a_copy_has_no_commit(env: dict[str, str]) -> None:
     """B13 round 9 K17, K29: a copy of the installer that is no git checkout gave "source commit -" with no
     reason. The Summary says why; install.log's commit= field, a machine word the install stamp and the
-    reports read, stays "-"."""
+    reports read, stays "-". Since B13 round 48 ruling 218 (C3470; privacy) a checkout other than
+    ~/src/agent-context-sync is named in path-free words, as the agentsync report's `(git cannot read its
+    .git)` names it."""
     src = Path(env["HOME"]) / "src" / "contoso-copy"
-    shown = "~/src/contoso-copy"  # the home redacted, as everywhere in the report
     (src / "scripts").mkdir(parents=True)
     shutil.copy2(INSTALL_SH, src / "scripts" / "install.sh")
     (src / "pyproject.toml").write_text("[project]\nname = 'agentsync'\n")
@@ -9779,22 +9826,20 @@ def test_the_shell_report_says_why_a_copy_has_no_commit(env: dict[str, str]) -> 
         return line
 
     assert run("--report-only").startswith(
-        f"- install.sh: setup-prompt-compat {COMPAT}, source commit none ({shown} has no .git: not a git "
-        "checkout); this --report-only run only writes the report"
+        f"- install.sh: setup-prompt-compat {COMPAT}, source commit none (the checkout has no .git: not a "
+        "git checkout); this --report-only run only writes the report"
     )
-    assert f"source commit none ({shown} has no .git: not a git checkout), exit 1 " in run(
+    assert "source commit none (the checkout has no .git: not a git checkout), exit 1 " in run(
         STUB_UV_INSTALL_RC="2"
     )
     log = (Path(env["HOME"]) / "agent-context" / "setup" / "install.log").read_text()
     assert " start install.sh compat=" in log and " commit=- " in log, log
     (src / ".git").mkdir()  # a .git no git and no file read can say anything of
-    assert f"source commit unknown (git cannot read {shown}/.git);" in run("--report-only")
+    assert "source commit unknown (git cannot read its .git);" in run("--report-only")
     # B13 round 10 L29: a real run whose SOURCE git refuses as another account's says so
     (src / ".git").rmdir()
     _git_checkout(src)
-    refused = (
-        f"source commit unknown (git refuses {shown}/.git: the folder belongs to another user account), "
-    )
+    refused = "source commit unknown (git refuses its .git: the folder belongs to another user account), "
     assert refused in run(STUB_UV_INSTALL_RC="2", GIT_TEST_ASSUME_DIFFERENT_OWNER="1")
 
 
@@ -9844,9 +9889,10 @@ def test_the_shell_report_says_a_run_a_usage_error_stopped_read_no_commit(
         "dirty": f"{sha}-dirty tree={_fingerprint(git)}" if checkout == "dirty" else "",
         "no-tools": f"{sha} (local changes not checked)",
     }.get(checkout)
-    named = f"; this installer's checkout, ~/src/contoso-copy, is at {at}" if at else ""
+    # B13 round 48 C3470: a checkout other than ~/src/agent-context-sync by no path
+    named = f"; this installer's checkout is at {at}" if at else ""
     if checkout == "no-git":  # its own words, as before: a copy with no .git is no checkout to read
-        named = "none (~/src/contoso-copy has no .git: not a git checkout)"
+        named = "none (the checkout has no .git: not a git checkout)"
         assert (
             line == f"- install.sh: setup-prompt-compat {COMPAT}, source commit {named}, exit 2 (usage error)"
         )

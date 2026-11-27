@@ -201,8 +201,10 @@ def test_version_json_is_one_document(env: dict[str, str], args: list[str]) -> N
 
 
 def test_version_json_of_an_unread_checkout_escapes_its_reason(env: dict[str, str]) -> None:  # noqa: F811
-    """A .git git cannot read: version is null and sourceCommit is the plain run's unknown (...) reason, its
-    ~/ path through json_str, so a quote in the folder's name stays one JSON string; no .git: both null."""
+    """A .git git cannot read: version is null and sourceCommit is the plain run's unknown (...) reason
+    through json_str; no .git: both null. Since B13 round 48 ruling 218 (C3470; privacy) a checkout other
+    than ~/src/agent-context-sync is named by no path, so the folder's quote no longer reaches the reason:
+    the JSON-escaping arm went with it, and `Con"toso` is the case that its name stays out."""
     src = Path(env["HOME"]) / 'Con"toso'
     (src / "scripts").mkdir(parents=True)
     script = src / "scripts" / "install.sh"
@@ -215,7 +217,8 @@ def test_version_json_of_an_unread_checkout_escapes_its_reason(env: dict[str, st
     assert cp.returncode == 0, cp.stderr
     doc = json.loads(cp.stdout)
     assert doc["version"] is None
-    assert doc["sourceCommit"] == 'unknown (git cannot read ~/Con"toso/.git)'
+    assert doc["sourceCommit"] == "unknown (git cannot read its .git)"
+    assert "toso" not in cp.stdout
     plain = install_sh(env, "--version", script=script).stdout.splitlines()[0]
     assert plain == f"source commit: {doc['sourceCommit']}"
 

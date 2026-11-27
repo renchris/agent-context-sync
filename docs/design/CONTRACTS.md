@@ -12583,6 +12583,8 @@ hold value "Records" cuts none of it, and a row with no re-read record reads `no
   Amended 2026-10-14, §16.81 K17: where COMMIT stays `-` the Summary says why (`none (installed from a wheel)`,
   `none (<path> has no .git: not a git checkout)`, `unknown (git cannot read <path>/.git)`); install.log's
   `commit=` field is unchanged.
+  Amended 2026-11-27, §16.296 C3470: a checkout other than ~/src/agent-context-sync is named by no path, `none (the
+  checkout has no .git: not a git checkout)` and `unknown (git cannot read its .git)`.
 - **The reinstall holds the background sync's lock** (`scripts/install.sh`, `agentsync.ops.lock`).
   - Step 2 runs `uv tool install` under `/usr/bin/lockf -k -n -s -t $AGENTSYNC_REINSTALL_WAIT_SECONDS
     <state_dir>/agentsync.lock` (default 120 s; 0 never waits), the flock(2) lock the sync takes. The lock path
@@ -18563,6 +18565,9 @@ Amended 2026-10-14, §16.86 L28: the agentsync report's line reads `<path>, a co
 .git, so no commit or origin)`, no longer `checkout <path> (not a git checkout: ...)`.
 Amended 2026-10-14, §16.87 L29: a .git git refuses as another user account's reads `unknown (git refuses
 <path>/.git: the folder belongs to another user account)`, and the agentsync report's `(git refuses its .git: ...)`.
+Amended 2026-11-27, §16.296 C3470: `<path>` is only ever ~/src/agent-context-sync; any other checkout reads `none
+(the checkout has no .git: not a git checkout)`, `unknown (git cannot read its .git)` or `unknown (git refuses its
+.git: ...)`, as the agentsync report words it.
 
 **The inbox line is held with the docs repo line** (K7). With several folders the first `add-source` call's
 `added inbox source ...` line came out between the first and the second folder's blocks, as the docs repo line did
@@ -19362,6 +19367,8 @@ account)` when `_checkout_facts` read nothing and git's stderr (`_git_ro_err`) s
 .git)`. The owning account is never named. Tests: `test_the_shell_report_only_names_this_checkouts_commit`,
 `test_the_shell_report_says_why_a_copy_has_no_commit` (GIT_TEST_ASSUME_DIFFERENT_OWNER=1),
 `test_the_install_source_says_git_refuses_a_checkout_another_account_owns`.
+Amended 2026-11-27, §16.296 C3470: a real run's words name ~/src/agent-context-sync alone by its path, any other
+checkout `unknown (git refuses its .git: the folder belongs to another user account)`.
 
 **The first-read bracket names its count** (L16; amends §16.83 K34 and §16.57 F34). install.sh's one-line `sync:`
 summary printed `read again 1 (1 of them a first read: a stub whose bytes had never been read, now in the count
@@ -20124,6 +20131,8 @@ an unreadable `.git` falls to the existing words (`unknown`, `git cannot read it
 linked worktree), `test_the_install_source_reads_no_commit_from_a_repository_around_the_checkout`.
 Amended 2026-10-16, §16.99 N75: `--version` gives the reason too (`unknown (git cannot read ~/.../.git)`), from
 the same helper as the shell report.
+Amended 2026-11-27, §16.296 C3470: `~/.../.git` is only ever `~/src/agent-context-sync/.git`; any other checkout
+reads `unknown (git cannot read its .git)`.
 
 ### 16.94 Round 11: setup prompt v20 (2026-10-15, wave B13 round 11 lane P)
 

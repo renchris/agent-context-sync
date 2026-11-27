@@ -2031,17 +2031,32 @@ read_commit() {
 	*) COMMIT="$c" ;;
 	esac
 }
-# Why the commit of the checkout $1 is unknown, from the folder alone (no run state, so --version and the
-# report read it alike), its path as ~/... under the home: git refuses it, git cannot read it, or, with no
-# developer tools, git never ran and its .git/HEAD names no commit (B13 round 12 N75).
-unread_reason() { # DIR
-	local d="$1"
+# The one checkout --version and the shell report name by its path: `~/src/agent-context-sync`, printed when
+# DIR is that folder as written or as pwd -P resolves both; nothing for any other, whose callers then name it in
+# path-free words, as the agentsync report's `(git cannot read its .git)` does (B13 round 48 ruling 218, C3470;
+# privacy: a checkout in a folder named with U+0085 printed that byte and the folder's name in a public report)
+checkout_shown() { # DIR
+	local std="$HOME/src/agent-context-sync" a b
+	if [ "$1" = "$std" ] || [ "$1" = "$std/" ]; then
+		# shellcheck disable=SC2088 # the ~ is printed
+		printf '~/src/agent-context-sync'
+		return 0
+	fi
+	a="$(cd "$1" 2>/dev/null && pwd -P)" || return 0
+	b="$(cd "$std" 2>/dev/null && pwd -P)" || return 0
 	# shellcheck disable=SC2088 # the ~ is printed
-	case "$d" in "$HOME"/*) d='~/'"${d#"$HOME"/}" ;; esac
+	[ -z "$a" ] || [ "$a" != "$b" ] || printf '~/src/agent-context-sync'
+}
+# Why the commit of the checkout $1 is unknown, from the folder alone (no run state, so --version and the
+# report read it alike): git refuses it, git cannot read it, or, with no developer tools, git never ran and its
+# .git/HEAD names no commit (B13 round 12 N75), the checkout named only as checkout_shown names it (C3470).
+unread_reason() { # DIR
+	local d
+	d="$(checkout_shown "$1")"
 	if git_refuses_owner "$1"; then
-		printf 'git refuses %s/.git: the folder belongs to another user account' "$d"
+		printf 'git refuses %s.git: the folder belongs to another user account' "${d:-its }${d:+/}"
 	elif have_devtools; then
-		printf 'git cannot read %s/.git' "$d"
+		printf 'git cannot read %s.git' "${d:-its }${d:+/}"
 	else
 		printf 'no developer tools to run git, and its .git/HEAD names no commit'
 	fi
@@ -7148,7 +7163,7 @@ fallback_outcome_line() {
 # checkout's commit when write_fallback_report could read it (INSTALLER_COMMIT, round 27 P143). COMMIT stays
 # "-", the machine word, and no git runs here.
 commit_shown() {
-	local d="$repo"
+	local d="$repo" c
 	if [ "$COMMIT" != "-" ]; then
 		printf '%s' "$COMMIT${DIRTY:+ tree=$DIRTY}"
 		return 0
@@ -7157,14 +7172,17 @@ commit_shown() {
 		[ "$SOURCE_KIND" != wheel ] || { printf 'none (installed from a wheel)' && return 0; }
 		d="$SOURCE"
 	fi
+	# a checkout by its path only as checkout_shown names one, any other in path-free words (C3470)
 	if [ -n "$d" ] && [ ! -e "$d/.git" ]; then
-		printf 'none (%s has no .git: not a git checkout)' "$d"
+		c="$(checkout_shown "$d")"
+		printf 'none (%s has no .git: not a git checkout)' "${c:-the checkout}"
 	elif [ -n "$d" ] && [ "$COMMIT_TRIED" -eq 1 ]; then
 		printf 'unknown (%s)' "$(unread_reason "$d")"
 	elif [ -n "$INSTALLER_COMMIT" ]; then
 		# the run's own source was never read, so this names the installer's checkout, even when it is the
 		# source; read by write_fallback_report in the parent shell (B13 round 27 P143)
-		printf "not read (this run stopped before it read the commit; this installer's checkout, %s, is at %s)" "$repo" "$INSTALLER_COMMIT"
+		d="$(checkout_shown "$repo")"
+		printf "not read (this run stopped before it read the commit; this installer's checkout%s is at %s)" "${d:+, $d,}" "$INSTALLER_COMMIT"
 	else
 		printf 'not read (this run stopped before it read the commit)'
 	fi
