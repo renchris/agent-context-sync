@@ -2777,6 +2777,11 @@ offers a marked row and, with no unmarked row left, asks no folder question and 
 paused|retired)` for a chosen folder is told, that folder is not asked about again, and with no other folder chosen step
 3's report follows as after a none, never through --no-folder and never recorded as a none. Lane RB sends lane D the
 mark words and lands them before the v44 commit.
+(2026-11-27) Ruling 231 amends this one: v45 asks no folder question with no unmarked row left only when the list
+printed no `already synced on this Mac:` line, telling a `(N more)` line first, and goes to step 3's report after a
+chosen folder came back `already configured` paused or retired only when at least one folder was chosen and each came
+back so; the marked rows also take `[inside a paused folder]`, `[inside a retired folder]` and an escaped held row
+(round 48 C3420, C3456, C3464, C3433, C3500, C3426, C3506, CONTRACTS §16.299).
 (215) Ruling 202's Office twins are closed: each answer that skips the cache, each decoder and each output change is
 told and keyed once (lane E; C3321 with C3268 and C3291, C3266, C3264, C3267, C3316, C3262 with C3275, C3320 and C3329,
 C3265, C3263 with C3283 and C3318). _decode_text tells `_UTF32_BOMS` (literal bytes) after UTF-8's mark and before
@@ -2818,6 +2823,11 @@ mentions, the issue form, setup-feedback.md's version lines and the old-copy ref
 every pin, behavior tests for each new branch (a paused-only config, a refused add-source over an unreadable inbox,
 argparse errors for sync and curate, a folder named with `$`, a cut list), §16.294's dated lines and one beside ruling
 205; CUT_OFF_TOLD stays. Round 48 rehearses v44 with v43's block (ea3d2d0d1) as scenario C's first old copy.
+(2026-11-27) Ruling 231 amends this one: v45 runs the land gate's chmod 600 of one page and its checkout of one page
+once per page in step 2 and step 3, stops step 1 with no unmarked row left only without an `already synced on this
+Mac:` line, says `step 2 ended with an error (exit <code>)` outside the none with the run's NEXT: or usage error line,
+and reads `loads: not checked` from either report; the same commit moves the version and its pins, as this ruling's
+did (round 48, CONTRACTS §16.299).
 
 ROUND 48 RULINGS (lead; every lane builds to them; the prompt goes to v45 in lane D's one commit, ruling 231):
 (217) A name is cut in every spelling either report can print, whatever its blanks, its quote, its account or its state,

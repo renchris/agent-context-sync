@@ -20882,6 +20882,9 @@ say so, do not name ~/agent-context/bring-back.md, and name the files the NEXT: 
 Amended 2026-10-17, §16.106 O28, O44, O15: since v22 the not-checked case reads "then whatever the file holds, list no
 folders and do not parse it yourself" and comes before the "does not load" case, and N71's words are "the files the
 NEXT: line says to copy back", since that NEXT also names bring-back.md, as the file not to send.
+Amended 2026-11-27, §16.299 C3428: since round 47's C3335 (§16.290) the agentsync report prints `- loads: not checked
+(this account cannot reach it)` too, so v45's finish reads "loads: not checked" (the shell report when agentsync could
+not run, or either report when this account cannot reach the config's folder); the branch and its place are unchanged.
 
 Register: `docs/deploy/setup-feedback.md` K45.
 
@@ -48716,6 +48719,12 @@ scenario C's first old copy. Tests:
 `test_the_v44_step3_nothing_to_draft_rule_names_step_2s_source_local_run_c3206`,
 `test_the_v44_finish_names_a_step_2_that_ended_with_an_error_c3240`,
 `test_the_prompt_text_changes_only_with_its_version`, `test_readme_prompt_compat_matches_the_installer`.
+Amended 2026-11-27, §16.299 C3420: v45 asks no folder question with no unmarked row left only when the list printed no
+`already synced on this Mac:` line; a set-up Mac follows the first exception to step 2 with no `--source-local`, a
+`(N more)` line is told first and asked about, a rename mark still lets the person ask to rename, and a decline is no
+none (C3420 with C3456 and C3464). The report follows a chosen paused or retired folder only when at least one folder
+was chosen and each came back so (C3433, C3500), and the Finish says `step 2 ended with an error (exit <code>)` outside
+the none, with the run's NEXT: line or its usage error line (C3458).
 
 **Both READMEs name a not-a-folder inbox in lane B's one phrase** (C3213; ruling 210; `README.md`,
 `docs/deploy/README.md`). Both said `not added (<folder> is not a folder)` comes from "a file, a link to a file or a
@@ -49444,6 +49453,45 @@ says a lane deletes only its own proven b13/r<n>-* branches, by exact name, `-d`
 each with its old sha and proof in its note, and never issues a refused delete again in another form while the
 refusal's condition holds. The harvest's counts and remove-worktrees.sh's echo are the lead's kit half. Test:
 `tests/test_deploy_pack.py::test_the_lane_brief_says_which_branches_a_lane_may_delete_c3491`.
+
+**Setup prompt v45: the land gate's page fix run once per page, step 1's stop only with no synced line, a chosen folder
+that came back paused, a failed step 2 outside the none** (turn C3530, the prompt halves of turn C3419, C3426, C3506
+and C3421, C3420 with C3456 and C3464, C3433, C3500, C3505, C3458, C3428 with C3463; ruling 231; amends §16.294's v44
+paragraph and §16.100 N25). v44 stopped short of what setup prints. The land gate's fix for a page this account cannot
+read is a `chmod 600` lints calls `the person's or the agent's step`, and lane B's hand-edit finding a checkout of one
+page marked `(the agent's step: it puts back agentsync's own page and discards only the hand edit)`, while v44 let the
+agent run neither and its rules called both an edit: step 2 runs either as written, once per page, then the same
+install.sh command, a fix with no command or a page fixed before going to the report, step 3 does the same with the
+sync and goes to the report on `this finding has no fix for the agent`, and the rules call neither an edit (turn
+C3530, C3421). Step 1 went to the report with no unmarked row left, which caught a set-up Mac whose every row is
+`[synced]`, a list cut by `(N more)` and one whose only rows carry a rename mark: it stops so only with no `already
+synced on this Mac:` line, tells a `(N more)` line first and asks only whether the person names a folder by path or
+renames one, a decline being no none, and a set-up Mac goes on to step 2 with no `--source-local` (C3420 with C3456 and
+C3464). Lane RB's marks are named: a row `[inside a paused folder]` or `[inside a retired folder]` and an escaped held
+row (`[name holds a hidden or control character]` and then a held mark) are never offered and never renamed, an
+escaped row cannot be pasted as shown, and a look-alike is refused while its sibling is there (turn C3419, C3426,
+C3506; ruling 220). Step 1's last sentences and step 2's no-folder rule send a run that chose at least one folder, each
+come back `already configured` paused or retired, to the report, never `--no-folder`; a bare "every folder I chose"
+held for a run that chose none (C3433, C3500, makes worse True). After a none, a folder named later this session
+reruns step 2 with `--source-local`, never the add-source loop.py's NEXT names, whose words stay (C3505, makes worse
+True). The Finish says `step 2 ended with an error (exit <code>)` after any folder result, with the run's NEXT: line or
+its usage error line, since a pre-parse usage error exits 2 with no NEXT: (C3458), and reads `loads: not checked` from
+either report, as `setup_report.CONFIG_UNREACHED_LOADS` prints it since round 47's C3335 (C3428 with C3463). No step
+moves, so v45 is read with v7's layout. Version 45 everywhere the bump list names it (the block and its digest in
+`PROMPT`, `prompt v45` in step 1's `--log-start`, `SETUP_PROMPT_COMPAT`, `setup_report.PROMPT_VERSION`, its
+docstring's list and its v44 mentions, the form's placeholder, the version pins, setup-feedback.md's version lines and
+its old-copy list, which v44 joins, and a K69 row); `CUT_OFF_TOLD` names no version and is unchanged. §16.294's v44
+paragraph and §16.100's N25 take dated lines and `docs/lanes/COMMON.md` one beside ruling 214 and one beside ruling
+216. Tests:
+`test_the_v45_step1_stops_only_with_no_synced_line_and_tells_n_more_first_c3420_c3456_c3464`,
+`test_the_v45_chosen_folder_that_came_back_held_goes_to_the_report_c3433_c3500`,
+`test_the_v45_reruns_step_2_for_a_folder_named_after_a_none_c3505`,
+`test_the_v45_runs_the_land_gates_chmod_of_one_page_once_c3530`,
+`test_the_v45_finish_names_a_failed_step_2_outside_the_none_c3458`,
+`test_the_v45_finish_reads_loads_not_checked_from_either_report_c3428_c3463`,
+`test_the_v45_step1_never_offers_a_held_rows_marks_or_pastes_an_escaped_row_c3419_c3426_c3506`,
+`test_the_v45_runs_the_land_gates_checkout_of_one_page_in_lane_bs_words_c3421`,
+`test_the_prompt_text_changes_only_with_its_version`, `test_readme_prompt_compat_matches_the_installer`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

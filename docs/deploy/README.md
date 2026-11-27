@@ -81,10 +81,13 @@ character, a line or paragraph separator, an invisible bidi or zero-width charac
 of a part of its path (an ASCII space too, as `\040`) as a backslash and three octal digits for each of its bytes, DEL
 as `\177`; a name holding the record separator, 0x1E, shows it as `\n` too), so the row is not the folder's own name; one that opens with
 `[name reads as another folder there: rename one of them to sync it]` is a plain name that reads as such a folder's
-escaped form in the same parent. Neither can be added as shown, and `--source-local` refuses both: rename the folder
-(for the second mark, it or the other one) in its sync app, then run `install.sh --list-folders` again, not the whole
-of step 1. A row that opens with `[name holds a hidden or control character]` and then `[synced]` or
-`[inside a synced folder]` is such a folder already kept: nothing to rename and nothing to paste. When no synced
+escaped form in the same parent. `--source-local` refuses a row pasted as shown, and refuses a folder while the other
+folder that reads as it is there (a lone folder whose name holds such a character is added by its real path): rename
+the folder (for the second mark, it or the other one) in its sync app, then run `install.sh --list-folders` again, not
+the whole of step 1. A row that opens with `[name holds a hidden or control character]` and then `[synced]` or
+`[inside a synced folder]` is such a folder already kept, and one that opens with it and then `[paused]`, `[retired]`,
+`[inside a paused folder]` or `[inside a retired folder]` is such a folder sources.toml holds, or one inside it, and not
+synced: nothing to rename and nothing to paste. When no synced
 folder under
 `~/Library/CloudStorage` is missing, such a Mac gets that line and exit 0 even when nothing else can be listed (for
 example, OneDrive signed out and only a folder outside `~/Library/CloudStorage` synced). When a synced folder under

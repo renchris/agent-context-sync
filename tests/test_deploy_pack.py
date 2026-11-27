@@ -30,6 +30,14 @@ from agentsync.convert import NO_CONVERTER_PREFIX, ConversionStatus, convert_fil
 from agentsync.convert.cache import ConverterCache
 from agentsync.convert.registry import Registry
 from agentsync.model import LintFinding, SourceKind
+from test_install_oneshot import (  # B13 round 48's v45 list and usage rows
+    _cloud,
+    _inbox,
+    _tool_python,
+    _write_config,
+    install_sh,
+)
+from test_install_oneshot import env as oneshot_env  # noqa: F401  (a fixture; locals here are named env)
 
 ROOT = Path(__file__).resolve().parent.parent
 DEPLOY = ROOT / "docs" / "deploy"
@@ -1039,6 +1047,79 @@ def test_ruling_204_takes_ruling_210s_dated_line_and_the_guides_take_lane_bs_phr
     dated = lanes[lanes.index(line) : lanes.index("(205) ")]
     for sha in ("9cc1f3a06", "54c3c1cbc", "61688281a", "2f45bd7cc", "a3897e070", "08a1b2b21", "58dd22d62"):
         assert f"{sha}" in dated, sha
+
+
+def test_v45_takes_dated_lines_beside_rulings_214_and_216_and_under_n25_and_the_v44_paragraph() -> None:
+    """B13 round 48 ruling 231 (ruling 186: words kept, a dated line added): v45 changes what ruling 214's
+    lane D half, ruling 216, §16.294's v44 paragraph (C3420 with C3456 and C3464, C3433 with C3500, C3458) and
+    §16.100's N25 quote (C3428 with C3463) say of the prompt. Each keeps its words, and a dated line right
+    after it names v45's, held to setup_report's unreached-config line for N25."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    lanes = _page("docs/lanes/COMMON.md")
+    for words, line, nxt in (
+        (
+            "mark words and lands them before the v44 commit.",
+            "(2026-11-27) Ruling 231 amends this one: v45 asks no folder question with no unmarked row",
+            "(215) ",
+        ),
+        (
+            "Round 48 rehearses v44 with v43's block (ea3d2d0d1) as scenario C's first old copy.",
+            "(2026-11-27) Ruling 231 amends this one: v45 runs the land gate's chmod 600 of one page",
+            "ROUND 48 RULINGS",
+        ),
+    ):
+        assert lanes.index(words) + len(words) + 1 == lanes.index(line), line
+        assert lanes.index(line) < lanes.index(nxt)
+        assert "CONTRACTS §16.299)." in lanes[lanes.index(line) : lanes.index(nxt)]
+    assert lanes.index("(214) ") < lanes.index("v45 asks no folder question") < lanes.index("(215) ")
+    assert lanes.index("(216) ") < lanes.index("v45 runs the land gate's chmod 600") < lanes.index("ROUND 48")
+    contracts = _page("docs/design/CONTRACTS.md")
+    v44 = (
+        "`test_the_prompt_text_changes_only_with_its_version`,"
+        " `test_readme_prompt_compat_matches_the_installer`."
+    )
+    n25 = 'NEXT: line says to copy back", since that NEXT also names bring-back.md, as the file not to send.'
+    for words, line in (
+        (v44, "Amended 2026-11-27, §16.299 C3420: v45 asks no folder question with no unmarked row left"),
+        (n25, "Amended 2026-11-27, §16.299 C3428: since round 47's C3335 (§16.290) the agentsync report"),
+    ):
+        at = contracts.index(words, contracts.index("### 16.294 " if words == v44 else "### 16.100 "))
+        assert at + len(words) + 1 == contracts.index(line), line
+    n25_line = contracts[contracts.index("Amended 2026-11-27, §16.299 C3428:") :].split("\n\n", 1)[0]
+    assert f"`{setup_report.CONFIG_UNREACHED_LOADS}`" in " ".join(n25_line.split())
+    v44_line = " ".join(
+        contracts[contracts.index("Amended 2026-11-27, §16.299 C3420:") :].split("\n\n")[0].split()
+    )
+    for item in ("(C3420 with C3456 and C3464)", "(C3433, C3500)", "(C3458)"):
+        assert item in v44_line, item
+    assert contracts.index("### 16.294 ") < contracts.index(v44_line[:40]) < contracts.index("### 16.295 ")
+
+
+def test_the_guides_say_what_source_local_refuses_of_an_escaped_or_held_row_c3419_c3426_c3506() -> None:
+    """B13 round 48 turn C3419 with C3426 and C3506 (ruling 220, the guide half): both guides said
+    `--source-local` "refuses both" rows with a rename mark, while lane RB's step 2 refuses a row pasted as
+    shown and a folder beside its look-alike and adds a lone such folder by its real path; and they named
+    only the kept marks after ``ESCAPED_KEPT_MARK``. Each says what step 2 refuses and names the held and
+    inside-held marks, held to install.sh's marks and its held-row refusal."""
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    for mark in ("[inside a paused folder]", "[inside a retired folder]"):
+        assert mark in script, mark
+    assert 'ESCAPED_KEPT_MARK="[name holds a hidden or control character]"' in script
+    assert "this is a row step 1 marked $ESCAPED_KEPT_MARK $pm:" in script
+    for page in (_page("docs/deploy/README.md"), _feedback_page()):
+        flat = " ".join(page.split())
+        assert "refuses both" not in flat
+        assert (
+            "`--source-local` refuses a row pasted as shown, and refuses a folder while the other folder that"
+            " reads as it is there (a lone folder whose name holds such a character is added by its real"
+            " path)"
+        ) in flat
+        assert (
+            "and then `[paused]`, `[retired]`, `[inside a paused folder]` or `[inside a retired folder]`"
+            " is such a folder sources.toml holds, or one inside it, and not synced: nothing to rename and"
+            " nothing to paste."
+        ) in flat
 
 
 def test_ruling_210_takes_a_dated_line_for_c3211s_alarm_and_root_probe_c3520_c3479() -> None:
@@ -2158,7 +2239,7 @@ INSTALL_NO_FOLDER = f"{INSTALL_SH} --no-folder"
 """Step 2's command with a folder to sync (a new Mac) or to add. v44 (B13 round 47 C3334, ruling 216): the
 folder in single quotes, since ``$`` and a backquote expand inside double quotes."""
 
-PROMPT = (44, "f2568a036af42766f7d22f508aa90b96153d474ccbfa14e96114047dadeaa933")
+PROMPT = (45, "c539dab6ce709890780af13e3665eef2e4de80d0c5528f841bd4cc7c0eb8f80f")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -2381,8 +2462,9 @@ but ...`` line gives the reason (``_sync_refusal``). "A sync refused it", not "e
 line from step 2's install.out names a cause the report cannot check again (the lane's review)."""
 
 UNCHECKED_CONFIG = (
-    'or, if the report\'s Configuration section says "loads: not checked" (the shell report, when agentsync'
-    " could not run), then whatever the file holds, list no folders and do not parse it yourself: say"
+    'or, if the report\'s Configuration section says "loads: not checked" (the shell report when agentsync'
+    " could not run, or either report when this account cannot reach the config's folder), then whatever the"
+    " file holds, list no folders and do not parse it yourself: say"
     ' "unknown: <that config\'s path> was not checked", followed by the reason the report gives'
 )
 """The finish's case for a sources.toml the shell report could not check, since v21 (B13 round 12 N25, lane
@@ -2408,6 +2490,15 @@ missing or out of date, or a Graph source signed out, status's NEXT is that step
 (``loop.next_step``; :func:`test_status_next_names_rule_1s_own_steps_before_a_fail`)."""
 
 UNKNOWN_FIRST = "(these two unknown cases come before the others)"
+FINISH_STEP2_ERROR = (
+    "and, whatever the folders, if step 2's last run this session exited other than 0 and was not a bare run"
+    ' that ended on "no folder to sync yet", say after the folders, the "none" or the unknown "step 2 ended'
+    ' with an error (exit <code>)", followed by ": see the NEXT: line below" when that run\'s NEXT: line is'
+    " the last one printed before the report, by that run's NEXT: line quoted when a later command printed"
+    " one, or by its usage error line quoted when it printed no NEXT: line (as step 2 says);"
+)
+"""v45's Finish clause for a failed step 2 (B13 round 48 C3458, ruling 231): out of the none's parenthesis, so
+it is said after any folder result, and the no-NEXT branch names the usage error line step 2 shows."""
 """What closes :data:`UNLOADED_CONFIG` since v22 (B13 round 13 O28): the finish joins its folder cases with
 "or", and nothing said which wins when the file also has, or lacks, a kind = "local" source."""
 
@@ -4167,7 +4258,7 @@ def test_readme_step3_runs_the_loop_then_the_report() -> None:
         ' the report\'s config: line marks that config (missing), or it has no such kind = "local" source,'
         ' "none: this Mac syncs no folder" '
         f"{FINISH_NONE_GUARD}"
-        f" {UNCHECKED_CONFIG}; {UNLOADED_CONFIG} {UNKNOWN_FIRST}{REFUSED_CONFIG}"
+        f" {UNCHECKED_CONFIG}; {UNLOADED_CONFIG} {UNKNOWN_FIRST}{REFUSED_CONFIG} {FINISH_STEP2_ERROR}"
         ' the last NEXT: line printed before the report, or "none" (also "none: waiting for your folder'
         ' answer" while you wait for my folder answer in step 1: there, the NEXT: line that leaves the'
         " folders to choose is not a step for me), and under it each WAITING ON YOU: line the same command"
@@ -4866,9 +4957,7 @@ def _live_local_folders(config: Path) -> list[str]:
 
 
 FINISH_NONE_GUARD = (
-    "(if setup stopped before step 2, say at which step; if step 2's last run this session exited other than"
-    ' 0 and was not a bare run that ended on "no folder to sync yet", add "step 2 ended with an error (exit'
-    ' <code>): see the NEXT: line below"; a config: line marked (exists) whose loads: line'
+    "(if setup stopped before step 2, say at which step; a config: line marked (exists) whose loads: line"
     " says"
     ' yes gives none only when that file, read as above, has no kind = "local" source that is neither paused'
     " nor retired, as after --no-folder, never because a path could not be opened or a report path held"
@@ -5367,9 +5456,7 @@ def test_the_v44_prompt_never_offers_a_paused_or_retired_folder_c3269_c3332(
         "A row marked [paused] or [retired] is a folder already in sources.toml but not synced: tell me so,"
         " and"
         " never offer it or pass it to --source-local (step 2 leaves it as it is); setting it live is my own"
-        " edit of sources.toml, never yours. With no unmarked row left to offer, ask no folder question and"
-        " go"
-        " to step 3's report."
+        " edit of sources.toml, never yours."
     ) in step1
     assert (
         'If that NEXT: line carries a "; not live: ..." clause, show me that clause in its own words before'
@@ -5383,7 +5470,7 @@ def test_the_v44_prompt_never_offers_a_paused_or_retired_folder_c3269_c3332(
         " chose, tell me that line: that folder is in sources.toml but not synced, and setting it live is my"
         " edit; do not ask me about it again, and if I chose no other folder, go to step 3's report as after"
         " a"
-        " none, with no --no-folder (I did not answer none)."
+        " none, with no --no-folder (I did not answer none)"
     ) in step2
     from agentsync import setup_report  # noqa: PLC0415
 
@@ -5468,12 +5555,281 @@ def test_the_v44_finish_names_a_step_2_that_ended_with_an_error_c3240() -> None:
     script = SCRIPTS[0].read_text(encoding="utf-8")
     assert 'next="no folder to sync yet: list them with $SELF --list-folders,' in script
     finish = " ".join(_prompt_steps()[3].split()).split("Finish with:", 1)[1]
-    assert FINISH_NONE_GUARD in finish
+    assert FINISH_NONE_GUARD in finish and FINISH_STEP2_ERROR in finish
+    # B13 round 48 C3458: v45 says it after any folder result, outside the none's parenthesis
+    assert 'add "step 2 ended with an error (exit <code>): see the NEXT: line below"' not in finish
+
+
+def test_the_v45_step1_stops_only_with_no_synced_line_and_tells_n_more_first_c3420_c3456_c3464(
+    oneshot_env: dict[str, str],  # noqa: F811
+) -> None:
+    """B13 round 48 C3420 with C3456 and C3464 (ruling 231): v44's step 1 went to step 3's report with no
+    unmarked row left, which also caught a set-up Mac whose every row is [synced] (so its first exception's
+    install or upgrade never ran), a list cut by ``(N more)`` and one whose only rows carry a rename mark.
+    v45 stops so only with no ``already synced on this Mac:`` line, tells a ``(N more)`` line first and asks
+    about it, a decline being no none, and sends a set-up Mac to step 2 with no --source-local. Held to a
+    real list over a config that syncs every listed folder."""
+    from agentsync.config import local_source_table  # noqa: PLC0415
+
+    env = oneshot_env
+    lib = _cloud(env) / "OneDrive-Contoso"
+    for name in ("Alpha", "Beta"):
+        (lib / name).mkdir(parents=True)
+    tables = (local_source_table("alpha", lib / "Alpha"), local_source_table("beta", lib / "Beta"))
+    _write_config(env, _inbox(env), *tables)
+    _tool_python(env)
+    cp = install_sh(env, "--list-folders")
+    assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
+    lines = cp.stdout.splitlines()
+    rows = [ln for ln in lines if "/OneDrive-Contoso/" in ln and not ln.startswith(("NEXT:", "already "))]
+    assert any(ln.startswith("already synced on this Mac:") for ln in lines), lines
+    assert rows and all(ln.startswith("[synced] ") for ln in rows), rows
+    step1 = _prompt_steps()[1]
+    more = 'If the list ends with a "(N more)" line, tell me N folders are not shown'
+    stop = (
+        'With no unmarked row left to offer: if the list printed a line that starts "already synced on this'
+        ' Mac:", the first exception below applies (its sign-in wait, or step 2 with no --source-local);'
+        ' otherwise, if it ends with a "(N more)" line or holds a row with one of the two rename marks below,'
+        " ask only whether I want to name a folder by its full path or rename one, and if I name none or you"
+        " cannot ask me, do not wait and log nothing (that is no none: run no --no-folder) and go to step 3's"
+        " report; otherwise ask no folder question and go to step 3's report."
+    )
+    assert stop in step1 and step1.index(more) < step1.index(stop), step1
+    assert "With no unmarked row left to offer, ask no folder question" not in step1
+    first = (
+        "ask only whether to add any unmarked folder; with no unmarked row in the list, ask no folder"
+        ' question (unless a "(N more)" line leaves folders out, as above) and go on to step 2 with no'
+        " --source-local."
+    )
+    assert first in step1 and step1.index("Two exceptions.") < step1.index(first)
+
+
+def test_the_v45_chosen_folder_that_came_back_held_goes_to_the_report_c3433_c3500(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 48 C3433 and C3500 (ruling 231, makes worse True for a bare "every"): with an unmarked row
+    left, v44's step 2 rule for a chosen folder that came back ``already configured ... paused`` and its
+    no-folder NEXT rule read two ways, and "every folder I chose" held for a run that chose none. Step 1's
+    last sentences and step 2's no-folder rule send a run that chose at least one folder, each come back held,
+    to step 3's report, never --no-folder. Held to add-source's own line over a paused folder beside an
+    unmarked one."""
+    from agentsync import cli  # noqa: PLC0415
+    from agentsync import config as agentsync_config  # noqa: PLC0415
+
+    home = tmp_path / "home"
+    held, other = home / "Kestrel Plans", home / "Wombat Notes"
+    held.mkdir(parents=True)
+    other.mkdir()
+    cfg = home / "sources.toml"
+    cfg.write_text(
+        f"[agentsync]\ndocs_repo = {agentsync_config.toml_string(str(home / 'docs'))}\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTSYNC_CONFIG", str(cfg))
+    assert cli.main(["init"]) == cli.EXIT_OK
+    assert cli.main(["add-source", str(held)]) == cli.EXIT_OK
+    text = cfg.read_text(encoding="utf-8")
+    cfg.write_text(text.replace('kind = "local"', 'kind = "local"\nstate = "paused"', 1), encoding="utf-8")
+    capsys.readouterr()
+    assert cli.main(["add-source", str(held)]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    [told] = [ln for ln in out.splitlines() if ln.startswith("already configured: source ")]
+    assert re.match(r"already configured: source '[^']+' \(local, paused\) has path ", told), told
+    assert str(other) not in cfg.read_text(encoding="utf-8"), "an unmarked folder is left"
+    step1, step2 = _prompt_steps()[1], _prompt_steps()[2]
+    nor = (
+        'Nor ask when I chose at least one folder and step 2 printed an "already configured" line marked'
+        " paused or retired for each folder I chose: tell me those lines and go to step 3's report, as step 2"
+        " says (that is no none either: run no --no-folder)."
+    )
+    assert nor in step1 and step1.index(nor) > step1.index("Whatever happened above, if step 2")
     assert (
-        "if step 2's last run this session exited other than 0 and was not a bare run that ended on \"no"
-        " folder"
-        ' to sync yet", add "step 2 ended with an error (exit <code>): see the NEXT: line below"'
-    ) in finish
+        'after a none, or when every folder I chose, at least one, came back "already configured" as paused'
+        " or retired, go to step 3's report as they say), not its add-source"
+    ) in step2
+    assert (
+        "(I did not answer none); its no-folder NEXT: line does not send you back to the folder question."
+    ) in step2
+
+
+def test_the_v45_reruns_step_2_for_a_folder_named_after_a_none_c3505() -> None:
+    """B13 round 48 C3505 (ruling 227, makes worse True for loop's words): after a completed none, status's
+    and sync's NEXT names add-source for a folder the person chooses later, which no step 2 line credits.
+    loop.NO_FOLDER_CHOSEN_LOOP_NEXT keeps its words for every later session; v45 says that add-source is not
+    for this session and a folder named later reruns step 2 with --source-local."""
+    from agentsync import loop  # noqa: PLC0415
+
+    said = loop.NO_FOLDER_CHOSEN_LOOP_NEXT
+    assert said.startswith("the person chose no folder, so this Mac syncs none of their folders")
+    assert 'if they choose one later, the run is: `~/.local/bin/agentsync add-source "<folder>"`' in said
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    assert re.search(r'^NO_FOLDER_CHOSEN_NEXT="the person chose no folder,', script, re.M)
+    step2 = _prompt_steps()[2]
+    assert (
+        'A later NEXT: line that says I chose no folder names an add-source "if they choose one later": that'
+        " is not for this session; if I name a folder later this session, run step 2 again with one"
+        ' --source-local per folder I name (no --no-folder), so its "added source" lines name them.'
+    ) in step2
+    assert step2.index(NO_FOLDER_TOLD) < step2.index("A later NEXT: line that says I chose no folder")
+
+
+def test_the_v45_runs_the_land_gates_chmod_of_one_page_once_c3530(tmp_path: Path) -> None:
+    """B13 round 48 turn C3530 (ruling 223): the land gate's fix for a page this account cannot read is a
+    chmod 600 it calls "the person's or the agent's step", but v44 let the agent run only install.sh and
+    agentsync commands, a click and chmods of agentsync's state files, so it stopped at step 2. v45 lets it
+    run that chmod as written, once per page, then the same command, a repeat or a fix with no command going
+    to the report, in step 2 and step 3 alike; the rules call it no edit of the mirror. Held to lints' own
+    words for an EACCES page."""
+    import errno  # noqa: PLC0415
+
+    from agentsync import lints  # noqa: PLC0415
+
+    fix = lints._unreadable_page(tmp_path, "mirror/contoso/plan.md", PermissionError(errno.EACCES, "denied"))
+    owner = "(the person's or the agent's step; the content is untouched)"
+    assert "restore its read bit with `chmod 600 " in fix and owner in fix, fix
+    assert "the land gate blocked" in SCRIPTS[0].read_text(encoding="utf-8")
+    step2, step3 = _prompt_steps()[2], _prompt_steps()[3]
+    assert (
+        "If the NEXT: line says the land gate blocked a commit and the fix it gives for the first BLOCKING"
+        f' line is a chmod 600 of one page under ~/agent-context/docs ("{owner[1:-1]}")'
+    ) in step2
+    assert (
+        "run it as written, once per page, then the same install.sh command again; if that fix names no"
+        " command, or the re-run's NEXT: line names a page you already fixed, show me the BLOCKING lines, log"
+        " it and go to step 3's report."
+    ) in step2
+    assert "a click for me, those chmods or the land gate's page fix above; otherwise" in step2
+    assert (
+        "If a sync's NEXT: line says the land gate blocked its commit and gives a chmod 600 of one page or a"
+        " git checkout of one page"
+    ) in step3
+    assert (
+        "run it once per page, as in step 2, then the sync again; if the same BLOCKING line comes back"
+    ) in step3
+    rules = _preamble()
+    assert (
+        "is none of these, and neither is the land gate's chmod 600 or git checkout of one mirror page, as"
+        " step 2 says)"
+    ) in rules
+    assert "never edit it (the land gate's chmod 600 or git checkout of one page, as step 2 says, is" in rules
+
+
+def test_the_v45_finish_names_a_failed_step_2_outside_the_none_c3458(
+    oneshot_env: dict[str, str],  # noqa: F811
+) -> None:
+    """B13 round 48 C3458 (ruling 231): v44's Finish kept a failed step 2 inside the none's parenthesis, so a
+    run that listed folders or an unknown never said it, and it pointed at a NEXT: line a usage error never
+    prints. v45 says it after any folder result, and quotes the usage error line when there is no NEXT: line,
+    as step 2 shows it. Held to a pre-parse usage error: exit 2, no NEXT: line."""
+    env = oneshot_env
+    cp = install_sh(env, "--source-local", "")
+    assert cp.returncode == 2 and "NEXT:" not in cp.stdout, cp.stdout + cp.stderr
+    assert "usage error: --source-local needs a folder (see --help)" in cp.stderr
+    finish = _prompt_steps()[3].split("Finish with:", 1)[1]
+    assert FINISH_STEP2_ERROR in finish and FINISH_NONE_GUARD in finish
+    assert finish.index(FINISH_NONE_GUARD) < finish.index(REFUSED_CONFIG) < finish.index(FINISH_STEP2_ERROR)
+    assert (
+        "by its usage error line quoted when it printed no NEXT: line (as step 2 says)"
+    ) in FINISH_STEP2_ERROR
+    assert "show me its usage error line and do not do what that line says" in _prompt_steps()[2]
+
+
+def test_the_v45_finish_reads_loads_not_checked_from_either_report_c3428_c3463() -> None:
+    """B13 round 48 C3428 with C3463 (ruling 231): v44's Finish said only the shell report prints ``loads: not
+    checked``, while since round 47 C3335 the agentsync report prints it for a config behind a folder this
+    account cannot search. v45 names both; the branch and its place before ``loads: no:`` are unchanged."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    assert setup_report.CONFIG_UNREACHED_LOADS == "- loads: not checked (this account cannot reach it)"
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    assert 'say "- loads: not checked (this account cannot reach it)"' in script
+    finish = _prompt_steps()[3].split("Finish with:", 1)[1]
+    assert UNCHECKED_CONFIG in finish and finish.index(UNCHECKED_CONFIG) < finish.index('"loads: no:"')
+    assert "(the shell report, when agentsync could not run)" not in finish
+
+
+def test_the_v45_step1_never_offers_a_held_rows_marks_or_pastes_an_escaped_row_c3419_c3426_c3506(
+    oneshot_env: dict[str, str],  # noqa: F811
+) -> None:
+    """B13 round 48 turn C3419 with C3426 and C3506 (ruling 220, the prompt halves, ruling 231): lane RB's
+    list marks a folder inside a paused or retired one ``[inside a paused folder]``, an escaped held row
+    ``[name holds a hidden or control character] [paused]`` in place of the rename mark, and refuses an
+    escaped row pasted as shown, while a lone such folder is added by its real path. v44 named none of the
+    new marks, so a held folder's subfolder or its escaped row read as offerable, and told the person to
+    rename a folder step 2 adds. Held to a real list and a real refusal."""
+    from agentsync.config import local_source_table  # noqa: PLC0415
+
+    env = oneshot_env
+    lib = _cloud(env) / "OneDrive-Contoso"
+    for d in ("Alpha", "Beta/Sub", "Kes\x01trel", "Wren\x02log"):
+        (lib / d).mkdir(parents=True)
+
+    def held(source_id: str, path: Path) -> str:
+        return local_source_table(source_id, path).replace(
+            'kind = "local"\n', 'kind = "local"\nstate = "paused"\n'
+        )
+
+    _write_config(env, _inbox(env), held("beta", lib / "Beta"), held("kes", lib / "Kes\x01trel"))
+    _tool_python(env)
+    cp = install_sh(env, "--list-folders")
+    assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
+    lines = cp.stdout.splitlines()
+    escaped = f"{ESCAPED_ROW_MARK} {lib}/Wren\\002log"
+    assert f"[inside a paused folder] {lib}/Beta/Sub" in lines, lines
+    assert f"{KEPT_ROW_MARK} [paused] {lib}/Kes\\001trel" in lines and escaped in lines, lines
+    step1 = _prompt_steps()[1]
+    assert (
+        "A row marked [inside a paused folder] or [inside a retired folder] is inside such a folder, so it is"
+        " not synced either: tell me so, and never offer it or pass it to --source-local either. A row that"
+        f" opens with {KEPT_ROW_MARK} and then one of those four marks is such a folder too, under these"
+        " rules: never offer it, and never tell me to rename it."
+    ) in step1
+    pasted = install_sh(env, "--source-local", escaped)
+    assert pasted.returncode == 2, pasted.stdout + pasted.stderr
+    assert f"this is a row step 1 marked {ESCAPED_ROW_MARK}: its shown name is not the folder's own" in (
+        pasted.stderr
+    ), pasted.stderr
+    assert (
+        f"A row that opens with {ESCAPED_ROW_MARK} cannot be pasted as shown (step 2 refuses the row as the"
+        f" list escapes it), and one that opens with {TWIN_ROW_MARK} is refused while that other folder is"
+        " there"
+    ) in step1
+    assert "cannot be chosen" not in step1
+
+
+def test_the_v45_runs_the_land_gates_checkout_of_one_page_in_lane_bs_words_c3421() -> None:
+    """B13 round 48 C3421 (ruling 223, the prompt half, ruling 231): lane B's hand-edit finding puts a mirror
+    page back with a ``git checkout`` of that one page and names it the agent's step, and a first finding with
+    no command ends on ``this finding has no fix for the agent``. v44's never-edit and no-reset rules forbade
+    both readings. v45's step 2 runs that checkout as written, once per page, matched on lints' own owner
+    words, its rules call it no edit, and step 3 goes to the report on the no-fix words. Held to
+    loop.land_gate_step over the finding lints writes."""
+    from agentsync import lints, loop  # noqa: PLC0415
+    from agentsync.model import LintFinding  # noqa: PLC0415
+
+    owner = lints.CHECKOUT_OWNER
+    assert owner == "(the agent's step: it puts back agentsync's own page and discards only the hand edit)"
+    page = "mirror/contoso/plan.md"
+    fix = (
+        "body does not match rendered_sha256: mirror/ is written only by agentsync (hand edit?); restore it"
+        f" with `{lints._checkout_advice(Path('/tmp/docs'), page)}` {owner}"
+    )
+    step = loop.land_gate_step([LintFinding("FRONTMATTER", page, fix)])
+    assert step is not None and step.startswith(
+        "the land gate blocked this sync's commit (1 blocking finding"
+    )
+    assert "git --literal-pathspecs -C" in step and step.endswith(f"{owner}; then run `{loop.BIN} sync`"), (
+        step
+    )
+    bare = loop.land_gate_step([LintFinding("SECRET", page, "a secret-shaped string")])
+    assert bare is not None and bare.endswith(loop.LAND_GATE_NO_FIX), bare
+    step2, step3 = _prompt_steps()[2], _prompt_steps()[3]
+    assert f'or a git checkout of one page marked "{owner}", run it as written, once per page' in step2
+    assert (
+        'or the NEXT: line says "this finding has no fix for the agent", show me the BLOCKING lines' in step3
+    )
+    assert loop.LAND_GATE_NO_FIX.startswith("this finding has no fix for the agent")
+    assert "puts back agentsync's own page). If a command fails" in _preamble()
 
 
 def test_the_v40_prompt_reads_only_lines_setup_prints_in_every_branch_c2406_c2408_c2419_c2523() -> None:
@@ -5852,8 +6208,9 @@ def test_the_v39_prompt_reads_the_paths_and_folder_states_setup_printed_c2316_c2
     whatever = (
         "Whatever step 2's exit status, if its NEXT: line says no folder is synced yet or no folder to sync"
         " yet, do as step 1's last sentences say (ask me which folders, then run step 2 again with one"
-        " --source-local per folder; after a none, go to step 3's report as they say), not its add-source or"
-        " --list-folders re-run, and do not start step 3's sync loop."
+        " --source-local per folder; after a none, or when every folder I chose, at least one, came back"
+        ' "already configured" as paused or retired, go to step 3\'s report as they say), not its add-source'
+        " or --list-folders re-run, and do not start step 3's sync loop."
     )
     assert whatever in step2
     assert step2.index(whatever) < step2.index(
@@ -6175,12 +6532,16 @@ KEPT_ROW_MARK = "[name holds a hidden or control character]"
 """The mark before an escaped row already kept, [synced] or [inside a synced folder] (lane RB's
 ESCAPED_KEPT_MARK, B13 round 37 ruling 121)."""
 V36_RENAME = (
-    f"A row that opens with {ESCAPED_ROW_MARK} or {TWIN_ROW_MARK} cannot be chosen: if I want that folder,"
-    " tell me to rename it in its sync app (for the second mark, it or the other folder it reads as); once"
+    f"A row that opens with {ESCAPED_ROW_MARK} cannot be pasted as shown (step 2 refuses the row as the list"
+    f" escapes it), and one that opens with {TWIN_ROW_MARK} is refused while that other folder is there: if I"
+    " want that folder, tell me to rename it in its sync app (for the second mark, it or the other folder it"
+    " reads as); once"
     f" I say it is renamed, run {INSTALL_SH} --list-folders again (not step 1's whole command, which opens a"
     " new attempt) and go by what it prints."
 )
-"""Step 1's v36 sentence on the two rename marks (B13 round 37 ruling 121: C1201, C1242, C1308, C1275)."""
+"""Step 1's v36 sentence on the two rename marks (B13 round 37 ruling 121: C1201, C1242, C1308, C1275),
+since v45 naming what step 2 refuses, a row pasted as shown or a folder beside its look-alike, never
+"cannot be chosen" (B13 round 48 turn C3419, ruling 220)."""
 
 
 def test_readme_step1_says_a_marked_row_cannot_be_chosen() -> None:
@@ -6241,7 +6602,9 @@ def test_every_mark_the_prompt_quotes_sits_whole_on_one_block_line_c1402() -> No
         "ESCAPED_KEPT_MARK",
         "PAUSED_MARK",
         "RETIRED_MARK",
-    }, quoted  # B13 round 47 C3332: lane RB's marks for a folder sources.toml holds paused or retired
+        "INSIDE_PAUSED_MARK",
+        "INSIDE_RETIRED_MARK",
+    }, quoted  # B13 round 47 C3332: lane RB's held marks; round 48 C3506 (v45): the inside-held ones
     for name in sorted(quoted):
         assert any(marks[name] in line for line in lines), f"{name} is split across the block's lines"
     for line in lines:
@@ -6337,7 +6700,10 @@ def test_the_guides_name_every_mark_a_folder_row_opens_with_c1280() -> None:
         for shown in ("a newline as `\\n`", "a tab as `\\t`", "a carriage return as `\\r`"):
             assert shown in text, shown
         assert "then run `install.sh --list-folders` again, not the whole of step 1" in text
-        assert "is such a folder already kept: nothing to rename and nothing to paste" in text
+        assert (
+            "is such a folder already kept, and one that opens with it and then `[paused]`" in text
+        )  # C3426
+        assert "and not synced: nothing to rename and nothing to paste" in text
 
 
 def test_the_guides_name_every_character_the_list_escapes_c1455() -> None:
@@ -6525,7 +6891,9 @@ def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
         "Two exceptions. First, if --list-folders printed a line that starts "
         f'"{ALREADY_SYNCED}", I chose those folders before and they are kept (each has [synced] before its '
         f"path in the list). {SIGNED_OUT} {SIGNED_OUT_UNASKED} If the list's NEXT: line does not ask me to "
-        "sign in and then re-run, tell me which they are and ask only whether to add any unmarked folder. "
+        "sign in and then re-run, tell me which they are and ask only whether to add any unmarked folder;"
+        ' with no unmarked row in the list, ask no folder question (unless a "(N more)" line leaves folders'
+        " out, as above) and go on to step 2 with no --source-local. "
         f"{GONE_FOLDER} {KEPT_UNASKED} That is not a deviation: do not log it or stop, and say in your final "
         "message that I gave no answer, so no folder was added."
     )
@@ -6742,7 +7110,10 @@ NO_FOLDER_RECOVERY = (
     " marked"
     " [paused] or [retired]; with no unmarked row left, ask nothing and go to step 3's report (that is no"
     " none:"
-    " run no --no-folder). If earlier this session I answered this question, which"
+    ' run no --no-folder). Nor ask when I chose at least one folder and step 2 printed an "already'
+    ' configured" line marked paused or retired for each folder I chose: tell me those lines and go to step'
+    " 3's report, as step 2 says (that is no none either: run no --no-folder). If earlier this session I"
+    " answered this question, which"
     " folders to sync, with none (my answer to the exceptions' question whether to add a folder does not"
     " count), do not ask again: run step 2's --no-folder command as step 2 says (its exit status and NEXT:"
     " line first), then go to step 3's report. If you cannot ask me, do not choose them for me: log a"
@@ -9996,9 +10367,16 @@ without its ``note: `` head; C3257's at §16.21's item 2, the loop line's ``inbo
 (ruling 210); C3218's at §16.22's heartbeat bullet, the inbox warn's pointer at ``source.<id>.listable``."""
 _ROUND_48_D_PARAGRAPH_AMENDS = (
     ("16.294", "**COMMON.md's rulings 199, 202, 204 and 205 take round 47's dated lines", "§16.299 C3431"),
+    (
+        "16.294",
+        "**Setup prompt v44: a run read to its exit, an error keyed on its exit code",
+        "§16.299 C3420",
+    ),
+    ("16.100", "**Lane RB's words** (N29, N61, N41, N25, N71;", "§16.299 C3428"),
 )
 """Round 48 lane D's dated lines at paragraphs that name no item: C3431's at §16.294's rulings paragraph, lane
-E's round 47 range running to 5262647cd (ruling 230)."""
+E's round 47 range running to 5262647cd (ruling 230); v45's at §16.294's v44 paragraph (C3420 with C3456 and
+C3464, C3433, C3500, C3458) and at §16.100's N25 quote (C3428 with C3463), ruling 231."""
 _ROUND_48_B_PARAGRAPH_AMENDS = (
     ("15", "Amended 2026-11-27, §16.297 C3534: `commit_cycle` takes a keyword `accounted`", "§16.297 C3534"),
     ("16.29", "`mirror/` and `.git` are still not walked: the publisher writes pages 0600", "§16.297 C3536"),
@@ -14708,8 +15086,8 @@ def test_readme_step2_gives_the_agent_the_chmod_of_its_own_state() -> None:
     assert step2.count(STATE_CHMOD_IS_YOURS) == 1
     assert f"{FAIL_IS_MINE} {STATE_CHMOD_IS_YOURS} " in step2, "right after the [FAIL] rule it widens"
     assert (
-        f"{PERSONS_NEXT} it is an install.sh or agentsync command, a click for me or those chmods; otherwise"
-        in step2
+        f"{PERSONS_NEXT} it is an install.sh or agentsync command, a click for me, those chmods or the land"
+        " gate's page fix above; otherwise" in step2
     )
     # B13 round 22 Z59, Z8: install.sh's status step names the chmods of any state check; Z81: a folder's NEXT
     # adds the status the grant's "if the NEXT: line also says to run" reads; round 26 E54: only a chmod that
