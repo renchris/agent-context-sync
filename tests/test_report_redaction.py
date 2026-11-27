@@ -4482,6 +4482,18 @@ _C3406_ROWS = [
     ("cd ~olga then", "cd ~<user> then"),
     ("~ten/x is here", "~<user>/<path> is here"),
     ("~tenth is no quantity", "~<user> is no quantity"),
+    # C3406 review: a "/" after the word is no quantity's end; one "." before the end is
+    ("ls ~ten/ now", "ls ~<user>/ now"),
+    ("ls ~ten/", "ls ~<user>/"),
+    ("~twenty/ x", "~<user>/ x"),
+    ("~ten//x", "~<user>//x"),
+    ("took ~ten.", "took ~ten."),
+    ("took ~few.", "took ~few."),
+    ("~tenth", "~<user>"),
+    ("~olga", "~<user>"),
+    ("~ten/x", "~<user>/<path>"),
+    ("~ten./x", "~<user>/<path>"),
+    ("~hundreds", "~<user>"),
 ]
 
 
@@ -4537,7 +4549,13 @@ def test_both_reports_keep_a_tilde_quantity_word_c3406(
     juniper = _cloud(env) / "OneDrive-Contoso" / "Juniper Notes"
     juniper.mkdir(parents=True)
     body = default_config_text() + local_source_table("juniper", juniper)
-    said = ["took ~twenty seconds", "took ~ten, then", "ran ls ~olga to check", "~ten/x is here"]
+    said = [
+        "took ~twenty seconds",
+        "took ~ten, then",
+        "ran ls ~olga to check",
+        "~ten/x is here",
+        "took ~ten.",
+    ]
     home = Path(env["HOME"])
     lines, python, shell_private, python_private = _both_reports(
         env,
@@ -4553,6 +4571,7 @@ def test_both_reports_keep_a_tilde_quantity_word_c3406(
         "took ~ten, then",
         "ran ls ~<user> to check",
         "~<user>/<path> is here",
+        "took ~ten.",
     ], python
     if shell:
         assert lines == python and shell_private == python_private, (lines, python)

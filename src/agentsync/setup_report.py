@@ -825,6 +825,9 @@ _TILDE_LOGIN = r"(?:[A-Za-z_][A-Za-z0-9._-]*|<(?!(?:user|path)>)[a-z]+(?:-[0-9]+
 
 _TILDE_QUANTITY = "|".join(sorted(report_cuts.TILDE_QUANTITY_WORDS, key=lambda w: (-len(w), w)))
 """B13 round 48 C3406: :data:`report_cuts.TILDE_QUANTITY_WORDS` as one alternation, longest first."""
+_QUANTITY_END = rf"\.?(?![^{_cut_class('blank', 'end', 'stop')}])"
+"""B13 round 48 C3406 (review): where a spared quantity word ends: one ``.`` at most (``took ~ten.``), then
+:data:`_PATH_END`'s end without its ``/``, so ``~ten/`` and ``~ten./x`` are no quantity and are cut."""
 
 
 def _other_login_re(logins: Iterable[str], spaced: Iterable[str] = (), named: Iterable[str] = ()) -> str:
@@ -837,7 +840,8 @@ def _other_login_re(logins: Iterable[str], spaced: Iterable[str] = (), named: It
     a blank as :func:`_home_rest` reads them. ``~/``, ``~+`` and ``~-`` hold no login. B13 round 48 C3406
     (ruling 217): the bare form, a login with only a path's end after it, spares a
     :data:`report_cuts.TILDE_QUANTITY_WORDS` word in any case (``took ~twenty seconds``), as install.sh's
-    ``tilde()`` does; the ``/`` and quoted forms do not. B13 round 48 C3402 (ruling 217): each of ``named``
+    ``tilde()`` does, a word with only one ``.`` and no ``/`` after it (:data:`_QUANTITY_END`); the ``/`` and
+    quoted forms do not. B13 round 48 C3402 (ruling 217): each of ``named``
     (:meth:`Redactor.add_tilde_login`, a refused value's account) is read as a login too, longest first,
     whatever characters it holds."""
     login = "".join(f"(?!{re.escape(u)}{_PATH_END})" for u in logins)
@@ -845,7 +849,7 @@ def _other_login_re(logins: Iterable[str], spaced: Iterable[str] = (), named: It
     word = f"(?:{names}{_TILDE_LOGIN})" if names else _TILDE_LOGIN
     head = rf"~{login}{word}"
     quoted = "".join(rf"(?<={q}){head}/(?:[^{q}\n\\]|\\.)+(?={q})|" for q in ('"', "'", "`"))
-    bare = rf"~(?!(?i:{_TILDE_QUANTITY}){_PATH_END}){login}{word}{_PATH_END}"
+    bare = rf"~(?!(?i:{_TILDE_QUANTITY}){_QUANTITY_END}){login}{word}{_PATH_END}"
     return rf"{quoted}(?<![A-Za-z0-9_.~-])(?:{head}/{_home_rest(spaced)}|{bare})"
 
 
