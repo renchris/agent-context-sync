@@ -48020,6 +48020,9 @@ pages a sync already writes, still no change and no commit. Tests: `test_hand_ed
 Amended 2026-11-27, §16.297 C3448: the finding now reads ``restore it with `(umask 077 && git --literal-pathspecs -C
 <docs_repo> checkout -- '<page>')` (the agent's step: it puts back agentsync's own page and discards only the hand edit)``
 (C3421), so a page named `a[b].md` no longer puts back `ab.md` as well.
+Amended 2026-11-27, §16.297 C3536: a sync clears group and other bits on mirror pages whether or not it publishes
+them (`cycle._tighten_own_paths` walks `mirror/` under `_OWN_WALK`), so a page chmod 644 by hand is 600 after any sync
+and status's fix names the sync, not a chmod.
 
 **A blocked sync says it was blocked, and an unreadable page names its chmod** (C3227; ruling 212; amends item 13
 of §14). A page the land gate could not read was `unreadable file`, the run line `commit none (no content change)`,

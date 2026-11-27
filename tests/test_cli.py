@@ -413,6 +413,37 @@ def test_the_lints_checkout_command_puts_a_hand_edited_page_back_owner_only_c322
     assert doctor._check_permissions(initialised)[0].ok
 
 
+def test_a_page_chmod_644_by_hand_is_600_after_a_sync_that_does_not_write_it_c3536(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 48 C3536, ruling 224: C3226 cleared a page's group and other bits only when a sync wrote the
+    page, so one chmod 644 by hand stayed 644 through every sync that left it alone and status failed
+    docs_repo.permissions. Status's fix names the sync, and a sync with nothing to commit makes it 600; a
+    symlink in the mirror is never followed or changed."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
+    repo, page = initialised.docs_repo, _a_mirror_page(initialised)
+    head = git(repo, "rev-parse", "HEAD")
+    page.chmod(0o644)
+    [found] = doctor._check_permissions(initialised)
+    assert not found.ok and found.fix == "run ~/.local/bin/agentsync sync, which makes these owner-only"
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert git(repo, "rev-parse", "HEAD") == head  # nothing to commit
+    assert stat.S_IMODE(page.stat().st_mode) == 0o600
+    assert doctor._check_permissions(initialised)[0].ok
+    # a symlink in the mirror (the land gate blocks it) is never followed: its target keeps its mode
+    outside = repo.parent / "outside.txt"
+    outside.write_text("not agentsync's\n", encoding="utf-8")
+    outside.chmod(0o644)
+    link = page.parent / "a-link-by-hand"
+    link.symlink_to(outside)
+    page.chmod(0o644)
+    cycle_mod._tighten_own_paths(initialised)
+    assert stat.S_IMODE(page.stat().st_mode) == 0o600
+    assert stat.S_IMODE(outside.stat().st_mode) == 0o644 and link.is_symlink()
+
+
 @pytest.mark.parametrize(
     ("key", "spelled"),
     [("log_dir", "{home}"), ("log_dir", "{home}/x/.."), ("cache_dir", "{home}"), ("state_dir", "{home}")],

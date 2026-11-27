@@ -663,7 +663,9 @@ def test_a_cycle_makes_its_own_paths_owner_only_and_a_dry_run_does_not(sample_co
     assert porcelain(repo) == "?? NOTES.txt\n"
 
 
-def test_tightening_follows_no_symlink_and_leaves_the_mirror_walk_to_the_publisher(tmp_path: Path) -> None:
+def test_tightening_follows_no_symlink_and_walks_the_mirror_c3536(tmp_path: Path) -> None:
+    """The mirror was left to the publisher, so a page chmod 644 by hand stayed so through every sync that did
+    not write it; it is walked now, as the agent's trees are (B13 round 48 C3536, ruling 224)."""
     repo, outside = tmp_path / "docs", tmp_path / "outside"
     for d in (repo / "_eval", repo / "topics", repo / "mirror" / "src", repo / "other" / "deep", outside):
         d.mkdir(parents=True)
@@ -678,13 +680,15 @@ def test_tightening_follows_no_symlink_and_leaves_the_mirror_walk_to_the_publish
     (repo / "top-link").symlink_to(outside / "kept.txt")
     config = own_config(tmp_path, repo)
     config.cache_dir.symlink_to(outside, target_is_directory=True)  # a cache folder that is a link
-    assert cycle_mod._tighten_own_paths(config) == 2  # the two top-level folders themselves, nothing else
-    assert mode(repo / "mirror") == mode(repo / "other") == 0o700
-    assert {mode(f) for f in loose} == {0o644}
-    assert mode(outside) == 0o755 and mode(repo / "mirror" / "src") == 0o755
+    # the two top-level folders themselves, and below mirror/ its folder and its page
+    assert cycle_mod._tighten_own_paths(config) == 4
+    assert mode(repo / "mirror") == mode(repo / "other") == mode(repo / "mirror" / "src") == 0o700
+    assert mode(repo / "mirror" / "src" / "page.md") == 0o600
+    assert {mode(f) for f in (loose[0], loose[2])} == {0o644}
+    assert mode(outside) == 0o755
     # What a sync leaves is the chmod's: the fix names no sync that would not clear it.
     left = cycle_mod._sync_leaves(config, [*loose[1:], repo / "mirror" / "src", repo / "_eval" / "file-link"])
-    assert left == [*loose[1:], repo / "mirror" / "src", repo / "_eval" / "file-link"]
+    assert left == [loose[2], repo / "_eval" / "file-link"]
     assert "chmod -R go-rwx" in (permissions(config).fix or "")
     assert cycle_mod._tighten_own_paths(config) == 0
     assert cycle_mod._tighten_own_paths(own_config(tmp_path, tmp_path / "missing")) == 0

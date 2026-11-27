@@ -1399,6 +1399,8 @@ def _clear_staging(staging: Path) -> None:
 
 
 _AGENT_TREES = ("_eval", "topics")  # docs-repo folders a coding agent writes, under its own umask
+# and the mirror, whose page a person may chmod by hand: a sync that does not write it still clears it (C3536)
+_WALKED_TREES = (*_AGENT_TREES, "mirror")
 _OWN_WALK = 2000  # entries looked at below each tree that is made owner-only (status samples 500 a tree)
 # How an own path is opened: never through a symlink, and never waiting (a FIFO opens at once).
 _NO_LINK = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
@@ -1504,8 +1506,9 @@ def _below(tree: Path, top: str | Path, dir_fd: int | None = None) -> Iterator[_
 
 
 def _in_repo(repo: Path) -> Iterator[_Own]:
-    """Each entry at the top of the docs repo, then what is below :data:`_AGENT_TREES`, all of it reached
-    from one descriptor on the repo.  A docs repo that is not made yet, or is a symlink, has none."""
+    """Each entry at the top of the docs repo, then what is below :data:`_WALKED_TREES` (the agent's trees
+    and ``mirror/``), all of it reached from one descriptor on the repo.  A docs repo that is not made yet,
+    or is a symlink, has none."""
     try:
         fd = _open_folder(repo)
     except OSError:
@@ -1515,7 +1518,7 @@ def _in_repo(repo: Path) -> Iterator[_Own]:
             dirs, rest = _listed(fd)
             for name in sorted((*dirs, *rest)):
                 yield repo / name, name, fd
-        for name in _AGENT_TREES:
+        for name in _WALKED_TREES:
             yield from _below(repo / name, name, fd)
     finally:
         os.close(fd)
@@ -1565,10 +1568,13 @@ def _own_paths(config: Config) -> Iterator[Path]:
     ``docs_repo.permissions`` looks at.  The agent-context folder (the config's folder when the docs repo
     is inside it and it is not the home folder, which is the check's rule), the docs repo and every entry
     at its top (the entry itself, not its contents), the cache folder and the log folder; then what is
-    below :data:`_AGENT_TREES`, the cache folder and the log folder: at most :data:`_OWN_WALK` entries a
+    below :data:`_WALKED_TREES`, the cache folder and the log folder: at most :data:`_OWN_WALK` entries a
     tree, in the order the check walks them, so the walk is bounded and still reaches every entry the
-    check samples.  ``mirror/`` and ``.git`` are not walked: the publisher writes pages 0600 and git
-    writes under ``core.sharedRepository``, which ``gitops.ensure_repo`` sets.  A tree that is a symlink
+    check samples.  ``mirror/`` is walked: the publisher writes pages 0600, but a page chmod 644 by hand kept
+    that mode through every sync that did not write it, and status failed docs_repo.permissions with a
+    chmod as its fix (B13 round 48 C3536, ruling 224); a sync now clears it whether or not it publishes the
+    page.  ``.git`` is not walked: git writes under ``core.sharedRepository``, which ``gitops.ensure_repo``
+    sets.  A tree that is a symlink
     is not walked, nor is anything in a docs repo that is one, and a cache or log folder that is the home
     folder, or holds it, is not agentsync's alone: it is left out, however it is spelled
     (:func:`_holds_home`)."""

@@ -1635,7 +1635,8 @@ def test_the_permissions_fix_under_home_runs_as_the_report_shows_it(tmp_path: Pa
     ctx.chmod(0o700)
     repo.chmod(0o700)
     subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True)
-    page = repo / "mirror" / "x" / "page.md"  # inside mirror/: no sync walks it, so the fix is the chmod
+    # below a folder no sync walks (mirror/ is walked since B13 round 48 C3536), so the fix is the chmod
+    page = repo / "other" / "x" / "page.md"
     page.parent.mkdir(parents=True)
     page.write_text("Contoso\n", encoding="utf-8")
     page.chmod(0o644)
@@ -1672,7 +1673,7 @@ def test_a_cache_or_log_folder_that_holds_home_is_a_fail_and_no_chmod_target(tmp
     ctx.chmod(0o700)
     repo.chmod(0o700)
     subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True)
-    page = repo / "mirror" / "x" / "page.md"
+    page = repo / "other" / "x" / "page.md"  # no sync walks it (mirror/ is walked since B13 round 48 C3536)
     page.parent.mkdir(parents=True)
     page.write_text("Contoso\n", encoding="utf-8")
     page.chmod(0o644)

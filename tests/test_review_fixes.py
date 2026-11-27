@@ -1020,12 +1020,14 @@ def test_sg12_cli_runs_owner_only_and_doctor_flags_readable_repos(tmp_path: Path
     run(config)
     ok = {r.name: r for r in doctor.run_checks(config)}["docs_repo.permissions"]
     assert ok.ok
-    # A page inside mirror/ is the publisher's (written 0600) and no sync walks it: the fix is the chmod.
+    # A page inside mirror/ is the publisher's (written 0600), and a sync walks mirror/ since B13 round 48
+    # C3536: a page chmod 644 by hand is cleared by the next sync, so the fix names the sync.
     mirror = config.docs_repo / "mirror"
     page = next(p for p in sorted(mirror.rglob("*.md")) if p.parent != mirror)  # a page, not the guide
     page.chmod(0o644)
     bad = {r.name: r for r in doctor.run_checks(config)}["docs_repo.permissions"]
-    assert not bad.ok and bad.severity is doctor.Severity.ERROR and "chmod -R go-rwx" in (bad.fix or "")
+    assert not bad.ok and bad.severity is doctor.Severity.ERROR
+    assert bad.fix == "run ~/.local/bin/agentsync sync, which makes these owner-only"
     # The mirror folder itself is an entry at the top of the docs repo, which a sync makes owner-only.
     page.chmod(0o600)
     (config.docs_repo / "mirror").chmod(0o755)

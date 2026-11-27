@@ -18282,8 +18282,11 @@ def test_a_rerun_clears_the_permissions_agentsync_owns_before_status_can_stop_on
         ("report", "done", "0", "agentsync"),
     ]
 
-    # No false green: a page inside mirror/ is the publisher's, and neither setup nor a sync walks that tree.
-    page = next(p for p in sorted((docs / "mirror").rglob("*.md")) if p.parent != docs / "mirror")
+    # No false green: a file below a docs-repo folder neither setup nor a sync walks (mirror/ is walked since
+    # B13 round 48 C3536, so a page there is no longer the case).
+    page = docs / "notes-by-hand" / "page.md"
+    page.parent.mkdir()
+    page.write_text("Contoso\n", encoding="utf-8")
     page.chmod(0o644)
     eval_dir.chmod(0o755)
     Path(env["STUB_LOG"]).unlink()
