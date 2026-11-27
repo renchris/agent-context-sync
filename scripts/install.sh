@@ -13938,7 +13938,7 @@ docs_not_a_folder() {
 	DOCS_SHOWN=""
 	if [ "$DRY_RUN" -eq 0 ] && [ -x "$TOOL_PY" ] && [ -f "$CONFIG" ]; then
 		n="$(with_timeout 10 "$TOOL_PY" -I -c '
-import errno, sys
+import errno, stat, sys
 from pathlib import Path
 from agentsync.config import load_config
 from agentsync.paths import expand, is_cloud_path
@@ -13951,6 +13951,21 @@ except NotADirectoryError:
     print("1\t" + shown)
     sys.exit(0)
 except OSError as exc:  # a link loop where the folder belongs is no folder either; anything else says nothing
+    # B13 round 48 ruling 226 (C3466): nothing there, but a link at the path or above it that leads nowhere,
+    # which ensure_repo cannot make a folder through (its mkdir finds the link): no folder either, the inline
+    # probe kept for an older build; not under CloudStorage, where ensure_repo stops on the cloud first
+    if exc.errno == errno.ENOENT and not is_cloud_path(p):
+        for q in (p, *p.parents):
+            try:
+                if not stat.S_ISLNK(q.lstat().st_mode):
+                    continue
+                q.stat()
+            except FileNotFoundError:
+                if q.is_symlink():
+                    print("1\t" + shown)
+                    sys.exit(0)
+            except OSError:
+                pass
     print(("1\t" if exc.errno == errno.ELOOP else "0\t") + shown)
     sys.exit(0)
 cloud = is_cloud_path(p) or is_cloud_path(p.resolve())

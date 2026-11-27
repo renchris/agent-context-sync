@@ -17720,7 +17720,9 @@ DOCS_NOTDIR_NEXT = (
 C3236)."""
 
 
-@pytest.mark.parametrize("case", ["file", "above", "loop", "link-refused-remote", "cloud"])
+@pytest.mark.parametrize(
+    "case", ["file", "above", "loop", "link-refused-remote", "cloud", "dangling", "dangling-above"]
+)
 def test_something_not_a_folder_where_the_docs_repo_belongs_is_the_persons_at_step_2(
     env: dict[str, str], wheel: Path, case: str
 ) -> None:
@@ -17730,7 +17732,8 @@ def test_something_not_a_folder_where_the_docs_repo_belongs_is_the_persons_at_st
     now, keeping a copy, for a file there, a file where a folder above it belongs and a link loop there.
     Judged as ensure_repo judges it, following links: a link to a real docs folder whose remote [governance]
     refuses keeps the governance NEXT; under ~/Library/CloudStorage ensure_repo stops on the cloud first, so
-    the generic NEXT stays."""
+    the generic NEXT stays. B13 round 48 ruling 226 (C3466): a link at the docs path or a folder above it that
+    leads nowhere, which ensure_repo's mkdir cannot pass, is the person's too (the inline probe kept)."""
     _tool_python(env)
     home = Path(env["HOME"])
     _config_step_2_stops_on(env, "GR" if case == "link-refused-remote" else "clean")
@@ -17743,6 +17746,11 @@ def test_something_not_a_folder_where_the_docs_repo_belongs_is_the_persons_at_st
     elif case == "loop":
         docs.parent.mkdir(parents=True, exist_ok=True)
         docs.symlink_to(docs)
+    elif case == "dangling":
+        docs.parent.mkdir(parents=True, exist_ok=True)
+        if docs.is_dir():
+            docs.rename(docs.with_name("docs.old"))
+        docs.symlink_to(home / "nowhere")
     elif case == "link-refused-remote":
         real = docs.with_name("docs.real")
         docs.rename(real)
@@ -17751,6 +17759,9 @@ def test_something_not_a_folder_where_the_docs_repo_belongs_is_the_persons_at_st
         if case == "above":
             (home / "Kestrel").write_bytes(b"a Kestrel note\n")
             docs, shown = home / "Kestrel" / "docs", "~/Kestrel/docs"
+        elif case == "dangling-above":
+            (home / "Wombat").symlink_to(home / "nowhere")
+            docs, shown = home / "Wombat" / "docs", "~/Wombat/docs"
         else:
             docs = _cloud(env) / "OneDrive-Contoso" / "Quokka docs"
             docs.parent.mkdir(parents=True, exist_ok=True)
