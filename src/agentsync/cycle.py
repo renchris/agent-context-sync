@@ -2516,6 +2516,7 @@ class _Cycle:
         # earlier blocked runs' changes this run's commit holds, and those runs (B13 round 47 C3228)
         self._carried: list[MirrorChange] = []
         self._carried_runs: list[int] = []
+        self._commit_view: list[MirrorChange] = []  # the subject's changes, netted against HEAD (C3443)
         self._gate_blocked = False  # the land gate held this run's commit (B13 round 47 C3227)
         self._cycle_failed = False  # the cycle raised and committed nothing (B13 round 48 C3416, ruling 222)
         self._commit_holds_mirror = False  # this run's commit holds a mirror/ path (C3228)
@@ -4063,17 +4064,26 @@ class _Cycle:
         pages under ``sync: 0a 0m 0r 0d`` and a console line saying no source changed a mirror page (B13
         round 47 C3228, ruling 212). Net per page in run order (an add then a change is an add, an add then a
         delete nothing), only pages this run did not change and that are still uncommitted, the filter
-        :meth:`_carry_crashed_changes` applies, so a change undone by ``git checkout`` is not counted."""
+        :meth:`_carry_crashed_changes` applies, so a change undone by ``git checkout`` is not counted.
+
+        The subject counts against HEAD: ``_commit_view`` nets the kept blocked rows, those of the pages this
+        run changed too, with this run's changes, so a page a blocked run added and this run edited is an add,
+        never an ``m`` over an ``A`` (B13 round 48 C3443, ruling 224); the report, the body and the CHANGELOG
+        stay per run. The runs named are every run each kept net change passed through, a rename chain's
+        middle runs included (C3445)."""
+        self._commit_view = list(self.changes)
         runs = self.manifest.failed_runs_with_changes(self.run_id)
         if not runs:
             return
         own = _paths_of(self.changes)
-        by_run = {run: self.manifest.run_changes(run) for run in runs}
-        net = [c for c in _net_changes([c for run in runs for c in by_run[run]]) if not _touches(c, own)]
-        dirty = _dirty_paths(self.repo, sorted(_paths_of(net)))
-        self._carried = [c for c in net if _touches(c, dirty)]
-        held = _paths_of(self._carried)
-        self._carried_runs = [run for run in runs if any(_touches(c, held) for c in by_run[run])]
+        pairs = _net_changes_runs([(run, c) for run in runs for c in self.manifest.run_changes(run)])
+        loose = [(c, through) for c, through in pairs if not _touches(c, own)]
+        dirty = _dirty_paths(self.repo, sorted(_paths_of(c for c, _ in loose)))
+        kept = [(c, through) for c, through in loose if _touches(c, dirty)]
+        self._carried = [c for c, _ in kept]
+        self._carried_runs = sorted({run for _, through in kept for run in through})
+        held = [c for c, _ in pairs if _touches(c, own) or _touches(c, dirty)]
+        self._commit_view = _net_changes([*held, *self.changes])
 
     def _carry_crashed_changes(self, crashed: int) -> None:
         """A crashed run's recorded changes whose pages are still uncommitted become part of this cycle's
@@ -4797,7 +4807,7 @@ class _Cycle:
         body = gitops.commit_body(
             [*self.changes, *uncounted], run_id=self.run_id, mode=self.mode.value, notes=notes
         )
-        subject = gitops.commit_subject([*self._carried, *self.changes, *uncounted], source_ids)
+        subject = gitops.commit_subject([*self._commit_view, *uncounted], source_ids)
         sha = gitops.commit_cycle(self.repo, subject, body, accounted=accounted)
         if sha is not None:
             self._commit_holds_mirror = _commit_holds_mirror(self.repo, sha)
@@ -8655,10 +8665,20 @@ def _net_changes(rows: Sequence[MirrorChange]) -> list[MirrorChange]:
     a rename follows its page to its new path, an added one still an add; a page renamed away and back is a
     change at most, and one renamed onto a path and deleted there is a delete of its old path (B13 round 47
     C3228)."""
+    return [c for c, _runs in _net_changes_runs([(0, c) for c in rows])]
+
+
+def _net_changes_runs(rows: Sequence[tuple[int, MirrorChange]]) -> list[tuple[MirrorChange, frozenset[int]]]:
+    """:func:`_net_changes` over ``(run, change)`` pairs, each net change with every run whose change it
+    passed through: a rename chain a→b→c→d names its middle runs, an add then a rename the run that added,
+    a rename then a delete the run that deleted (B13 round 48 C3445, ruling 224). The runs sit beside the
+    change, never in :class:`MirrorChange`, which ``run_changes`` stores and compares."""
     net: dict[str, MirrorChange] = {}
-    for c in rows:
+    through: dict[str, set[int]] = {}
+    for run, c in rows:
         if c.op is ChangeOp.RENAMED and c.prev_path is not None and c.prev_path in net:
             before = net.pop(c.prev_path)
+            through[c.path] = through.pop(c.prev_path, set()) | {run}
             if before.op is ChangeOp.ADDED:
                 net[c.path] = dataclasses.replace(c, op=ChangeOp.ADDED, prev_path=None)
             elif before.op is ChangeOp.RENAMED and before.prev_path == c.path:  # moved back: a change at most
@@ -8671,25 +8691,33 @@ def _net_changes(rows: Sequence[MirrorChange]) -> list[MirrorChange]:
         before_c = net.get(c.path)
         if before_c is None:
             net[c.path] = c
-        elif c.op is ChangeOp.DELETED and before_c.op is ChangeOp.ADDED:
+            through[c.path] = {run}
+            continue
+        if c.op is ChangeOp.DELETED and before_c.op is ChangeOp.ADDED:
             del net[c.path]
-        elif c.op is ChangeOp.DELETED and before_c.op is ChangeOp.RENAMED and before_c.prev_path is not None:
+            del through[c.path]
+            continue
+        if c.op is ChangeOp.DELETED and before_c.op is ChangeOp.RENAMED and before_c.prev_path is not None:
             # renamed here, then deleted: the page that goes is the one under the old path, a delete there,
             # so an add at this path later is an add, not a change (B13 round 47 C3228)
             del net[c.path]
+            moved = through.pop(c.path, set()) | {run}
             old = before_c.prev_path
             there = net.get(old)
             if there is not None and there.op is ChangeOp.ADDED:  # something new took the old path since
                 net[old] = dataclasses.replace(there, op=ChangeOp.MODIFIED)
             else:
                 net[old] = dataclasses.replace(c, path=old, prev_path=None)
-        elif c.op is ChangeOp.DELETED:
+            through[old] = through.get(old, set()) | moved
+            continue
+        if c.op is ChangeOp.DELETED:
             net[c.path] = c
         elif c.op is ChangeOp.ADDED and before_c.op is ChangeOp.DELETED:
             net[c.path] = dataclasses.replace(c, op=ChangeOp.MODIFIED)
         elif before_c.op is ChangeOp.DELETED:
             net[c.path] = c
-    return list(net.values())
+        through[c.path].add(run)  # an add then a change is still the add: the change's run is named too
+    return [(c, frozenset(through[path])) for path, c in net.items()]
 
 
 def _commit_holds_mirror(repo: Path, sha: str) -> bool:

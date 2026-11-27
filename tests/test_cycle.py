@@ -1411,6 +1411,62 @@ def test_blocked_runs_changes_net_per_page_c3228(
     assert sorted((c.op.value, c.path, c.prev_path) for c in net) == sorted(want)
 
 
+@pytest.mark.parametrize(
+    ("rows", "want"),
+    [
+        (
+            [(1, "R", "b", "a"), (2, "R", "c", "b"), (3, "R", "d", "c")],
+            [("R", "d", "a", (1, 2, 3))],
+        ),
+        ([(1, "A", "a"), (2, "R", "b", "a")], [("A", "b", None, (1, 2))]),
+        ([(1, "R", "b", "a"), (2, "D", "b")], [("D", "a", None, (1, 2))]),
+        ([(1, "A", "a"), (2, "M", "a")], [("A", "a", None, (1, 2))]),
+        ([(1, "D", "a"), (2, "A", "a")], [("M", "a", None, (1, 2))]),
+        ([(1, "A", "a"), (2, "D", "a")], []),
+        ([(1, "M", "x"), (2, "M", "y")], [("M", "x", None, (1,)), ("M", "y", None, (2,))]),
+    ],
+    ids=["rename-chain", "add-rename", "rename-delete", "add-change", "delete-add", "add-delete", "apart"],
+)
+def test_a_net_change_names_every_run_it_passed_through_c3445(
+    rows: list[tuple[Any, ...]], want: list[tuple[str, str, str | None, tuple[int, ...]]]
+) -> None:
+    """B13 round 48 C3445, ruling 224: the runs a commit names were found again by matching the net change's
+    paths, so a rename chain a→b→c→d named runs 1 and 3, an add then a rename only the renaming run and a
+    rename then a delete only the renaming one. Each net change keeps every run it passed through, and the
+    changes alone are :func:`_net_changes`'s, unchanged."""
+    pairs = cycle_mod._net_changes_runs([(r[0], _net_row(*r[1:])) for r in rows])
+    got = sorted((c.op.value, c.path, c.prev_path, tuple(sorted(runs))) for c, runs in pairs)
+    assert got == sorted(want)
+    alone = cycle_mod._net_changes([_net_row(*r[1:]) for r in rows])
+    assert [c for c, _ in pairs] == alone
+
+
+def test_a_page_a_blocked_run_added_and_this_run_edited_is_an_add_in_the_subject_c3443(
+    sample_config: Config, local_source_dir: Path
+) -> None:
+    """B13 round 48 C3443, ruling 224: a page a blocked run added and the landing run edited was titled
+    ``sync: 0a 1m 0r 0d`` over its ``A``: the blocked add was dropped for any page this run changed. The
+    subject nets the blocked rows with this run's changes against HEAD; the report keeps this run's ``M``."""
+    repo = sample_config.docs_repo
+    run(sample_config)
+    run(sample_config)
+    pages = {p.name: p for p in (repo / "mirror").rglob("*.md")}
+    hand = pages["sample.csv.md"]
+    hand.write_text(hand.read_text(encoding="utf-8") + "edited by hand\n", encoding="utf-8")
+    new = local_source_dir / "projects" / "newpage.md"
+    new.write_text("# New page\n\nfirst\n", encoding="utf-8")
+    blocked = run(sample_config)
+    assert blocked.commit_sha is None and [c.op for c in blocked.changes] == [ChangeOp.ADDED]
+    subprocess.run(["git", "-C", str(repo), "checkout", "--", hand.relative_to(repo).as_posix()], check=True)
+    new.write_text("# New page\n\nsecond\n", encoding="utf-8")
+    report = run(sample_config)
+    assert report.commit_sha is not None
+    assert [c.op for c in report.changes] == [ChangeOp.MODIFIED]
+    page = f"mirror/{SID}/projects/newpage.md"
+    assert _mirror_name_status(repo) == [f"A\t{page}"]
+    assert git(repo, "log", "-1", "--format=%s").strip() == f"sync: 1a 0m 0r 0d {SID}"
+
+
 def test_a_blocked_change_undone_by_git_checkout_is_not_carried_c3228(
     sample_config: Config, local_source_dir: Path
 ) -> None:
