@@ -4145,13 +4145,18 @@ class _Cycle:
         run changed too, with this run's changes, so a page a blocked run added and this run edited is an add,
         never an ``m`` over an ``A`` (B13 round 48 C3443, ruling 224); the report, the body and the CHANGELOG
         stay per run. The runs named are every run each kept net change passed through, a rename chain's
-        middle runs included (C3445)."""
+        middle runs included (C3445). A net change HEAD already holds (an add whose page HEAD has, a delete
+        whose page it lacks, a rename it has made) is dropped first: rows outlive a run killed after its
+        commit landed, and a stale add netted with this run's edit read ``1a`` over an ``M`` (B13 round 48
+        C3443)."""
         self._commit_view = list(self.changes)
         causes = dict(self.manifest.failed_runs_by_cause(self.run_id))
         if not causes:
             return
         own = _paths_of(self.changes)
         pairs = _net_changes_runs([(run, c) for run in causes for c in self.manifest.run_changes(run)])
+        head = _head_paths(self.repo, sorted(_paths_of(c for c, _ in pairs)))
+        pairs = [(c, through) for c, through in pairs if not _head_holds(c, head)]
         loose = [(c, through) for c, through in pairs if not _touches(c, own)]
         dirty = _dirty_paths(self.repo, sorted(_paths_of(c for c, _ in loose)))
         kept = [(c, through) for c, through in loose if _touches(c, dirty)]
@@ -8918,6 +8923,32 @@ def _dirty_paths(repo: Path, paths: Sequence[str]) -> set[str]:
     except AgentSyncError:
         return set(paths)
     return {rec[3:] for rec in out.split("\0") if len(rec) > 3}
+
+
+def _head_paths(repo: Path, paths: Sequence[str]) -> set[str]:
+    """The subset of ``paths`` HEAD's tree holds; none when HEAD cannot be read (B13 round 48 C3443)."""
+    if not paths:
+        return set()
+    try:
+        out = gitops.run_git(
+            repo, "ls-tree", "-r", "-z", "--name-only", "HEAD", "--", *(f":(literal){p}" for p in paths)
+        ).stdout
+    except AgentSyncError:
+        return set()
+    return set(out.split("\0")) & set(paths)
+
+
+def _head_holds(change: MirrorChange, head: Collection[str]) -> bool:
+    """Whether HEAD, whose tree holds the pages ``head`` of those asked, already holds net ``change``: an add
+    whose page it has, a delete whose page it lacks, a rename whose new page it has and old one it lacks. An
+    ``M`` is never held: HEAD's bytes are not compared (B13 round 48 C3443)."""
+    if change.op is ChangeOp.ADDED:
+        return change.path in head
+    if change.op is ChangeOp.DELETED:
+        return change.path not in head
+    if change.op is ChangeOp.RENAMED:
+        return change.path in head and change.prev_path not in head
+    return False
 
 
 def _in_head(repo: Path, path: str) -> bool:

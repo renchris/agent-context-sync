@@ -1677,6 +1677,35 @@ def test_a_blocked_rename_this_run_continues_counts_its_old_path_once_c3534(
     assert git(repo, "log", "-1", "--format=%s").strip() == f"sync: 0a 0m 1r 0d {SID}"
 
 
+def test_a_blocked_add_a_landed_crashed_commit_held_is_not_netted_again_c3443(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 48 C3443 with C3411: a blocked run's rows outlive a later run killed after its commit landed
+    (only the crashed run's own rows are forgotten), and the subject netted that stale ``ADDED`` row with the
+    next run's edit of the page: ``1a`` over an ``M``. Only blocked rows still uncommitted against HEAD are
+    netted."""
+    repo = sample_config.docs_repo
+    for _ in range(3):
+        run(sample_config)
+    hand = _hand_edit(repo)
+    new = local_source_dir / "projects" / "newpage.md"
+    new.write_text("# New page\n\nfirst\n", encoding="utf-8")
+    blocked = run(sample_config)
+    assert blocked.commit_sha is None and [c.op for c in blocked.changes] == [ChangeOp.ADDED]
+    _undo(repo, hand)
+    with monkeypatch.context() as m:
+        m.setattr(cycle_mod.gitops, "tag_published", crash)
+        with pytest.raises(Crash):
+            run(sample_config)
+    page = f"mirror/{SID}/projects/newpage.md"
+    assert _mirror_name_status(repo) == [f"A\t{page}"]  # the killed run's commit landed
+    new.write_text("# New page\n\nsecond\n", encoding="utf-8")
+    report = run(sample_config)
+    assert report.commit_sha is not None
+    assert _mirror_name_status(repo) == [f"M\t{page}"]
+    assert git(repo, "log", "-1", "--format=%s").strip() == f"sync: 0a 1m 0r 0d {SID}"
+
+
 INBOX_SOURCE = """
 [[source]]
 id = "inbox"
