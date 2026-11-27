@@ -2556,15 +2556,15 @@ on a link's target) (C3088). Lane D: a dated line under §16.282 C2808 says no r
 lane B rewords cli.INBOX_NOT_READ's docstring in its own commit (C3051). Lane B sends lanes RA, RB and D the new alarm,
 doctor and note words first; the CONTRACTS lines that quote them (ruling 130, C2809, C2814) take dated lines in lane B's
 commits.
-Amended 2026-11-27, §16.297 C3515: the volume row of a kept inbox that is not a folder is `[ok] volume UUID not checked:
-<folder> is not a folder; the listable line above says what to do`, no fix, as the sentinel row's, never a second [FAIL]
-with the same fix (amends ruling 204's and 210's same fix on both rows).
 (2026-11-25) Ruling 210 amends this one: every reader decides the kept inbox's state by one check (9cc1f3a06),
 canonical_source_root stops at the first repeated link (54c3c1cbc), the alarm and notes say `a file or a link that
 does not lead to a folder`, the alarm pointing at the note that gives the remedy and each note carrying its own until
 (61688281a), a second inbox source whose folder is a file gets its own remedy (2f45bd7cc), status's loop line reads
 `inbox not a folder` (a3897e070), and doctor names the kept inbox as typed and probes no non-folder (08a1b2b21,
 58dd22d62, e004036af, e74669240) (round 47 lane B, CONTRACTS §16.292).
+Amended 2026-11-27, §16.297 C3515: the volume row of a kept inbox that is not a folder is `[ok] volume UUID not checked:
+<folder> is not a folder; the listable line above says what to do`, no fix, as the sentinel row's, never a second [FAIL]
+with the same fix (amends ruling 204's and 210's same fix on both rows).
 (205) The setup prompt tells a none, an unread inbox and a step 2 or step 3 error only from how the run ended, so it
 goes to v43 in lane D's one commit, as ruling 197 took it to v42 (lane D, with lane RA's report halves; C3113 with
 C3013, C3102 with C3112, C3116, C3018, C3086, C3029). Step 1's two none branches run step 2's --no-folder command as

@@ -48921,6 +48921,102 @@ tests/test_loop.py::test_an_inbox_root_this_account_cannot_read_gets_its_own_not
 a mode-0 inbox folder): `sync` and `status` each print the note once and no `was not fully listed`, status prints the
 listable line, and no inbox note once a folder is back.
 
+**The docs path's FAILs are the person's, by their first words, and nothing points at a sync that stops on that
+path** (C3545, C3449, C3479, C3529, C3515, C3511 and C3466; C3479's and C3529's doctor halves, C3511's doctor side
+and C3466's docs_repo_state/ensure_repo half; ruling 226; amends §16.292 C3238, §16.287 C3094, §16.292 C3313 and C3215, and
+§16.282 C2809's dated lines). Doctor's docs_repo.git fixes were `move <repo> aside` and `mkdir -p <repo>`, which
+PERSONS_FIX_RE read as the agent's while rule 1's NEXT called both the person's, and the `mkdir -p` stops on a file
+above. Each now opens `the person ` (a PERSONS_FIX_RE opening, no regex change): `the person moves <repo> aside,
+keeping a copy` for `not_a_folder`; for `uncreatable`, by the anchor `docs_repo_state` gives back
+(`doctor._docs_uncreatable`), `<repo> does not exist and <anchor>, a path above it, is not a folder` with `the person
+moves <anchor> aside, keeping a copy, or sets [agentsync] docs_repo to another path` when the anchor is not a folder
+(a file, a link to nothing), else `<repo> does not exist and this account cannot write to or search <anchor>` with
+`the person runs chmod u+wx <anchor>` when this account owns it (`st_uid == os.getuid()`) and `the person sets
+[agentsync] docs_repo to a folder this account can write` when it does not; never `mkdir -p`, never a delete.
+`loop.DOCS_PARENT_STEP` keeps its words; its docstring says the line it points at no longer names a step that stops on
+the same entry (C3449). PERSONS_KINDS gains `a docs-repo path that is not a folder or cannot be created`, after `a
+docs-repo remote to remove or allow`, with install.sh's PERSONS_FAILS and its header list and
+`setup_report._PERSONS_KINDS_COPY` in the same commit. While `docs_repo_state` is `not_a_folder` or `uncreatable`,
+`_check_permissions` gives one `[ok] docs_repo.permissions — not checked: the docs repo path is not a folder (see
+docs_repo.git)` with no walk and no fix, and `cli._time_machine_checks` one `governance.time_machine` [info] line in
+the same words (`doctor.DOCS_PATH_UNCHECKED`), so no fix on that layout names `agentsync sync`, which stops on that
+path before it changes a mode or adds an exclusion (C3545, C3529). `paths.docs_repo_state` calls a docs path under a
+link to nothing (or a loop) `uncreatable`, given back as that link (`paths.dangling_link_above`), never `creatable`
+by reading through it, and `gitops.ensure_repo` refuses a link to nothing at or above the path with `<link>: a
+symlink to something that does not exist, where the docs repo or a folder above it belongs; the person moves it
+aside, keeping a copy` (a PublishError, which both callers already handle for its not-a-directory refusal), where
+`mkdir` raised FileExistsError (C3466). The volume row of a kept inbox that is not a folder is `[ok] volume UUID not
+checked: <folder> is not a folder; the listable line above says what to do`, no fix, as the sentinel row's, never a
+second [FAIL] with the same fix (C3515). A second inbox source on a link that loops (ELOOP) reads `<path> is not a
+folder` with `other_inbox_not_a_folder_fix`, the person's, and its sentinel and volume rows the same [ok] pointer,
+never `Too many levels of symbolic links` with a look-in-Finder fix; a file there keeps its volume row (ruling 210),
+a link to a real folder stays listable, and a dangling link there is resolved to its target at config load, so it
+keeps that path's `does not exist` row with its person's fix (C3511; lane E's _walk_scan gives the alarm its
+`_other_inbox_alarm()` words). Tests: `test_rule_1_and_doctor_read_the_docs_path_alike_c3238` (ten states, the
+detail and fix of each FAIL, `is_persons_fix`, no `mkdir` or delete, and a moved-aside anchor reading creatable),
+`test_no_docs_path_line_names_a_sync_that_stops_on_the_same_file_c3545` (a docs file and a file above, then the
+folder again), `test_a_file_at_the_docs_path_is_the_persons_in_status_c3238`,
+`test_ensure_repo_names_a_link_to_nothing_c3466`,
+`test_a_second_inbox_that_loops_reads_not_a_folder_with_the_persons_fix_c3511`,
+`test_doctor_checks_no_sentinel_or_volume_under_a_kept_inbox_that_is_not_a_folder_c3313`,
+`test_the_inbox_sources_fix_over_a_non_folder_is_the_persons_move_aside_c2809` and the PERSONS_KINDS pins
+(`test_a_fail_whose_fix_is_the_persons_sends_the_agent_to_the_report`, the report's copy).
+
+**status's skill rule yields to a completed none** (C3546; ruling 227). No sync runs after the person's none, so
+the agentsync-docs skill is never written, and `loop.next_step` checked the skill first: a plain `status` on a
+none Mac said `the agentsync-docs skill is missing or out of date: run ~/.local/bin/agentsync sync`, a sync the
+setup never runs, until an operator ran one. The skill rule now holds only when `_person_chose_no_folder(config)`
+is false (sources.toml holds no source but the inbox and install.log's latest install run completed its none), so
+the sign-in and doctor-fix returns still come first and rule 2 gives `NO_FOLDER_CHOSEN_LOOP_NEXT`; once a folder is
+added the skill rule is back and the first sync writes the skill. install.sh's and the report's patches of the
+skill NEXT are unchanged (install.sh's own run never sees its none completed while it runs; the report keeps
+status's choice NEXT as it is, C3241). Test: `tests/test_loop.py::test_a_completed_none_gives_the_choice_with_the_skill_not_written_c3546`
+(completed none and no log, skill not written; a doctor fix still first).
+
+**a converter-cache
+serve is counted from `from_cache`** (C3450; lead call 12; makes worse True for a manifest migration and for dropping the row). An Office name's container rejection (bytes not a ZIP at offset 0) shares the
+clean package's action key but never reads or writes the converter cache, yet `record_cache` moved the row's
+`last_used_run`, and the report's `converter cache:` line counted every row used after the run that made it as a
+serve: one file whose bytes gained or lost a junk preamble a run apart read as `1 conversion was used again`, in
+either order, and with the rejection first the row kept the rejection's status and 0 units while the cache held
+the clean page. Now `Manifest.record_cache(..., served=False, stored=False) -> bool` still runs for every keyed OK
+or UNREADABLE result (the history `cache_last_used`, `converted_seen` and `converted_again` read, C1821); it
+returns True for a serve (`served=result.from_cache`) of a row an earlier run made, or of none, and a `stored`
+call (not from the cache, not a zero-byte file, not an Office UNREADABLE whose bytes are no ZIP at offset 0:
+`_Cycle._stored_conversion`) replaces the row's status, unit count and bytes. The cycle tallies `cache_served` (in
+`_ROW_TALLY_KEYS`, with the internal `cache_recorded`) and writes it into `runs.counts_json`, 0 included, whenever
+the run recorded a cache row. The report sums `cache_served` for each run whose record holds the key and reads the
+cache index as before (`last_used_run > created_run`, the empty hash left out) for every other run, an earlier
+build's among them; its words are unchanged. No schema change (MANIFEST_SCHEMA_VERSION 1). The §16.28 run-record
+table gains a `cache_served` row and the `Manifest.record_cache` stub its two keywords and its bool (lead: amend
+in §16.297 or by a dated line; not edited by the builder). Tests:
+`tests/test_setup_report.py::test_an_uncached_office_rejection_is_no_converter_cache_serve_c3450` (both orders,
+the record still counting the file converted again, the row the clean page's, and a copy a run later one serve),
+`tests/test_manifest.py::test_record_cache_says_a_serve_by_a_later_run_and_a_stored_conversion_describes_the_row_c3450`.
+
+**exclude-empty says what the last sync
+stored** (C3547; makes worse True for the finder's one wording; amends §16.51 Q71). It reads the folders the source's last sync stored, never a folder, so empty folders made after that sync
+drew a bare `exclude-empty <id>: nothing to exclude` while they sat on disk, the same words as after every stored
+folder was excluded. `cli._nothing_stored` words it by `found.stored`: none stored reads `nothing to exclude: <id>'s
+last sync stored no empty cloud folder (one made or emptied since then is found by the next
+`~/.local/bin/agentsync sync`)`, and, beside a [FAIL] the sync stops on (`loop._sync_stops`), `(once <the check's
+[FAIL] line is fixed>, the next ... sync finds one made or emptied since then; until then no sync runs<lost-hold
+clause>)`, the stop pointer's words as `loop._named` says them; all stored folders excluded now reads `nothing to
+exclude: the N empty cloud folders <id>'s last sync stored are excluded already` ("the empty cloud folder ... is"
+for one). The left-folders form (`nothing to exclude; ...`) and the no-manifest form are unchanged. Dated line
+after §16.51 Q71. Tests: `tests/test_exclude_empty.py::test_nothing_to_exclude_says_what_the_last_sync_stored_c3547`,
+`test_every_empty_folder_is_excluded_once_and_the_listing_completes` (its second run's exact words).
+
+**C3333's two-spelling
+ConfigError is tested at status and sync** (C3475; makes worse True for a row per caller and for any install.sh step-2 row). It was tested only at the parser
+(`test_a_stored_path_absent_whose_stripped_spelling_exists_names_both_c3333`). One in-process test now adds a
+folder ending in a blank (U+3000, a space, U+00A0) beside its stripped sibling, syncs it, moves the chosen folder
+aside, and runs `status` and `sync`: each exits 78 with `configuration error` and both spellings
+(`'<chosen>' does not exist but '<sibling>' does`), the mirror is unchanged and no file of the sibling is
+published. No source change (none was found wrong). Doctor, curate, add-source, setup-report and install.sh's
+step 2 stay with the generic exit-78 and report tests. Test:
+`tests/test_cli.py::test_a_moved_aside_blank_ended_folder_stops_status_and_sync_naming_both_spellings_c3475`.
+
 ### 16.298 Round 48: the converters: every text part of a message reaches its page with no control byte left (eml's emitter 1.1.5), and text.py's sentences move with their §15 copies (2026-11-27, wave B13 round 48 lane E)
 
 Round 48's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 48"; specs `round48/items/C<n>.md`, the
