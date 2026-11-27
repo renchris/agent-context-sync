@@ -3089,11 +3089,20 @@ function tbasic(v,    out, i, e, x, c) {
 }'
 config_path_values() {
 	[ -f "$CONFIG" ] || return 0
-	LC_ALL=C awk "$TOML_BASIC_AWK"'
+	PY_SPACE_ERE="${PY_SPACE_ERE-}" LC_ALL=C awk "$TOML_BASIC_AWK"'
+		# B13 round 48 ruling 217 (C3439; privacy): each value as config._path_str loads it, the leading blanks
+		# PY_SPACE_ERE names trimmed and never a trailing one (ruling 209 keeps it), a value blank all through
+		# none at all, so `  ~/Kestrel Plans` is read as the ~/ path the agentsync report registers
+		function lead(v,    w) {
+			w = ENVIRON["PY_SPACE_ERE"]
+			if (w == "") { print v; return }
+			while (match(v, "^" w)) v = substr(v, RLENGTH + 1)
+			if (v != "") print v
+		}
 		# a literal one raw, as tomllib reads it: no escape, its TAB a space as above (B13 round 46 ruling 199, C3056)
 		/^[[:space:]]*(path|"path"|\047path\047)[[:space:]]*=[[:space:]]*\047[^\047]*\047[[:space:]]*(#.*)?$/ {
 			v = $0; sub(/^[^=]*=[[:space:]]*\047/, "", v); sub(/\047.*$/, "", v); gsub(/\t/, " ", v)
-			print v
+			lead(v)
 			next
 		}
 		# a basic one to its closing quote, a comment after it as tomllib allows (C3056), else to the last quote
@@ -3101,7 +3110,7 @@ config_path_values() {
 			v = $0; sub(/^[^=]*=[[:space:]]*/, "", v)
 			if (match(v, /^"([^"\\]|\\.)*"[[:space:]]*(#.*)?$/)) { match(v, /^"([^"\\]|\\.)*"/); v = substr(v, 2, RLENGTH - 2) }
 			else { sub(/^"/, "", v); sub(/"[[:space:]]*$/, "", v) }
-			print tbasic(v)
+			lead(tbasic(v))
 		}' "$CONFIG" 2>/dev/null || true
 }
 # The [agentsync] table's state_dir, docs_repo, cache_dir and log_dir as "<key> TAB <value>", the first of each,

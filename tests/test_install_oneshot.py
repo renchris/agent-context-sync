@@ -28258,6 +28258,47 @@ def _toml_shell(tmp_path: Path, body: str, call: str, *, tool_py: str = "") -> s
     return cp.stdout.decode("utf-8")
 
 
+def test_config_path_values_trims_leading_blanks_only_c3439(tmp_path: Path) -> None:
+    """B13 round 48 ruling 217 (C3439; privacy): config._path_str drops a source path's leading blanks and
+    keeps a trailing one (ruling 209), reading a value blank all through as none; config_path_values gave each
+    value as written, so the shell registered `  ~/Kestrel Plans` as no ~/ path. It trims the leading blanks
+    PY_SPACE_ERE names, basic and literal, keeps the trailing end and skips a blank-only value."""
+    from agentsync.config import _path_str  # noqa: PLC0415
+
+    values = [
+        "  ~/Kestrel Plans",
+        "\u3000/Users/x/Kestrel Ledger",
+        "~/Kestrel Notes ",
+        "\u00a0~/Kestrel Q1\u3000",
+        " \t ",
+    ]
+    body = "".join(f'[[source]]\nid = "s{n}"\nkind = "local"\npath = "{v}"\n' for n, v in enumerate(values))
+    body += '[[source]]\nid = "lit"\nkind = "local"\npath = \'  ~/Kestrel Lit \'\n'
+    config = tmp_path / "sources.toml"
+    config.write_bytes(body.encode("utf-8"))
+    harness = "\n".join(
+        [
+            _source_reader(),
+            _toml_basic_awk(),
+            _shell_function("config_path_values"),
+            'CONFIG="$1"',
+            "config_path_values",
+        ]
+    )
+    cp = _bash_run(
+        [BASH32, "-c", harness, "x", str(config)],
+        capture_output=True,
+        env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "LC_ALL": "C"},
+    )
+    assert (cp.returncode, cp.stderr) == (0, b""), cp
+    want = [
+        w.replace("\t", " ")
+        for w in (_path_str({"p": v}, "p", "x") for v in [*values, "  ~/Kestrel Lit "])
+        if w is not None
+    ]
+    assert cp.stdout.decode("utf-8").split("\n")[:-1] == want, cp.stdout
+
+
 _R46_HEADERS = ["[[source]]", '[[ "source" ]]', "[[ 'source' ]]"]
 _R46_VALUES = [
     ('id = "gamma-birch"', 'path = "~/Kestrel Alder/notes"'),

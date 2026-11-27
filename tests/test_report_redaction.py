@@ -4910,6 +4910,57 @@ def test_both_reports_cut_a_refused_source_path_written_with_an_escape_c3303(
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
 @pytest.mark.parametrize("python", ["tomllib", "none"])
+@pytest.mark.parametrize("parsed", ["loaded", "unparsed"])
+@pytest.mark.parametrize("written", ["  ~/Kestrel Plans", "  <home>/Kestrel Plans"])
+def test_both_reports_read_a_configured_path_past_its_leading_blanks_c3439(
+    env: dict[str, str],  # noqa: F811
+    written: str,
+    parsed: str,
+    python: str,
+    locale: str,
+) -> None:
+    """B13 round 48 C3439 (ruling 217; privacy): config._path_str drops a source path's leading blanks, so the
+    agentsync report registered `  ~/Kestrel Plans` as the project folder Kestrel Plans, while the shell's
+    config_path_values gave it as written and the shell report printed the name, its `~/` path and its full
+    path in clear. Both read the value past its leading blanks, never its trailing one (ruling 209): the same
+    rows and one verdict, with or without tomllib, loaded or not, and neither leaks the name (the trailing
+    end: tests/test_install_oneshot.py::test_config_path_values_trims_leading_blanks_only_c3439)."""
+    if python == "tomllib":
+        _tool_python(env["HOME"])
+    home = Path(env["HOME"])
+    name = written.lstrip().split("/")[-1]
+    (home / name).mkdir()
+    juniper = _cloud(env) / "OneDrive-Contoso" / "Juniper Notes"
+    juniper.mkdir(parents=True)
+    body = (
+        default_config_text()
+        + local_source_table("juniper", juniper)
+        + f'\n[[source]]\nid = "plans"\nkind = "local"\npath = "{written.replace("<home>", str(home))}"\n'
+        + ("this line is no TOML\n" if parsed == "unparsed" else "")
+    )
+    said = [
+        "I worked in Kestrel Plans today",
+        "see ~/Kestrel Plans/notes.md",
+        f"and {home}/Kestrel Plans/x",
+    ]
+    texts: list[str] = []
+    shell, python_rows, shell_private, python_private = _both_reports(
+        env,
+        [],
+        said,
+        locale,
+        config=home / "agent-context" / "sources.toml",
+        config_body=body,
+        texts_out=texts,
+    )
+    for label, text in zip(("shell", "agentsync"), texts, strict=True):
+        leaks = [ln for ln in text.splitlines() if re.search("(?i)kestrel", ln)]
+        assert not leaks, (label, leaks)
+    assert shell == python_rows and shell_private == python_private, (shell, python_rows)
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize("python", ["tomllib", "none"])
 @pytest.mark.parametrize("second", ['id = "kestrel-birch"', "\"id\" = 'kestrel-birch'"])
 def test_both_reports_read_the_first_of_a_repeated_id_and_go_private_c3246(
     env: dict[str, str],  # noqa: F811
