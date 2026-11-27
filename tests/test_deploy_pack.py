@@ -6117,6 +6117,25 @@ def test_the_install_guides_name_the_nothing_to_draft_swap_and_the_held_marks_c3
     ) in readme
 
 
+def test_the_readme_and_guide_copies_of_the_placeholder_are_single_quoted_c3544() -> None:
+    """B13 round 48 C3544 (lane RB's 20139779e): every --source-local placeholder install.sh prints is
+    single-quoted, ``--source-local '<folder>'``, while README.md's Set up row and setup-feedback.md's quote
+    of NO_FOLDER_CHOSEN_NEXT kept the double-quoted copy. Both take the installer's form, held to
+    setup_report's constant; the concrete-folder forms and the vanished source's add-back tail stay
+    double-quoted, as RB left them."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    chosen = setup_report.NO_FOLDER_CHOSEN_NEXT.format(rerun="<install.sh>")
+    assert "--source-local '<folder>' (one --source-local per folder)" in chosen
+    readme = _page("README.md")
+    assert "| `scripts/install.sh --source-local '<folder>'` ([Install](#install)) |" in readme
+    assert '--source-local "<folder>"' not in readme
+    page = " ".join(_feedback_page().split())
+    assert f"`setup_report.NO_FOLDER_CHOSEN_NEXT` (`{chosen}`)" in page
+    left = re.findall(r'.{40}--source-local "<folder>".{20}', page)
+    assert len(left) == 2 and "add-source" in left[0] and "added again" in left[1], left
+
+
 def test_the_guides_loop_rule_reads_a_held_land_gate_as_status_does_c3422() -> None:
     """B13 round 48 C3422 (ruling 223, lane B's C3531): after a sync the land gate blocked, status gave the
     loop's step and exited 0 while the guide said status prints the sync's NEXT unless a check FAILs. Lane B's
