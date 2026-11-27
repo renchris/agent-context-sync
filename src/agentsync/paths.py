@@ -56,6 +56,26 @@ def default_config_path() -> Path:
     return expand("~/agent-context/sources.toml")
 
 
+def env_log_path(env: str, default: str) -> tuple[Path, str | None]:
+    """The log file ``$env`` names, and None; else ``default``, and None. The value is trimmed of
+    :data:`CONFIG_BLANKS` at both ends, never ``str.strip()``'s table, an empty one is unset, and ``~`` and
+    ``~/`` are the home, as :func:`default_config_path` reads ``$AGENTSYNC_CONFIG`` and install.sh its copy
+    of the set. A ``~name`` value (another account's home) is refused: the raw value is returned twice, the
+    path unexpanded and never the default file, so a reader names it as a log it did not read. The one
+    resolver of ``$AGENTSYNC_SETUP_LOG`` and ``$AGENTSYNC_FRICTION_LOG`` for the report and the loop, so the
+    two never read different files (B13 round 48 C3468, ruling 228: the report stripped Unicode blanks and the
+    loop none, so a padded value named two logs)."""
+    raw = os.environ.get(env, "").strip(CONFIG_BLANKS)
+    if not raw:
+        return expand(default), None
+    from agentsync.errors import AccountHomeError  # noqa: PLC0415 - paths stays light
+
+    try:
+        return expand(raw), None
+    except AccountHomeError:
+        return Path(raw), raw
+
+
 def default_docs_repo() -> Path:
     """Return the default docs git repo (``~/agent-context/docs``), outside any cloud-synced path."""
     return default_agent_context_dir() / "docs"

@@ -4803,3 +4803,46 @@ def test_land_gate_step_with_no_command_sends_the_agent_to_the_report_c3421() ->
         "mirror/s/a.md: restore it with `(umask 077 && git checkout -- 'mirror/s/a.md')` (the agent's step: "
         "x); then run `~/.local/bin/agentsync sync`"
     )
+
+
+@pytest.mark.parametrize(
+    "spelled",
+    ["{log}  \t", " {log}\n", "\v\f", "~/setup/install.log", "  ~/setup/install.log\r", "~olga/install.log"],
+    ids=["trailing-blanks", "leading-blank-and-lf", "blank-only", "home-slash", "padded-home", "other-home"],
+)
+def test_the_loop_and_the_report_read_one_setup_log_c3468(
+    tmp_path: Path, folder: Path, monkeypatch: pytest.MonkeyPatch, spelled: str
+) -> None:
+    """B13 round 48 C3468, ruling 228: the report trimmed ``$AGENTSYNC_SETUP_LOG`` with ``str.strip()`` and
+    the loop not at all, so a padded value named two logs and rule 2 missed the person's none the report read.
+    Both now resolve through paths.env_log_path: CONFIG_BLANKS trimmed, a blank-only value the default, ``~/``
+    the home, ``~name`` refused (no choice, never the default file)."""
+    config = _setup(tmp_path, "")
+    skill.write_skill(config.docs_repo)
+    ensure_inbox(config.config_path)
+    config = load_config(config.config_path)
+    log = Path.home() / "setup" / "install.log"
+    default = Path.home() / "agent-context" / "setup" / "install.log"
+    want = default if spelled == "\v\f" else log
+    want.parent.mkdir(parents=True, exist_ok=True)
+    want.write_text(_NONE_CLEAN, encoding="utf-8")
+    monkeypatch.setenv(loop.SETUP_LOG_ENV, spelled.format(log=log))
+    got, refused = setup_report._env_log(setup_report.SETUP_LOG_ENV, setup_report.SETUP_LOG_DEFAULT)
+    if spelled.startswith("~olga"):
+        assert (got, refused) == (Path("~olga/install.log"), "~olga/install.log")
+        assert loop._person_chose_no_folder(config) is False
+        return
+    assert (got, refused) == (want, None)
+    assert loop._person_chose_no_folder(config) is True
+    assert loop.SETUP_LOG_DEFAULT == setup_report.SETUP_LOG_DEFAULT
+
+
+def test_env_log_path_trims_only_the_config_blanks_c3468(monkeypatch: pytest.MonkeyPatch) -> None:
+    """B13 round 48 C3468: the one resolver trims paths.CONFIG_BLANKS, never str.strip()'s Unicode table, so a
+    no-break space is part of the name, as install.sh's literal trim keeps it."""
+    from agentsync import paths  # noqa: PLC0415
+
+    monkeypatch.setenv("AGENTSYNC_FRICTION_LOG", "/x/friction.md\u00a0 ")
+    assert paths.env_log_path("AGENTSYNC_FRICTION_LOG", "~/f.md") == (Path("/x/friction.md\u00a0"), None)
+    monkeypatch.setenv("AGENTSYNC_FRICTION_LOG", " \t")
+    assert paths.env_log_path("AGENTSYNC_FRICTION_LOG", "~/f.md") == (Path.home() / "f.md", None)

@@ -182,6 +182,7 @@ from agentsync.paths import (
     default_log_dir,
     default_state_dir,
     docs_repo_state,
+    env_log_path,
     expand,
     is_temporary,
     provider_link_resolved,
@@ -2948,14 +2949,10 @@ def _env_log(env: str, default: str) -> tuple[Path, str | None]:
     unexpanded, never the default file (B13 round 47 C3292): ``setup-report`` exited 2 and wrote no report
     for a ``~name`` friction or setup log. The one resolver of both log variables; every reader takes the
     :class:`_Run`'s path, and a refused one is registered as a refused value and named as a log not read.
-    ``AGENTSYNC_CONFIG`` and ``--config`` keep their usage error (exit 2, C2822)."""
-    raw = os.environ.get(env, "").strip()
-    if not raw:
-        return expand(default), None
-    try:
-        return expand(raw), None
-    except AccountHomeError:
-        return Path(raw), raw
+    ``AGENTSYNC_CONFIG`` and ``--config`` keep their usage error (exit 2, C2822). The rule is
+    :func:`agentsync.paths.env_log_path`'s, which the loop reads the setup log through too: blanks trimmed by
+    ``paths.CONFIG_BLANKS``, never ``str.strip()`` (B13 round 48 C3468, ruling 228)."""
+    return env_log_path(env, default)
 
 
 def _env_log_refusal(env: str) -> str:

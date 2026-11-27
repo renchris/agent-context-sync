@@ -107,7 +107,7 @@ from agentsync.install_log import install_runs_only, read_install_runs
 from agentsync.manifest import Manifest, ManifestBusyError, ManifestNotCurrentError
 from agentsync.model import LintFinding, PassKind, RowState, SourceKind, Verdict
 from agentsync.ops import launchd
-from agentsync.paths import DocsLayout, docs_repo_state, expand, same_folder
+from agentsync.paths import DocsLayout, docs_repo_state, env_log_path, expand, same_folder
 from agentsync.publish import _display_path
 from agentsync.text import plural
 
@@ -170,6 +170,8 @@ install.sh path or arguments (B13 round 47 C3241, ruling 213: a plain status or 
 install.sh's case match and the report's opener keys read."""
 SETUP_LOG_ENV = "AGENTSYNC_SETUP_LOG"
 """Where install.sh appends install.log, as ``setup_report.SETUP_LOG_ENV`` names it."""
+SETUP_LOG_DEFAULT = "~/agent-context/setup/install.log"
+"""install.sh's own log where ``$AGENTSYNC_SETUP_LOG`` names none, as ``setup_report.SETUP_LOG_DEFAULT``."""
 
 
 def _person_chose_no_folder(config: Config) -> bool:
@@ -183,8 +185,10 @@ def _person_chose_no_folder(config: Config) -> bool:
     if any(s.kind is not SourceKind.INBOX for s in config.sources):
         return False
     try:
-        log = expand(os.environ.get(SETUP_LOG_ENV) or "~/agent-context/setup/install.log")
-        if not log.is_file():  # stat follows a link; a FIFO or folder is no log, and is never opened
+        # the report's resolver, so the two read one file (B13 round 48 C3468, ruling 228)
+        log, refused = env_log_path(SETUP_LOG_ENV, SETUP_LOG_DEFAULT)
+        # stat follows a link; a FIFO or folder is no log, and is never opened
+        if refused is not None or not log.is_file():
             return False
         runs = install_runs_only(read_install_runs(log))
     except (AccountHomeError, OSError, ValueError):
