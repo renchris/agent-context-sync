@@ -171,11 +171,15 @@ from agentsync.errors import AccountHomeError, ConfigError
 from agentsync.install_log import (  # B13 round 47 C3241: the install.log parser, re-exported
     _END_RE,
     _INSTALL_LINE_RE,  # noqa: F401  (a reader's test checks a line against it)
+    NOT_A_REGULAR_FILE,
     InstallRun,
+    NotARegularFileError,
     _install_runs,
     install_runs_only,
     parse_time,
     read_install_runs,
+    read_log,
+    read_log_text,
 )
 from agentsync.materialise import file_provider_marker
 from agentsync.model import SourceKind
@@ -3013,14 +3017,16 @@ def _env_log_refusal(env: str) -> str:
 
 def read_friction(path: Path) -> Friction | None:
     """The parsed friction log at ``path`` (at most :data:`FRICTION_MAX_BYTES`), with the file's
-    modification time; None when there is none."""
+    modification time; None when there is none. Read through :func:`read_log` (B13 round 48 C3404, ruling
+    228): a FIFO there blocked the report forever; one that is no regular file (a folder too) raises
+    :class:`NotARegularFileError`, which the report names as :data:`NOT_A_REGULAR_FILE`."""
     target = expand(path)
     try:
-        with target.open("rb") as fh:
-            mtime = datetime.fromtimestamp(os.fstat(fh.fileno()).st_mtime, UTC)
-            data = fh.read(FRICTION_MAX_BYTES + 1)
-    except (FileNotFoundError, NotADirectoryError, IsADirectoryError):
+        read = read_log(target, head=FRICTION_MAX_BYTES + 1)
+    except (FileNotFoundError, NotADirectoryError):
         return None
+    mtime = datetime.fromtimestamp(read.mtime, UTC)
+    data = read.data
     truncated = len(data) > FRICTION_MAX_BYTES
     text = data[:FRICTION_MAX_BYTES].decode("utf-8", errors="replace")
     return dataclasses.replace(parse_friction(text), truncated=truncated, mtime=mtime)
@@ -3683,7 +3689,7 @@ def _read_sync_stops(
     the line right before it, only when the two stamps are equal and that stop is the manifest's
     ``kind=lost``; any other is skipped (C210)."""
     try:
-        text = (log.parent / _SYNC_STOPS_NAME).read_text(encoding="utf-8", errors="replace")
+        text = read_log_text(log.parent / _SYNC_STOPS_NAME)  # B13 round 48 C3404: never blocks on a FIFO
     except OSError:
         return []
     out: list[_SyncStop] = []
@@ -3992,7 +3998,7 @@ def compute_outcome(
     earlier: bool = False,
     late_stops: Sequence[_SyncStop] = (),
     not_live: Sequence[str] | None = None,
-    not_read: Sequence[str] = (),
+    not_read: Sequence[tuple[str, str]] = (),
 ) -> Outcome:
     """Computed from what the person saw and did, never from the agent's own friction lines. Judged on the
     attempt's install runs (``--list-folders`` runs are not install runs):
@@ -4030,8 +4036,9 @@ def compute_outcome(
     ``earlier``: an attempt before the latest, whose person's stop counts on its own record (B13 round 27
     P123). ``late_stops``: the stops logged after the end line (:func:`_late_stops`), which change no outcome
     kind but say when a person's bucketed FAIL came (B13 round 27 P101). ``not_read``: the logs the report
-    refused to read (``"friction log"``, ``"install log"``, :func:`_unread_logs`), which an unknown outcome's
-    reason names as not read, never as absent (B13 round 48 C3403, ruling 228)."""
+    did not read, each with why (``("install log", "$AGENTSYNC_SETUP_LOG names another account's home")``,
+    :func:`_unread_logs`), which an outcome's reason names as not read, never as absent (B13 round 48 C3403,
+    ruling 228; C3404: a log that is no regular file too)."""
     installs = install_runs_only(runs)
     last = installs[-1] if installs else None
     layout = attempt.layout if attempt is not None else prompt_layout(None)
@@ -4131,7 +4138,7 @@ def compute_outcome(
     if last is not None and last.rc == 0:
         why: list[str] = []
         if attempt is None:  # B13 round 48 C3403 (ruling 228): a refused log is named as not read
-            unseen = "friction log not read" if "friction log" in not_read else "no friction log"
+            unseen = "friction log not read" if "friction log" in dict(not_read) else "no friction log"
             why.append(f"{unseen}, so the human turns are unknown")
         else:
             stop = stopping_error(attempt, runs)
@@ -4297,14 +4304,10 @@ def compute_outcome(
         if not not_read:
             return Outcome("unknown", None, ("no friction log and no install run in install.log",), version)
         # B13 round 48 C3403 (ruling 228): a refused log is named as not read, never as absent
-        friction = "friction log not read" if "friction log" in not_read else "no friction log"
-        install = "install log not read" if "install log" in not_read else "no install run in install.log"
-        envs = [
-            env
-            for log, env in (("friction log", FRICTION_ENV), ("install log", SETUP_LOG_ENV))
-            if log in not_read
-        ]
-        whys = [f"${env} names another account's home" for env in envs]
+        logs = dict(not_read)
+        friction = "friction log not read" if "friction log" in logs else "no friction log"
+        install = "install log not read" if "install log" in logs else "no install run in install.log"
+        whys = list(logs.values())
         return Outcome("unknown", None, (f"{friction} and {install}", *whys), version)
     error = _unresolved_error(attempt) or next(iter(attempt.of_kind("error")[::-1]), None)
     if error is not None:
@@ -5132,9 +5135,15 @@ class _Run:
         self.provider_heads: frozenset[str] = frozenset()
         self.install_log, self.setup_log_refused = _env_log(SETUP_LOG_ENV, SETUP_LOG_DEFAULT)
         self.install_runs: list[InstallRun] = []
-        with contextlib.suppress(OSError):
+        # B13 round 48 C3404 (ruling 228): install.log there but no regular file (a FIFO): named, never read
+        self.setup_log_not_file = False
+        try:
             if self.setup_log_refused is None:
                 self.install_runs = read_install_runs(self.install_log)
+        except NotARegularFileError:
+            self.setup_log_not_file = True
+        except OSError:
+            pass
         self.outcome: Outcome | None = None  # set by the Summary
         self.run_type: str | None = None
         self.loop_stage: str | None = None
@@ -5258,13 +5267,12 @@ def _text_lines(text: str) -> list[str]:
 
 def _tail_cut(path: Path, limit: int = _TAIL_BYTES) -> tuple[list[str], bool]:
     """``path``'s last ``limit`` bytes as lines (the first, partial one dropped when the file is longer)
-    and whether it is longer: one open file answers both, so a rotation in between cannot split them."""
-    with path.open("rb") as fh:
-        size = fh.seek(0, os.SEEK_END)
-        fh.seek(max(0, size - limit))
-        data = fh.read(limit)
-    lines = _text_lines(data.decode("utf-8", errors="replace"))
-    return (lines[1:], True) if size > limit else (lines, False)
+    and whether it is longer: one open file answers both, so a rotation in between cannot split them. Read
+    through :func:`read_log` (B13 round 48 C3404): install.out, the friction log and the log folder's files
+    never block on a FIFO; one that is no regular file raises :class:`NotARegularFileError`."""
+    read = read_log(path, tail=limit)
+    lines = _text_lines(read.data.decode("utf-8", errors="replace"))
+    return (lines[1:], True) if read.size > limit else (lines, False)
 
 
 def _tail(path: Path, limit: int = _TAIL_BYTES) -> list[str]:
@@ -5621,7 +5629,7 @@ def _recorded_proxy_hosts(r: _Run) -> list[str]:
     if r.friction_refused is not None:
         return []
     with contextlib.suppress(OSError, ValueError):
-        text = (r.friction_path.parent / "proxy-hosts").read_text(encoding="utf-8", errors="replace")
+        text = read_log_text(r.friction_path.parent / "proxy-hosts")  # B13 round 48 C3404: no FIFO wait
         return [ln for ln in text.splitlines() if re.fullmatch(r"[a-z0-9._-]+", ln)]
     return []
 
@@ -6722,9 +6730,7 @@ def _build_redactor(r: _Run) -> Redactor:
     with contextlib.suppress(Exception):
         out_path = install_out_path(r.install_log)
         if r.setup_log_refused is None and out_path.is_file() and not out_path.is_symlink():  # C3292
-            has_list, printed = listed_folder_rows(
-                out_path.read_text(encoding="utf-8", errors="replace"), home_path()
-            )
+            has_list, printed = listed_folder_rows(read_log_text(out_path), home_path())  # C3404
     red.listing_unread = not listing_ok and not has_list
     _add_listed(red, listed)
     # B13 round 45 C2873 (ruling 190; privacy): an escaped row's name as the bytes it stands for, its escaped
@@ -6893,7 +6899,8 @@ def _build_redactor(r: _Run) -> Redactor:
     # the person unset since (the git stop asks them to) is no longer in force, yet the line still names it.
     with contextlib.suppress(OSError, UnicodeDecodeError):
         # B13 round 47 C3292: the run's own friction log, never a refused one
-        text = "" if r.friction_refused else r.friction_path.read_text(encoding="utf-8", errors="replace")
+        # B13 round 48 C3404: through the one reader, so a FIFO there never blocks
+        text = "" if r.friction_refused else read_log_text(r.friction_path)
         for host in _resolver_hosts(text):
             _add_proxy_host(red, host)
     for host in _recorded_proxy_hosts(r):
@@ -8308,7 +8315,24 @@ def _step_table(steps: list[tuple[str, dict[str, str]]], *, sign_in: str | None 
 
 
 def _installer(r: _Run) -> list[str]:
-    return [*_installer_runs(r), "", *_installer_output(r)]
+    return [*_installer_runs(r), *_sync_stops_unread(r), "", *_installer_output(r)]
+
+
+def _sync_stops_unread(r: _Run) -> list[str]:
+    """One line when :data:`_SYNC_STOPS_NAME` beside install.log is there and no regular file (a FIFO), which
+    the stop reader skips as unreadable: named, so a missing step-3 stop is not read as none (B13 round 48
+    C3404, ruling 228). Opened through :func:`read_log` with nothing read (``tail=0``); never beside a log
+    the report did not read (C3436)."""
+    if r.setup_log_refused is not None:
+        return []
+    path = r.install_log.parent / _SYNC_STOPS_NAME
+    try:
+        read_log(path, tail=0)
+    except NotARegularFileError:
+        return [f"{_SYNC_STOPS_NAME} beside it: {NOT_A_REGULAR_FILE}."]
+    except OSError:
+        pass
+    return []
 
 
 PERSONS_FIX = "persons-fix"
@@ -8691,6 +8715,8 @@ def _installer_output(r: _Run) -> list[str]:
     path = install_out_path(r.install_log)
     try:
         lines = _tail(path)
+    except NotARegularFileError:  # B13 round 48 C3404 (ruling 228)
+        return [f"Installer output at {path}: {NOT_A_REGULAR_FILE}."]
     except FileNotFoundError:
         return [
             f"No installer output at {path} (install.sh keeps a copy of what it printed there; an older "
@@ -8966,6 +8992,8 @@ def _installer_runs(r: _Run) -> list[str]:
     if r.setup_log_refused is not None:  # B13 round 48 C3436 with C3403 (ruling 228): before any look at it
         return [f"Install log not read: {_env_log_refusal(SETUP_LOG_ENV)}."]
     log = r.install_log
+    if r.setup_log_not_file:  # B13 round 48 C3404 (ruling 228): a FIFO there is no log that never ran
+        return [f"Install log at {log}: {NOT_A_REGULAR_FILE}."]
     if not log.exists():
         return [
             f"No install log at {log}: scripts/install.sh has not run on this Mac, or it predates the setup "
@@ -13809,6 +13837,9 @@ def _background(r: _Run) -> list[str]:
             hits = [ln for ln in _tail(path) if _TCC_RE.search(ln)]
         except FileNotFoundError:
             continue
+        except NotARegularFileError:  # B13 round 48 C3404
+            tcc.append(f"{path.name}: {NOT_A_REGULAR_FILE}")
+            continue
         except OSError as exc:
             tcc.append(f"{path.name}: cannot read: {_os_why(exc)}")
             continue
@@ -13998,6 +14029,9 @@ def _recent_errors(r: _Run) -> list[str]:
         try:
             read, longer = _tail_cut(path)
             own = [ln for ln in read if _LEVEL_RE.search(ln)]
+        except NotARegularFileError:  # B13 round 48 C3404: swapped for a FIFO after the listing
+            problems.append(f"- {path.name}: {NOT_A_REGULAR_FILE}")
+            continue
         except OSError as exc:
             problems.append(f"- {path.name}: cannot read: {_os_why(exc)}")
             continue
@@ -14530,11 +14564,20 @@ def _not_live_folders(r: _Run) -> list[str] | None:
     return [f"{s.id} ({s.state.value})" for s in config.sources if s.kind is not SourceKind.INBOX]
 
 
-def _unread_logs(r: _Run) -> tuple[str, ...]:
-    """The logs whose ``~name`` variable the report refused (:func:`_env_log`), as :func:`compute_outcome`'s
-    ``not_read`` names them (B13 round 48 C3403, ruling 228)."""
-    pairs = (("friction log", r.friction_refused), ("install log", r.setup_log_refused))
-    return tuple(log for log, refused in pairs if refused is not None)
+def _unread_logs(r: _Run) -> tuple[tuple[str, str], ...]:
+    """The logs the report did not read, each with why, as :func:`compute_outcome`'s ``not_read`` names them:
+    a ``~name`` variable it refused (:func:`_env_log`, B13 round 48 C3403, ruling 228), or a path that is no
+    regular file (C3404)."""
+    out: list[tuple[str, str]] = []
+    if r.friction_refused is not None:
+        out.append(("friction log", f"${FRICTION_ENV} names another account's home"))
+    elif r.friction_error == NOT_A_REGULAR_FILE:
+        out.append(("friction log", "the friction log is not a regular file"))  # no bracket (round 20 X7)
+    if r.setup_log_refused is not None:
+        out.append(("install log", f"${SETUP_LOG_ENV} names another account's home"))
+    elif r.setup_log_not_file:
+        out.append(("install log", "the install log is not a regular file"))
+    return tuple(out)
 
 
 def _attempt_outcome(r: _Run, index: int) -> Outcome:
@@ -17333,7 +17376,7 @@ def _first_sync_line(
     pool = [run for run in (runs or r.install_runs) if run.step("first-sync") is not None]
     borrowed = scoped and not runs and bool(pool)
     # B13 round 48 C3403 with C3436 (ruling 228): a refused log is named as not read, never as absent
-    unread = r.setup_log_refused is not None
+    unread = r.setup_log_refused is not None or r.setup_log_not_file  # and C3404: no regular file
     missing = not unread and not r.install_log.is_file()
     no_log = " (install log not read)" if unread else " (no install log)"
     parts: list[str] = []
@@ -18226,6 +18269,8 @@ def _install_line(
     if not r.install_runs:
         if r.setup_log_refused is not None:  # B13 round 47 C3292: named as a log not read
             return f"- install.sh: the install log was not read: {_env_log_refusal(SETUP_LOG_ENV)}"
+        if r.setup_log_not_file:  # B13 round 48 C3404 (ruling 228)
+            return f"- install.sh: the install log is {NOT_A_REGULAR_FILE}"
         # no log at all is not a log with no run in it, as the shell report says it (B13 round 5 F29)
         if not r.install_log.is_file():
             return "- install.sh: no install log"
@@ -19731,7 +19776,8 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
         out += [_sync_stop_line(s, account.get(id(s))) for s in stops]  # B13 round 23 A9; round 24 ruling 9
         out += [_item_line(r, att, e) for e in (*told, *items)]
     else:
-        unseen = " (friction log not read)" if r.friction_refused is not None else " (no friction log)"
+        unread = "friction log" in dict(_unread_logs(r))
+        unseen = " (friction log not read)" if unread else " (no friction log)"
         out.append("- none" + ("" if att is not None else unseen))  # B13 round 48 C3403
     # B13 round 25 D5: a stop logged after the end line, with the agent's line for it, in a block of its own
     if att is not None and late_stops:
@@ -21049,6 +21095,8 @@ def _build_report(
             r.friction_error = _env_log_refusal(FRICTION_ENV)
         else:
             r.friction = read_friction(r.friction_path)
+    except NotARegularFileError:  # B13 round 48 C3404 (ruling 228): named, never a class or a raw path
+        r.friction_error = NOT_A_REGULAR_FILE
     except Exception as exc:
         r.friction_error = f"{type(exc).__name__}: {exc}"
     fr = r.friction

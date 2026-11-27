@@ -9,24 +9,102 @@ name."""
 from __future__ import annotations
 
 import dataclasses
+import errno
+import os
 import re
 import shlex
+import stat
 from collections import Counter
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
 __all__ = [
+    "NOT_A_REGULAR_FILE",
     "InstallRun",
+    "LogRead",
+    "NotARegularFileError",
     "install_runs_only",
     "parse_time",
     "read_install_runs",
+    "read_log",
+    "read_log_bytes",
+    "read_log_text",
 ]
 
 _INSTALL_LINE_RE = re.compile(r"^(?P<at>\S+) run=(?P<run>\S+) (?P<rest>.*)$")
 _KV_RE = re.compile(r"(\w+)=(\S+)")
 _END_RE = re.compile(r"^\S+ run=\S+ end ")
 _SIMULATED_RE = re.compile(r"\blaunchd\s*[=:]\s*simulated\b", re.IGNORECASE)
+
+
+NOT_A_REGULAR_FILE = "not a regular file (not read)"
+"""How the report names a log, or a file beside one, that is there and is no regular file: a folder, a FIFO, a
+socket, a device, a link loop (B13 round 48 C3404, ruling 228)."""
+
+
+class NotARegularFileError(OSError):
+    """:func:`read_log`'s refusal of a path that is there but is no regular file (a folder, a FIFO, a socket,
+    a device, a link to one of those, a link loop): an OSError, so every caller that drops a read's OSError
+    drops this one too, with :data:`NOT_A_REGULAR_FILE` as its ``strerror`` (B13 round 48 C3404)."""
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class LogRead:
+    """What :func:`read_log` read: the bytes, and the file's size and modification time from the same
+    descriptor's ``fstat``, so a rotation in between cannot split them."""
+
+    data: bytes
+    size: int
+    mtime: float
+
+
+def read_log(path: Path, *, head: int | None = None, tail: int | None = None) -> LogRead:
+    """The one reader of install.log, the friction log and the files beside them (install.out,
+    sync-stops.log, proxy-hosts, the log folder's files), read so nothing there can block it (B13 round 48
+    C3404, ruling 228): a plain open of a FIFO at ``$AGENTSYNC_SETUP_LOG`` or ``$AGENTSYNC_FRICTION_LOG``
+    waited forever, so ``setup-report`` never ended. Opened ``O_RDONLY | O_NONBLOCK | O_CLOEXEC``, links
+    followed, then judged on the open descriptor (``fstat``, no race with a separate stat): anything but a
+    regular file raises :class:`NotARegularFileError`, a link loop and a socket's refused open too;
+    FileNotFoundError, NotADirectoryError (a link through a file) and every other OSError are the open's own.
+    Then blocking again, and read: the first ``head`` bytes, the last ``tail`` bytes, else all of it."""
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+    except OSError as exc:
+        if exc.errno in (errno.ELOOP, errno.EOPNOTSUPP, errno.ENXIO):  # a link loop; a socket (macOS, Linux)
+            raise NotARegularFileError(errno.EINVAL, NOT_A_REGULAR_FILE, str(path)) from None
+        raise
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            raise NotARegularFileError(errno.EINVAL, NOT_A_REGULAR_FILE, str(path))
+        os.set_blocking(fd, True)
+        if tail is not None:
+            os.lseek(fd, max(0, st.st_size - tail), os.SEEK_SET)
+        want = head if head is not None else tail
+        chunks: list[bytes] = []
+        got = 0
+        while want is None or got < want:
+            chunk = os.read(fd, 1 << 16 if want is None else min(1 << 16, want - got))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            got += len(chunk)
+    finally:
+        os.close(fd)
+    return LogRead(b"".join(chunks), st.st_size, st.st_mtime)
+
+
+def read_log_bytes(path: Path) -> bytes:
+    """All of the log at ``path``, through :func:`read_log` (B13 round 48 C3404)."""
+    return read_log(path).data
+
+
+def read_log_text(path: Path) -> str:
+    """:func:`read_log_bytes` decoded as ``Path.read_text(encoding="utf-8", errors="replace")`` decoded it
+    (universal newlines), the words every log reader took before (B13 round 48 C3404)."""
+    data = read_log_bytes(path).decode("utf-8", errors="replace")
+    return data.replace("\r\n", "\n").replace("\r", "\n")
 
 
 def parse_time(text: str) -> datetime | None:
@@ -213,9 +291,10 @@ def read_install_runs(log: Path) -> list[InstallRun]:
 
 
 def _install_runs(log: Path) -> list[tuple[str, dict[str, dict[str, str]], list[str]]]:
-    """install.log grouped by run id, oldest first: (run id, {"start"/"end"/step name: fields}, lines)."""
+    """install.log grouped by run id, oldest first: (run id, {"start"/"end"/step name: fields}, lines). Read
+    through :func:`read_log_text`, so a path that is no regular file raises :class:`NotARegularFileError`."""
     runs: dict[str, tuple[dict[str, dict[str, str]], list[str]]] = {}
-    for line in log.read_text(encoding="utf-8", errors="replace").splitlines():
+    for line in read_log_text(log).splitlines():  # B13 round 48 C3404: never blocks on a FIFO
         m = _INSTALL_LINE_RE.match(line)
         if m is None:
             continue

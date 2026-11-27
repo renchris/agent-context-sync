@@ -128,6 +128,7 @@ from agentsync.errors import (
 from agentsync.graph import auth as graph_auth  # the module, so a patch of MsalAuth holds (B67, as A91)
 from agentsync.graph.auth import TokenProvider
 from agentsync.graph.errors import AuthBlockedError, NetworkPolicyError
+from agentsync.install_log import NOT_A_REGULAR_FILE
 from agentsync.loop import NO_NEXT_HINT_ENV
 from agentsync.manifest import (
     ACCESS_ERRNOS,
@@ -4283,6 +4284,9 @@ def _cmd_setup_report(args: argparse.Namespace) -> int:
         if refused is not None
         else "friction log embedded"
         if friction.is_file()
+        # B13 round 48 C3404 (ruling 228): there, and no regular file (a FIFO), is never "no friction log"
+        else f"friction log at {friction}: {NOT_A_REGULAR_FILE}"
+        if friction.exists()
         else f"no friction log found at {friction}"
     )
     _out(f"wrote {out} ({what}; {embedded})")

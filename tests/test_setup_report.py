@@ -30903,25 +30903,28 @@ def test_a_refused_setup_log_gives_no_fact_from_a_working_directory_file_and_sti
 
 
 @pytest.mark.parametrize(
-    ("unread", "why"),
+    ("not_read", "why"),
     [
         ((), ("no friction log and no install run in install.log",)),
         (
-            ("install log",),
+            (("install log", "$AGENTSYNC_SETUP_LOG names another account's home"),),
             (
                 "no friction log and install log not read",
                 "$AGENTSYNC_SETUP_LOG names another account's home",
             ),
         ),
         (
-            ("friction log",),
+            (("friction log", "the friction log is not a regular file"),),
             (
                 "friction log not read and no install run in install.log",
-                "$AGENTSYNC_FRICTION_LOG names another account's home",
+                "the friction log is not a regular file",
             ),
         ),
         (
-            ("friction log", "install log"),
+            (
+                ("friction log", "$AGENTSYNC_FRICTION_LOG names another account's home"),
+                ("install log", "$AGENTSYNC_SETUP_LOG names another account's home"),
+            ),
             (
                 "friction log not read and install log not read",
                 "$AGENTSYNC_FRICTION_LOG names another account's home",
@@ -30931,12 +30934,12 @@ def test_a_refused_setup_log_gives_no_fact_from_a_working_directory_file_and_sti
     ],
 )
 def test_an_unknown_outcome_names_a_refused_log_as_not_read_c3403(
-    unread: tuple[str, ...], why: tuple[str, ...]
+    not_read: tuple[tuple[str, str], ...], why: tuple[str, ...]
 ) -> None:
     """B13 round 48 C3403 (ruling 228): with no attempt and no install run, compute_outcome said "no friction
     log and no install run in install.log" for a log the report refused to read. ``not_read`` names each one
     as not read, and why; with nothing refused the old reason stands."""
-    outcome = setup_report.compute_outcome(None, [], not_read=unread)
+    outcome = setup_report.compute_outcome(None, [], not_read=not_read)
     assert (outcome.kind, outcome.why) == ("unknown", why)
 
 
@@ -31003,6 +31006,148 @@ def test_a_fifo_at_sources_toml_never_blocks_the_report_c3251(
     assert cp.returncode == 0, cp.stdout + cp.stderr
     assert "not a file" in section(out.read_text(encoding="utf-8"), "Configuration")
     assert setup_report._raw_pandoc_path(fifo) is None  # after the bounded run: an unfixed read would block
+
+
+@pytest.mark.parametrize("where", ["setup log", "friction log", "install.out", "sync-stops.log"])
+def test_a_fifo_at_a_log_or_beside_one_never_blocks_the_report_and_is_named_c3404(
+    fake_mac: dict[str, Path], where: str
+) -> None:
+    """B13 round 48 C3404 (ruling 228): a FIFO at $AGENTSYNC_SETUP_LOG or $AGENTSYNC_FRICTION_LOG, or at
+    install.out or sync-stops.log beside a real install.log, held `setup-report` forever: every read opened
+    the path plainly. Each goes through install_log.read_log, which refuses a FIFO by fstat on a non-blocking
+    open: the report is written in bounded time and names the file `not a regular file (not read)`."""
+    home = fake_mac["home"]
+    write_friction(fake_mac, V12_HAPPY)
+    env = {**os.environ, "AGENTSYNC_OCR": "0", "AGENTSYNC_TM_EXCLUDE": "0"}
+    said = install_log.NOT_A_REGULAR_FILE
+    elsewhere = home / "elsewhere"
+    elsewhere.mkdir()
+    if where == "setup log":
+        os.mkfifo(elsewhere / "install.log")
+        env[setup_report.SETUP_LOG_ENV] = str(elsewhere / "install.log")
+        title, want = "Installer", f"Install log at ~/elsewhere/install.log: {said}."
+    elif where == "friction log":
+        os.mkfifo(elsewhere / "friction.md")
+        env[setup_report.FRICTION_ENV] = str(elsewhere / "friction.md")
+        title = "Agent friction log"
+        want = f"Could not read the friction log at ~/elsewhere/friction.md: {said}"
+    elif where == "install.out":
+        os.mkfifo(fake_mac["setup"] / setup_report.INSTALL_OUT_NAME)
+        title, want = "Installer", f"Installer output at ~/agent-context/setup/install.out: {said}."
+    else:
+        os.mkfifo(fake_mac["setup"] / setup_report._SYNC_STOPS_NAME)
+        title, want = "Installer", f"sync-stops.log beside it: {said}."
+    out = home / "r.md"
+    cp = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "agentsync",
+            "setup-report",
+            "--out",
+            str(out),
+            "--config",
+            str(fake_mac["config"]),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+        env=env,
+        stdin=subprocess.DEVNULL,
+    )
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    body = section(out.read_text(encoding="utf-8"), title)
+    assert want in body.splitlines(), body
+    if where == "friction log":
+        assert f"friction log at {elsewhere / 'friction.md'}: {said})" in cp.stdout, cp.stdout
+        summary = section(out.read_text(encoding="utf-8"), "Summary")
+        assert "friction log not read" in summary and "no friction log" not in summary, summary
+    if where == "setup log":
+        summary = section(out.read_text(encoding="utf-8"), "Summary")
+        assert f"- install.sh: the install log is {said}" in summary.splitlines(), summary
+        assert "no install log" not in summary, summary
+
+
+_READER_ROWS = {
+    # row: (what read_log returns or raises, the words the report gives it)
+    "a folder": (install_log.NotARegularFileError, "not a regular file (not read)"),
+    "a file": (b"one\n", None),
+    "a link to a folder": (install_log.NotARegularFileError, "not a regular file (not read)"),
+    "a link to a file": (b"one\n", None),
+    "a dangling link": (FileNotFoundError, "no file"),
+    "a link to itself": (install_log.NotARegularFileError, "not a regular file (not read)"),
+    "a two-link loop": (install_log.NotARegularFileError, "not a regular file (not read)"),
+    "a link through a file": (NotADirectoryError, "no file"),
+    "a FIFO": (install_log.NotARegularFileError, "not a regular file (not read)"),
+}
+
+
+@pytest.mark.parametrize("row", list(_READER_ROWS))
+def test_the_one_log_reader_answers_each_kind_of_path_as_the_report_names_it_c3404(
+    tmp_path: Path, row: str
+) -> None:
+    """B13 round 48 C3404 (ruling 228; round 47's rule): install_log.read_log, under a timeout, fed each kind
+    of path. A regular file, or a link to one, is read; a folder, a link to one, a link loop and a FIFO raise
+    the one NotARegularFileError a folder raises, which the report names `not a regular file (not read)`; a
+    dangling link and a link through a file raise the open's own missing-file error, which the readers take
+    as no file. Nothing blocks, and nothing raises any other error."""
+    (tmp_path / "folder").mkdir()
+    (tmp_path / "file").write_bytes(b"one\n")
+    path = tmp_path / "under-test"
+    if row == "a folder":
+        path = tmp_path / "folder"
+    elif row == "a file":
+        path = tmp_path / "file"
+    elif row == "a link to a folder":
+        path.symlink_to(tmp_path / "folder")
+    elif row == "a link to a file":
+        path.symlink_to(tmp_path / "file")
+    elif row == "a dangling link":
+        path.symlink_to(tmp_path / "nothing")
+    elif row == "a link to itself":
+        path.symlink_to(path)
+    elif row == "a two-link loop":
+        path.symlink_to(tmp_path / "other")
+        (tmp_path / "other").symlink_to(path)
+    elif row == "a link through a file":
+        path.symlink_to(tmp_path / "file" / "below")
+    else:
+        os.mkfifo(path)
+    import signal  # noqa: PLC0415 - a module-level name would be shadowed by an older test's loop variable
+
+    want, words = _READER_ROWS[row]
+
+    def hung(*_: object) -> None:
+        raise TimeoutError(f"read_log hung on {row}")
+
+    old = signal.signal(signal.SIGALRM, hung)
+    signal.alarm(20)
+    try:
+        _reader_row(path, want, words)
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old)
+
+
+def _reader_row(path: Path, want: bytes | type[OSError], words: str | None) -> None:
+    """One row of :func:`test_the_one_log_reader_answers_each_kind_of_path_as_the_report_names_it_c3404`."""
+    if isinstance(want, bytes):
+        read = install_log.read_log(path)
+        assert (read.data, read.size) == (want, len(want))
+        assert install_log.read_log_text(path) == want.decode()
+        assert install_log.read_log(path, head=2).data == want[:2]
+        assert install_log.read_log(path, tail=2).data == want[-2:]
+        return
+    with pytest.raises(OSError) as raised:
+        install_log.read_log(path)
+    assert type(raised.value) is want, raised.value
+    if want is install_log.NotARegularFileError:
+        assert raised.value.strerror == words == install_log.NOT_A_REGULAR_FILE
+        with pytest.raises(install_log.NotARegularFileError):
+            setup_report.read_friction(path)
+    else:
+        assert setup_report.read_friction(path) is None  # the friction reader's no file
 
 
 @pytest.mark.parametrize("case", ["file", "dangling", "above", "missing", "linked"])
