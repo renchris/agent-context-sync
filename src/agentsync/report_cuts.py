@@ -60,7 +60,17 @@ SEPARATORS = (0x20, 0x09, 0x5F, 0x5C, 0x2D, *range(0x09), 0x0B, 0x0C, *range(0x0
 blank, a tab, ``_``, ``\\``, ``-``, and every other C0 control and DEL, never LF or CR, so a match never spans
 two lines. ``printf %q`` puts a backslash before a blank (``Client\\ Alpha``); a control byte splits a name
 as install.sh's pairs already split it, so ``Q3<BS>Plans`` is matched as ``Q3 Plans``, ``Q3-Plans`` and
-``q3_plans`` too."""
+``q3_plans`` too. B13 round 48 C3405 (ruling 217) adds :data:`NONASCII_BLANKS` beside these, by
+:func:`sep_class` and ``CUT_SEP_ERE``."""
+
+NONASCII_BLANKS = (0x00A0, 0x1680, *range(0x2000, 0x200B), 0x202F, 0x205F, 0x3000)
+"""The Unicode spaces outside ASCII that break no line, separators between a name's words beside
+:data:`SEPARATORS` (B13 round 48 C3405, ruling 217 amending ruling 133; privacy): a folder
+``Kestrel<NBSP>Plans`` (U+00A0, U+202F, U+3000 or U+2009) was one word to both reports, so ``Kestrel Plans``,
+``kestrel-plans`` and ``KestrelPlans`` printed in clear. Never U+0085, U+2028 or U+2029: those are line
+breaks (``str.splitlines`` splits at them), left out as LF and CR are, so no match spans two lines. Kept
+apart from :data:`SEPARATORS` because an awk bracket class under ``LC_ALL=C`` holds bytes, never a multibyte
+character: install.sh reads them as ``CUT_SEP_ERE``'s UTF-8 alternatives."""
 
 FORMAT_RANGES = (
     (0x00AD, 0x00AD),
@@ -293,11 +303,15 @@ _SEP_LITERAL = {0x20: " ", 0x09: "\\t", 0x5F: "_", 0x5C: "\\\\"}  # the hyphen g
 
 
 def sep_class() -> str:
-    """:data:`SEPARATORS` as one regular-expression bracket class (Python's ``re``)."""
+    """:data:`SEPARATORS` and :data:`NONASCII_BLANKS` as one regular-expression bracket class (Python's
+    ``re``; the blanks since B13 round 48 C3405)."""
     lits = [_SEP_LITERAL[c] for c in (0x20, 0x09, 0x5F, 0x5C)]
     rest = [c for c in SEPARATORS if c not in _SEP_LITERAL and c != 0x2D]
     ranges = "".join(f"\\x{a:02x}" if a == b else f"\\x{a:02x}-\\x{b:02x}" for a, b in _runs(rest))
-    return "[" + "".join(lits) + ranges + "-]"
+    blanks = "".join(
+        f"\\u{a:04x}" if a == b else f"\\u{a:04x}-\\u{b:04x}" for a, b in _runs(list(NONASCII_BLANKS))
+    )
+    return "[" + "".join(lits) + ranges + blanks + "-]"
 
 
 def _shell_sep_class() -> str:
@@ -307,6 +321,23 @@ def _shell_sep_class() -> str:
     rest = [c for c in SEPARATORS if c not in _SEP_LITERAL and c not in (0x2D, 0x00)]
     ranges = "".join(f"\\{a:03o}" if a == b else f"\\{a:03o}-\\{b:03o}" for a, b in _runs(rest))
     return "[" + "".join(lits) + ranges + "-]"
+
+
+def _shell_sep_ere() -> str:
+    """One separator as an awk ERE that reads bytes under ``LC_ALL=C`` (B13 round 48 C3405, ruling 217): the
+    ``CUT_SEP`` class, or one of :data:`NONASCII_BLANKS` as its UTF-8 bytes in octal, code points that differ
+    only in their last byte written as one prefix and a bracket range (U+2000 to U+200A is
+    ``\\342\\200[\\200-\\212]``)."""
+    groups: dict[bytes, list[int]] = {}
+    for c in NONASCII_BLANKS:
+        utf8 = chr(c).encode("utf-8")
+        groups.setdefault(utf8[:-1], []).append(utf8[-1])
+    alts = [_shell_sep_class()]
+    for head, lasts in groups.items():
+        pre = "".join(f"\\{x:03o}" for x in head)
+        for a, b in _runs(lasts):
+            alts.append(pre + (f"\\{a:03o}" if a == b else f"[\\{a:03o}-\\{b:03o}]"))
+    return "(" + "|".join(alts) + ")"
 
 
 def format_chars() -> frozenset[int]:
@@ -351,7 +382,9 @@ def shell_block() -> str:
     ENVIRON (BSD awk takes no newline in ``-v``): ``AGENTSYNC_VERBS`` (longest first), ``CUT_DRIVE``
     (:data:`GENERIC_FOLDERS`), ``CUT_AGENT`` (:data:`AGENT_WORDS`), ``CUT_APPS``, ``CUT_DOMAINS``,
     ``CUT_PROVIDER_KEPT`` (:func:`provider_kept_pattern`, anchored), ``CUT_SEP`` (:data:`SEPARATORS` as an awk
-    bracket class), ``CUT_CF`` (each format character one UTF-8 alternative in octal), ``CUT_Q32_OCTAL``
+    bracket class), since B13 round 48 C3405 ``CUT_SEP_ERE`` (one separator, the ``CUT_SEP`` class or a
+    :data:`NONASCII_BLANKS` character's UTF-8 bytes in octal, as one ERE group), ``CUT_CF`` (each format
+    character one UTF-8 alternative in octal), ``CUT_Q32_OCTAL``
     (:data:`BASH32_UTF8_OCTAL` as a bracket class); then, since B13 round 40 ruling 137, ``CUT_HEADS_<RULE>``
     for each :data:`PATH_RULES` rule (its :data:`PATH_HEADS`, ``|``-joined, in table order),
     ``CUT_REFUSED_HEADS`` (:data:`REFUSED_HEADS`, written in double quotes, since one holds an apostrophe),
@@ -376,6 +409,7 @@ def shell_block() -> str:
         "CUT_DOMAINS": "|".join(sorted(GENERIC_DOMAINS)),
         "CUT_PROVIDER_KEPT": f"^{provider_kept_pattern()}$",
         "CUT_SEP": _shell_sep_class(),
+        "CUT_SEP_ERE": _shell_sep_ere(),  # B13 round 48 C3405 (ruling 217)
         "CUT_CF": "|".join(_octal(chr(c)) for c in sorted(format_chars())),
         "CUT_Q32_OCTAL": "["
         + "".join(

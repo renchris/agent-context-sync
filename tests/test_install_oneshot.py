@@ -4998,8 +4998,8 @@ def test_install_sh_carries_the_report_cuts_block_byte_for_byte_ruling_133() -> 
     # B13 round 40 ruling 137: the argument forms' rows, CUT_ALIAS_FORMS gone; round 41 ruling 142: each
     # head's own list (the cwd's whole-name head, config), the usage and default-config words, the TOML
     # breaks and the part stop; round 42 ruling 146: the free-text path start; round 47 C3203: install.sh's
-    # `per folder)` after --source-local
-    assert len(names) == 28, names
+    # `per folder)` after --source-local; round 48 C3405: CUT_SEP_ERE, the separator with the non-ASCII blanks
+    assert len(names) == 29, names
     for name in names:
         assert len(re.findall(rf"(?m)^\s*{name}\+?=", text)) == 1, name
     assert "import report_cuts" not in text and "report_cuts import" not in text, (

@@ -2311,6 +2311,125 @@ def test_both_reports_print_one_line_over_a_hostile_name_set_ruling_133(
     assert not wrong, (len(wrong), wrong[:8])
 
 
+_C3405_LINE_BREAKS = ("\x85", "\u2028", "\u2029")
+
+
+def _c3405_spellings(first: str, second: str, blank: str) -> list[str]:
+    """A two-word name's spellings an agent writes: an ASCII blank, the slug, joined, as written (its
+    non-ASCII blank) and the underscore form."""
+    lo1, lo2 = first.lower(), second.lower()
+    return [
+        f"the person named {first} {second}",
+        f"slug {lo1}-{lo2}",
+        f"joined {first}{second}",
+        f"raw {first}{blank}{second}",
+        f"{lo1}_{lo2}",
+    ]
+
+
+@pytest.mark.parametrize(
+    "blank",
+    [chr(c) for c in report_cuts.NONASCII_BLANKS],
+    ids=[f"U+{c:04X}" for c in report_cuts.NONASCII_BLANKS],
+)
+def test_a_nonascii_blank_in_a_name_is_a_separator_c3405(blank: str) -> None:
+    """B13 round 48 C3405 (ruling 217 amending ruling 133; privacy): a folder ``Kestrel<blank>Plans`` with a
+    no-break, narrow, ideographic or other non-line-breaking Unicode space was one word to the agentsync
+    report, so ``Kestrel Plans``, ``kestrel-plans``, ``KestrelPlans`` and ``kestrel_plans`` printed in clear
+    and only the spelling as written was cut. Every :data:`report_cuts.NONASCII_BLANKS` character now splits
+    its words, so each spelling reads one ``<folder-N>``, and a name written with an ASCII blank is cut where
+    the text writes it with one of them. A line break (U+0085, U+2028, U+2029) is never a separator: no
+    match spans two lines."""
+    red = setup_report.Redactor()
+    red.add("folder", f"Kestrel{blank}Plans", ignore_case=True, fuzzy=True)
+    out = red.redact(", ".join(_c3405_spellings("Kestrel", "Plans", blank)))
+    assert (
+        out == "the person named <folder-1>, slug <folder-1>, joined <folder-1>, raw <folder-1>, <folder-1>"
+    ), out
+    red = setup_report.Redactor()
+    red.add("folder", "Wombat Ledger", ignore_case=True, fuzzy=True)
+    assert red.redact(f"saw Wombat{blank}Ledger") == "saw <folder-1>"
+    assert setup_report._SEP_RE.fullmatch(blank) is not None
+    assert setup_report._tokens(f"Kestrel{blank}Plans") == ["Kestrel", "Plans"]
+    assert setup_report._norm(f"Kestrel{blank}Plans") == "kestrelplans"
+
+
+@pytest.mark.parametrize("brk", _C3405_LINE_BREAKS, ids=[f"U+{ord(c):04X}" for c in _C3405_LINE_BREAKS])
+def test_a_line_break_never_joins_a_fuzzy_match_across_it_c3405(brk: str) -> None:
+    """B13 round 48 C3405's negative row (ruling 217): U+0085, U+2028 and U+2029 stay out of the separator
+    class, as LF and CR do, so ``Kestrel<break>Plans`` is no spelling of ``Kestrel Plans`` and a folder named
+    across one is two words to neither report."""
+    assert ord(brk) not in report_cuts.NONASCII_BLANKS
+    assert setup_report._SEP_RE.search(brk) is None
+    red = setup_report.Redactor()
+    red.add("folder", "Kestrel Plans", ignore_case=True, fuzzy=True)
+    assert red.redact(f"a Kestrel{brk}Plans b") == f"a Kestrel{brk}Plans b"
+
+
+def test_the_shell_blocks_separator_ere_reads_what_python_splits_at_c3405() -> None:
+    """B13 round 48 C3405 (ruling 217): an ``LC_ALL=C`` bracket class holds bytes, never a multibyte
+    character, so the block carries ``CUT_SEP_ERE``, one separator as an ERE group: ``CUT_SEP``'s class or a
+    :data:`report_cuts.NONASCII_BLANKS` character's UTF-8 bytes in octal. Under ``LC_ALL=C``, /usr/bin/awk's
+    gsub over it marks every byte sequence Python's separator class matches and no line break."""
+    block = report_cuts.shell_block()
+    ere = "([ \\t_\\\\\\001-\\010\\013-\\014\\016-\\037\\177-]|\\302\\240|\\341\\232\\200"
+    ere += "|\\342\\200[\\200-\\212]|\\342\\200\\257|\\342\\201\\237|\\343\\200\\200)"
+    assert f"CUT_SEP_ERE='{ere}'" in block.splitlines()
+    names = [f"Kestrel{chr(c)}Plans" for c in report_cuts.NONASCII_BLANKS]
+    names += [f"Kestrel{c}Plans" for c in _C3405_LINE_BREAKS]
+    names += ["Kestrel\u200bPlans", "Kestrel\u00e9Plans", "Q3\bPlans q3_plans-x\\y"]
+    script = (
+        block
+        + "export CUT_SEP_ERE\n"
+        + 'LC_ALL=C /usr/bin/awk \'{ gsub(ENVIRON["CUT_SEP_ERE"], "|"); print }\'\n'
+    )
+    text = "".join(f"{n}\n" for n in names)
+    cp = subprocess.run(["/bin/bash", "-c", script], input=text.encode(), capture_output=True, check=False)
+    assert cp.returncode == 0, cp.stderr
+    one = re.compile(report_cuts.sep_class())
+    # split at LF alone: str.splitlines also splits at U+0085 and U+2028
+    assert cp.stdout.decode("utf-8").split("\n") == [*(one.sub("|", n) for n in names), ""]
+
+
+_C3405_SHELL = pytest.param(
+    True,
+    id="shell",
+    marks=pytest.mark.xfail(strict=True, reason="lane RB's C3405 shell half"),
+)
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize("blank", ["\u00a0", "\u3000"], ids=["U+00A0", "U+3000"])
+@pytest.mark.parametrize("shell", [pytest.param(False, id="python"), _C3405_SHELL])
+def test_both_reports_cut_a_name_with_a_nonascii_blank_in_every_spelling_c3405(
+    env: dict[str, str],  # noqa: F811
+    blank: str,
+    locale: str,
+    shell: bool,
+) -> None:
+    """B13 round 48 C3405 (ruling 217; privacy): a configured folder ``Kestrel<blank>Plans`` and one step 1
+    only listed, ``Wombat<blank>Ledger``, with U+00A0 or U+3000, printed ``the person named Kestrel Plans``,
+    ``slug kestrel-plans``, ``joined KestrelPlans`` and ``kestrel_plans`` in clear in both reports. Each
+    spelling of each name now reads that name's one ``<folder-N>``. The agentsync report's half is asserted
+    in every run; the shell half (the two reports' parity, under both locales) is lane RB's, a strict xfail
+    until install.sh's word-run reads ``CUT_SEP_ERE``."""
+    said = [*_c3405_spellings("Kestrel", "Plans", blank), *_c3405_spellings("Wombat", "Ledger", blank)]
+    lines, python, shell_private, python_private = _both_reports(
+        env, [f"Kestrel{blank}Plans"], said, locale, shell=shell, listed=[f"Wombat{blank}Ledger"]
+    )
+    assert len(python) == len(said), python
+    leaks = [ln for ln in python for w in ("kestrel", "plans", "wombat", "ledger") if w in ln.lower()]
+    assert not leaks, leaks
+    heads = ["the person named ", "slug ", "joined ", "raw ", ""]
+    for at in (0, 5):
+        found = re.fullmatch(r"the person named (<folder-\d+>)", python[at])
+        assert found is not None, python
+        assert python[at : at + 5] == [h + found.group(1) for h in heads], python
+    assert python[0] != python[5], python
+    if shell:
+        assert lines == python and shell_private == python_private, list(zip(lines, python, strict=True))
+
+
 def test_a_recut_of_another_builds_render_says_so_under_its_redaction_section_c1406(tmp_path: Path) -> None:
     """B13 round 38 C1406 (ruling 126): another build's render that this checkout's recut changed showed
     `/Users/<path>` and `<path>` its own legend neither names nor counts. One line right after its

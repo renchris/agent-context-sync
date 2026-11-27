@@ -5583,6 +5583,7 @@ def test_the_report_cuts_table_is_what_both_reports_read_ruling_133() -> None:
         "CUT_DOMAINS",
         "CUT_PROVIDER_KEPT",
         "CUT_SEP",
+        "CUT_SEP_ERE",  # B13 round 48 C3405 (ruling 217)
         "CUT_CF",
         "CUT_Q32_OCTAL",
         "CUT_HEADS_PROVIDER",
