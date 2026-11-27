@@ -32327,7 +32327,7 @@ _C3403_REFUSED = (("install log", "$AGENTSYNC_SETUP_LOG names another account's 
 def test_an_attempt_whose_install_log_was_not_read_never_reads_no_install_run_c3403(
     text: str, not_read: tuple[tuple[str, str], ...], want: tuple[str, tuple[str, ...]]
 ) -> None:
-    """B13 round 48 C3403 (ruling 228; a review of cdea8d739): only the no-attempt return named a log the
+    """B13 round 48 C3403 (ruling 228; a review of its first build): only the no-attempt return named a log the
     report did not read; with a friction attempt, every later return said "no install run" (failed on a step
     error), which an unread install log cannot say. The attempt is unknown and names the unread log; an
     install log that was read keeps today's words exactly."""
@@ -32341,7 +32341,7 @@ def test_an_attempt_whose_install_log_was_not_read_never_reads_no_install_run_c3
 def test_the_summarys_friction_line_names_a_log_it_did_not_read_c3403_c3404(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch, value: str
 ) -> None:
-    """B13 round 48 C3403 and C3404 (ruling 228; a review of e02b0022a): with the friction log refused or not
+    """B13 round 48 C3403 and C3404 (ruling 228; a review of its first build): with the friction log refused or not
     a regular file, the Summary printed `- friction log: none at <path>` beside its own `friction log not
     read`. It names the log as not read and why; a log that is truly absent still reads `none at`."""
     if value == "refused":
@@ -32367,7 +32367,7 @@ def test_the_summarys_friction_line_names_a_log_it_did_not_read_c3403_c3404(
 def test_the_one_log_reader_opens_with_no_controlling_terminal_c3404(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """B13 round 48 C3404 (a review of e02b0022a): read_log opened without O_NOCTTY, so a terminal named by
+    """B13 round 48 C3404 (a review of its first build): read_log opened without O_NOCTTY, so a terminal named by
     `AGENTSYNC_SETUP_LOG` could become the controlling terminal of a report run that had none."""
     seen: list[int] = []
     real_open = os.open
