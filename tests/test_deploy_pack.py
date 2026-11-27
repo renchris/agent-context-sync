@@ -10487,6 +10487,7 @@ _ROUND_48_RA_PARAGRAPH_AMENDS = (
     ("16.14", "def read_friction(path: Path) -> Friction | None: ...", "§16.295 C3404"),
     ("16.14", "def compute_outcome(attempt: Attempt | None, runs: Sequence[InstallRun], *,", "§16.295 C3403"),
     ("16.290", "a run that named an answer is scored as before", "§16.295 C3508"),
+    ("16.291", "legend's project-folder clause kept by a tagged mark (C3289)", "§16.295 C3473"),
     ("16.290", "**install.sh's `per folder)` is kept whole after `--source-local`**", "§16.295 C3499"),
 )
 """Round 48 lane RA's dated lines no one claim holds alone: C3404's at §16.14's read_friction signature (a

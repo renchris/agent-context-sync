@@ -29124,7 +29124,9 @@ def test_the_report_names_each_held_folder_as_install_sh_does_c3332() -> None:
     shown = {"install_sh": setup_report.INSTALL_SH, "rerun": setup_report.INSTALL_SH}
     own = setup_report.NO_FOLDER_NEXT.format(**shown)
     assert said is not None and said.format(**shown).startswith(own), said
-    assert said.format(**shown).removeprefix(own) == cp.stdout
+    # B13 round 48 C3504 (ruling 221): the report's Loop line writes each held path home-relative, as its
+    # install.out excerpt reads once the home is cut; install.sh's own clause keeps the absolute path
+    assert said.format(**shown).removeprefix(own) == cp.stdout.replace(f" at {home}/", " at ~/")
 
 
 @pytest.mark.parametrize("tool_py", ["tomllib", "none"])
@@ -29167,7 +29169,10 @@ def test_both_held_folder_readers_keep_a_paths_trailing_blank_as_the_loader_does
     said = setup_report._install_sh_said_no_folder(r, load_config(cfg), rule2)
     shown = {"install_sh": setup_report.INSTALL_SH, "rerun": setup_report.INSTALL_SH}
     own = setup_report.NO_FOLDER_NEXT.format(**shown)
-    assert said is not None and said.format(**shown).removeprefix(own) == cp.stdout, said
+    # B13 round 48 C3504 (ruling 221): home-relative on the report's side, absolute in install.sh's clause
+    assert said is not None and said.format(**shown).removeprefix(own) == cp.stdout.replace(
+        f" at {home}/", " at ~/"
+    ), said
 
 
 def test_step_2_over_a_paused_folder_says_already_configured_and_the_held_clause_c3269(

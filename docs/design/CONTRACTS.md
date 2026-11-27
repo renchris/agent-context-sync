@@ -49005,7 +49005,7 @@ EACCES inside a File Provider tree says no (an unreadable provider folder is sig
 `test_each_entry_kind_at_a_source_root_is_bucketed_as_doctor_says_it_c3513` (ten entry kinds under a 20 s alarm).
 
 **C3245's loop pin and C3288's rows bite on their own fixes** (C3473; ruling 206 and ruling 208;
-`test_report_redaction`). With ae8f777c7's install.sh hunk reversed, all 8 rows of `test_the_shell_report_cuts_a_looped_inbox_links_target_c3245`
+`tests/test_report_redaction.py`). With ae8f777c7's install.sh hunk reversed, all 8 rows of `test_the_shell_report_cuts_a_looped_inbox_links_target_c3245`
 passed: one readlink hop already gave each loop's first-hop target, so the pin proved nothing. A `loop-linked-folder`
 row (the inbox links to `~/Kestrel Alias/x`, `Kestrel Alias` links to `~/Kestrel Real`, and `Kestrel Real/x` links back
 to the inbox) needs the walk that resolves the first hop's own folder: on the revert the shell prints `the inbox links
@@ -49029,7 +49029,8 @@ The name is never cut word by word, since a rel_path holds blanks and slashes (`
 Globex.xlsx` leaves no word of itself); the next segment's absolute path is still cut by the existing rules. The shell
 report has no twin: install.sh prints no err.log or install.out line and holds no `fetch of` text. Tests:
 `test_setup_report.py::test_a_failed_fetch_keeps_its_words_and_cuts_the_whole_name_c3535`, with
-`test_a_log_line_never_names_a_file_a_converter_reads`, `test_a_logger_named_like_a_document_keeps_its_time_and_level`,
+`test_a_log_line_never_names_a_file_a_converter_reads` (its 41 suffixes),
+`test_a_logger_named_like_a_document_keeps_its_time_and_level`,
 `test_recent_errors_never_carry_an_item_path_or_document_name` (`Big Bank`, `Merger` and `Globex` still absent) and
 `test_installer_output_log_lines_never_carry_a_nested_name` now expecting `fetch of <path> failed`.
 
