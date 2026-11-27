@@ -48704,7 +48704,56 @@ its words.
 
 ### 16.295 Round 48: the report: every spelling of a name cut (a refused account's other paths, the non-line-breaking blanks, the quantity words), a refused log read by nothing but the redactor, the held clause kept whole, and a route credited only from the attempt's own runs (2026-11-27, wave B13 round 48 lane RA)
 
-Reserved for round 48 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 48").
+Round 48 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 48"): the agentsync report's halves of rulings
+217, 221, 226, 227 and 228. Ruling 217's shell halves are §16.296's (lane RB), landed in the same run. A dated line
+this round writes in another section reads `Amended <date>, §16.295 C<n>: ...`.
+
+**A non-line-breaking Unicode blank is a fuzzy separator in both reports** (C3405; ruling 217 amending ruling 133;
+privacy; `agentsync.report_cuts`, `agentsync.setup_report`). A folder named `Kestrel<U+00A0>Plans` (or U+202F,
+U+3000, U+2009) was one word to both reports, so its blank-joined, slug, joined and underscore spellings printed in
+clear and only the spelling as written was cut. `report_cuts.NONASCII_BLANKS` holds U+00A0, U+1680, U+2000 to
+U+200A, U+202F, U+205F and U+3000, never U+0085, U+2028 or U+2029, which are line breaks and stay out as LF and CR
+do, so no match spans two lines. `sep_class()` appends them, so `_SEP_RE`, `_FUZZY_SEP`, `_JOINED_SEP`, `_tokens` and
+`_norm` move together and a `Kestrel Plans` beside a `Kestrel<U+00A0>Plans` keeps one number; `SEPARATORS` and
+`CUT_SEP` are unchanged. The generated block in `scripts/install.sh` gains `CUT_SEP_ERE`, one separator as an
+`LC_ALL=C` awk ERE group (`CUT_SEP`'s class, or each blank's UTF-8 bytes in octal), which seprun's consumers,
+fuzzy_key and fuzzy_flag read (§16.296). Tests: `test_report_redaction.py`'s
+`test_a_nonascii_blank_in_a_name_is_a_separator_c3405`, `test_a_line_break_never_joins_a_fuzzy_match_across_it_c3405`,
+`test_the_shell_blocks_separator_ere_reads_what_python_splits_at_c3405` (the block run by bash, its ERE applied by
+`/usr/bin/awk` under `LC_ALL=C` and compared with Python's split) and
+`test_both_reports_cut_a_name_with_a_nonascii_blank_in_every_spelling_c3405` (a configured and a listed-only folder,
+U+00A0 and U+3000, both locales, shell == python).
+
+**A quantity word after a bare `~` is no login** (C3406; ruling 217; makes worse True for cutting registered logins
+only; `agentsync.report_cuts`, `agentsync.setup_report`). C3224's bare-login cut turned `took ~twenty seconds` into
+`took ~<user> seconds` in both reports. One list, `report_cuts.TILDE_QUANTITY_WORDS` (the number words zero to twenty,
+thirty to ninety, hundred, thousand, million, dozen, half, a, an, few, several), spares such a word in
+`_other_login_re`'s bare branch, and the generated block carries it as `CUT_TILDE_QUANTITY_WORDS` for install.sh's
+`tilde()` (§16.296). The word is spared only with no `/` after it; `~tenth`, `~olga` and `~ten/x` are still cut, and
+a refused `~ten` value is still cut by its `add_cut` literal, which comes first. Tests:
+`test_one_tilde_quantity_word_list_is_read_by_both_reports_c3406` (report_cuts, the Python alternation and bash's
+`$CUT_TILDE_QUANTITY_WORDS` equal), `test_a_tilde_quantity_word_is_no_login_c3406` and
+`test_both_reports_keep_a_tilde_quantity_word_c3406`.
+
+**A path under a refused account's login is cut whole** (C3402; ruling 217; makes worse True for cutting the head
+only where no `/` follows; privacy; `agentsync.setup_report`). With `pandoc_path = "~kestrel/Zephyr Quarry/pandoc"`,
+`see ~kestrel/Wombat Ledger/plan.md now` printed `see ~<user> Ledger/plan.md now`, and `/Users/kestrel/Wombat
+Ledger` printed `/Users/<user>/Wombat Ledger`, in both reports: the head's cut ran to the blank, and the name, put
+in `Redactor._logins`, was skipped as this account's own. `_register_refused` registers the name as a `user` value
+with `foreign=True`, kept out of `_logins`, and cuts the bare `~name` head only at a path end (`_CUT_AT_END`), so
+`~kestrel/...` falls to `otherlogin` and `/Users/kestrel/...` to `otherhome`, each cut whole; a head that
+`_TILDE_LOGIN` cannot read (one that is not ASCII) is passed to `_other_login_re` by `Redactor.add_tilde_login`. A
+reader sees `~<user>/<path>` for `~kestrel/Wombat Ledger/plan.md` and for the parent `~kestrel/Zephyr Quarry`,
+`/Users/<path>` for `/Users/kestrel/Wombat Ledger`, `~<user>` for a bare `~kestrel` and `<user>` for the word alone.
+Tests: `test_report_redaction.py::test_a_path_under_a_refused_account_is_cut_whole_c3402` (ASCII and not) and
+`test_both_reports_cut_a_path_under_a_refused_account_whole_c3402` (both locales, shell == python).
+
+**A vanished project root registers fuzzily, as a configured one does** (C3471; ruling 217, reversing ruling 207's
+carve-out; privacy; `agentsync.setup_report`; amends §16.291 C3289). The folder a vanished source's walk recorded
+(`scope_root:<id>`) registered as written only, so `Kestrel_Alder`, `kestrel-alder` and `KestrelAlder` printed in
+clear. It now takes the configured loop's rule: fuzzy unless the value holds `/` or is a joined name. The shell
+reads the manifest's `scope_root` rows itself (§16.296). Test: `test_both_reports_cut_a_project_folders_fuzzy_spellings_alike_c3289`'s vanished
+arms, with the literal `KestrelAlder is mine` row, all five rows `<folder-N> is mine` in both reports.
 
 ### 16.296 Round 48: the installer: the shell halves of ruling 217, no value printed that it could not register, step 1's escapes and marks, the single-quoted placeholder, a failed sync told apart from a blocked one, and C2060 waits on the operator (2026-11-27, wave B13 round 48 lane RB)
 
