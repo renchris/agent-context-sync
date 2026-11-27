@@ -47823,6 +47823,9 @@ phrase, `CUT_SOURCE_LOCAL_KEPT` in the generated block, and `_quoted_value_end` 
 `--source-local ` where the phrase ends (the line's end, a blank, `;`, `,` or `.`), as `_CWD_KEPT` keeps --cwd's
 words; `_SOURCE_LOCAL_RE` is unchanged, and `per diem/Wombat` and `per folder)/Wombat Ledger` are still cut. Test:
 `test_install_shs_per_folder_phrase_is_kept_after_source_local_c3203`.
+Amended 2026-11-27, §16.296 C3434: lane RB's recut half was not wired, typed_note_cut never read
+`CUT_SOURCE_LOCAL_KEPT`; it reads the rows through ENVIRON and keeps the one-word read in qheads' non-adjacent branch
+where a kept phrase ends, held to `_quoted_heads_cut` by one test in both locales.
 
 **The report's own readers** (C3208, C3292, C3315, C3330; the report cluster). A checkout other than
 ~/src/agent-context-sync, as written or resolved, is `checkout <path>` in the install-source line, its
@@ -48026,6 +48029,8 @@ folder`. C3209: fallback_outcome_line computes no outcome for an attempt with an
 computed`), never `fully one command`. Ruling 210's phrase: inbox_not_added and inbox_not_read key on the `inbox: not
 read` prefix, which lane B's words leave as they were. C3203's recut half landed with lane RA's CUT_SOURCE_LOCAL_KEPT
 row (§16.290).
+Amended 2026-11-27, §16.296 C3434: C3203's recut half had not landed, since no awk read that row; typed_note_cut
+reads it since §16.296.
 
 **C2060's shell half waits on the operator** (C3287; ruling 208). Class C decision c0777e12a523, whether a lane may
 port round 41's refused install.sh edit so the shell report decodes a listed name step 1 printed with escapes, is
@@ -48894,6 +48899,51 @@ add the held clause after their re-run, before `$kept`, the exit-0 clause order 
 **A first sync that exits 0 shows each file it could not read** (C3537). show_first_sync prints the sync's per-item
 `error:` lines under the step's label after the converted line, which SYNC_SUMMARY_RE and install.log's note still
 read. Test: `tests/test_install_oneshot.py::test_a_first_sync_that_exits_0_shows_each_file_it_could_not_read_c3537`.
+
+**The shell halves of ruling 217's report cuts** (C3405, C3406 and C3402, lane RA's Python halves in §16.295). C3405:
+seprun's run, fuzzy()'s word split, the pairs' sort key, the og and verb keys, agent_protect's rx, agent_words_name,
+fuzzy_key and fuzzy_flag read the generated `CUT_SEP_ERE`'s multibyte blanks beside the byte class (sepmb, sepere in
+SEP_RUN_AWK). C3406: tilde() spares a `CUT_TILDE_QUANTITY_WORDS` word in any case, one trailing dot allowed, at a path
+end, never before a slash. C3402: a refused `~name` value's head and name are no pairs, which ran before
+foreign_home_cut; redaction_pairs gives them as L and W lines that redact_stream passes to foreign_home_cut, whose
+tilde() reads each login after a tilde whatever its characters (`~name/...` cut whole, the bare head at a path end)
+and whose word pass cuts the name alone to `<user>` after every other cut. Tests: lane RA's two-report rows
+`tests/test_report_redaction.py::test_both_reports_cut_a_name_with_a_nonascii_blank_in_every_spelling_c3405`,
+`::test_both_reports_keep_a_tilde_quantity_word_c3406` and `::test_both_reports_cut_a_path_under_a_refused_account_whole_c3402`,
+their shell parameters no longer strict xfails, and the C3289 vanished arm's.
+
+**A dangling link at or above the docs path is the person's at step 2** (C3466; ruling 226; makes worse True for
+calling docs_repo_state). docs_not_a_folder keeps its inline probe, which an older installed build runs, and adds a
+link at the path or above it whose target is missing, outside CloudStorage, so step 2 gives DOCS_NOTDIR_NEXT where it
+read `fix the error above`. Test: `tests/test_install_oneshot.py::test_something_not_a_folder_where_the_docs_repo_belongs_is_the_persons_at_step_2`
+(its dangling and dangling-above rows).
+
+**The setup and friction logs resolve as paths.env_log_path reads them** (C3468; ruling 228). One shell env_log_path
+trims the six CONFIG_BLANKS at both ends, takes an empty value as unset and expands `~` and `~/`, for
+AGENTSYNC_SETUP_LOG and AGENTSYNC_FRICTION_LOG alike, as lane B's resolver does for the report and the loop; a `~name`
+value is kept as written and never written to (log_at, finish_setup_log and friction_append skip it, install.out
+staying in the default setup folder). Test: `tests/test_install_oneshot.py::test_both_logs_resolve_as_paths_env_log_path_does_c3468`.
+
+**The shell keeps install.sh's own --source-local phrase and its held clause** (C3434; ruling 221; amends §16.290 C3203
+and §16.291 C3203). typed_note_cut reads `CUT_SOURCE_LOCAL_KEPT` through ENVIRON as TYPED_SLKEPT, empty rows skipped,
+and in qheads' non-adjacent branch keeps the one-word read after `--source-local ` where a kept phrase ends (the end,
+a blank, `;`, `,` or `.`), as `_quoted_value_end` does. Test:
+`tests/test_report_redaction.py::test_both_reports_keep_install_shs_own_source_local_phrase_and_its_held_clause_c3434`.
+
+**A run that ends on a no-folder NEXT says so on its end line, and --no-folder words status's completed none** (C3467's
+end-line key and C3546's case arm; ruling 227). A run whose NEXT opens `no folder is synced yet` or `no folder to sync
+yet` writes ` next=no-folder` on its end line (END_KEY, the provisional line and finish_setup_log's alike), which lane
+RA's `_loop_run` reads first. Under `--no-folder`, status's `the person chose no folder` step (lane B's C3546) maps to
+NO_FOLDER_CHOSEN_NEXT, as the no-folder words do. Tests:
+`tests/test_install_oneshot.py::test_a_run_that_ends_on_a_no_folder_next_says_so_on_its_end_line_c3467`,
+`::test_no_folder_says_its_own_words_over_statuss_completed_none_step_c3546`.
+
+**C2060's shell half still waits on the operator** (C3474; ruling 219). Class C decision c0777e12a523 was open at both
+of lane RB's reads (the second right before its last land's scripts/ship-land.sh call), so nothing decodes a listed
+name in install.sh: the port at C2667's three porting points is not built, the ruling-142 strict xfail keeps its
+one-line reason (`C2060 unbuilt: install.sh's decode of a listed part awaits operator decision c0777e12a523`), and
+C3401's private-only line stands in the meantime. Test:
+`tests/test_report_redaction.py::test_both_reports_cut_a_folder_step_1_listed_but_not_configured_ruling_142` (XFAIL).
 
 **Every print of the launcher's path and the source line goes through q_word** (C3509; ruling 218). The usage error
 for a `--launcher` that is no folder, the codesign refusal, the up-to-date line and `source:` printed a path holding
