@@ -3390,6 +3390,16 @@ def test_the_walk_names_every_kept_inbox_entry_as_typed_c3312_c3211(
         assert "contoso-" not in text, text
 
 
+def _forget_kept_inbox_reads() -> None:
+    """config.forget_kept_inbox_reads once the probe threads a held run abandoned have ended: the probe's
+    ``call_with_timeout`` gives up first and leaves its thread waiting out kept_inbox_read's own limit, which
+    then keeps the timeout, so a forget before that thread ends is undone (B13 round 48 C3414)."""
+    deadline = time.monotonic() + 15
+    while any(t.name == "agentsync-root" for t in threading.enumerate()) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    config_module.forget_kept_inbox_reads()
+
+
 def test_the_kept_inbox_probe_is_bounded_and_run_only_by_a_failed_root_read_c3311(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -3426,12 +3436,15 @@ def test_the_kept_inbox_probe_is_bounded_and_run_only_by_a_failed_root_read_c331
             assert time.monotonic() - began < 10  # bounded: never the held stat's 20 s
             for mode in (CycleMode.DRY_RUN, None):
                 calls.clear()
+                # each command is its own process: a kept timeout lasts one process (B13 round 48 C3414)
+                _forget_kept_inbox_reads()
                 report = run_cycle(config, mode=mode)
                 [src] = [r for r in report.sources if r.source_id == box.id]
                 assert any("reading the root did not return within 1s" in a for a in src.alarms), src.alarms
                 assert calls, mode
             # the CLI sync: its NEXT reads the entry too (inbox_state, the not-a-folder note), bounded alike
             calls.clear()
+            _forget_kept_inbox_reads()
             began = time.monotonic()
             cli.main(["sync", "--config", str(config.config_path)])
             assert calls and time.monotonic() - began < 15, (len(calls), time.monotonic() - began)
@@ -3737,6 +3750,62 @@ def test_live_inbox_bounds_its_canonical_walk_too_c3311(
         release.set()
         monkeypatch.setattr(os, "stat", real)
     assert took < 10, took  # never the held stat's 20 s
+
+
+def test_one_status_waits_one_limit_for_a_held_kept_inbox_read_c3414(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """B13 round 48 C3414 with C3442 (ruling 225): C3311's limit reached inbox_state and live_inbox, while
+    status_line and doctor's listable and heartbeat rows read the kept entry with none, one stat each per
+    reader, so one ``status`` waited the held stat out again and again. Every reader takes
+    config.kept_inbox_read: the entry is read under the limit, a timeout kept as unread for the process, so
+    the held stat is met once, status returns in about one limit, the loop line reads ``inbox ?`` with no
+    WARNING, and the listable row never says the folder is missing or not a folder."""
+    root = tmp_path / "Contoso Gamma"
+    (root / "Gamma Empty").mkdir(parents=True)
+    config = _synced(tmp_path, root)
+    config, box = ensure_inbox(config.config_path)
+    assert box is not None and run_cycle(config, mode=None).exit_code == 0
+    kept = config.docs_repo.parent / "inbox"
+    kept.rename(tmp_path / "inbox-moved")  # moved aside, never removed
+    (tmp_path / "contoso-held").mkdir()
+    kept.symlink_to(tmp_path / "contoso-held")
+    config = load_config(config.config_path)
+    config_module.forget_kept_inbox_reads()  # the link is new: no answer read before it is kept
+    real = os.stat
+    calls: list[str] = []
+    release = threading.Event()
+
+    def held(path: Any, *args: Any, **kwargs: Any) -> os.stat_result:
+        # the stat that follows the kept link, held by a privacy prompt; the link's own lstat is not
+        if os.fspath(path) == str(kept) and kwargs.get("follow_symlinks", True):
+            calls.append(os.fspath(path))
+            release.wait(20)
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(arm_local, "LISTING_TIMEOUT_S", 1.0)
+    monkeypatch.setattr(os, "stat", held)
+    capsys.readouterr()
+    try:
+        with _bounded(150), caplog.at_level(logging.WARNING, logger="agentsync"):
+            began = time.monotonic()
+            cli.main(["status", "--config", str(config.config_path)])
+            took = time.monotonic() - began
+    finally:
+        release.set()
+        monkeypatch.setattr(os, "stat", real)
+    out = capsys.readouterr().out
+    assert took < 8, (took, len(calls))  # about one limit, never one per reader
+    assert len(calls) == 1, calls  # the kept entry is met once for every reader
+    assert " · inbox ? · " in out, out
+    assert "inbox state: not read (timed out)" in out, out
+    assert "cannot read inbox" not in caplog.text, caplog.text
+    listable = [ln for ln in out.splitlines() if f"source.{box.id}.listable" in ln]
+    assert listable, out
+    assert not any("not a folder" in ln or "does not exist" in ln for ln in listable), listable
 
 
 def test_an_empty_draft_over_an_empty_mirror_is_rule_4_beside_topic_pages_c2707(tmp_path: Path) -> None:

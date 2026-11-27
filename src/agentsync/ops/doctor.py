@@ -43,9 +43,9 @@ from agentsync.config import (
     RETIRE_ADVICE,
     Config,
     SourceConfig,
-    canonical_source_root,
     kept_inbox_entry,
     kept_inbox_not_a_folder,
+    kept_inbox_read,
 )
 from agentsync.convert import media, ocr, speech
 from agentsync.cycle import (
@@ -3104,7 +3104,11 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
     shown = list_spelling(root)  # every detail's spelling of the root, never raw (B13 round 38 C1414)
     # the source on the kept inbox while a file or a link that is not a folder has its name: shown as typed,
     # never the link's target, with the person's one fix on the listable and volume rows (C2809)
-    typed_inbox = kept_inbox_not_a_folder(config, src)  # the one test (B13 round 47 C3260, ruling 210)
+    # the one test (B13 round 47 C3260, ruling 210), on the one bounded read every reader shares
+    # (config.kept_inbox_read): a read held past the listings' limit is an unread entry, so these rows fall
+    # through to the bounded listing below, never "not a folder" or "missing" (B13 round 48 C3414 with C3442,
+    # ruling 225)
+    typed_inbox = kept_inbox_not_a_folder(config, src)
     shown_root = root  # the root as every detail spells it; never a check's path
     if typed_inbox is not None:
         shown = list_spelling(typed_inbox)
@@ -3139,8 +3143,9 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
         if first is None and src.kind is SourceKind.INBOX and not cloud:
             # every config has an inbox since KISS K05; empty is its normal state, not a finding. The hint
             # is for the folder config.ensure_inbox keeps: any other inbox source is one the person added.
-            kept = canonical_source_root(expand(config.docs_repo).parent / "inbox")
-            hint = " (drop files you save by hand here)" if src.path == kept else ""
+            # the kept path from the one bounded read, never a second walk (C3414 with C3442)
+            kept = kept_inbox_read(config)[1]
+            hint = " (drop files you save by hand here)" if kept is not None and src.path == kept else ""
             out.append(_ok(f"{base}.listable", f"{shown} is empty{hint}"))
         elif first is None:
             # the walk's own test (``arm_local.zero_children_unknown``): a cloud folder outside every File
@@ -4275,7 +4280,9 @@ def _check_heartbeat(
         # the inbox on the kept folder while its entry is not a folder: the listable row has the person's
         # remedy, and no sync lists it until then, so neither "sync -v" nor install's walk-next note is said;
         # the one test, an lstat, never a listing (B13 round 47 C3218, ruling 210); an entry there this
-        # account cannot read takes the pointer too, with its own "until" (the review's find)
+        # account cannot read takes the pointer too, with its own "until" (the review's find); read once,
+        # bounded and shared (config.kept_inbox_read), a held read taking the unread pointer (B13 round 48
+        # C3414 with C3442, ruling 225)
         on_kept = kept_inbox_entry(config, src) if src.kind is SourceKind.INBOX else None
         unread = on_kept is not None and on_kept[1].startswith(INBOX_ENTRY_UNREAD)
         not_folder = unread or (

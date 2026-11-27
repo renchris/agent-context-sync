@@ -892,6 +892,7 @@ def ensure_inbox(config_path: Path) -> tuple[Config, SourceConfig | None]:
     if not raw.is_dir():
         raw.mkdir(mode=0o700, parents=True)  # FileExistsError when a file has the name
         raw.chmod(0o700)  # mkdir's mode is masked by the umask
+        forget_kept_inbox_reads()  # a folder is there now: the next reader reads it (C3414 with C3442)
     path = canonical_source_root(raw)
     # by identity (paths.same_folder), so a source on ``Inbox`` is on this folder on a case-insensitive Mac
     # and no second source is added for it (B13 round 42 C2318)
@@ -952,6 +953,46 @@ def inbox_entry(folder: Path) -> str:
     return INBOX_ENTRY_FOLDER if stat.S_ISDIR(target.st_mode) else INBOX_ENTRY_NOT_A_FOLDER
 
 
+INBOX_ENTRY_TIMED_OUT = f"{INBOX_ENTRY_UNREAD}timed out"  # a kept-entry read held past the listings' limit
+
+# kept_inbox_read's timed-out answers for this process, per kept folder as typed: a new HOME misses it
+_KEPT_INBOX_READS: dict[Path, tuple[Path | None, str]] = {}
+
+
+def forget_kept_inbox_reads() -> None:
+    """Drop :func:`kept_inbox_read`'s answers, so the next reader reads the disk again: ensure_inbox calls it
+    once it may have made the folder, and a test that changes the entry calls it before reading it again
+    (B13 round 48 C3414 with C3442, ruling 225)."""
+    _KEPT_INBOX_READS.clear()
+
+
+def kept_inbox_read(config: Config) -> tuple[Path, Path | None, str]:
+    """``(typed, kept, entry)`` for the kept inbox, read once per process for every reader (B13 round 48
+    C3414 with C3442, ruling 225): ``typed`` the folder ``inbox`` beside the docs repo as typed, ``kept``
+    :func:`canonical_source_root` of it (None when its walk raised) and ``entry`` :func:`inbox_entry`'s
+    answer, the two run together under :func:`bounded_inbox_read`. Past the limit the answer is
+    ``(typed, None, INBOX_ENTRY_TIMED_OUT)``, an unread entry, never absent or not a folder, and that answer
+    is kept for the process, so status, doctor and the loop wait one limit in all, not one each; an answer
+    read in time is not kept, since the entry may change between readers. inbox_state, live_inbox,
+    kept_inbox_entry (and kept_inbox_not_a_folder on it), status_line, loop's missing-root arm and doctor's
+    listable and heartbeat rows read it."""
+    typed = expand(config.docs_repo).parent / "inbox"
+    got = _KEPT_INBOX_READS.get(typed)
+    if got is None:
+
+        def read() -> tuple[Path | None, str]:
+            try:
+                kept: Path | None = canonical_source_root(typed)
+            except OSError:
+                kept = None
+            return kept, inbox_entry(typed)
+
+        got = bounded_inbox_read(read)
+        if got is None:
+            got = _KEPT_INBOX_READS[typed] = (None, INBOX_ENTRY_TIMED_OUT)
+    return typed, got[0], got[1]
+
+
 def kept_inbox_not_a_folder(config: Config, src: SourceConfig) -> Path | None:
     """The kept inbox folder as typed (``inbox`` beside the docs repo, never resolved) when ``src`` is the
     inbox-kind source on it and :func:`inbox_entry` reads that entry as not a folder (a file or a link that
@@ -976,13 +1017,13 @@ def kept_inbox_entry(config: Config, src: SourceConfig) -> tuple[Path, str] | No
     test of "not a folder"."""
     if src.kind is not SourceKind.INBOX or src.path is None:  # a local source keeps its own root words
         return None
-    typed = expand(config.docs_repo).parent / "inbox"
-    try:
-        if expand(src.path) == canonical_source_root(typed):
-            return typed, inbox_entry(typed)
-    except OSError:
-        return None
-    return None
+    # the one bounded read (kept_inbox_read; B13 round 48 C3414 with C3442, ruling 225). A held read left no
+    # kept path to match: every inbox source reads the unread entry, never None, so no reader gives a held
+    # kept inbox an ordinary source's words; no further read can tell which source the link leads to
+    typed, kept, entry = kept_inbox_read(config)
+    if entry == INBOX_ENTRY_TIMED_OUT:
+        return typed, entry
+    return (typed, entry) if kept is not None and expand(src.path) == kept else None
 
 
 # status's line after ``inbox:``, printed only when no live inbox source sits there
@@ -1009,16 +1050,9 @@ def inbox_state(config: Config) -> tuple[Path, str]:
     ``not read (<why>)``, the OSError's own words with no path, never ``is not a folder``: os.path.isdir
     would call such a link to a real folder not a folder, and os.path.lexists would call a denied entry
     absent (B13 round 44 C2644 with C2636, ruling 180; round 45 C2936, ruling 194)."""
-    folder = expand(config.docs_repo).parent / "inbox"
-
-    def read() -> tuple[str, Path | None]:
-        kind = inbox_entry(folder)
-        if kind.startswith(INBOX_ENTRY_UNREAD) or kind == INBOX_ENTRY_NOT_A_FOLDER:
-            return kind, None
-        return kind, canonical_source_root(folder)
-
-    got = bounded_inbox_read(read)  # past the listings' limit: not read (B13 round 47 C3311)
-    kind, kept = got if got is not None else (f"{INBOX_ENTRY_UNREAD}timed out", None)
+    # the one bounded, cached read (kept_inbox_read): past the listings' limit, not read (B13 round 47 C3311;
+    # round 48 C3414 with C3442, ruling 225)
+    folder, kept, kind = kept_inbox_read(config)
     if kind.startswith(INBOX_ENTRY_UNREAD):
         return folder, f"not read ({kind[len(INBOX_ENTRY_UNREAD) :]})"
     if kind == INBOX_ENTRY_NOT_A_FOLDER or kept is None:
@@ -1061,12 +1095,11 @@ def live_inbox(config: Config) -> Path | list[tuple[Path, str]] | None:
         ),
         key=lambda pair: pair[1],
     )
-    folder = expand(config.docs_repo).parent / "inbox"
-    # the canonical path's lstat walk and the entry's stat together, each able to wait on a privacy prompt
-    got = bounded_inbox_read(lambda: (canonical_source_root(folder), inbox_entry(folder)))
-    if got is None:  # past the limit: no inbox named, never a held sync (B13 round 47 C3311)
+    # the canonical path's lstat walk and the entry's stat together, each able to wait on a privacy prompt,
+    # read once for every reader (kept_inbox_read; B13 round 48 C3414 with C3442, ruling 225)
+    folder, kept, entry = kept_inbox_read(config)
+    if entry == INBOX_ENTRY_TIMED_OUT or kept is None:  # no inbox named, never a held sync (C3311)
         return None
-    kept, entry = got
     if entry not in (INBOX_ENTRY_ABSENT, INBOX_ENTRY_FOLDER):
         inboxes = [(path, sid) for path, sid in inboxes if not same_folder(path, kept)]
     elif any(same_folder(path, kept) for path, _ in inboxes):

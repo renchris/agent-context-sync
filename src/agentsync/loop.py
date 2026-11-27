@@ -67,16 +67,17 @@ from agentsync.arm_local import (
 from agentsync.config import (
     INBOX_ENTRY_FOLDER,
     INBOX_ENTRY_NOT_A_FOLDER,
+    INBOX_ENTRY_TIMED_OUT,
     INBOX_ENTRY_UNREAD,
     INBOX_LIVE,
     Config,
     SourceConfig,
     bounded_inbox_read,
-    canonical_source_root,
     inbox_entry,
     inbox_state,
     kept_inbox_entry,
     kept_inbox_not_a_folder,
+    kept_inbox_read,
     live_inbox,
 )
 from agentsync.convert import NO_CONVERTER_PREFIX
@@ -1098,18 +1099,22 @@ def _inbox_root_not_a_folder(
         return None
     root = expand(src.path)
 
-    def read() -> tuple[Path, str] | tuple[None, str]:
-        # the kept entry read once (config.kept_inbox_entry, which kept_inbox_not_a_folder, the one test, is
-        # built on), or this source's own path for any other inbox's not-a-folder finding
-        on = kept_inbox_entry(config, src)
-        if on is not None:
-            return on
-        return None, inbox_entry(root) if kinds == frozenset({UNKNOWN_NOTDIR}) else ""
-
-    try:
-        got = bounded_inbox_read(read)  # a stat held past the listings' limit holds no command (C3311)
-    except OSError:
-        return None
+    # the kept entry from the one bounded read every reader shares (config.kept_inbox_entry on
+    # kept_inbox_read, which kept_inbox_not_a_folder, the one test, is built on; B13 round 48 C3414 with
+    # C3442, ruling 225), or this source's own path, bounded, for any other inbox's not-a-folder finding
+    on = kept_inbox_entry(config, src)
+    if on is not None:
+        if on[1] == INBOX_ENTRY_TIMED_OUT:  # a stat held past the listings' limit holds no command (C3311)
+            return None
+        got: tuple[Path, str] | tuple[None, str] | None = on
+    elif kinds == frozenset({UNKNOWN_NOTDIR}):
+        try:
+            entry_now = bounded_inbox_read(lambda: inbox_entry(root))
+        except OSError:
+            return None
+        got = None if entry_now is None else (None, entry_now)
+    else:
+        got = (None, "")
     if got is None:
         return None
     typed, entry = got
@@ -2289,15 +2294,20 @@ def status_line(config: Config) -> str:
         boxes = [s.path for s in live if s.path is not None]
         if not boxes:
             return "off"
-        typed = docs.parent / "inbox"
-        entry = inbox_entry(typed)
+        # The kept entry and its canonical path come from the one bounded read every reader shares
+        # (config.kept_inbox_read): a read held past the listings' limit is ``inbox ?`` with no WARNING, as
+        # an entry this account cannot read, and the folders named are listed under the same limit (B13
+        # round 48 C3414 with C3442, ruling 225).
+        _typed, kept, entry = kept_inbox_read(config)
         if entry.startswith(INBOX_ENTRY_UNREAD):
             raise PermissionError(entry[len(INBOX_ENTRY_UNREAD) :])  # ``inbox ?``, with no WARNING
         if any(kept_inbox_not_a_folder(config, s) is not None for s in live):
             return "not a folder"
-        kept = canonical_source_root(typed)
-        named = [path for path in boxes if same_folder(path, kept)] or boxes
-        return "on" if all(expand(path).is_dir() for path in named) else "missing"
+        named = [path for path in boxes if kept is not None and same_folder(path, kept)] or boxes
+        found = bounded_inbox_read(lambda: all(expand(path).is_dir() for path in named))
+        if found is None:
+            raise PermissionError("timed out")  # ``inbox ?``, with no WARNING
+        return "on" if found else "missing"
 
     def checkpoint() -> str:
         found = gitops.curated_checkpoint(docs) if (docs / ".git").exists() else None

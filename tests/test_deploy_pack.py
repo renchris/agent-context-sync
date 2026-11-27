@@ -25,7 +25,7 @@ import pytest
 
 import exec_stub
 from agentsync import publish, report_cuts
-from agentsync.config import ConvertConfig, inbox_state
+from agentsync.config import ConvertConfig, inbox_state, kept_inbox_read
 from agentsync.convert import NO_CONVERTER_PREFIX, ConversionStatus, convert_file, speech
 from agentsync.convert.cache import ConverterCache
 from agentsync.convert.registry import Registry
@@ -5834,7 +5834,9 @@ def test_the_v39_prompt_reads_the_paths_and_folder_states_setup_printed_c2316_c2
     heads = ('f"config: {config.config_path}"', 'f"docs repo: {config.docs_repo}"')
     for head in (*heads, 'f"inbox: {inbox_folder}"', "inbox_folder, inbox_words = inbox_state(config)"):
         assert head in status, head
-    assert 'folder = expand(config.docs_repo).parent / "inbox"' in inspect.getsource(inbox_state)
+    # B13 round 48 C3414 with C3442: the folder is kept_inbox_read's, the one bounded read inbox_state takes
+    assert 'typed = expand(config.docs_repo).parent / "inbox"' in inspect.getsource(kept_inbox_read)
+    assert "folder, kept, kind = kept_inbox_read(config)" in inspect.getsource(inbox_state)
     assert 'say "docs repo: $(list_name "$repo")"\n\tsay "inbox: $(list_name "$inbox")"' in script
     assert "~/agent-context/docs/AGENTS.md" not in flat and "under ~/agent-context/docs." not in flat
     assert "~/agent-context/sources.toml unless AGENTSYNC_CONFIG is set" in step2

@@ -56,6 +56,7 @@ from agentsync.arm_local import (
     UNKNOWN_EMPTY,
     UNKNOWN_MISSING,
     UNKNOWN_NOTDIR,
+    CallTimedOutError,
     InboxArm,
     LocalArm,
     SettleBudget,
@@ -74,6 +75,7 @@ from agentsync.classifier import (
 from agentsync.classifier import classify_pass as _classify_pass
 from agentsync.config import (
     INBOX_ENTRY_NOT_A_FOLDER,
+    INBOX_ENTRY_TIMED_OUT,
     INBOX_ENTRY_UNREAD,
     RETIRE_ADVICE,
     BreakerConfig,
@@ -769,11 +771,16 @@ def _kept_inbox_shown(config: Config, src: SourceConfig) -> tuple[str | None, st
     """``LocalArm.root_probe`` for ``src``: ``(shown, unread)``, the kept inbox as typed (``~/...``) in the
     first slot when ``src`` is the inbox-kind source on it and its entry is not a folder
     (config.kept_inbox_not_a_folder's test), in the second when that entry cannot be read, else None in both;
-    apart, so the not-a-folder words never fire on a link this account cannot follow (B13 round 47 C3211)."""
+    apart, so the not-a-folder words never fire on a link this account cannot follow (B13 round 47 C3211).
+    A kept read that timed out (config.kept_inbox_read's one bounded read, kept for the process) reads as
+    held, as the probe's own limit would: arm_local keeps ``reading the root did not return within <N>s`` and
+    never names the link's target (B13 round 47 C3007; round 48 C3414 with C3442, ruling 225)."""
     on = kept_inbox_entry(config, src)
     if on is None:
         return None, None
     typed, entry = on
+    if entry == INBOX_ENTRY_TIMED_OUT:
+        raise CallTimedOutError(entry)
     shown = _display_path(typed)
     if entry == INBOX_ENTRY_NOT_A_FOLDER:
         return shown, None
