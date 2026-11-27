@@ -48766,7 +48766,62 @@ arms, with the literal `KestrelAlder is mine` row, all five rows `<folder-N> is 
 
 ### 16.296 Round 48: the installer: the shell halves of ruling 217, no value printed that it could not register, step 1's escapes and marks, the single-quoted placeholder, a failed sync told apart from a blocked one, and C2060 waits on the operator (2026-11-27, wave B13 round 48 lane RB)
 
-Reserved for round 48 lane RB of B13.
+The installer's items of round 48 (`docs/plans/bring-back-ocr.md`, "B13 round 48"; each item's verifier's corrected
+fix built, as the lead's rulings 217 to 231 settle it). A dated line this round writes reads `Amended <date>, §16.296
+C<n>: ...`.
+
+**The shell's quoted foreign-home cut closes at an unescaped quote** (C3435; ruling 217; privacy). foreign_home_cut's
+tilde() and `/Users/` quoted branches ended a quoted path at the first quote byte, so `"~contoso/Zephyr\" Quarry/notes"`
+printed ` Quarry/notes"` in clear where setup_report's quoted patterns, `(?:[^q\n\\]|\\.)+(?=q)`, step over a backslash
+escape. One awk qend() finds the first quote no backslash escapes, a lone trailing backslash closing nothing, at both
+call sites. Tests: `tests/test_report_redaction.py::test_both_reports_cut_a_quoted_foreign_path_to_its_unescaped_quote_c3435`.
+
+**The shell reads a configured path past its leading blanks** (C3439; ruling 217; privacy). config._path_str drops a
+source path's leading blanks and keeps a trailing one (ruling 209), so `  ~/Kestrel Plans` loaded as a ~/ path the
+agentsync report registers, while config_path_values gave it as written and the shell printed the name in clear.
+config_path_values trims the leading PY_SPACE_ERE blanks of each value, never the trailing end, and gives no line for
+a value blank all through; every reader of it (both redaction_pairs loops, the report's cfg reads) takes the trimmed
+value. Tests: `::test_both_reports_read_a_configured_path_past_its_leading_blanks_c3439`,
+`tests/test_install_oneshot.py::test_config_path_values_trims_leading_blanks_only_c3439`.
+
+**A vanished source's folder is read from the manifest and cut fuzzily** (C3471; ruling 217; privacy). The shell
+learned a vanished source's folder only from the doctor log or install.out, so with neither naming it every spelling
+printed. manifest_vanished_roots reads the meta `scope_root:<id>` rows of each id the items table holds that
+sources.toml no longer configures, as setup_report._unconfigured_roots reads them, with `/usr/bin/sqlite3` under
+MANIFEST_RO_PY's rule (a -journal, or a -wal and a -shm: `mode=ro`; no -wal or an empty one and no -shm:
+`immutable=1`, kept only when the manifest's and the -wal's size and time read the same after; a -wal with frames and
+no -shm: not read), each value through `hex()`, and only where sources.toml parses. The vanished loop registers each
+root as the configured loop does (`project_values ... configured`: fuzzy, a joined name and a value holding `/`
+literal), reversing ruling 207's carve-out; lane RA's setup_report half and dated line move the agentsync report
+alike. Tests: `::test_the_shell_report_cuts_a_vanished_source_folder_the_manifest_alone_names_c3471` (no -shm made
+beside a -wal with frames), the C3289 vanished arm.
+
+**A folder's escaped spellings are aliased after every name** (C3526; ruling 217). The shell emitted an on-disk
+folder's list spelling at once as an exact alias, one byte longer than a plain folder named that way, so the length
+sort gave a said line another number than the agentsync report, which aliases escaped spellings after its loop
+(C3082). While the configured and listed folders register, the escaped and `?` spellings wait (esc_alias), then
+esc_flush emits each under the number of whichever folder registered first, its own or the one whose name it spells.
+Tests: `::test_both_reports_number_a_plain_row_spelled_as_an_escaped_one_alike_c3526` (both row orders).
+
+**An escaped listed folder gone from disk makes the shell report private only** (C3401; ruling 218; privacy). While
+decision c0777e12a523 is open the shell decodes no listed name, so a row step 1 listed escaped that no CloudStorage
+folder on disk now spells was cut only escaped. listed_escaped_gone finds such a row (a backslash and three octal
+digits, `\t`, `\n` or `\r` in its folder parts) and fallback_redaction prints `Private only: a folder step 1 listed
+with an escaped character is no longer in ~/Library/CloudStorage, and this report cannot read its name back, so the
+name may show in clear.`, a shell-only line; a folder still on disk is registered by its own bytes and never counts.
+The ruling-142 strict xfail gains names whose blank sits at a part's edge and stays XFAIL. Tests:
+`::test_the_shell_report_goes_private_over_an_escaped_listed_folder_gone_from_disk_c3401`,
+`::test_both_reports_cut_a_folder_step_1_listed_but_not_configured_ruling_142`.
+
+**Only the standard checkout is named by its path** (C3470; ruling 218; privacy; amends §16.41 K17, §16.81 K17,
+§16.87 L29 and §16.93 M51). A checkout in a folder named with U+0085 printed that byte and the folder in the shell
+report's install.sh line and `--version`. checkout_shown prints `~/src/agent-context-sync` for that folder, as
+written or resolved, and nothing for any other, so unread_reason reads `git refuses its .git: ...` or `git cannot
+read its .git`, commit_shown's no-.git branch `none (the checkout has no .git: not a git checkout)` and its
+INSTALLER_COMMIT branch `this installer's checkout is at <commit>`, the `unknown (` prefix kept for
+show_version_json. Tests: `tests/test_install_oneshot.py::test_no_checkout_but_the_standard_one_is_named_by_its_path_c3470`,
+`::test_the_shell_report_says_why_a_copy_has_no_commit`,
+`tests/test_install_json.py::test_version_json_of_an_unread_checkout_escapes_its_reason`.
 
 ### 16.297 Round 48: a failed sync reads as failed, a blocked sync gives one NEXT naming its owner, carried changes counted right and a hand-deleted page put back, the kept inbox read once, and the person's fix classed alike (2026-11-27, wave B13 round 48 lane B)
 
