@@ -1021,6 +1021,37 @@ def test_ruling_204_takes_ruling_210s_dated_line_and_the_guides_take_lane_bs_phr
         assert f"{sha}" in dated, sha
 
 
+def test_ruling_210_takes_a_dated_line_for_c3211s_alarm_and_root_probe_c3520_c3479() -> None:
+    """B13 round 48 C3520 with C3479's root_probe half (ruling 230): ruling 210 quoted C3211's alarm as ending
+    ``agentsync doctor says what to do)`` and rulings 204 and 210 named ``LocalArm.shown_root``, while lane
+    B's e74669240 prints status's NEXT and named the probe ``root_probe``. Ruling 210 keeps its words and a
+    dated line right after it gives the alarm as the build prints it and the probe's name, held to
+    arm_local.py."""
+    from agentsync import arm_local  # noqa: PLC0415
+
+    source = inspect.getsource(arm_local)
+    assert arm_local.AGENTSYNC_BIN == "~/.local/bin/agentsync"
+    assert 'f"`{AGENTSYNC_BIN} status` says what to do)"' in source and "shown_root" not in source
+    assert "self.root_probe" in source and "def _probe_root(self)" in source
+    lanes = _page("docs/lanes/COMMON.md")
+    words = "(the C3007 and C3044 paragraphs, ruling 204's) take dated lines in lane B's commits."
+    line = (
+        "(2026-11-27) Ruling 230 amends this one: the build's alarm for an unread kept inbox ends on status"
+    )
+    assert lanes.index("(210) ") < lanes.index(words) < lanes.index(line) < lanes.index("(211) ")
+    assert lanes.index(words) + len(words) + 1 == lanes.index(line), "right after ruling 210's last sentence"
+    ruling = " ".join(lanes[lanes.index("(210) ") : lanes.index(line)].split())
+    assert (
+        "nothing is deleted; agentsync doctor says what to do)` (C3211)" in ruling and "shown_root" in ruling
+    )
+    dated = " ".join(lanes[lanes.index(line) : lanes.index("(211) ")].split())
+    alarm = (
+        "`source root is not read: ~/agent-context/inbox: Permission denied (walk skipped;"
+        " nothing is deleted; `~/.local/bin/agentsync status` says what to do)`"
+    )
+    assert alarm in dated and "(C3211, e74669240)" in dated and "LocalArm.root_probe" in dated
+
+
 def test_the_guides_loop_line_rules_name_the_rule_2_next_and_not_live_clause_c3271() -> None:
     """B13 round 47 C3271 (ruling 213): section 2's Loop-line rules gave ``NO_FOLDER_NEXT`` only on the
     skill-missing NEXT, but since round 46 C3003 ``_install_sh_said_no_folder`` also gives it, with

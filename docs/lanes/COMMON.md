@@ -2694,6 +2694,11 @@ a directory` reader at :18435 takes the new words (C3215); lane RB keeps _LISTIN
 lane D writes README.md:61's, docs/deploy/README.md:141's and the prompt's copies of the phrase from lane B's words,
 their pins with them. Lane B sends lanes RA, RB and D the phrase, the alarm and the note words first; the CONTRACTS
 lines that quote them (the C3007 and C3044 paragraphs, ruling 204's) take dated lines in lane B's commits.
+(2026-11-27) Ruling 230 amends this one: the build's alarm for an unread kept inbox ends on status, not doctor:
+`source root is not read: ~/agent-context/inbox: Permission denied (walk skipped; nothing is deleted;
+`~/.local/bin/agentsync status` says what to do)` (C3211, e74669240); and the same commit named the probe
+LocalArm.root_probe, so the four branches read root_probe through _probe_root, and ruling 204's shown_root is
+root_probe too (round 48 C3520 and C3479, CONTRACTS §16.299).
 (211) A file where the docs repo belongs is the person's to move aside, and status, the report and step 2 all say so
 (lanes B, RA and RB; turn C3236, C3238, C3239). Lane B: loop._eval_status reads NotADirectoryError as missing, every
 other OSError still logged (C3239); next_step's rule 1 sends the agent to add-source only where doctor's docs_repo.git

@@ -48772,6 +48772,15 @@ verifier's): a new line right after ruling 215's names 5262647cd, and §16.294's
 range to 5262647cd. Test: `tests/test_deploy_pack.py::test_ruling_202_takes_ruling_215s_dated_line_with_lane_es_shas`
 and the dated-line pin.
 
+**Ruling 210 takes a dated line for C3211's alarm and the root probe's name** (C3520 with C3479's root_probe half;
+ruling 230; `docs/lanes/COMMON.md`). Ruling 210 quoted the unread kept inbox's alarm as ending `agentsync doctor says
+what to do)`, while lane B's e74669240 (C3311, C3312, C3211) prints `` `~/.local/bin/agentsync status` says what to
+do)``, and rulings 204 and 210 named `LocalArm.shown_root`, which the same commit made `LocalArm.root_probe`, read
+through `_probe_root`. Each ruling keeps its words (ruling 186, over the verifiers' edit in place) and a dated line
+right after ruling 210 gives the alarm as the build prints it and the probe's name, held to arm_local.py. The brief
+built from round48-workflow.js is the lead's (C3520's kit half). Test:
+`tests/test_deploy_pack.py::test_ruling_210_takes_a_dated_line_for_c3211s_alarm_and_root_probe_c3520_c3479`.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units
