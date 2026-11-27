@@ -1856,3 +1856,83 @@ def test_a_fifo_swapped_in_for_an_empty_recording_never_blocks_the_probe_c2294(
         probe.join(5)
         pytest.fail("stage_if_empty blocked on a FIFO swapped in after its lstat")
     assert swapped and found == [None] and list(staging.rglob("*")) == []
+
+
+_C3511_LINKS = ("link-to-folder", "self-link", "two-link-loop", "dangling-link", "link-to-file")
+
+
+def _c3511_link(root: Path, entry: str) -> None:
+    """A link at ``root`` of the kind ``entry`` names (its target, when there is one, made beside it)."""
+    near = root.parent
+    if entry == "link-to-folder":
+        (near / "contoso-drop").mkdir()
+        root.symlink_to(near / "contoso-drop")
+    elif entry == "self-link":
+        root.symlink_to(root.name)
+    elif entry == "two-link-loop":
+        (near / "contoso-loop").symlink_to(root)
+        root.symlink_to(near / "contoso-loop")
+    elif entry == "dangling-link":
+        root.symlink_to(near / "contoso-missing")
+    else:
+        (near / "contoso-note.txt").write_text("x\n", encoding="utf-8")
+        root.symlink_to(near / "contoso-note.txt")
+
+
+@pytest.mark.parametrize("kind", [SourceKind.INBOX, SourceKind.LOCAL])
+@pytest.mark.parametrize("entry", _C3511_LINKS)
+def test_an_inbox_link_that_leads_to_no_folder_reads_not_a_folder_and_one_to_a_folder_does_not_c3511(
+    tmp_path: Path, entry: str, kind: SourceKind
+) -> None:
+    """B13 round 48 C3511 (ruling 226): the walk gave every inbox root that is a symlink ``source root is a
+    symlink: ...; configure the canonical path`` and set ``root_notdir``, so a second inbox source looping
+    (``gamma -> gamma``) got the agent's words while doctor and loop's note called it not a folder, and one
+    linked to a real folder was still noted as not a folder.  For an inbox source the link is followed under
+    the root's time limit: one that leads to no folder (a loop, a link to nothing, a link to a file) gives
+    ``_other_inbox_alarm`` and ``root_notdir``; one to a real folder keeps the symlink alarm and sets no
+    ``root_notdir``.  A local source's link is as before."""
+    root = tmp_path / "zz" / "inbox"
+    root.parent.mkdir()
+    _c3511_link(root, entry)
+    arm = (
+        al.InboxArm(_cfg(root, id="zz-drop", kind=kind))
+        if kind is SourceKind.INBOX
+        else al.LocalArm(_cfg(root, id="zz-drop", kind=kind))
+    )
+    res = arm.scan(None, full=True)
+    assert not res.enumeration_complete and not res.items
+    symlink = f"source root is a symlink: {root}; configure the canonical path"
+    if kind is SourceKind.INBOX and entry != "link-to-folder":
+        assert res.alarms == (arm._other_inbox_alarm(),), res.alarms
+        assert res.alarms[0].startswith(
+            f"source root is not a folder: {root} (walk skipped; nothing is deleted;"
+        )
+        assert arm.root_notdir
+    else:
+        assert res.alarms == (symlink,), res.alarms
+        assert arm.root_notdir is (kind is SourceKind.LOCAL), "a link to a real folder is a folder"
+
+
+def test_an_inbox_links_follow_is_held_past_the_roots_time_limit_c3511(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 48 C3511: following an inbox root's link may wait on a privacy prompt as the root's own reads
+    may, so it shares their limit: past it the scan is held with their words, never an alarm about the link's
+    target and never ``root_notdir``."""
+    root = tmp_path / "zz" / "inbox"
+    root.parent.mkdir()
+    _c3511_link(root, "self-link")
+    arm = al.InboxArm(_cfg(root, id="zz-drop", kind=SourceKind.INBOX))
+    real = al.call_with_timeout
+
+    def slow_follow(fn, timeout_s, *, name="agentsync-timed"):  # type: ignore[no-untyped-def]
+        if fn == root.stat:
+            raise al.CallTimedOutError("held")
+        return real(fn, timeout_s, name=name)
+
+    monkeypatch.setattr(al, "call_with_timeout", slow_follow)
+    res = arm.scan(None, full=True)
+    assert res.listing_held and not arm.root_notdir
+    assert res.alarms[0].startswith(f"walk of {root} stopped: reading the root did not return within "), (
+        res.alarms
+    )

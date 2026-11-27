@@ -3509,6 +3509,44 @@ def test_a_second_inbox_that_is_not_a_folder_reads_not_a_folder_with_its_own_rem
         assert "is not a directory" not in text or "zz" not in text, text
 
 
+@pytest.mark.parametrize("entry", ["self-link", "two-link-loop"])
+def test_a_second_inbox_that_loops_reads_not_a_folder_in_the_walk_as_its_note_does_c3511(
+    tmp_path: Path, entry: str
+) -> None:
+    """B13 round 48 C3511 (ruling 226): a second inbox source whose path is a link loop (``gamma -> gamma``)
+    is kept as the link by load_config, and the walk's symlink branch gave it ``source root is a symlink:
+    ...; configure the canonical path`` while loop's note said ``is not a folder`` with the person's remedy.
+    The walk follows the link under its time limit, finds no folder, and gives the same not-a-folder alarm
+    and remedy as a file there, its full path kept, so the sync and the note agree."""
+    root = tmp_path / "Contoso Gamma"
+    (root / "Gamma Empty").mkdir(parents=True)
+    config = _synced(tmp_path, root)
+    config, box = ensure_inbox(config.config_path)
+    assert box is not None
+    drop = tmp_path / "zz" / "inbox"
+    drop.mkdir(parents=True)
+    cfg = config.config_path
+    cfg.write_text(cfg.read_text(encoding="utf-8") + inbox_source_table("zz-drop", drop), encoding="utf-8")
+    assert run_cycle(load_config(cfg), mode=None).exit_code == 0
+    drop.rename(tmp_path / "drop-moved")  # moved aside, never removed
+    assert _put_entry(drop, entry) == []
+    with _bounded(60):
+        config = load_config(cfg)
+        on = config.source("zz-drop")
+        report = run_cycle(config, mode=None)
+        step = loop.next_step(config)
+    assert on.path == drop, "the loop is kept as the link"
+    [src] = [r for r in report.sources if r.source_id == "zz-drop"]
+    assert src.alarms == (
+        f"source root is not a folder: {on.path} (walk skipped; nothing is deleted; no later sync lists "
+        "it until a folder is back at that name or its path is fixed: the note that begins the inbox "
+        f"(zz-drop) is not a folder says how, and `{BIN} status` prints it too)",
+    ), src.alarms
+    assert any(n.startswith("the inbox (zz-drop) is not a folder: ") for n in step.notes), step.notes
+    for text in (*src.alarms, *step.notes):
+        assert "is a symlink" not in text and "Too many levels" not in text, text
+
+
 @pytest.mark.parametrize("entry", sorted(_ENTRY_KINDS))
 def test_a_kept_inbox_linked_to_a_real_folder_is_shown_by_its_typed_path_c3217(
     tmp_path: Path, entry: str

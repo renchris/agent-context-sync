@@ -1331,6 +1331,22 @@ class LocalArm:
         except CallTimedOutError:
             return self._held(f"reading the root did not return within {self.listing_timeout_s:.0f}s")
 
+    def _link_leads_to_folder(self) -> bool | ScanResult:
+        """For an inbox source whose root is a symlink: False when the link does not lead to a folder (a
+        loop, a link to nothing, a link through a file, a link to a file), so the walk gives the not-a-folder
+        alarm and its own remedy as doctor and loop's note do; True for a link to a real folder, which keeps
+        the symlink alarm and is no ``root_notdir`` (B13 round 48 C3511, ruling 226).  Another refusal (a
+        denied folder above the target) is no answer about the target's kind: True, the symlink alarm kept.
+        The follow is bounded as the root's own reads are; past the limit the scan is held with their
+        words."""
+        try:
+            target = call_with_timeout(self.root.stat, self.listing_timeout_s, name="agentsync-root")
+        except CallTimedOutError:
+            return self._held(f"reading the root did not return within {self.listing_timeout_s:.0f}s")
+        except OSError as exc:
+            return exc.errno not in (errno_mod.ELOOP, errno_mod.ENOENT, errno_mod.ENOTDIR)
+        return stat.S_ISDIR(target.st_mode)
+
     def _held(self, what: str) -> ScanResult:
         """A read past ``listing_timeout_s``. Recorded like EPERM: the source is unknown this pass, never
         empty, so nothing is tombstoned; ``listing_held`` tells the cycle not to read anything else under the
@@ -1526,11 +1542,19 @@ class LocalArm:
                 return self._incomplete(self._other_inbox_alarm())
             return self._incomplete(f"source root unreadable: {self.root}: {exc.strerror}")
         if stat.S_ISLNK(root_st.st_mode):
-            self.root_notdir = True
             if isinstance(shown := self._probe_root(), ScanResult):
                 return shown
             if shown[0] is not None:
+                self.root_notdir = True
                 return self._incomplete(self._not_a_folder_alarm(shown[0]))
+            if self.kind is SourceKind.INBOX:  # any other inbox source: is it a folder at all? (C3511)
+                if isinstance(leads := self._link_leads_to_folder(), ScanResult):
+                    return leads
+                if not leads:
+                    self.root_notdir = True
+                    return self._incomplete(self._other_inbox_alarm())
+            else:
+                self.root_notdir = True
             return self._incomplete(f"source root is a symlink: {self.root}; configure the canonical path")
         if not stat.S_ISDIR(root_st.st_mode):
             self.root_notdir = True

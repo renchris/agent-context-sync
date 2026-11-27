@@ -48674,6 +48674,22 @@ whose `json.loads` still fails on such text. Docs only. Test:
 `test_convert_family.py::test_decode_texts_docstring_says_a_u0000_opening_may_read_as_utf32_c3418` (both sentences,
 and each claim against `_decode_text`).
 
+**The walk calls a second inbox's link that leads to no folder not a folder** (C3511's walk half, moved to lane E;
+ruling 226; `agentsync.arm_local`; lane B's §16.297 holds doctor's half). `_walk_scan`'s symlink branch gave every
+root that is a link `source root is a symlink: <path>; configure the canonical path` and set `root_notdir`, so a
+second inbox source whose path loops (`gamma -> gamma`, which load_config keeps as the link) read the agent's words
+in the sync while loop's note said `is not a folder` with the person's remedy, and one linked to a real folder was
+still noted as not a folder. For an inbox source the branch now follows the link (`_link_leads_to_folder`, one
+`stat` under the root's `listing_timeout_s`, held with the root reads' words past it): a loop, a link to nothing, a
+link through a file or a link to a file (ELOOP, ENOENT, ENOTDIR, or a target that is no folder) gives
+`_other_inbox_alarm` and sets `root_notdir`; a link to a real folder keeps the symlink alarm and sets no
+`root_notdir`; another refusal is no answer about the target and keeps the symlink alarm. The kept inbox's branch
+(`root_probe`) and a local source's link are as before. Tests:
+`test_arm_local.py::test_an_inbox_link_that_leads_to_no_folder_reads_not_a_folder_and_one_to_a_folder_does_not_c3511`
+(five link kinds, inbox and local), `test_arm_local.py::test_an_inbox_links_follow_is_held_past_the_roots_time_limit_c3511`
+and `test_loop.py::test_a_second_inbox_that_loops_reads_not_a_folder_in_the_walk_as_its_note_does_c3511` (a self-link
+and a two-link loop: the sync's alarm is a file's, the note agrees, no `is a symlink` or `Too many levels`).
+
 ### 16.299 Round 48: the prompt goes to v45 (the land gate's fix run once per page, step 1's stop only with no synced line, a chosen folder that came back paused, a failed step 2 outside the none), dated lines, and the guides (2026-11-27, wave B13 round 48 lane D)
 
 Reserved for round 48 lane D of B13.
