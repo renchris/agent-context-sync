@@ -164,7 +164,14 @@ one of those one-word heads right after a ``'`` or ``"`` (``'--cwd=``, ``"--sour
 ``) is a quote that wraps the whole argument: its value runs to the closing quote or the line's end, split at
 any later such head after a blank, each piece cut by its own head's rule, in both reports."""
 
-SOURCE_LOCAL_KEPT = ("per folder)", "leaves it so:", "for each)", "keeps whatever", "only adds")
+SOURCE_LOCAL_KEPT = (
+    "per folder)",
+    "leaves it so: setting a folder to live is",
+    "for each) or its [[source]] block is put back",
+    "keeps whatever that config syncs",
+    "only adds",
+    "leaves it so too",
+)
 """install.sh's own words right after ``--source-local `` in its no-folder NEXTs (``(one --source-local per
 folder)``), which both reports keep whole after that head, by phrase, never by their first word, and only
 where the phrase ends (the line's end, a blank, ``;``, ``,`` or ``.``), so ``--source-local per diem/Wombat``
@@ -177,7 +184,14 @@ by first word): the held-folder tail's ``--source-local leaves it so: ...`` (ins
 the quote, the vanished-folder tail's ``(one --source-local for each)`` and the unread-config tail's ``with
 no --source-local keeps whatever ...`` and ``each --source-local only adds``, cut as soon as a later clause
 held a ``/``. A test holds every ``--source-local <word>`` clause install.sh writes to a row or a
-placeholder."""
+placeholder. Each row is the whole phrase install.sh writes after the head, copied byte for byte and stopped
+before any apostrophe, backslash or ``$`` (the generated block single-quotes it), since a short row kept a
+quoted folder whose name starts with it (``'install.sh --source-local keeps whatever Wombat Ledger/x'``,
+C3499's review): ``leaves it so too`` is lane RB's HELD_INSIDE_TAIL (ruling 221), a row before its install.sh
+text lands. ``per folder)``, ``only adds`` and ``leaves it so too`` stay short, with no longer install.sh text
+to anchor on (``only adds`` ends its NEXT and ``leaves it so too`` its tail, ``per folder)`` is C3203's row),
+so a folder whose name starts ``only adds ``, ``per folder) `` or ``leaves it so too `` after
+``--source-local `` keeps that start (measured, the one residual)."""
 
 CWD_USAGE = ("needs a folder, got the option", "needs a folder")
 """install.sh's own usage words right after ``--cwd `` (``usage error: --cwd needs a folder (see --help)``),
@@ -465,6 +479,7 @@ def shell_block() -> str:
         "CUT_TILDE_QUANTITY_WORDS": "|".join(sorted(TILDE_QUANTITY_WORDS)),  # B13 round 48 C3406
     }
     assert not any("'" in v or "\n" in v for v in values.values())
+    assert not any(c in k for k in SOURCE_LOCAL_KEPT for c in "'\\$|")  # B13 round 48 C3499
     assert all(h and "|" not in h for h, _r in PATH_HEADS) and all("|" not in h for h in REFUSED_HEADS)
     # double quotes: a head holds an apostrophe; none holds a character double quotes expand
     assert not any(c in h for h in REFUSED_HEADS for c in '"$`\\\n')

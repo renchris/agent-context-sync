@@ -48936,7 +48936,14 @@ Tests: `test_setup_report.py::test_install_shs_per_folder_phrase_is_kept_after_s
 built from install.sh's own literals, comes back unchanged) and
 `test_every_source_local_clause_install_sh_writes_is_a_kept_row_or_a_placeholder_c3499` (every `--source-local
 <word>` clause install.sh writes is a kept row, a `<...>` placeholder or a value, or one of a named set printed with
-no quote before it, the set held equal to what install.sh writes).
+no quote before it, the set held equal to what install.sh writes). C3499's review: the short rows kept a quoted folder
+whose name starts with one (`'install.sh --source-local keeps whatever Wombat Ledger/x'`), so each row is now the
+whole phrase install.sh writes after the head, copied byte for byte and stopped before an apostrophe, backslash or `$`
+(`leaves it so: setting a folder to live is`, `for each) or its [[source]] block is put back`, `keeps whatever that
+config syncs`, with `per folder)`, `only adds` and lane RB's `leaves it so too`), and the contract test scans every
+non-comment line, not only double-quoted strings; measured residual: a folder named starting `only adds `, `per
+folder) ` or `leaves it so too ` after `--source-local ` keeps that start, those rows having no longer install.sh text
+to anchor on.
 
 **The Loop line keeps a held folder's path whole and home-relative** (C3504; ruling 221; `agentsync.setup_report`).
 The Loop line ran `loop_next_text` over the whole NEXT, so a held folder's path was cut to its folder placeholder

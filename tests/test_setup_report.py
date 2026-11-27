@@ -31242,14 +31242,16 @@ def test_install_shs_per_folder_phrase_is_kept_after_source_local_c3203() -> Non
         assert setup_report._redact_lines(red, [line]) == line, line
     assert report_cuts.SOURCE_LOCAL_KEPT == (
         "per folder)",
-        "leaves it so:",
-        "for each)",
-        "keeps whatever",
+        "leaves it so: setting a folder to live is",
+        "for each) or its [[source]] block is put back",
+        "keeps whatever that config syncs",
         "only adds",
+        "leaves it so too",
     )
     assert (
-        "CUT_SOURCE_LOCAL_KEPT='keeps whatever|leaves it so:|per folder)|for each)|only adds'"
-        in report_cuts.shell_block()
+        "CUT_SOURCE_LOCAL_KEPT='for each) or its [[source]] block is put back"
+        "|leaves it so: setting a folder to live is|keeps whatever that config syncs|leaves it so too"
+        "|per folder)|only adds'" in report_cuts.shell_block().splitlines()
     )
     for said in (
         "I ran 'install.sh --source-local per diem/Wombat' first",
@@ -31259,10 +31261,22 @@ def test_install_shs_per_folder_phrase_is_kept_after_source_local_c3203() -> Non
         "I ran 'install.sh --source-local leaves/Wombat Ledger' first",
         "I ran 'install.sh --source-local for each)/Wombat Ledger' first",
         "I ran 'install.sh --source-local only adds/Wombat Ledger' first",
+        # C3499's review (privacy): a short row kept a quoted folder whose name starts with it
+        "I ran 'install.sh --source-local keeps whatever Wombat Ledger/x' first",
+        "I ran 'install.sh --source-local for each) Wombat Ledger/x' first",
+        "I ran 'install.sh --source-local leaves it so: Wombat Ledger/x' first",
+        "I ran 'install.sh --source-local keeps whatever that Wombat Ledger/x' first",
+        "I ran 'install.sh --source-local for each) or its Wombat Ledger/x' first",
+        "I ran 'install.sh --source-local leaves it so too/Wombat' first",
     ):
         assert setup_report._redact_lines(red, [said]) == "I ran 'install.sh --source-local <path>' first", (
             said
         )
+    for said, shown in (
+        ("--source-local 'leaves it so too/Wombat'", "--source-local '<path>'"),
+        ('--source-local "keeps whatever that config syncs/x"', '--source-local "<path>"'),
+    ):
+        assert setup_report._redact_lines(red, [said]) == shown, said
 
 
 def _install_sh_assigned(name: str, start: str) -> str:
@@ -31296,52 +31310,95 @@ def _install_shs_choose_next() -> str:
     text = _install_sh_assigned("NEXT_MSG", "choose the folders to sync")
     for name, value in (*parts.items(), *words.items()):
         text = text.replace(name, value)
-    assert (
-        "$" not in text and "--source-local leaves it so:" in text and "(one --source-local for each)" in text
-    )
+    assert "$" not in text and all(
+        f"--source-local {kept}" in text
+        for kept in report_cuts.SOURCE_LOCAL_KEPT
+        if kept != "leaves it so too"  # lane RB's HELD_INSIDE_TAIL, not on this NEXT
+    ), text
     return text
 
 
-def test_every_source_local_clause_install_sh_writes_is_a_kept_row_or_a_placeholder_c3499() -> None:
-    """B13 round 48 C3499 (ruling 221; makes worse True for cutting path-shaped words only or skipping by
-    first word): install.sh's held-folder tail added `--source-local leaves it so: ...` to the no-folder NEXT
-    after its `"<folder>"` quote, and no report_cuts row kept it, so both reports cut the clause to
-    `--source-local <path>`. Every `--source-local <word>` clause in install.sh's quoted strings (comments
-    and the generated block aside) is a report_cuts.SOURCE_LOCAL_KEPT row where the phrase ends, a
-    placeholder (`<...>`, `"<...>"` or `'<...>'`), or a value install.sh fills in (a `$` word, which is a
-    folder and is cut), save the few named below that install.sh prints on a line with no quote before them,
-    so the next new clause after a quote cannot drift past the rows."""
-    shell = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
+_NO_QUOTE_BEFORE = {  # the clause's first two words: where install.sh prints it, no quote before it
+    "needs a": "usage_error's `usage error: --source-local needs a folder`",
+    "out: the": "USAGE_NEXT's `NEXT: leave that --source-local out: ...`, a line of its own",
+    "out: setting": "USAGE_NEXT's `NEXT: leave that --source-local out: ...`, a line of its own",
+    "is not": "`--source-local is not an existing folder: `, a head that cuts the name after it",
+    "argument in": "the shell report's own legend row (say), which no report reads back",
+    "word under": "the shell report's own legend row (say), which no report reads back",
+    "word on": "the shell report's own legend row (say), which no report reads back",
+}
+
+
+def _source_local_clauses(install_sh: Path) -> tuple[set[str], list[tuple[str, str]]]:
+    """Every ``--source-local <word>`` clause on a non-comment line of ``install_sh`` (its generated block
+    and each line's trailing `` # `` comment aside, wherever the line prints it: a double- or single-quoted
+    string, a ``printf`` format, a heredoc or a multi-line assignment), as (the kept rows and named clauses
+    seen, the clauses that are neither). A clause is a kept row (the whole row present there, then the
+    phrase's end, a closing ``"`` or a ``$`` value), a placeholder (``<...>``, quoted or not), a ``$`` value,
+    or one of :data:`_NO_QUOTE_BEFORE`; shell syntax after the flag (a closing ``"``, which the word never
+    holds, ``]``, ``|`` or ``)``) is no word (B13 round 48 C3499)."""
+    shell = install_sh.read_text(encoding="utf-8")
     generated = re.search(r"(?ms)^# BEGIN report_cuts\n.*?^# END report_cuts$", shell)
     assert generated is not None
     shell = shell[: generated.start()] + shell[generated.end() :]
-    no_quote_before = {  # the clause's first two words: where install.sh prints it, no quote before it
-        "needs a": "usage_error's `usage error: --source-local needs a folder`",
-        "out: the": "USAGE_NEXT's `NEXT: leave that --source-local out: ...`, a line of its own",
-        "out: setting": "USAGE_NEXT's `NEXT: leave that --source-local out: ...`, a line of its own",
-        "is not": "`--source-local is not an existing folder: `, a head that cuts the name after it",
-        "argument in": "the shell report's own legend row (say), which no report reads back",
-        "word under": "the shell report's own legend row (say), which no report reads back",
-        "word on": "the shell report's own legend row (say), which no report reads back",
-    }
     seen: set[str] = set()
-    for line in shell.splitlines():
-        if line.lstrip().startswith("#"):
+    stray: list[tuple[str, str]] = []
+    for whole in shell.splitlines():
+        if whole.lstrip().startswith("#"):
             continue
-        for quoted in re.findall(r'"((?:[^"\\]|\\.)*)"', line):
-            for m in re.finditer(r"--source-local (\S+(?: \S+)?)", quoted):
-                rest = quoted[m.start(1) :].replace('\\"', '"')
-                if rest.startswith(("<", '"<', "'<", "$", "\\")):  # a grep pattern's `\$'` too
-                    continue
-                if any(
-                    rest.startswith(k) and rest[len(k) : len(k) + 1] in ("", " ", ";", ",", ".", "$")
-                    for k in report_cuts.SOURCE_LOCAL_KEPT
-                ):
-                    seen.add(next(k for k in report_cuts.SOURCE_LOCAL_KEPT if rest.startswith(k)))
-                    continue
-                assert m.group(1) in no_quote_before, (m.group(1), line.strip()[:160])
+        line = next(  # a trailing comment cut, its `#` outside a double quote
+            (
+                whole[: c.start()]
+                for c in re.finditer(r"\s#\s", whole)
+                if len(re.findall(r'(?<!\\)"', whole[: c.start()])) % 2 == 0
+            ),
+            whole,
+        )
+        for m in re.finditer(r'--source-local ([^\s"]+(?: [^\s"]+)?)', line):
+            rest = line[m.start(1) :].replace('\\"', '"')
+            if rest.startswith(("<", '"<', "'<", "$", '"$', "\\")):  # a grep pattern's `\$'` too
+                continue
+            if line[m.start(1)] in "])|":  # shell syntax (a test, a case): no word
+                continue
+            kept = [
+                k
+                for k in report_cuts.SOURCE_LOCAL_KEPT
+                if rest.startswith(k) and rest[len(k) : len(k) + 1] in ("", " ", ";", ",", ".", "$", '"')
+            ]
+            if kept:
+                seen.update(kept)
+            elif m.group(1) in _NO_QUOTE_BEFORE:
                 seen.add(m.group(1))
-    assert seen == {*report_cuts.SOURCE_LOCAL_KEPT, *no_quote_before}, seen
+            else:
+                stray.append((m.group(1), line.strip()[:160]))
+    return seen, stray
+
+
+def test_every_source_local_clause_install_sh_writes_is_a_kept_row_or_a_placeholder_c3499(
+    tmp_path: Path,
+) -> None:
+    """B13 round 48 C3499 (ruling 221; makes worse True for cutting path-shaped words only or skipping by
+    first word): install.sh's held-folder tail added `--source-local leaves it so: ...` to the no-folder NEXT
+    after its `"<folder>"` quote, and no report_cuts row kept it, so both reports cut the clause to
+    `--source-local <path>`. Every `--source-local <word>` clause on a non-comment line of install.sh (the
+    generated block aside; C3499's review: the first scan read only double-quoted strings, so a clause in a
+    `printf` format, a heredoc or a multi-line assignment passed unseen) is a report_cuts.SOURCE_LOCAL_KEPT
+    row where the whole row ends, a placeholder, or a value install.sh fills in (a `$` word, which is a
+    folder and is cut), save the few named in _NO_QUOTE_BEFORE that install.sh prints with no quote before
+    them, the set held equal to what install.sh writes, so the next new clause cannot drift past the rows.
+    `leaves it so too` is lane RB's HELD_INSIDE_TAIL, required once install.sh holds it. A scratch copy
+    with a `printf` clause added fails the scan."""
+    install_sh = Path(__file__).parents[1] / "scripts" / "install.sh"
+    seen, stray = _source_local_clauses(install_sh)
+    assert not stray, stray
+    text = install_sh.read_text(encoding="utf-8")
+    pending = set() if "HELD_INSIDE_TAIL=" in text else {"leaves it so too"}
+    assert seen == {*report_cuts.SOURCE_LOCAL_KEPT, *_NO_QUOTE_BEFORE} - pending, seen
+    copy = tmp_path / "install.sh"
+    copy.write_text(text + "printf '... --source-local copies existing ...\\n'\n", encoding="utf-8")
+    assert _source_local_clauses(copy)[1] == [
+        ("copies existing", "printf '... --source-local copies existing ...\\n'")
+    ]
 
 
 @pytest.mark.parametrize(
