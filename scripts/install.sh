@@ -15013,9 +15013,23 @@ else
 		printf 'error: %s\n' "$LAST_ERROR" >&2
 		# a commit the land gate held: its first BLOCKING line's page and fix, quoted as sync's own NEXT quotes
 		# them (loop.land_gate_step, its ", then sync again" left for this re-run), so the fix is named where
-		# "fix what the first sync printed above" named none (B13 round 47 C3227, ruling 212)
-		BLOCKED_LINE="$(LC_ALL=C sed -n 's/^  BLOCKING [^ ][^ ]* //p' "$SYNC_OUT" 2>/dev/null | LC_ALL=C sed -n '1{s/, then sync again$//;p;}')"
-		NEXT_MSG="fix what the first sync printed above ($(rc_meaning "$SYNC_RC"))${BLOCKED_LINE:+: the land gate blocked its commit, first on its BLOCKING line $BLOCKED_LINE}, then re-run: $SELF$RERUN_ARGS"
+		# "fix what the first sync printed above" named none (B13 round 47 C3227, ruling 212). Only when the
+		# run line says the land gate blocked the commit, and never a BLOCKING CYCLE line, so a sync that failed
+		# after the gate passed keeps the bare words (B13 round 48 ruling 222, C3455 with C3465); counted as
+		# loop.land_gate_step counts them, plural() alike (ruling 223, C3539)
+		BLOCKED_LINE="" BLOCKED_N=0
+		if LC_ALL=C grep -qF ' · commit none (blocked by the land gate)' "$SYNC_OUT" 2>/dev/null; then
+			BLOCKED_LINE="$(LC_ALL=C sed -n '/^  BLOCKING CYCLE /d; s/^  BLOCKING [^ ][^ ]* //p' "$SYNC_OUT" 2>/dev/null | LC_ALL=C sed -n '1{s/, then sync again$//;p;}')"
+			BLOCKED_N="$(LC_ALL=C grep -c '^  BLOCKING [^ ][^ ]* ' "$SYNC_OUT" 2>/dev/null)" || BLOCKED_N=0
+			BLOCKED_N="$((BLOCKED_N - $(LC_ALL=C grep -c '^  BLOCKING CYCLE ' "$SYNC_OUT" 2>/dev/null || true)))"
+		fi
+		if [ -n "$BLOCKED_LINE" ]; then
+			BLOCKED_COUNT="$BLOCKED_N blocking findings"
+			[ "$BLOCKED_N" -ne 1 ] || BLOCKED_COUNT="1 blocking finding"
+			NEXT_MSG="fix what the first sync printed above ($(rc_meaning "$SYNC_RC")): the land gate blocked its commit ($BLOCKED_COUNT, the BLOCKING lines above); the first: $BLOCKED_LINE; then re-run: $SELF$RERUN_ARGS"
+		else
+			NEXT_MSG="fix what the first sync printed above ($(rc_meaning "$SYNC_RC")), then re-run: $SELF$RERUN_ARGS"
+		fi
 		exit 1
 	fi
 fi

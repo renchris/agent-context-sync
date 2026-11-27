@@ -1236,22 +1236,65 @@ def test_a_first_sync_the_land_gate_blocked_names_its_first_blocking_line_c3227(
         "`chmod 600 ~/agent-context/docs/alpha/Wombat.md` (the person's or the agent's step; the content is "
         "untouched)"
     )
-    out = "\n".join(
+    # B13 round 48 rulings 222 and 223 (C3455 with C3465, C3539): only with the run line's gate verdict, a
+    # BLOCKING CYCLE line never quoted, counted as loop.land_gate_step counts them
+    for lines, count in ((2, "2 blocking findings"), (1, "1 blocking finding")):
+        out = "\n".join(
+            [
+                "run 2 · mode poll · commit none (blocked by the land gate) · 1 change",
+                "  alpha: converted 1, deferred 0 online-only",
+                f"  BLOCKING FRONTMATTER alpha/Wombat.md: {fix}, then sync again",
+                *(
+                    ["  BLOCKING SECRET alpha/Kestrel.md: a made-up second finding, then sync again"]
+                    * (lines - 1)
+                ),
+            ]
+        )
+        cp = install_sh(
+            {**env, "STUB_SYNC_RC": "1", "STUB_SYNC_OUT": out}, str(wheel), "--source-local", str(folder)
+        )
+        assert cp.returncode == 1, cp.stdout + cp.stderr
+        assert last_line(cp) == (
+            "NEXT: fix what the first sync printed above (failed): the land gate blocked its commit "
+            f"({count}, the BLOCKING lines above); the first: alpha/Wombat.md: {fix}; then re-run: "
+            f"{INSTALL_SH} {wheel} [setup report: {report_path(env)}]"
+        ), last_line(cp)
+
+
+@pytest.mark.parametrize(
+    "lines",
+    [
         [
-            "  alpha: converted 1, deferred 0 online-only",
-            f"  BLOCKING FRONTMATTER alpha/Wombat.md: {fix}, then sync again",
-            "  BLOCKING SECRET alpha/Kestrel.md: a made-up second finding, then sync again",
-        ]
-    )
+            "run 2 · mode poll · commit none (no content change) · 1 change",
+            "  BLOCKING CYCLE -: cycle failed: git commit failed (128): fatal: database is locked",
+        ],
+        [
+            "run 2 · mode poll · commit none (the cycle failed) · 1 change",
+            "  BLOCKING FRONTMATTER alpha/Wombat.md: a made-up finding, then sync again",
+            "  BLOCKING CYCLE -: cycle failed: OSError: a made-up error",
+        ],
+    ],
+    ids=["cycle-only", "failed-after-the-gate"],
+)
+def test_a_first_sync_that_failed_after_the_gate_keeps_the_bare_next_c3455_c3465(
+    env: dict[str, str], folder: Path, wheel: Path, lines: list[str]
+) -> None:
+    """B13 round 48 ruling 222 (C3455 with C3465): BLOCKED_LINE quoted any BLOCKING line, so a sync whose
+    cycle failed (its BLOCKING CYCLE line), or one that failed after the land gate passed, read as blocked by
+    the land gate. It quotes a finding only when the run line reads `commit none (blocked by the land
+    gate)`, so both keep the bare NEXT and name no land gate."""
     cp = install_sh(
-        {**env, "STUB_SYNC_RC": "1", "STUB_SYNC_OUT": out}, str(wheel), "--source-local", str(folder)
+        {**env, "STUB_SYNC_RC": "1", "STUB_SYNC_OUT": "\n".join(lines)},
+        str(wheel),
+        "--source-local",
+        str(folder),
     )
     assert cp.returncode == 1, cp.stdout + cp.stderr
     assert last_line(cp) == (
-        "NEXT: fix what the first sync printed above (failed): the land gate blocked its commit, first on "
-        f"its BLOCKING line alpha/Wombat.md: {fix}, then re-run: {INSTALL_SH} {wheel} "
+        f"NEXT: fix what the first sync printed above (failed), then re-run: {INSTALL_SH} {wheel} "
         f"[setup report: {report_path(env)}]"
     ), last_line(cp)
+    assert "land gate" not in cp.stdout + cp.stderr
 
 
 def test_a_rerun_on_a_configured_mac_says_sync_and_that_background_sync_is_installed(

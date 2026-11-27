@@ -48000,6 +48000,11 @@ above (failed)`, gains `: the land gate blocked its commit, first on its BLOCKIN
 `  BLOCKING <code> ` line of its output, its `, then sync again` dropped for the re-run; with no BLOCKING line the
 words are unchanged. Test:
 `test_install_oneshot.py::test_a_first_sync_the_land_gate_blocked_names_its_first_blocking_line_c3227`.
+Amended 2026-11-27, §16.296 C3455, C3539: the clause is added only when the first sync's run line reads `commit
+none (blocked by the land gate)`, a `BLOCKING CYCLE` line never quoted, so a cycle failure or a sync that failed
+after the gate passed keeps the words unchanged; it reads `: the land gate blocked its commit (<n> blocking
+findings, the BLOCKING lines above); the first: <page>: <fix>; then re-run: ...`, `1 blocking finding` for one, as
+loop.land_gate_step counts them.
 
 **Three halves need no installer change** (measured). C3241's `:14780` case passes the person's-choice NEXT through:
 it matches only `no folder is synced yet: ask the operator*`, and NO_FOLDER_CHOSEN_NEXT opens `the person chose no
@@ -48835,6 +48840,16 @@ sets src_unread, which src_end clears: held_sources_clause names such a table `<
 installed interpreter)`, never skipping it, and non_inbox_sources counts it, its cautious default. Tests:
 `tests/test_install_oneshot.py::test_the_line_reader_reads_a_one_line_triple_quoted_value_as_the_loader_does_c3460`,
 `::test_the_line_reader_says_it_could_not_read_a_value_written_across_lines_c3460`.
+
+**A first sync names the land gate only when the gate blocked it, and counts the findings** (C3455 with C3465 and
+C3539; rulings 222 and 223; amends §16.291 C3227). BLOCKED_LINE quoted any BLOCKING line, so a sync whose cycle
+failed (`BLOCKING CYCLE`) or that failed after the gate passed read as blocked by the land gate. It is set only when
+the run line reads `commit none (blocked by the land gate)`, the first non-CYCLE BLOCKING line quoted, and the NEXT
+reads `fix what the first sync printed above (failed): the land gate blocked its commit (<n> blocking findings, the
+BLOCKING lines above); the first: <page>: <fix>; then re-run: <command>`, `1 blocking finding` for one, as
+loop.land_gate_step's plural() counts; otherwise the bare `fix what the first sync printed above (failed), then
+re-run: <command>`. Tests: `tests/test_install_oneshot.py::test_a_first_sync_the_land_gate_blocked_names_its_first_blocking_line_c3227`,
+`::test_a_first_sync_that_failed_after_the_gate_keeps_the_bare_next_c3455_c3465`.
 
 ### 16.297 Round 48: a failed sync reads as failed, a blocked sync gives one NEXT naming its owner, carried changes counted right and a hand-deleted page put back, the kept inbox read once, and the person's fix classed alike (2026-11-27, wave B13 round 48 lane B)
 
