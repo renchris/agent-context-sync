@@ -827,7 +827,7 @@ _TILDE_QUANTITY = "|".join(sorted(report_cuts.TILDE_QUANTITY_WORDS, key=lambda w
 """B13 round 48 C3406: :data:`report_cuts.TILDE_QUANTITY_WORDS` as one alternation, longest first."""
 
 
-def _other_login_re(logins: Iterable[str], spaced: Iterable[str] = ()) -> str:
+def _other_login_re(logins: Iterable[str], spaced: Iterable[str] = (), named: Iterable[str] = ()) -> str:
     """B13 round 47 C3224 (ruling 207; privacy): the pattern of a ``~login/`` path, another account's home
     written with its login, cut whole as :func:`_other_home_re` cuts a ``/Users/`` one, configured or not: a
     ``~`` that no ASCII letter, digit, ``_``, ``.``, ``-`` or ``~`` precedes (never ``HEAD~1`` or the
@@ -837,11 +837,15 @@ def _other_login_re(logins: Iterable[str], spaced: Iterable[str] = ()) -> str:
     a blank as :func:`_home_rest` reads them. ``~/``, ``~+`` and ``~-`` hold no login. B13 round 48 C3406
     (ruling 217): the bare form, a login with only a path's end after it, spares a
     :data:`report_cuts.TILDE_QUANTITY_WORDS` word in any case (``took ~twenty seconds``), as install.sh's
-    ``tilde()`` does; the ``/`` and quoted forms do not."""
+    ``tilde()`` does; the ``/`` and quoted forms do not. B13 round 48 C3402 (ruling 217): each of ``named``
+    (:meth:`Redactor.add_tilde_login`, a refused value's account) is read as a login too, longest first,
+    whatever characters it holds."""
     login = "".join(f"(?!{re.escape(u)}{_PATH_END})" for u in logins)
-    head = rf"~{login}{_TILDE_LOGIN}"
+    names = "".join(f"{re.escape(n)}|" for n in sorted(set(named), key=lambda n: (-len(n), n)))
+    word = f"(?:{names}{_TILDE_LOGIN})" if names else _TILDE_LOGIN
+    head = rf"~{login}{word}"
     quoted = "".join(rf"(?<={q}){head}/(?:[^{q}\n\\]|\\.)+(?={q})|" for q in ('"', "'", "`"))
-    bare = rf"~(?!(?i:{_TILDE_QUANTITY}){_PATH_END}){login}{_TILDE_LOGIN}{_PATH_END}"
+    bare = rf"~(?!(?i:{_TILDE_QUANTITY}){_PATH_END}){login}{word}{_PATH_END}"
     return rf"{quoted}(?<![A-Za-z0-9_.~-])(?:{head}/{_home_rest(spaced)}|{bare})"
 
 
@@ -1916,6 +1920,9 @@ C2526 with C2435 (ruling 158): the stops are :data:`report_cuts.CUT_TOKEN_STOP`,
 alone. C2496 (ruling 158): a printf-%q ``\x`` whose x is not ``"`` sits inside the token
 (``sources.toml-Private\ Backup``), and ``\"`` or a line-final ``\`` ends it, as the home rule reads them;
 the lookahead takes both as ends, so the match never fails, which would print the path in clear."""
+_CUT_AT_END = rf"""(?=\.?(?:[{_CUT_TOKEN_STOP}]|\\"|\\\n|\\?$))"""
+"""B13 round 48 C3402 (ruling 217): :data:`_CUT_TOKEN_END`'s end alone, the path token ending right after
+the literal (:meth:`Redactor.add_cut`'s ``at_end``): a ``/`` or any path character after it is no end."""
 
 
 class Redactor:
@@ -1963,6 +1970,9 @@ class Redactor:
         # (``add(keep_lead=True)``, a git URL rewrite's path: B13 round 9 K2, K27)
         self._lead_kept: set[str] = set()
         self._logins: set[str] = set()  # a "user" value: its /Users/<login> is not another home (C822)
+        # B13 round 48 C3402 (ruling 217): another account's login a refused ``~name`` value names
+        # (``add_tilde_login``): its ~name/ path is cut whole, whatever characters the name holds
+        self._tilde_logins: set[str] = set()
         self._kind_of: dict[str, str] = {}  # placeholder -> kind
         self._numbers: Counter[str] = Counter()
         self._pattern_values: dict[tuple[str, str], str] = {}
@@ -2092,6 +2102,7 @@ class Redactor:
         url: bool = False,
         keep_lead: bool = False,
         of: str | None = None,
+        foreign: bool = False,
     ) -> None:
         """Register ``value`` as a ``kind`` (home, user, name, org, library, folder, source, email, serial,
         host, mdmhost, proxy); a value already registered (or a variant of a fuzzy one) keeps its first
@@ -2111,7 +2122,12 @@ class Redactor:
         this method's own choice of joined, context, fuzzy (a norm of 3 or more with tokens) or literal, so
         an escaped listed row's other reading (``Wombat\x1eLedger`` of ``Wombat\nLedger``) cuts its
         blank-joined and slug forms under the LF reading's number, and a name made of report words stays
-        joined."""
+        joined.
+
+        B13 round 48 C3402 (ruling 217; privacy): ``foreign``, a ``user`` value that is another account's
+        login (a refused ``~name`` value's name): its word is cut as any login's, but it stays out of the
+        logins :func:`_other_home_re` and :func:`_other_login_re` leave alone, so ``/Users/name/...`` and
+        ``~name/...`` are cut whole as another home."""
         value = (value or "").strip()
         if len(value) < 2 or value in ("~", "/"):
             return
@@ -2120,7 +2136,7 @@ class Redactor:
             return
         if keep_lead:
             self._lead_kept.add(_bare(value).lower())
-        if kind == "user":
+        if kind == "user" and not foreign:
             self._logins.add(value)
         joined = fuzzy and len(_tokens(value)) >= 2 and _norm(value) in report_words()
         if joined and _norm(value) in self._joined:
@@ -2226,17 +2242,32 @@ class Redactor:
         self._literals.append((value, "exact"))
         self._regex = None
 
-    def add_cut(self, literal: str, shown: str) -> None:
+    def add_cut(self, literal: str, shown: str, *, at_end: bool = False) -> None:
         """Replace ``literal`` with ``shown`` wherever it is written, before the home or any other value is
         replaced, uncounted, as every ``<path>`` cut is: the config path's absolute and ~-forms (B13 round 41
         C2063 with C2083), so every line that echoes it reads one cut. B13 round 42 C2290 (ruling 147;
         privacy): the cut runs on to the end of the path token the literal opens (:data:`_CUT_TOKEN_END`),
         so ``sources.toml-PrivateBackup``, ``sources.toml.bak`` and ``sources.tomlx/Wombat`` keep no suffix,
         a sentence-final ``.`` and every terminator kept; a match bounded at the literal's end alone printed
-        the private folder on any line without a head."""
+        the private folder on any line without a head.
+
+        B13 round 48 C3402 (ruling 217; privacy): ``at_end``, the literal cut only where the path token ends
+        right after it (:data:`_CUT_AT_END`), never running on: a refused ``~name`` head alone, so its
+        ``~name/...`` falls to the ``otherlogin`` cut, whole, where the head's cut to the blank had left
+        ``~<user> Ledger/plan.md``."""
         if len(literal) >= 2 and literal != shown and all(lit != literal for lit, _r, _s in self._path_cuts):
-            self._path_cuts.append((literal, re.compile(re.escape(literal) + _CUT_TOKEN_END), shown))
+            end = _CUT_AT_END if at_end else _CUT_TOKEN_END
+            self._path_cuts.append((literal, re.compile(re.escape(literal) + end), shown))
             self._path_cuts.sort(key=lambda cut: -len(cut[0]))
+
+    def add_tilde_login(self, name: str) -> None:
+        """B13 round 48 C3402 (ruling 217; privacy): ``name``, another account's login a refused ``~name``
+        value names, read after ``~`` by the ``otherlogin`` cut beside :data:`_TILDE_LOGIN`'s login-shaped
+        word, so a name it cannot read (one that is not ASCII) is cut whole too, ``~name/`` and the
+        :func:`_home_rest` after it, where only the head's cut to the blank had stood."""
+        if name and name not in self._tilde_logins:
+            self._tilde_logins.add(name)
+            self._regex = None
 
     def set_app_heads(self, heads: Iterable[str]) -> None:
         """The app names before this Mac's organisations (``OneDrive`` of ``OneDrive-<org>``), with
@@ -2369,7 +2400,8 @@ class Redactor:
             spaced = {f for v, _m in self._literals for f in _forms(v) if " " in f or "\t" in f}
             alts.append(f"(?P<otherhome>{_other_home_re(sorted(self._logins), spaced)})")
             # B13 round 47 C3224 (ruling 207): and a ~login/ path beside it, after the add_cut values
-            alts.append(f"(?P<otherlogin>{_other_login_re(sorted(self._logins), spaced)})")
+            other = _other_login_re(sorted(self._logins), spaced, self._tilde_logins)
+            alts.append(f"(?P<otherlogin>{other})")
             self._volume_rest = re.compile(_home_rest(spaced))
             alts.append(f"(?P<tmp>{_TMP_RE})")
             alts.append(f"(?P<hash>{_HASH_RE})")
@@ -6332,7 +6364,14 @@ def _register_refused(red: Redactor, refused: Sequence[str]) -> None:
     of ``~contoso/Zephyr Quarry/pandoc``), cut whole to ``~<user>/<path>``, longest first as add_cut sorts
     them, so a quote of the parent never reads ``~<user> Quarry``: the head's cut ran to the blank. C3247: a
     two-letter name in :data:`_TWO_LETTER_WORDS` (``~it``, ``~me``) is no ``user`` value, as install.sh's
-    ``two_letter_word`` skips it; the head is still cut, anchored on its ``~``."""
+    ``two_letter_word`` skips it; the head is still cut, anchored on its ``~``.
+
+    B13 round 48 C3402 (ruling 217; privacy): the name is another account's (``add(foreign=True)``), out of
+    the logins the home cuts leave alone, and read after ``~`` by the ``otherlogin`` cut whatever it holds
+    (:meth:`Redactor.add_tilde_login`), its head cut alone only where the path ends after it: so
+    ``~name/Wombat Ledger/plan.md`` reads ``~<user>/<path>`` and ``/Users/name/...`` reads ``/Users/<path>``,
+    where the head's cut to the blank left ``~<user> Ledger/plan.md`` and the name as this account's login
+    left ``/Users/<user>/Wombat Ledger`` in clear."""
     home = Path.home()
     for raw in refused:
         head, _sep, rest = raw.partition("/")
@@ -6343,11 +6382,12 @@ def _register_refused(red: Redactor, refused: Sequence[str]) -> None:
             red.add_cut(head + "/" + "/".join(parts[:k]), "~<user>/<path>")
         name = head[1:]
         if name and not any(c.isspace() for c in name):  # `~ /x` names no account: its `~ ` would cut a word
-            red.add_cut(head, "~<user>")
+            red.add_cut(head, "~<user>", at_end=True)  # C3402: alone; `~name/...` is otherlogin's, whole
+            red.add_tilde_login(name)
             if name.lower() not in report_words() and not (
                 len(name) == 2 and name.lower() in _TWO_LETTER_WORDS
             ):
-                red.add("user", name)
+                red.add("user", name, foreign=True)
         # under Library/CloudStorage/<entry>, the folders after the entry: CloudStorage itself is no folder
         cloud = re.match(r"Library/CloudStorage/[^/]+/?", rest)
         rest = rest[cloud.end() :] if cloud else rest

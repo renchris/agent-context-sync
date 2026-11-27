@@ -4601,6 +4601,91 @@ def test_both_reports_cut_a_short_tilde_name_head_alike_c3247(
     assert shell == python and shell_private == python_private, (shell, python)
 
 
+_C3402_ROWS = [
+    ("see ~kestrel/Wombat Ledger/plan.md now", "see ~<user>/<path> now"),
+    ('"~kestrel/Wombat Ledger"', '"~<user>/<path>"'),
+    ("see /Users/kestrel/Wombat Ledger/plan.md now", "see /Users/<path> now"),
+    ('"/Users/kestrel/Wombat Ledger"', '"/Users/<path>"'),
+    ("~kestrel", "~<user>"),
+    ("~kestrel/Zephyr Quarry", "~<user>/<path>"),
+]
+
+
+@pytest.mark.parametrize(
+    ("raw", "rows"),
+    [
+        pytest.param("~kestrel/Zephyr Quarry/pandoc", _C3402_ROWS, id="ascii"),
+        pytest.param(  # C3402 part 4: a head _TILDE_LOGIN cannot read loses no cut
+            "~k\u00e9strel/Zephyr Quarry/pandoc",
+            [(said.replace("kestrel", "k\u00e9strel"), want) for said, want in _C3402_ROWS],
+            id="not-ascii",
+        ),
+    ],
+)
+def test_a_path_under_a_refused_account_is_cut_whole_c3402(raw: str, rows: list[tuple[str, str]]) -> None:
+    """B13 round 48 C3402 (ruling 217; privacy; makes worse True for cutting the head only where no ``/``
+    follows it without the rest): a refused ``~kestrel/...`` value put ``kestrel`` among this account's logins
+    and cut its head to the blank, so another path under that account read ``~<user> Ledger/plan.md`` and
+    ``/Users/<user>/Wombat Ledger``. The name is another account's, so ``~kestrel/...`` and
+    ``/Users/kestrel/...`` are cut whole, the head alone only at a path's end, the parent still whole, the
+    word still ``<user>``; a head that is not ASCII is cut the same way."""
+    red = setup_report.Redactor()
+    red.add_cut("/Users/contosouser", "/Users/<user>")
+    setup_report._register_refused(red, [raw])
+    assert [red.redact(said) for said, _want in rows] == [want for _said, want in rows]
+    assert red.redact(raw.partition("/")[0][1:] + " said hi") == "<user> said hi"
+
+
+_C3402_SHELL = pytest.param(
+    True,
+    id="shell",
+    marks=pytest.mark.xfail(strict=True, reason="lane RB's C3402 shell half"),
+)
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize("shell", [pytest.param(False, id="python"), _C3402_SHELL])
+def test_both_reports_cut_a_path_under_a_refused_account_whole_c3402(
+    env: dict[str, str],  # noqa: F811
+    locale: str,
+    shell: bool,
+) -> None:
+    """B13 round 48 C3402 (ruling 217; privacy), the rows of
+    test_a_path_under_a_refused_account_is_cut_whole_c3402 as both reports print them, with ``[convert]
+    pandoc_path = "~kestrel/Zephyr Quarry/pandoc"`` beside a valid source: each row reads its cut, no
+    ``kestrel``, ``Wombat``, ``Ledger``, ``Zephyr`` or ``Quarry`` is left, and the report is public. The
+    agentsync report's half is asserted in every run; the shell half (the two reports' parity, under both
+    locales) is lane RB's, a strict xfail until install.sh keeps the name out of its ``<user>`` pair before
+    the awk pass."""
+    juniper = _cloud(env) / "OneDrive-Contoso" / "Juniper Notes"
+    juniper.mkdir(parents=True)
+    raw = "~kestrel/Zephyr Quarry/pandoc"
+    body = (
+        default_config_text()
+        + local_source_table("juniper", juniper)
+        + f"\n[convert]\npandoc_path = {toml_string(raw)}\n"
+    )
+    home = Path(env["HOME"])
+    texts: list[str] = []
+    lines, python, shell_private, python_private = _both_reports(
+        env,
+        [],
+        [said for said, _want in _C3402_ROWS],
+        locale,
+        shell=shell,
+        config=home / "agent-context" / "sources.toml",
+        config_body=body,
+        texts_out=texts,
+    )
+    assert python == [want for _said, want in _C3402_ROWS], python
+    assert not python_private, texts[1]
+    for name, text in zip(("shell", "agentsync"), texts, strict=True):
+        leaks = [ln for ln in text.splitlines() if re.search("(?i)kestrel|wombat|ledger|zephyr|quarry", ln)]
+        assert not leaks, (name, leaks)
+    if shell:
+        assert lines == python and shell_private == python_private, (lines, python)
+
+
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
 @pytest.mark.parametrize("parsed", ["parsed", "unparsed"])
 def test_both_reports_cut_a_source_id_agentsync_refuses_c3223(
