@@ -48038,6 +48038,11 @@ through one sync, STATE.md's copy, then chmod 600 and a commit),
 Amended 2026-11-27, §16.297 C3416: such a cycle's run line now reads `commit none (the cycle failed)`, keyed on
 `CycleReport.cycle_failed`, set where the `CYCLE` finding is appended, and `sync --json`'s outcome is `failed`
 (C3447).
+Amended 2026-11-27, §16.297 C3409: its NEXT, STATE.md's Next and `sync --json`'s next are
+`loop.failed_cycle_step`'s, ``this sync failed before its commit landed (the BLOCKING CYCLE line <where>):
+<message>; once that is fixed, run `~/.local/bin/agentsync sync` ``, never the loop's.
+Amended 2026-11-27, §16.297 C3446: `loop.held_lines` puts the gate's step (or C3409's) ahead of every loop rule in
+all three outputs, the WAITING ON YOU and note lines kept; STATE.md no longer takes it as rule 1's fix.
 
 **The commit that lands blocked runs' pages counts them and names those runs** (C3228; ruling 212). A run the land
 gate blocks keeps its `run_changes` rows (only a landed commit's `clear_run_changes` deletes them) and its
@@ -49020,6 +49025,9 @@ own (§16.10). Without it, every byte of stdout and stderr and every exit code i
   Amended 2026-11-27, §16.297 C3447: the outcome is `"committed" | "blocked" | "failed" | "unchanged"`, where
   `failed` (the cycle raised before committing, `CycleReport.cycle_failed`) adds `"findings"` as `blocked` does;
   accept-deletions' document alike.
+  Amended 2026-11-27, §16.297 C3410: a held sync's `next` is `cli._held_next`'s, built by hand: the step names
+  `in this document's findings`, a fix's command has argv `["/bin/sh", "-c", <command>]` and the sync follows as
+  a second entry; the text NEXT is unchanged byte for byte.
 
 U-B5's part, the documents for every other command. Each mutation's `next` is `[{"command", "argv"}]` naming the
 command that shows what it changed, with `--config` when the run had one (`cli._inspect`, R249).

@@ -526,10 +526,16 @@ def test_a_sync_that_fails_after_the_land_gate_passed_never_says_the_gate_blocke
     assert "no content change" not in run_line, run_line
     assert "BLOCKING CYCLE -: cycle failed: git commit failed (128): fatal: database is locked" in out, out
     assert "land gate" not in out, out
-    assert [x for x in out.splitlines() if x.startswith(loop.NEXT_PREFIX)] == [
-        x for x in loop.next_lines(initialised) if x.startswith(loop.NEXT_PREFIX)
-    ]
-    assert "land gate" not in (initialised.docs_repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
+    # B13 round 48 C3409, ruling 222: the step is the failure's, on the screen and in STATE.md, never the
+    # loop's (which read as if the sync had landed)
+    step = (
+        "this sync failed before its commit landed (the BLOCKING CYCLE line above): cycle failed: git commit "
+        "failed (128): fatal: database is locked; once that is fixed, run `~/.local/bin/agentsync sync`"
+    )
+    assert [x for x in out.splitlines() if x.startswith(loop.NEXT_PREFIX)] == [loop.NEXT_PREFIX + step]
+    state = (initialised.docs_repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
+    assert "land gate" not in state
+    assert loop.NEXT_PREFIX + step.replace("line above", "line under ## Lint findings") in state.splitlines()
 
 
 def test_a_commit_with_no_mirror_change_says_what_its_zero_counts(capsys: pytest.CaptureFixture[str]) -> None:

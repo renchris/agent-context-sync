@@ -2257,6 +2257,30 @@ def test_state_md_next_is_the_blocking_finding_that_held_the_commit(env: Env) ->
     failed = LintFinding("CYCLE", "-", "cycle failed: database is locked")
     env.pub.write_state(report(findings=(failed,)), [status("src")])
     assert _state_next_block(env.text("_sync/STATE.md")) == loop.next_step(env.config).lines()
+    # B13 round 48 C3409, ruling 222: once the report says the cycle failed, that is the step, never the
+    # loop's (which read as if the sync had landed), and never the gate's
+    env.pub.write_state(dataclasses.replace(report(findings=(failed,)), cycle_failed=True), [status("src")])
+    assert _state_next_block(env.text("_sync/STATE.md"))[0] == (
+        "NEXT: this sync failed before its commit landed (the BLOCKING CYCLE line under ## Lint findings): "
+        "cycle failed: database is locked; once that is fixed, run `~/.local/bin/agentsync sync`"
+    )
+
+
+def test_state_md_puts_a_held_step_ahead_of_every_loop_rule_c3446(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 48 C3446, ruling 223: STATE.md took the gate step as rule 1's fix, so a stale skill (or a
+    sign-in) came first and STATE.md, the screen and the JSON gave three NEXTs. loop.held_lines puts it ahead
+    of every rule: STATE.md's NEXT is the sync's own but for where the BLOCKING lines are."""
+    skill.write_skill(env.repo)
+    monkeypatch.setattr(loop, "skill_state", lambda *_a, **_k: "stale")
+    finding = LintFinding("SYMLINK", "topics/a/x.md", "a symlink", blocking=True)
+    held = dataclasses.replace(report(findings=(finding,)), land_gate_blocked=True)
+    env.pub.write_state(held, [status("src")])
+    on_screen = loop.held_lines(env.config, loop.held_step(held) or "")
+    assert on_screen[0].startswith("NEXT: the land gate blocked this sync's commit"), on_screen
+    state = _state_next_block(env.text("_sync/STATE.md"))
+    assert state[0] == on_screen[0].replace("lines above", "lines under ## Lint findings"), state
 
 
 def test_state_md_next_block_says_so_when_the_state_cannot_be_read(

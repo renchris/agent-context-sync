@@ -570,7 +570,8 @@ def _step(text: str) -> dict[str, object]:
 
 def _loop_doc(lines: Sequence[str]) -> dict[str, object]:
     """The loop's NEXT, WAITING ON YOU and note lines as a document's ``next``, ``waitingOnYou`` and
-    ``warnings``: built from the lines the text view prints, so the two cannot drift."""
+    ``warnings``, built from the lines the text view prints. A held sync's ``next`` is :func:`_held_next`'s,
+    whose step names the document's findings where the text names the lines above (B13 round 48 C3410)."""
 
     def after(prefix: str) -> list[str]:
         return [line.removeprefix(prefix) for line in lines if line.startswith(prefix)]
@@ -1863,15 +1864,14 @@ def _cmd_sync(args: argparse.Namespace) -> int:
         _sync_document(config, report)
         clio.error_doc(clio.Reason.state_refused, said)
         return report.exit_code or EXIT_FAILED
-    blocked = loop.land_gate_step(report.lint_findings) if report.land_gate_blocked else None
-    if hints and not clio.json_mode() and blocked is not None:
-        # the land gate held the commit: that is the step, never the loop's, whose rules never see the gate
-        # and named a baseline question as if the sync had landed; its WAITING ON YOU lines stay (B13 round 47
-        # C3227, ruling 212)
-        _out(loop.NEXT_PREFIX + blocked)
-        for line in loop.next_lines(config, fixes=_unavailable_steps(config, report)):
-            if line.startswith(loop.WAIT_PREFIX):
-                _out(line)
+    held = loop.held_step(report)
+    if hints and not clio.json_mode() and held is not None:
+        # the land gate held the commit, or the cycle failed before it landed: that is the step, never the
+        # loop's, whose rules never see either and named a baseline question as if the sync had landed; its
+        # WAITING ON YOU and note lines stay (B13 round 47 C3227, ruling 212; round 48 C3409, C3446, rulings
+        # 222 and 223)
+        for line in loop.held_lines(config, held, fixes=_unavailable_steps(config, report)):
+            _out(line)
     elif hints and not clio.json_mode():
         for line in loop.next_lines(config, fixes=_unavailable_steps(config, report)):
             _out(line)
@@ -1879,13 +1879,42 @@ def _cmd_sync(args: argparse.Namespace) -> int:
     return report.exit_code
 
 
+IN_THIS_DOCUMENT = "in this document's findings"
+"""Where a held sync's JSON step points: its BLOCKING lines are the document's ``findings`` (B13 round 48
+C3410)."""
+
+
 def _sync_document(config: Config, report: CycleReport) -> None:
     """``sync --json``'s one document (a no-op without it): the run, whether it committed, and the loop's
-    lines, whatever AGENTSYNC_NO_NEXT_HINT says."""
+    lines, whatever AGENTSYNC_NO_NEXT_HINT says. A sync the land gate held, or whose cycle failed, gives the
+    text view's step (:func:`loop.held_step`), ``where`` naming the document's findings, its entries built by
+    :func:`_held_next`, and the loop's WAITING ON YOU and note lines (B13 round 48 C3410 with C3446, ruling
+    223: its ``next`` was the loop's step, as if the sync had landed)."""
     if not clio.json_mode():
         return
-    lines = loop.next_lines(config, fixes=_unavailable_steps(config, report), quiet=True)
-    _emit(_run_doc(report) | _loop_doc(lines))
+    fixes = _unavailable_steps(config, report)
+    held = loop.held_step(report, where=IN_THIS_DOCUMENT)
+    if held is None:
+        _emit(_run_doc(report) | _loop_doc(loop.next_lines(config, fixes=fixes, quiet=True)))
+        return
+    doc = _loop_doc(loop.held_lines(config, held, fixes=fixes, quiet=True))
+    _emit(_run_doc(report) | doc | {"next": _held_next(held)})
+
+
+def _held_next(step: str) -> list[dict[str, object]]:
+    """A held sync's ``next`` entries, built by hand: a fix's command runs in a shell (``(umask 077 && ...)``
+    is no program), so its argv is ``['/bin/sh', '-c', <command>]``, and the sync follows as a second entry;
+    a step whose only command is the sync, or that names none, is :func:`_step`'s one entry (B13 round 48
+    C3410, makes worse True for feeding the text line through _step)."""
+    found = _COMMAND_SPAN.search(step)
+    sync = f"{loop.BIN} sync"
+    if found is None or found.group(1) == sync:
+        return [_step(step)]
+    command = found.group(1)
+    return [
+        {"command": command, "argv": ["/bin/sh", "-c", command], "when": step},
+        _step(f"then run `{sync}`"),
+    ]
 
 
 def _run_doc(report: CycleReport) -> dict[str, object]:

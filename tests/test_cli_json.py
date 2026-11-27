@@ -565,6 +565,36 @@ def test_a_sync_that_fails_after_the_land_gate_passed_is_failed_with_its_finding
     (finding,) = doc["findings"]
     assert finding["code"] == "CYCLE" and finding["blocking"] is True, finding
     assert "database is locked" in finding["message"], finding
+    # B13 round 48 C3409: the document's step is the failure's, naming its findings, the sync its command
+    (step,) = doc["next"]
+    assert step["when"].startswith(
+        "this sync failed before its commit landed (the BLOCKING CYCLE line in this document's findings): "
+    ), step
+    assert step["command"] == "~/.local/bin/agentsync sync" and step["argv"][1:] == ["sync"], step
+
+
+def test_a_blocked_sync_json_gives_the_gate_step_with_a_shell_argv_then_the_sync_c3410(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 48 C3410 with C3446, ruling 223 (makes worse True for feeding the text line through _step):
+    a blocked sync --json gave the loop's step as ``next``. It gives the gate's step, naming the document's
+    findings, never ``the BLOCKING lines above``; the checkout's argv is ``/bin/sh -c`` (``(umask`` is no
+    program), and the sync follows as a second entry. The outcome stays ``blocked`` with its findings."""
+    cfg = _synced(initialised, capsys)
+    page = initialised.docs_repo / "mirror" / "source" / "projects" / "sample.txt.md"
+    page.write_text(page.read_text(encoding="utf-8") + "hand edit\n", encoding="utf-8")
+    rc, doc, _err = _doc(["sync", "--config", cfg], capsys)
+    assert rc == cli.EXIT_FAILED and doc["outcome"] == "blocked" and doc["findings"], doc
+    gate, then = doc["next"]
+    assert gate["when"].startswith(
+        "the land gate blocked this sync's commit (1 blocking finding, the BLOCKING lines in this document's "
+        "findings): "
+    ), gate
+    assert "lines above" not in gate["when"], gate
+    assert gate["command"].startswith("(umask 077 && git --literal-pathspecs -C "), gate
+    assert gate["argv"] == ["/bin/sh", "-c", gate["command"]], gate
+    assert then["command"] == "~/.local/bin/agentsync sync" and then["argv"][1:] == ["sync"], then
+    assert all(not s["argv"] or not s["argv"][0].startswith("(") for s in doc["next"]), doc["next"]
 
 
 def test_sync_json_verbose_writes_each_log_record_as_json_c1484(

@@ -2531,24 +2531,22 @@ class Publisher:
         H73: a one-source run dropped the other sources' alarms, which the waits say STATE.md keeps).
 
         It opens with ``## Next``: :func:`loop.next_lines` (KISS K08b), worked out from disk after this
-        cycle's commit and checkpoint, the lines ``sync`` prints after a cycle except two: a blocking lint
-        finding, which held this run's commit, is the step (the loop's rules never see the land gate), worded
-        by :func:`loop.land_gate_step` as the sync's NEXT is, the BLOCKING lines under ``## Lint findings``,
-        and past rule 8 the step sends the agent to ``curate`` instead of counting the queue, a walk of every
-        uncited mirror page that every LaunchAgent poll would otherwise pay. A wait points at its source's
-        ``## <id>`` section, not at this file, and :data:`_STATE_WAIT_LEGEND` follows the waits only when an
-        alarm here names that line (B13 round 9 K42)."""
+        cycle's commit and checkpoint, the lines ``sync`` prints after a cycle except two: a sync the land
+        gate held, or whose cycle failed, has :func:`loop.held_step`'s step ahead of every loop rule
+        (:func:`loop.held_lines`), worded as the sync's NEXT is, the BLOCKING lines under ``## Lint
+        findings``, and past rule 8 the step sends the agent to ``curate`` instead of counting the queue, a
+        walk of every uncited mirror page that every LaunchAgent poll would otherwise pay. A wait points at
+        its source's ``## <id>`` section, not at this file, and :data:`_STATE_WAIT_LEGEND` follows the waits
+        only when an alarm here names that line (B13 round 9 K42)."""
         from agentsync import loop  # noqa: PLC0415 - loop imports cycle, which imports this module
 
-        blocked = (
-            loop.land_gate_step(report.lint_findings, where=loop.LINT_FINDINGS_BELOW)
-            if report.land_gate_blocked
-            else None
-        )
-        fixes = [blocked] if blocked else []
-        next_lines = loop.next_lines(self._config, fixes=fixes, count_queue=False, in_state=True) or [
-            f"(the next step could not be worked out: run `{skill.AGENTSYNC_BIN} status`)"
-        ]
+        # a held sync's step ahead of every loop rule, as the sync prints it (B13 round 48 C3409, C3446)
+        held = loop.held_step(report, where=loop.LINT_FINDINGS_BELOW)
+        next_lines = (
+            loop.held_lines(self._config, held, count_queue=False, in_state=True)
+            if held is not None
+            else loop.next_lines(self._config, count_queue=False, in_state=True)
+        ) or [f"(the next step could not be worked out: run `{skill.AGENTSYNC_BIN} status`)"]
         reports = {r.source_id: r for r in report.sources}
         # An alarm is stored as the sync printed it ("the WAITING ON YOU line ... at the end of a sync's
         # output"), and here that line is above it: one fixed legend says where, never by rewriting the

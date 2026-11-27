@@ -105,7 +105,7 @@ from agentsync.cycle import (
 from agentsync.errors import AccountHomeError, AgentSyncError, ConfigError
 from agentsync.install_log import install_runs_only, read_install_runs
 from agentsync.manifest import Manifest, ManifestBusyError, ManifestNotCurrentError
-from agentsync.model import LintFinding, PassKind, RowState, SourceKind, Verdict
+from agentsync.model import CycleReport, LintFinding, PassKind, RowState, SourceKind, Verdict
 from agentsync.ops import launchd
 from agentsync.paths import DocsLayout, docs_repo_state, env_log_path, expand, same_folder
 from agentsync.publish import _display_path
@@ -157,6 +157,49 @@ def land_gate_step(findings: Sequence[LintFinding], *, where: str = "above") -> 
         f"the land gate blocked this sync's commit ({count}, the BLOCKING lines {where}): {first.path}: "
         f"{fix}; {then}"
     )
+
+
+def failed_cycle_step(findings: Sequence[LintFinding], *, where: str = "above") -> str | None:
+    """The step of a sync that failed before its commit landed, None with no blocking ``CYCLE`` finding: where
+    that line is and its message, then the sync, worded apart from the land gate's (B13 round 48 C3409, ruling
+    222: STATE.md and the screen gave the loop's step, as if the sync had landed)."""
+    cycle = next((f for f in findings if f.blocking and f.code == "CYCLE"), None)
+    if cycle is None:
+        return None
+    return (
+        f"this sync failed before its commit landed (the BLOCKING CYCLE line {where}): {cycle.message}; once "
+        f"that is fixed, run `{BIN} sync`"
+    )
+
+
+def held_step(report: CycleReport, *, where: str = "above") -> str | None:
+    """The one step of a sync that committed nothing for a cause, None otherwise: a land gate block takes
+    :func:`land_gate_step`, a cycle failure :func:`failed_cycle_step`, each keyed on the report's own flag
+    (B13 round 48 C3409, ruling 222); every other sync gives the loop's step."""
+    if report.commit_sha:
+        return None
+    if report.land_gate_blocked:
+        return land_gate_step(report.lint_findings, where=where)
+    if report.cycle_failed:
+        return failed_cycle_step(report.lint_findings, where=where)
+    return None
+
+
+def held_lines(
+    config: Config,
+    step: str,
+    *,
+    fixes: Sequence[str] = (),
+    count_queue: bool = True,
+    in_state: bool = False,
+    quiet: bool = False,
+) -> list[str]:
+    """``NEXT: <step>``, then the loop's WAITING ON YOU and note lines: the step of :func:`held_step` ahead of
+    every loop rule, the sync's text, its JSON and STATE.md alike (B13 round 48 C3446, ruling 223: STATE.md
+    took the gate step as rule 1's fix, behind the skill and sign-in rules, and the JSON gave the loop's
+    step). The NEXT line alone when the loop state cannot be read."""
+    rest = next_lines(config, fixes=fixes, count_queue=count_queue, in_state=in_state, quiet=quiet)
+    return [NEXT_PREFIX + step, *(line for line in rest if line.startswith((WAIT_PREFIX, NOTE_PREFIX)))]
 
 
 NO_FOLDER_CHOSEN_LOOP_NEXT = (
