@@ -2818,6 +2818,24 @@ def test_a_utf16_part_opening_u0000_still_takes_emls_lenient_fallback_c3268(tmp_
     assert units and lenient in units[0].body, "the part read by eml's lenient fallback, never a failure"
 
 
+def test_decode_texts_docstring_says_a_u0000_opening_may_read_as_utf32_c3418() -> None:
+    """B13 round 48 C3418 (ruling 230): ``_decode_text``'s docstring said a UTF-16LE part opening U+0000 is
+    still the ConversionError eml's lenient fallback catches, true of ``FF FE 00 00 41 00`` only: one whose
+    16-bit units pair into valid UTF-32 code points, or the bare mark, reads as UTF-32 with no error.  The
+    docstring limits the first claim to a rest that is no valid UTF-32 and names the second shape; each
+    claim holds of the code."""
+    doc = " ".join((common_mod._decode_text.__doc__ or "").split())
+    assert "part opening U+0000 whose rest is no valid UTF-32 (``FF FE 00 00 41 00``) is still the" in doc
+    assert (
+        "One whose 16-bit units pair into valid UTF-32 code points (``FF FE 00 00 41 00 0A 00``, or the bare"
+        " mark) is read as UTF-32, so it gives other text or none, a shape only a crafted file has" in doc
+    )
+    with pytest.raises(ConversionError, match=r"^invalid UTF-32 text: "):
+        common_mod._decode_text(b"\xff\xfe\x00\x00\x41\x00")
+    assert common_mod._decode_text(b"\xff\xfe\x00\x00\x41\x00\x0a\x00") == "\U000a0041"
+    assert common_mod._decode_text(b"\xff\xfe\x00\x00") == ""
+
+
 def test_the_docs_say_an_office_container_rejection_is_never_cached_c3048_c3101() -> None:
     """B13 round 46 C3048 with C3101 (ruling 202): since C2924 ``convert_file`` gives an Office name's
     container rejection before the cache and never stores it, but registry.py's module doc called it "cached

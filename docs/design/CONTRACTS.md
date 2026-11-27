@@ -48664,6 +48664,16 @@ phrase is untouched, still at exactly its two copies. Docs only; no output chang
 `test_contracts.py::test_the_plain_text_nul_sentence_names_both_checks_in_text_py_and_its_copy_c3454` (the sentence
 in text.py and in §15, the old one in neither, each check true of `_decode_text`, the decode-order phrase twice).
 
+**`_decode_text`'s docstring says a U+0000 opening may read as UTF-32** (C3418; ruling 230;
+`agentsync.convert._common`). The docstring said a UTF-16LE part opening U+0000 (`FF FE 00 00 41 00`) is still the
+ConversionError eml's lenient fallback catches, true of that six-byte body only: since C3321 one whose 16-bit units
+pair into valid UTF-32 code points (`FF FE 00 00 41 00 0A 00` decodes to U+A0041) or the bare mark (to an empty
+text) is read as UTF-32 with no error. The sentence now limits the first claim to a rest that is no valid UTF-32
+and names the second shape, one only a crafted file has; the code is unchanged, and it claims no page for teams,
+whose `json.loads` still fails on such text. Docs only. Test:
+`test_convert_family.py::test_decode_texts_docstring_says_a_u0000_opening_may_read_as_utf32_c3418` (both sentences,
+and each claim against `_decode_text`).
+
 ### 16.299 Round 48: the prompt goes to v45 (the land gate's fix run once per page, step 1's stop only with no synced line, a chosen folder that came back paused, a failed step 2 outside the none), dated lines, and the guides (2026-11-27, wave B13 round 48 lane D)
 
 Reserved for round 48 lane D of B13.

@@ -357,7 +357,10 @@ def _decode_text(data: bytes) -> str:
     before UTF-16's, since ``FF FE 00 00`` opens with UTF-16LE's mark: a UTF-32LE file read as UTF-16 was
     NUL characters, and a UTF-32BE one fell to the NUL-byte check (B13 round 47 C3321 with C3268 and C3291).
     A body of a bad length or code point raises ConversionError, never UnicodeDecodeError, so a UTF-16LE
-    part opening U+0000 (``FF FE 00 00 41 00``) is still the ConversionError eml's lenient fallback catches.
+    part opening U+0000 whose rest is no valid UTF-32 (``FF FE 00 00 41 00``) is still the ConversionError
+    eml's lenient fallback catches.  One whose 16-bit units pair into valid UTF-32 code points (``FF FE 00
+    00 41 00 0A 00``, or the bare mark) is read as UTF-32, so it gives other text or none, a shape only a
+    crafted file has (B13 round 48 C3418).
     """
     if data.startswith(b"\xef\xbb\xbf"):
         text = data[3:].decode("utf-8", errors="replace")
