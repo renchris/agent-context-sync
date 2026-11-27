@@ -21254,9 +21254,9 @@ def test_a_file_at_the_kept_inbox_name_is_the_persons_not_unexpected_c3513(
     inbox.rename(inbox.with_name("inbox-kept"))  # moved aside, never removed
     inbox.write_text("not a folder\n", encoding="utf-8")
     line, outcome = _source_root_line(fake_mac, tmp_path)
+    # lane B's C3515 gives a kept inbox that is not a folder an [ok] volume row, so its listable FAIL is alone
     assert (
-        f"{setup_report._SOURCE_ROOT_WORDS} (2 checks): source.inbox.listable FAIL (the person's; see "
-        "Doctor), source.inbox.volume FAIL (the person's; see Doctor)"
+        f"{setup_report._SOURCE_ROOT_WORDS} (1 check): source.inbox.listable FAIL (the person's; see Doctor)"
     ) in line, line
     assert line.endswith(" · unexpected 0"), line
     assert "unexpected doctor FAIL" not in outcome, outcome
