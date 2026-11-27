@@ -1578,7 +1578,7 @@ def test_the_deploy_guide_names_the_no_folder_re_runs_own_next_c2661() -> None:
     clause_tail = clause_tail.replace("%s", "'")
     guide = " ".join((DEPLOY / "README.md").read_text(encoding="utf-8").split())
     assert (
-        "the same line `~/.local/bin/agentsync status` prints, except where no folder is synced yet. On a"
+        "the same line `~/.local/bin/agentsync status` prints, except in the cases below. On a"
         " re-run over a config that holds no source but the inbox (a paused or retired folder still counts"
         " as one), where status names the missing agentsync-docs skill, install.sh ends, exit 0, on its own"
         f" `{words} install.sh --list-folders, ...` line in place of status's (B13 round 43 C2401). It does"
@@ -6078,6 +6078,43 @@ def test_the_guides_inbox_rows_name_the_shells_not_checked_line_and_not_read_c28
         "since B13 round 45 (C2808) the line ends `inbox=not-read` in place of `inbox=not-added` when init or"
         " add-source printed `inbox: not read: <folder>: <why> (inbox state says what to do)`."
     ) in page
+
+
+def test_the_install_guides_name_the_nothing_to_draft_swap_and_the_held_marks_c3427_c3459() -> None:
+    """B13 round 48 C3427 with C3459 (lane RB's single-quoted words): docs/deploy/README.md said install.sh's
+    NEXT is status's "except where no folder is synced yet", missing round 47 C3206's swap of the
+    ``nothing to draft yet`` line's add-source for install.sh's own --source-local run, said every marked
+    row "would be read twice", and named neither held mark; README.md's parenthetical left the swap out too.
+    The guide names the swap in install.sh's words, the three double-read marks apart from the held and
+    inside-held ones, and README.md names the swap, held to install.sh's DRAFT_ADD_FROM and replacement."""
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    assert "DRAFT_ADD_FROM='(`~/.local/bin/agentsync add-source \"<folder>\"`)'" in script
+    assert "($SELF$BASE_ARGS --source-local '<folder>', one --source-local per folder)" in script
+    assert '[ "$EXIT_RC" -eq 0 ] && [ "$NO_FOLDER" -eq 0 ]' in script
+    for mark in ("[paused]", "[retired]", "[inside a paused folder]", "[inside a retired folder]"):
+        assert f'_MARK="{mark}"' in script, mark
+    guide = " ".join((DEPLOY / "README.md").read_text(encoding="utf-8").split())
+    assert "except where no folder is synced yet" not in guide
+    assert (
+        "A run that ends 0 on status's `nothing to draft yet: ...` line (not `--no-folder`) keeps its words"
+        ' but its `` (`~/.local/bin/agentsync add-source "<folder>"`) ``, which reads `(install.sh'
+        " --source-local '<folder>', one --source-local per folder)`: setup adds folders through step 2"
+    ) in guide
+    assert "a folder with one of these three marks would be read twice" in guide
+    assert "a marked one would be read twice" not in guide
+    assert (
+        "`[paused]` or `[retired]` before a folder marks one `sources.toml` holds but does not sync, and"
+        " `[inside a paused folder]` or `[inside a retired folder]` one inside such a folder: none is read,"
+        " `--source-local` leaves each as it is"
+    ) in guide
+    assert (
+        "These can show with no `already synced on this Mac:` line, which counts live folders only." in guide
+    )
+    readme = " ".join(_page("README.md").split())
+    assert (
+        "(the loop's; install.sh's own `--source-local` form when no folder is synced yet, and in place of"
+        " `add-source` in a `nothing to draft yet` line)"
+    ) in readme
 
 
 def test_the_guides_loop_rule_reads_a_held_land_gate_as_status_does_c3422() -> None:

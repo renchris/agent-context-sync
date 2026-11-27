@@ -1227,8 +1227,8 @@ already has `sources.toml`, it adds only the folders not yet in it (`agentsync a
 one folder), `--list-folders` writes `[synced]` before each folder already synced, `[paused]` or `[retired]` before one sources.toml
 holds but does not sync (setting it live is your own edit of `sources.toml`), and a mark of its own before a
 folder inside one or around one (add only an unmarked folder), and `install.sh` with no
-`--source-local` keeps them all. It ends with one `NEXT:` line (the loop's, or install.sh's own `--source-local` form when no
-folder is synced yet): do what it says. Every work session then starts with
+`--source-local` keeps them all. It ends with one `NEXT:` line (the loop's; install.sh's own `--source-local` form when no
+folder is synced yet, and in place of `add-source` in a `nothing to draft yet` line): do what it says. Every work session then starts with
 `~/.local/bin/agentsync sync` and does what its `NEXT:` line says. Background sync is optional and yours to turn on, never part of setup:
 `install.sh --confirm-install-agent` builds the signed launcher, syncs once and installs two LaunchAgents (a poll
 every 5 minutes and an hourly reconcile). On their first run, macOS asks once for permission for the launcher to read

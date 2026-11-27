@@ -52,14 +52,17 @@ git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context
 The script is safe to re-run and never prompts. It installs uv and agentsync, writes `sources.toml` with one live
 `kind = "local"` source per folder (on a re-run it adds only folders not yet there, through `agentsync add-source`),
 runs `agentsync status` and a first sync, and ends with one `NEXT:` line: the loop's next step, the same line
-`~/.local/bin/agentsync status` prints, except where no folder is synced yet. On a re-run over a config that holds no
+`~/.local/bin/agentsync status` prints, except in the cases below. On a re-run over a config that holds no
 source but the inbox (a paused or retired folder still counts as one), where status names the missing agentsync-docs
 skill, install.sh ends, exit 0, on its own `no folder is synced yet: list them with install.sh --list-folders, ...`
 line in place of status's (B13 round 43 C2401). It does the same on any run that ends 0 on status's other no-folder
 line, `no folder is synced yet: ask the operator ...`, which status prints when the skill is current and no folder is
 live (an inbox-only config, or one whose folders are all paused or retired), and that line then ends `; not live:
 <folders>: setting a folder to live is the person's own edit of sources.toml, never the agent's`, naming each paused or
-retired folder, when sources.toml holds one (B13 round 46 C3003). It exits 2 when it created `sources.toml` and has no folder to sync (its
+retired folder, when sources.toml holds one (B13 round 46 C3003). A run that ends 0 on status's `nothing to draft
+yet: ...` line (not `--no-folder`) keeps its words but its `` (`~/.local/bin/agentsync add-source "<folder>"`) ``,
+which reads `(install.sh --source-local '<folder>', one --source-local per folder)`: setup adds folders through
+step 2 (B13 round 47 C3206; the placeholder single-quoted since round 48 C3544). It exits 2 when it created `sources.toml` and has no folder to sync (its
 `NEXT:` names `--list-folders`) and 1 on a `[FAIL]` line. When the person chose no folder, `install.sh --no-folder` (it
 takes no `--source-local` and no `--confirm-install-agent`) exits 0 instead, and its `NEXT:`, on a new config and on a
 re-run over one with no live folder alike, reads `the person chose no folder, so this Mac syncs none of their folders:
@@ -71,8 +74,12 @@ On a Mac that is already set up nothing has to be chosen again. `--list-folders`
 `already synced on this Mac: N folders` (`1 folder` for one) and writes `[synced]` before each folder `sources.toml` already syncs,
 and `install.sh` with no `--source-local` keeps every source, updates agentsync and runs status and a sync.
 A sync reads everything under a synced folder, so a listed folder inside one has `[inside a synced folder]`
-before it, and one that holds one has `[contains a synced folder]`. Add only an unmarked folder: a marked one
-would be read twice. A synced folder the list does not reach (deeper than two levels, or outside
+before it, and one that holds one has `[contains a synced folder]`; a folder with one of these three marks would be
+read twice. `[paused]` or `[retired]` before a folder marks one `sources.toml` holds but does not sync, and
+`[inside a paused folder]` or `[inside a retired folder]` one inside such a folder: none is read, `--source-local`
+leaves each as it is, and setting a folder live is the person's own edit of `sources.toml` (B13 round 47 C3332,
+round 48 C3506). These can show with no `already synced on this Mac:` line, which counts live folders only. Add
+only an unmarked folder. A synced folder the list does not reach (deeper than two levels, or outside
 `~/Library/CloudStorage`) is printed first with the same mark. Three marks open a row before any of those, for
 another reason than a double read. A row that opens with
 `[name holds a hidden or control character: rename it to sync it]` names a folder whose name holds a hidden or
