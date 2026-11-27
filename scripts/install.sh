@@ -14964,6 +14964,10 @@ show_first_sync() { # RC
 		# their own handling
 		LC_ALL=C grep -E '^[[:space:]]*note: .* an older build gave up on ' "$SYNC_OUT" 2>/dev/null |
 			LC_ALL=C sed "s/^[[:space:]]*/$SYNC_LABEL: /" || true
+		# and each item the sync could not read, its `error:` line, after the converted line so SYNC_SUMMARY_RE and
+		# the report read that line as before: a sync that exits 0 printed it only into SYNC_OUT, so step 2 said
+		# nothing of a file it could not read (B13 round 48 C3537)
+		LC_ALL=C grep -E '^[[:space:]]+error: ' "$SYNC_OUT" 2>/dev/null | LC_ALL=C sed "s/^[[:space:]]*/$SYNC_LABEL: /" || true
 	else
 		cat "$SYNC_OUT" 2>/dev/null || true
 	fi

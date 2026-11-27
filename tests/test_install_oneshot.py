@@ -1261,6 +1261,29 @@ def test_a_first_sync_the_land_gate_blocked_names_its_first_blocking_line_c3227(
         ), last_line(cp)
 
 
+def test_a_first_sync_that_exits_0_shows_each_file_it_could_not_read_c3537(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """B13 round 48 C3537: a first sync that exits 0 with a file it could not read printed its `error:` line
+    only into its own output, so step 2 showed `converted 1, deferred 0 online-only` and nothing else. Each
+    per-item `error:` line follows the converted line under the step's label, the converted line still the one
+    SYNC_SUMMARY_RE and install.log's note read."""
+    out = "\n".join(
+        [
+            "run 1 · mode reconcile · commit abc123def456 · 1 change",
+            "  alpha: converted 1, deferred 0 online-only",
+            "    error: alpha/Wombat.md: read failed (permission denied)",
+        ]
+    )
+    cp = install_sh({**env, "STUB_SYNC_OUT": out}, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    lines = cp.stdout.splitlines()
+    at = lines.index("first sync: alpha: converted 1, deferred 0 online-only")
+    assert lines[at + 1] == "first sync: error: alpha/Wombat.md: read failed (permission denied)", lines[at:]
+    start = [ln for ln in install_log(env) if " step=first-sync " in ln][-1]
+    assert " note=converted-1-deferred-0" in start, start
+
+
 @pytest.mark.parametrize(
     "lines",
     [
