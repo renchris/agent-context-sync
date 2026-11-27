@@ -320,6 +320,39 @@ def test_add_source_on_a_folder_ending_in_a_blank_syncs_that_folder_not_its_sibl
     assert mirrored == ["chosen.txt.md"], mirrored
 
 
+@pytest.mark.parametrize("blank", ["\u3000", " ", "\u00a0"], ids=["u3000", "space", "nbsp"])
+def test_a_moved_aside_blank_ended_folder_stops_status_and_sync_naming_both_spellings_c3475(
+    tmp_path: Path, blank: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 48 C3475: C3333's two-spelling ConfigError (the stored path absent, its stripped spelling
+    present) was tested only at the parser. Once the chosen ``Project<blank>`` is moved aside after a sync,
+    status and sync each exit 78 with a configuration error naming both spellings, and nothing of the sibling
+    ``Project`` is published."""
+    work = tmp_path / "w"
+    (work / "Project").mkdir(parents=True)
+    chosen = work / f"Project{blank}"
+    chosen.mkdir()
+    (work / "Project" / "only-in-sibling.txt").write_text("sibling\n", encoding="utf-8")
+    (chosen / "chosen.txt").write_text("chosen\n", encoding="utf-8")
+    cfg = tmp_path / "ctx" / "sources.toml"
+    assert cli.main(["add-source", str(chosen), "--config", str(cfg)]) == cli.EXIT_OK
+    config = load_config(cfg)
+    mirror = config.docs_repo / "mirror" / config.sources[0].id
+    assert cli.main(["sync", "--config", str(cfg)]) == cli.EXIT_OK
+    before = sorted(str(p.relative_to(mirror)) for p in mirror.rglob("*"))
+    chosen.rename(tmp_path / "moved-aside")
+    for command in ("status", "sync"):
+        capsys.readouterr()
+        assert cli.main([command, "--config", str(cfg)]) == cli.EXIT_CONFIG, command
+        err = capsys.readouterr().err
+        assert "configuration error" in err, (command, err)
+        assert f"{str(chosen)!r} does not exist but {str(work / 'Project')!r} does" in err, (command, err)
+    assert sorted(str(p.relative_to(mirror)) for p in mirror.rglob("*")) == before
+    assert not any("sibling" in p.name for p in config.docs_repo.rglob("*")), (
+        "the sibling's file is published"
+    )
+
+
 def test_init_names_a_config_it_cannot_load_by_its_error_alone(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
