@@ -48781,6 +48781,14 @@ right after ruling 210 gives the alarm as the build prints it and the probe's na
 built from round48-workflow.js is the lead's (C3520's kit half). Test:
 `tests/test_deploy_pack.py::test_ruling_210_takes_a_dated_line_for_c3211s_alarm_and_root_probe_c3520_c3479`.
 
+**Setup-feedback.md's `inbox:` row takes lane B's not-a-folder phrase** (C3429 with C3478, one defect; ruling 210;
+`docs/deploy/setup-feedback.md`). The Configuration `inbox:` row still said a file or a dangling link on that name
+reads `not added (<folder> is not a folder)`, the list C3213 widened in both READMEs: `config.inbox_entry` reads a
+looping link, a link through a file and a link to a file as not a folder too. The row now says `a file or a link that
+does not lead to a folder`, the alarm's phrase, naming the four link kinds; the K66 history row and the dated CONTRACTS
+and COMMON.md lines keep the old words. Test:
+`tests/test_deploy_pack.py::test_the_guides_configuration_rows_and_path_legend_follow_the_report_c2459`.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units

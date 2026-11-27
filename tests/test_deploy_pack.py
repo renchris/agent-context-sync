@@ -16048,11 +16048,12 @@ def test_the_guides_configuration_rows_and_path_legend_follow_the_report_c2459(
     number, while `_convert_line` shows every number option's, `ocr` and `recordings` by name and
     `pandoc_path` by name only; held to the line it prints for every option set. With lane RA's C2438 and
     C2525 words: the `<path>` row's provider part ends at ` | ` and ` · ` too, as the report's legend says,
-    and the `inbox:` row names the stored-form match and the not-a-folder answer."""
+    and the `inbox:` row names the stored-form match and the not-a-folder answer. B13 round 48 C3429 with
+    C3478: that answer names lane B's one phrase, as both READMEs do since C3213."""
     import dataclasses  # noqa: PLC0415
     import types  # noqa: PLC0415
 
-    from agentsync import config, setup_report  # noqa: PLC0415
+    from agentsync import arm_local, config, setup_report  # noqa: PLC0415
 
     monkeypatch.setattr(setup_report, "_convert_changed_run", lambda c: 0)
     default = config.ConvertConfig()
@@ -16081,7 +16082,15 @@ def test_the_guides_configuration_rows_and_path_legend_follow_the_report_c2459(
     assert '", stored as ", " | " or " · " (a table cell\'s or a Summary field\'s end)' in legend
     inbox = next(ln for ln in guide.splitlines() if ln.startswith("| Configuration: `inbox:` |"))
     assert "matched as that folder in the form setup stores it" in inbox
-    assert "a file or a dangling link on that name reads `not added (<folder> is not a folder)`" in inbox
+    # B13 round 48 C3429 with C3478: the row takes lane B's one phrase (ruling 210), as both READMEs do
+    phrase = "a file or a link that does not lead to a folder"
+    assert phrase in inspect.getsource(arm_local.LocalArm._not_a_folder_alarm)
+    assert (
+        f"{phrase} on that name (a dangling link, a looping link, a link through a file or to a file;"
+        in inbox
+    )
+    assert "reads `not added (<folder> is not a folder)` whatever sources.toml lists" in inbox
+    assert "a file or a dangling link on that name" not in inbox
 
 
 def test_the_guide_reads_the_configurations_inbox_and_convert_lines_c2207_c2210() -> None:
