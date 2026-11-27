@@ -10103,6 +10103,61 @@ def test_status_and_add_source_over_a_fifo_config_exit_78_and_never_hang_c3307(
     assert stat.S_ISFIFO(os.lstat(cfg).st_mode), "add-source wrote nothing over it"
 
 
+@pytest.mark.parametrize(
+    "kind",
+    ["self link", "two-link loop", "link through a file", "link into a mode-000 folder", "dangling link"],
+)
+def test_status_sync_and_add_source_never_write_over_a_config_link_they_cannot_read_c3469(
+    tmp_path: Path, local_source_dir: Path, kind: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 48 C3469, ruling 225: add-source decided a fresh config by ``exists()``, which follows the
+    link, so it wrote a new sources.toml over a looping or dangling link the person had set up, and a link
+    into a folder it could not search raised a traceback. Every one is now read by load_config: status, sync
+    and add-source exit 78 naming the entry, the link is still a link, and a dangling one is told to mend its
+    target, never to run add-source."""
+    if os.geteuid() == 0:
+        pytest.skip("root reads a mode-000 folder")
+    good = tmp_path / "real.toml"
+    good.write_text("", encoding="utf-8")
+    cfg = tmp_path / "sources.toml"
+    if kind == "self link":
+        cfg.symlink_to(cfg)
+    elif kind == "two-link loop":
+        (tmp_path / "other.toml").symlink_to(cfg)
+        cfg.symlink_to(tmp_path / "other.toml")
+    elif kind == "link through a file":
+        cfg.symlink_to(good / "sources.toml")
+    elif kind == "link into a mode-000 folder":
+        (tmp_path / "locked").mkdir()
+        cfg.symlink_to(tmp_path / "locked" / "sources.toml")
+        (tmp_path / "locked").chmod(0)
+    else:
+        cfg.symlink_to(tmp_path / "gone.toml")
+    target = cfg.readlink()
+    try:
+        for argv in (
+            ["status", "--config", str(cfg)],
+            ["sync", "--config", str(cfg)],
+            ["add-source", str(local_source_dir), "--config", str(cfg)],
+        ):
+            capsys.readouterr()
+            rc = cli.main(argv)
+            err = capsys.readouterr().err
+            assert rc == cli.EXIT_CONFIG, (argv, rc, err)
+            if kind == "dangling link":
+                assert (
+                    f"a link to {target}, which is missing; restore its target or move the link aside" in err
+                )
+                assert "add-source" not in err, (argv, err)
+            else:
+                assert "cannot read: " in err, (argv, err)
+            assert stat.S_ISLNK(os.lstat(cfg).st_mode) and cfg.readlink() == target, argv
+    finally:
+        if (tmp_path / "locked").exists():
+            (tmp_path / "locked").chmod(0o700)
+    assert not (tmp_path / "gone.toml").exists()
+
+
 def test_a_sync_over_a_corrupt_heartbeat_warns_of_it_once_c3004(
     initialised: Config, caplog: pytest.LogCaptureFixture
 ) -> None:

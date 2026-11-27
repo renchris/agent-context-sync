@@ -1734,9 +1734,19 @@ def _cmd_add_source(args: argparse.Namespace) -> int:
     """KISS K14: the one setup verb. Validates PATH before writing anything; a missing sources.toml is
     written from the template with the folder's table; then :func:`_ensure_setup` creates the rest. A
     folder a source already has, in any spelling macOS takes for it (:func:`_same_folder`), is left as it
-    is."""
+    is. The template is written only when ``lstat`` finds nothing at the name: a looping, dangling or
+    unsearchable link is read by load_config and refused with exit 78, never written over (B13 round 48 C3469,
+    ruling 225: ``exists()`` follows the link, so add-source replaced a looping link with a new file and a
+    link into a folder it could not search raised a traceback)."""
     cfg_path = expand(args.config or default_config_path())
-    fresh = not cfg_path.exists()
+    try:
+        os.lstat(cfg_path)
+    except FileNotFoundError:
+        fresh = True
+    except OSError:  # an unsearchable or not-a-folder parent: load_config words its own error
+        fresh = False
+    else:
+        fresh = False
     template = default_config_text()
     # A broken sources.toml exits 78 before anything is written; a missing one is checked as the template.
     config = parse_config(template, config_path=cfg_path) if fresh else load_config(cfg_path)

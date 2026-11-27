@@ -795,13 +795,27 @@ def read_config_text(path: Path, *, newline: str | None = None) -> str:
         return fh.read()
 
 
+def _config_missing(p: Path) -> ConfigError:
+    """The error for a sources.toml whose read found nothing: a name that is a link to a missing target is
+    told so, with that target, and how to mend it, never add-source, which refuses a name that is there (B13
+    round 48 C3469, ruling 225); only an empty name is told to run add-source."""
+    try:
+        target = p.readlink()
+    except OSError:  # nothing at the name, or not a link: the read's own not-found
+        return ConfigError(f"{p}: not found; run `{AGENTSYNC_BIN} add-source <folder>` to create it")
+    return ConfigError(
+        f"{p}: a link to {target}, which is missing; restore its target or move the link aside"
+    )
+
+
 def load_config(path: Path | None = None) -> Config:
-    """Read and validate sources.toml (default ``~/agent-context/sources.toml``); raises ConfigError."""
+    """Read and validate sources.toml (default ``~/agent-context/sources.toml``); raises ConfigError. A
+    dangling link at the name is told as one (:func:`_config_missing`, B13 round 48 C3469)."""
     p = expand(path) if path is not None else default_config_path()
     try:
         text = read_config_text(p)
     except FileNotFoundError:
-        raise ConfigError(f"{p}: not found; run `{AGENTSYNC_BIN} add-source <folder>` to create it") from None
+        raise _config_missing(p) from None
     except OSError as exc:
         raise ConfigError(f"{p}: cannot read: {exc.strerror}") from None
     return parse_config(text, config_path=p)
@@ -1068,12 +1082,12 @@ def append_to_config(config_path: Path, table: str) -> Config:
     file atomically (same directory, fsync, ``os.replace``) with the file's mode kept.  Returns the new
     Config; raises ConfigError (and writes nothing) when the result would not load."""
     p = expand(config_path)
-    target = p.resolve()  # a symlinked sources.toml keeps its link
+    target = Path(os.path.realpath(p))  # keeps a link; a loop is an OSError (C3469)
     try:
         text = read_config_text(target)
         mode = target.stat().st_mode & 0o777
     except FileNotFoundError:
-        raise ConfigError(f"{p}: not found; run `{AGENTSYNC_BIN} add-source <folder>` to create it") from None
+        raise _config_missing(p) from None  # a dangling link is told as one, as load_config tells it (C3469)
     except OSError as exc:
         raise ConfigError(f"{p}: cannot read: {exc.strerror}") from None
     if text and not text.endswith("\n"):
@@ -1120,7 +1134,7 @@ def set_source_exclude(
     source's exclude ``exclude`` was built from) is given and the file read here no longer has it: an edit
     made since that read is not written over (B13 round 5 F70)."""
     p = expand(config_path)
-    target = p.resolve()  # a symlinked sources.toml keeps its link
+    target = Path(os.path.realpath(p))  # keeps a link; a loop is an OSError (C3469)
     try:
         text = read_config_text(target, newline="")  # a CRLF file stays CRLF
         mode = target.stat().st_mode & 0o777

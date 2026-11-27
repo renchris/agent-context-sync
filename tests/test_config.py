@@ -338,7 +338,23 @@ def _config_entry(tmp_path: Path, kind: str) -> Path:
         cfg.symlink_to(tmp_path / "gone.toml")
     elif kind == "device":
         cfg.symlink_to("/dev/null")
+    elif kind == "self link":  # B13 round 48 C3469: the loop and blocked kinds of round 47's entry rule
+        cfg.symlink_to(cfg)
+    elif kind == "two-link loop":
+        (tmp_path / "other.toml").symlink_to(cfg)
+        cfg.symlink_to(tmp_path / "other.toml")
+    elif kind == "link through a file":
+        cfg.symlink_to(good / "sources.toml")
+    elif kind == "link into a mode-000 folder":
+        (tmp_path / "locked").mkdir()
+        (tmp_path / "locked" / "sources.toml").write_text(_GOOD_CONFIG, encoding="utf-8")
+        cfg.symlink_to(tmp_path / "locked" / "sources.toml")
+        (tmp_path / "locked").chmod(0)
     return cfg
+
+
+LOOPING_KINDS = ("self link", "two-link loop", "link through a file", "link into a mode-000 folder")
+"""The entries a config reader met with no test until B13 round 48 C3469: each one refuses a read."""
 
 
 @contextlib.contextmanager
@@ -368,7 +384,8 @@ _READERS: dict[str, Callable[[Path], Any]] = {
 
 @pytest.mark.parametrize("reader", sorted(_READERS))
 @pytest.mark.parametrize(
-    "kind", ["file", "link to a file", "folder", "fifo", "link to a fifo", "dangling link", "device"]
+    "kind",
+    ["file", "link to a file", "folder", "fifo", "link to a fifo", "dangling link", "device", *LOOPING_KINDS],
 )
 def test_every_config_reader_returns_on_every_kind_of_entry_c3307(
     tmp_path: Path, reader: str, kind: str
@@ -380,19 +397,31 @@ def test_every_config_reader_returns_on_every_kind_of_entry_c3307(
     a FIFO, a link to one and a device are `not a file`, a folder keeps `Is a directory`, and a link to a real
     file reads as the file."""
     cfg = _config_entry(tmp_path, kind)
-    with _bounded(10):
-        try:
-            _READERS[reader](cfg)
-        except (ConfigError, IsADirectoryError) as exc:  # load_governance's folder stays the open's own error
-            got: str | None = str(exc)
-        else:
-            got = None
+    try:
+        with _bounded(10):
+            try:
+                _READERS[reader](cfg)
+            except (ConfigError, IsADirectoryError) as exc:  # load_governance's folder: the open's own error
+                got: str | None = str(exc)
+            else:
+                got = None
+    finally:
+        if (tmp_path / "locked").exists():
+            (tmp_path / "locked").chmod(0o700)
     if kind in ("fifo", "link to a fifo", "device"):
         assert got is not None and NOT_A_FILE in got, got  # policy keeps its own `cannot read the ... table`
     elif kind == "folder":
         assert got is not None and "Is a directory" in got, got
+    elif kind == "dangling link" and reader in ("load_config", "append_to_config"):
+        # B13 round 48 C3469, ruling 225: the link is named with its target, never sent to add-source
+        assert got == (
+            f"{cfg}: a link to {tmp_path / 'gone.toml'}, which is missing; restore its target or move the "
+            "link aside"
+        ), got
     elif kind == "dangling link":
         assert reader in ("load_governance", "policy") or (got is not None and "not found" in got), got
+    elif kind in LOOPING_KINDS:  # B13 round 48 C3469: refused as unreadable, never raising another error
+        assert reader in ("load_governance", "policy") or (got is not None and "cannot read: " in got), got
     elif reader != "set_source_exclude":  # the file holds no source contoso, so the editor refuses it
         assert got is None, got
 

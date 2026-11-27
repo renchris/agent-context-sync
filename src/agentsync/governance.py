@@ -61,7 +61,7 @@ from typing import Any, cast
 
 from agentsync import fsutil, gitops
 from agentsync.config import SOURCE_ID_RE as _SOURCE_ID_RE
-from agentsync.config import Config, NotAFileError, read_config_bytes
+from agentsync.config import Config, read_config_bytes
 from agentsync.convert.pieces import PieceStore
 from agentsync.errors import AgentSyncError, ConfigError, ManifestSchemaError
 from agentsync.manifest import (
@@ -347,7 +347,9 @@ def load_governance(config_path: Path) -> GovernanceConfig:
         data = read_config_bytes(path)  # never blocks on a FIFO (B13 round 47 C3307 with C3251)
     except FileNotFoundError:
         return GovernanceConfig()
-    except NotAFileError as exc:
+    except (
+        OSError
+    ) as exc:  # a FIFO, a loop, a link through a file, an unsearchable folder (B13 round 48 C3469)
         raise ConfigError(f"{path}: cannot read: {exc.strerror}") from None
     try:
         doc = tomllib.loads(data.decode("utf-8"))
