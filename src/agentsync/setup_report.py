@@ -19480,6 +19480,15 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
                 f"this report may be stale: it was written before prompt step {step}, or the agent stopped "
                 f"early. Run `{AGENTSYNC_BIN} setup-report` again after step {step}."
             )
+        elif outcome.note == NO_FOLDER_CHOSEN:
+            # B13 round 48 C3498 (ruling 227): the person's completed none is an answer, so nothing waits, and
+            # the end line --report-only writes leaves its outcome as it is (the completed-none return comes
+            # before every reader of an end line): the waiting WARNING below said both the other way
+            out.append(
+                f"- WARNING: attempt {att.number} has no end line yet: the person chose no folder, so step "
+                f"{step} goes straight to its report; step {step}'s last command `{INSTALL_SH} "
+                "--report-only` closes the attempt and leaves the outcome as it is."
+            )
         elif outcome.kind == "stopped":
             # stopped for the folder answer, as the prompt says: the session may still be waiting, and an
             # end line written now would turn "stopped" into "failed at step 1" (B13 round 8 J36), so this

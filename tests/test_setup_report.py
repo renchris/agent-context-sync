@@ -30989,6 +30989,50 @@ def test_the_expected_turns_line_drops_step_3s_question_for_a_held_only_latest_r
     assert (setup_report.STEP_3_ASKS_ONCE in turns) is live, turns
 
 
+_C3498_ROUTES = {  # install.log, a step 1 deviation after it or not, the WARNING's opening words
+    "completed-none": (_R213_NONE, False, "has no end line yet: the person chose no folder"),
+    "failed-none": (
+        _r213_run(1, "--no-folder", 1, config="rc=1 result=failed"),
+        False,
+        'has no "end | finished" line, so this report may be stale',
+    ),
+    "unanswered-first-run": (
+        _r213_run(1, "", 2, first="rc=0 result=skipped note=no-sources"),
+        True,
+        'has no "end | finished" line: it stopped at step 1, where the prompt waits',
+    ),
+}
+
+
+@pytest.mark.parametrize("route", list(_C3498_ROUTES))
+def test_a_completed_none_is_never_said_to_be_waiting_for_the_folder_answer_c3498(
+    fake_mac: dict[str, Path], route: str
+) -> None:
+    """B13 round 48 C3498 (ruling 227): step 2's report after the person's completed none (h-none0-h: a v44
+    attempt, its last run a --no-folder that ended 0, no end line) said the attempt may still be waiting for
+    the folder answer and that `install.sh --report-only` would turn it into "failed at step 1": the answer
+    was given, and that command is step 3's next one and leaves the outcome as it is. Its WARNING says so;
+    an unanswered folder question keeps the waiting WARNING, and a failed none, scored failed, the stale
+    one."""
+    logged, deviation, opening = _C3498_ROUTES[route]
+    (fake_mac["setup"] / "install.log").write_text(logged, encoding="utf-8")
+    dev = "2026-11-25T10:02:00Z | step 1 | deviation | no folder answer came | -\n" if deviation else ""
+    r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 60.0)
+    r.friction = setup_report.parse_friction("Attempt: 2026-11-25T09:59:00Z\nPrompt: v44\n" + dev)
+    r.install_runs = setup_report.read_install_runs(fake_mac["setup"] / "install.log")
+    [warning] = [ln for ln in setup_report._summary(r, header=[]) if ln.startswith("- WARNING: attempt 1 ")]
+    assert warning.startswith(f"- WARNING: attempt 1 {opening}"), warning
+    if route != "completed-none":
+        return
+    assert warning == (
+        "- WARNING: attempt 1 has no end line yet: the person chose no folder, so step 3 goes straight to "
+        f"its report; step 3's last command `{setup_report.INSTALL_SH} --report-only` closes the attempt and "
+        "leaves the outcome as it is."
+    ), warning
+    assert "may still be waiting" not in warning and "would turn this outcome into" not in warning, warning
+    assert r.outcome is not None and r.outcome.note == setup_report.NO_FOLDER_CHOSEN, r.outcome
+
+
 def test_a_config_named_with_a_trailing_exists_is_never_an_earlier_runs_c3115(tmp_path: Path) -> None:
     """B13 round 46 C3115: `_earlier_config` stripped a trailing ` exists` before comparing, so a config whose
     own name ends ` exists` (`sources exists`), echoed bare by `config: <path>`, was labeled EARLIER_CONFIG.
