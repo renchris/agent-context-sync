@@ -1092,6 +1092,7 @@ class CycleReport:
     carried: tuple[MirrorChange, ...] = ()  # 2026-11-25 (§16.292 C3228): blocked runs' pages this commit holds
     carried_runs: tuple[int, ...] = ()  # 2026-11-25 (§16.292 C3228): those runs, named in the commit body
     land_gate_blocked: bool = False  # 2026-11-25 (§16.292 C3227): the gate held the commit, never a CYCLE finding
+    cycle_failed: bool = False  # 2026-11-27 (§16.297 C3416): the cycle raised and committed nothing
     commit_holds_mirror: bool = False  # 2026-11-25 (§16.292 C3228): the commit holds a mirror/ path
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"
@@ -41610,6 +41611,8 @@ mirror page: exit 1, empty stderr, `blocked` with the FRONTMATTER finding, both 
 `::test_sync_json_verbose_writes_each_log_record_as_json_c1484`,
 `::test_an_error_line_after_a_warning_is_the_one_stderr_line_c1484` and
 `::test_a_warning_no_document_took_is_never_lost_c1484` (a run with no document, and one logged after status's).
+Amended 2026-11-27, §16.297 C3447: a cycle that raised before it committed is `failed`, not `blocked`, with its `CYCLE`
+finding in `findings`; `blocked` is the land gate's block alone (`CycleReport.land_gate_blocked`).
 
 ### 16.248 Round 38: the converters: a zero-byte file never takes an older build's cached answer (2026-11-13, wave B13 round 38 lane E)
 
@@ -48032,6 +48035,9 @@ failed: ...`), and keeps `commit none (no content change)` and the loop's NEXT. 
 through one sync, STATE.md's copy, then chmod 600 and a commit),
 `test_a_sync_that_fails_after_the_land_gate_passed_never_says_the_gate_blocked_it_c3227` and
 `test_state_md_next_is_the_blocking_finding_that_held_the_commit`.
+Amended 2026-11-27, §16.297 C3416: such a cycle's run line now reads `commit none (the cycle failed)`, keyed on
+`CycleReport.cycle_failed`, set where the `CYCLE` finding is appended, and `sync --json`'s outcome is `failed`
+(C3447).
 
 **The commit that lands blocked runs' pages counts them and names those runs** (C3228; ruling 212). A run the land
 gate blocks keeps its `run_changes` rows (only a landed commit's `clear_run_changes` deletes them) and its
@@ -49011,6 +49017,9 @@ own (§16.10). Without it, every byte of stdout and stderr and every exit code i
   `~` expanded in argv and a null command for a step that quotes none; argv is `[]` for a command that carries a
   `<placeholder>` the caller fills from `when` (C1444); it ignores AGENTSYNC_NO_NEXT_HINT. An empty
   list is `[]` and a known-absent value `null`.
+  Amended 2026-11-27, §16.297 C3447: the outcome is `"committed" | "blocked" | "failed" | "unchanged"`, where
+  `failed` (the cycle raised before committing, `CycleReport.cycle_failed`) adds `"findings"` as `blocked` does;
+  accept-deletions' document alike.
 
 U-B5's part, the documents for every other command. Each mutation's `next` is `[{"command", "argv"}]` naming the
 command that shows what it changed, with `--config` when the run had one (`cli._inspect`, R249).

@@ -521,7 +521,9 @@ def test_a_sync_that_fails_after_the_land_gate_passed_never_says_the_gate_blocke
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
     out = capsys.readouterr().out
     run_line = next(x for x in out.splitlines() if x.startswith("run "))
-    assert " · commit none (no content change) · " in run_line, run_line
+    # B13 round 48 C3416, ruling 222: the run line says the cycle failed, never `no content change`
+    assert " · commit none (the cycle failed) · " in run_line, run_line
+    assert "no content change" not in run_line, run_line
     assert "BLOCKING CYCLE -: cycle failed: git commit failed (128): fatal: database is locked" in out, out
     assert "land gate" not in out, out
     assert [x for x in out.splitlines() if x.startswith(loop.NEXT_PREFIX)] == [

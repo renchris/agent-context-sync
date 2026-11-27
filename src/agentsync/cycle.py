@@ -2460,6 +2460,7 @@ class _Cycle:
         self._carried: list[MirrorChange] = []
         self._carried_runs: list[int] = []
         self._gate_blocked = False  # the land gate held this run's commit (B13 round 47 C3227)
+        self._cycle_failed = False  # the cycle raised and committed nothing (B13 round 48 C3416, ruling 222)
         self._commit_holds_mirror = False  # this run's commit holds a mirror/ path (C3228)
         # per source: the stable ids and paths its walk withheld as still settling, and the pages a new start
         # kept for them (P117)
@@ -2693,6 +2694,7 @@ class _Cycle:
             self.findings.append(
                 LintFinding("CYCLE", "-", f"cycle failed: {_one_line(str(exc) or repr(exc))}")
             )
+            self._cycle_failed = commit_sha is None  # its one record, never read from the finding (C3416)
             status = "failed"
             blocked = True
         if status == "ok" and any(a.failed or a.auth_required for a in self.accs.values()):
@@ -4111,6 +4113,7 @@ class _Cycle:
             carried=tuple(sorted(self._carried, key=lambda c: (c.path, c.op.value))),
             carried_runs=tuple(self._carried_runs),
             land_gate_blocked=self._gate_blocked,
+            cycle_failed=self._cycle_failed,
             commit_holds_mirror=self._commit_holds_mirror,
         )
 

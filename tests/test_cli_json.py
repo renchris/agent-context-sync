@@ -541,6 +541,32 @@ def test_a_sync_the_land_gate_blocks_is_blocked_with_its_findings_and_no_text_lo
     assert any("land gate blocked the commit" in w["message"] for w in logged), logged
 
 
+def test_a_sync_that_fails_after_the_land_gate_passed_is_failed_with_its_finding_c3447(
+    initialised: Config, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 48 C3447 with C3416, ruling 222: sync --json keyed its outcome on a blocking finding, so a
+    commit that raised after the land gate passed read ``blocked``, the gate's word. It is ``failed``, the
+    CYCLE finding kept in ``findings``, exit 1; a gate block stays ``blocked`` (test above)."""
+    from agentsync import gitops  # noqa: PLC0415
+    from agentsync.errors import GitError  # noqa: PLC0415
+
+    cfg = _synced(initialised, capsys)
+    sample = initialised.sources[0].path
+    assert sample is not None
+    (sample / "projects" / "sample.txt").write_text("changed before a failed commit\n", encoding="utf-8")
+
+    def locked(*_a: object, **_k: object) -> None:
+        raise GitError(["commit"], 128, "fatal: database is locked")
+
+    monkeypatch.setattr(gitops, "commit_cycle", locked)
+    rc, doc, _err = _doc(["sync", "--config", cfg], capsys)
+    assert rc == cli.EXIT_FAILED, doc
+    assert doc["outcome"] == "failed" and doc["run"]["commit"] is None, doc
+    (finding,) = doc["findings"]
+    assert finding["code"] == "CYCLE" and finding["blocking"] is True, finding
+    assert "database is locked" in finding["message"], finding
+
+
 def test_sync_json_verbose_writes_each_log_record_as_json_c1484(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:

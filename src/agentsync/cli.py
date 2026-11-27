@@ -1115,6 +1115,8 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
         commit = report.commit_sha[:12]
     elif report.land_gate_blocked:  # never "no content change" (B13 round 47 C3227)
         commit = "none (blocked by the land gate)"
+    elif report.cycle_failed:  # the BLOCKING CYCLE line says why; never the gate's (B13 round 48 C3416)
+        commit = "none (the cycle failed)"
     else:
         commit = "none (no content change)"
     counted = plural(len(report.changes), "change")  # a known count needs no "(s)" (B13 round 16 T32, T36)
@@ -1888,8 +1890,10 @@ def _sync_document(config: Config, report: CycleReport) -> None:
 
 def _run_doc(report: CycleReport) -> dict[str, object]:
     """A cycle's ``run`` and ``outcome``, for sync's and accept-deletions' documents: ``committed``,
-    ``blocked`` with the blocking ``findings`` when the land gate stopped the commit (B13 round 38 C1484), or
-    ``unchanged``."""
+    ``blocked`` with the blocking ``findings`` when the land gate stopped the commit (B13 round 38 C1484),
+    ``failed`` with them when the cycle raised before it committed (its ``CYCLE`` finding; B13 round 48 C3447
+    with C3416, ruling 222: it read ``blocked``, the land gate's word), or ``unchanged``. Keyed on the
+    report's own flags, never on a blocking finding alone."""
     blocking = [
         {"code": f.code, "path": f.path, "message": f.message, "blocking": f.blocking}
         for f in report.lint_findings
@@ -1913,10 +1917,19 @@ def _run_doc(report: CycleReport) -> dict[str, object]:
             "commit": report.commit_sha,
             "sources": sources,
         },
-        "outcome": "committed" if report.commit_sha else "blocked" if blocking else "unchanged",
+        "outcome": _cycle_outcome(report, bool(blocking)),
         # the land gate's blocking findings, in curate's shape (B13 round 38 C1484, ruling 128)
         **({"findings": blocking} if blocking and not report.commit_sha else {}),
     }
+
+
+def _cycle_outcome(report: CycleReport, blocking: bool) -> str:
+    """``committed | blocked | failed | unchanged``, a cycle document's outcome (B13 round 48 C3447)."""
+    if report.commit_sha:
+        return "committed"
+    if report.cycle_failed and not report.land_gate_blocked:
+        return "failed"
+    return "blocked" if blocking else "unchanged"
 
 
 HEARTBEAT_REFUSED_STEP = (
