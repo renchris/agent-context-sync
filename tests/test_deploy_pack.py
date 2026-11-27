@@ -29,7 +29,7 @@ from agentsync.config import ConvertConfig, inbox_state, kept_inbox_read
 from agentsync.convert import NO_CONVERTER_PREFIX, ConversionStatus, convert_file, speech
 from agentsync.convert.cache import ConverterCache
 from agentsync.convert.registry import Registry
-from agentsync.model import SourceKind
+from agentsync.model import LintFinding, SourceKind
 
 ROOT = Path(__file__).resolve().parent.parent
 DEPLOY = ROOT / "docs" / "deploy"
@@ -5722,6 +5722,49 @@ def test_the_guides_inbox_rows_name_the_shells_not_checked_line_and_not_read_c28
         "since B13 round 45 (C2808) the line ends `inbox=not-read` in place of `inbox=not-added` when init or"
         " add-source printed `inbox: not read: <folder>: <why> (inbox state says what to do)`."
     ) in page
+
+
+def test_the_guides_loop_rule_reads_a_held_land_gate_as_status_does_c3422() -> None:
+    """B13 round 48 C3422 (ruling 223, lane B's C3531): after a sync the land gate blocked, status gave the
+    loop's step and exited 0 while the guide said status prints the sync's NEXT unless a check FAILs. Lane B's
+    ``last_run.land_gate`` now FAILs until a sync passes the gate, its fix the gate's own step for the last
+    sync's commit. setup-feedback.md's Loop rule says so in the check's own words, held to doctor's detail
+    and [ok] line, cli's rule-1 step and loop's two endings."""
+    from agentsync import cli, loop  # noqa: PLC0415
+    from agentsync.cycle import LandGateBlock  # noqa: PLC0415
+    from agentsync.ops import doctor  # noqa: PLC0415
+
+    detail = doctor.land_gate_held_detail(LandGateBlock(7, 2, "SECRET", "mirror/a.md", "a secret"))
+    assert detail == (
+        "run 7's commit was blocked by the land gate (2 blocking findings); no sync has passed the gate since"
+    )
+    assert doctor.LAND_GATE_CLEAR == "no sync's commit is held by the land gate"
+    assert cli._FIX_BELOW == "do what the fix on its [FAIL] line below says"
+    words = loop._land_gate_words(
+        LintFinding("SECRET", "mirror/a.md", "a secret"),
+        2,
+        where="under ## Lint findings in X",
+        whose="the last sync's",
+    )
+    assert words.startswith(
+        "the land gate blocked the last sync's commit (2 blocking findings, the BLOCKING lines"
+    )
+    assert words.endswith(f"mirror/a.md: a secret; {loop.LAND_GATE_NO_FIX}"), words
+    page = " ".join(_feedback_page().split())
+    assert (
+        "After a sync the land gate blocked, status FAILs `last_run.land_gate` (an ERROR that is not"
+        " install-blocking, so status exits 1) until a later sync passes the gate, its detail `run <N>'s"
+        " commit was blocked by the land gate (<count> blocking finding(s)); no sync has passed the gate"
+        " since`, so the Loop line is rule 1's `the last_run.land_gate check failed: do what the fix on"
+        " Doctor's last_run.land_gate [FAIL] line says`"
+    ) in page
+    assert (
+        "`the land gate blocked the last sync's commit (<count> blocking finding(s), the BLOCKING lines"
+        f" {loop.LINT_FINDINGS_BELOW} in <STATE.md>): <path>: <fix>; then run `{loop.BIN} sync``"
+    ) in page
+    assert f"`...: <path>: <fix>; {loop.LAND_GATE_NO_FIX}`" in page
+    assert f"its [ok] line reads `{doctor.LAND_GATE_CLEAR}`" in page
+    assert "(B13 round 48 C3422 with lane B's C3531, a828e1291; ruling 223)" in page
 
 
 def test_the_guides_loop_paragraph_and_section_4_read_a_none_as_the_report_does_c2848_c2863() -> None:
