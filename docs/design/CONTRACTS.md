@@ -12099,6 +12099,10 @@ lists a file that was still being written, but not a folder it cannot read or an
 (\`agentsync sync -v\` names the cause); it does not block the next step`. Doctor's local heartbeat fix reads
 "each WAITING ON YOU line about <id>". No pointer uses nested parentheses (doctor's fix parser strips one
 level).
+Amended 2026-11-27, §16.297 C3514: an inbox whose root this account cannot read (the root unlisted with no stored
+kind or a refusal's, and a live listing of it refused) gets its own note, never this one:
+``the inbox (<id>) is not read: <the inbox as typed>: <strerror>; no later sync lists it until this account can read it again: the fix on the source.<id>.listable line says what to do; it does not block the next step``,
+the kept inbox by its typed name, never the link's target; a root that lists again gives no note (C3510).
 
 Why: in the mixed case the alarm said "exclude a deliberately empty cloud folder" two lines above the wait
 that warns such an exclude retires pages with no deletion check; "a later sync lists it" was false for an
@@ -48234,6 +48238,9 @@ read (...)` and doctor's listable row and its fix); a local source keeps `source
 live_inbox bounded, a root that reads runs no probe, the CLI sync), `test_live_inbox_bounds_its_canonical_walk_too_c3311`,
 and the C3007 test's link-through-a-file, two-link-loop and fifo
 rows (the full alarm and the kept inbox's full note, never `was not fully listed`).
+Amended 2026-11-27, §16.297 C3514: loop's note for such an inbox names the cause as the alarm does,
+``the inbox (<id>) is not read: ~/agent-context/inbox: Permission denied; no later sync lists it until this account can read it again: the fix on the source.<id>.listable line says what to do; it does not block the next step``,
+pointing at the listable line, not at status (which prints the note too), and none once the root lists again.
 
 **A second inbox source that is not a folder reads `not a folder`, with its own remedy** (C3215; ruling 210; amends
 §16.287 C3044). Any inbox source other than the one on the kept inbox whose root is a file, a link to one, a FIFO or a

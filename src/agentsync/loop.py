@@ -1124,22 +1124,26 @@ def _inbox_root_not_a_folder(
     return (_shown(typed), True) if typed is not None else (_display_path(src.path), False)
 
 
-def _inbox_root_readable_again(manifest: Manifest, src: SourceConfig) -> bool:
-    """Whether an inbox whose last walk could not read its root lists now (B13 round 48 C3510, ruling 225):
+def _inbox_root_readable_again(manifest: Manifest, src: SourceConfig) -> tuple[bool, str | None]:
+    """``(lists, refused)``: whether an inbox whose last walk could not read its root lists now (B13 round 48
+    C3510, ruling 225), and the refusal's own words when it still does not (B13 round 48 C3514):
     the walk stored the root unlisted (``root_unlisted:<id>``) with no kind (the cycle's pre-walk ``source
     root is not read`` skip stores none) or a refusal's kind (``UNKNOWN_MODE``, ``UNKNOWN_PRIVACY``,
     ``UNKNOWN_OTHER``), no folder below it is unlisted, and a live listing of the root, bounded as the walk's
     own reads are (config.bounded_inbox_read), returns: a folder this account reads is back, so the next sync
     lists it and the "was not fully listed" note is not printed (C3212's rule on this path). A stat never
     decides it: an inbox folder that is itself mode 0 stats as a folder and still lists nothing, so its note
-    stays (makes worse True for a stat). Any OSError, or a listing past the limit, is False."""
+    stays (makes worse True for a stat). Any OSError, or a listing past the limit, is False. ``refused`` is
+    the listing's ``strerror`` (``cannot be read`` when it has none) when this account is refused (EACCES,
+    EPERM) and the walk stored no kind or a refusal's (``UNKNOWN_MODE``, ``UNKNOWN_PRIVACY``), so the note
+    names the cause; else None, and a listing past the limit keeps the generic note."""
     if not manifest.get_meta(_ROOT_UNLISTED_META + src.id) or src.path is None:
-        return False
+        return False, None
     kinds = _unlisted_kinds(manifest, src, ["."])
     if kinds is not None and not kinds <= {UNKNOWN_MODE, UNKNOWN_PRIVACY, UNKNOWN_OTHER}:
-        return False
+        return False, None
     if any(d != "." for d in _unlisted_dirs(manifest, src)):
-        return False
+        return False, None
     root = expand(src.path)
 
     def listed() -> bool:
@@ -1147,9 +1151,23 @@ def _inbox_root_readable_again(manifest: Manifest, src: SourceConfig) -> bool:
             return True
 
     try:
-        return bounded_inbox_read(listed) is True
+        return bounded_inbox_read(listed) is True, None
+    except PermissionError as exc:
+        refusal = kinds is None or kinds <= {UNKNOWN_MODE, UNKNOWN_PRIVACY}
+        return False, (exc.strerror or "cannot be read") if refusal else None
     except OSError:
-        return False
+        return False, None
+
+
+def _inbox_shown(config: Config, src: SourceConfig) -> str | None:
+    """An inbox source's path as a note names it (B13 round 48 C3514): the kept inbox by its typed name
+    (``~/agent-context/inbox``), never the link's target its stored path holds, any other inbox by its own
+    path; None when the one bounded kept read (config.kept_inbox_read) timed out, since no read can then tell
+    whether ``src`` is the kept inbox."""
+    typed, kept, entry = kept_inbox_read(config)
+    if entry == INBOX_ENTRY_TIMED_OUT or src.path is None:
+        return None
+    return _shown(typed) if kept is not None and expand(src.path) == kept else _display_path(src.path)
 
 
 def _missing_root_wait(config: Config, sid: str, pause: str, *, state: str = "") -> str:
@@ -1546,6 +1564,8 @@ def next_step(
     inbox_partial: list[str] = []  # an inbox listing ran but could not finish (often a file being written)
     # an inbox whose root is not a folder: its id -> its path shown, and whether it is the kept inbox (C3044)
     inbox_not_a_folder: dict[str, tuple[str, bool]] = {}
+    # an inbox whose root this account cannot read: its id -> its path shown, and the refusal's words (C3514)
+    inbox_not_read: dict[str, tuple[str, str]] = {}
     blocked: list[str] = []  # a Graph source the network policy fails: IT's to fix
     held: list[str] = []  # a local walk timed out on a read macOS holds for an Allow prompt (field N8)
     signin: list[str] = []
@@ -1640,8 +1660,13 @@ def next_step(
                             root_states[src.id] = manifest.get_meta(_ROOT_MISSING_STATE_META + src.id) or ""
                         elif src.kind is SourceKind.INBOX:
                             # a root the last walk could not read that lists now: no note, the next sync
-                            # lists it (B13 round 48 C3510, ruling 225; C3212's rule on this path)
-                            if not _inbox_root_readable_again(manifest, src):
+                            # lists it (B13 round 48 C3510, ruling 225; C3212's rule on this path); one
+                            # this account is still refused: its own note naming the inbox as typed and
+                            # the refusal, never the generic one (B13 round 48 C3514)
+                            lists, refused = _inbox_root_readable_again(manifest, src)
+                            if refused is not None and (shown_root := _inbox_shown(config, src)) is not None:
+                                inbox_not_read[src.id] = (shown_root, refused)
+                            elif not lists:
                                 inbox_partial.append(src.id)
                         elif stored and (other := _unlisted_dirs(manifest, src)):
                             # Every empty cloud folder is excluded since that walk, but a folder it could not
@@ -1996,6 +2021,14 @@ def next_step(
         notes.append(
             f"the inbox ({sid}) is not a folder: {shown_root} is a file or a link that does not lead to a "
             f"folder, and no later sync lists it {remedy}; it does not block the next step"
+        )
+    for sid, (shown_root, refused) in sorted(inbox_not_read.items()):
+        # the cause named, as the walk's alarm names it, and the line whose fix says what to do: never
+        # ``agentsync status``, which prints this note too, nor the walk's "nothing is deleted" (C3514)
+        notes.append(
+            f"the inbox ({sid}) is not read: {shown_root}: {refused}; no later sync lists it until this "
+            f"account can read it again: the fix on the source.{sid}.listable line says what to do; it does "
+            "not block the next step"
         )
     if inbox_partial:
         notes.append(

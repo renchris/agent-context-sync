@@ -3462,6 +3462,56 @@ def test_a_denied_inbox_root_that_lists_again_gives_no_partial_note_c3510(tmp_pa
     assert not any("was not fully listed" in n for n in again), again
 
 
+@pytest.mark.parametrize("entry", ["link-into-an-unsearchable-folder", "unsearchable-folder"])
+def test_an_inbox_root_this_account_cannot_read_gets_its_own_note_c3514(
+    tmp_path: Path, entry: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 48 C3514 (ruling 225): for an inbox whose root this account cannot read, sync and status gave
+    the generic ``the inbox (<id>) was not fully listed: a later sync lists a file that was still being
+    written ...`` note while the walk's alarm named the cause. The root gets its own note naming the inbox as
+    typed and the refusal's strerror, pointing at the listable line (status prints this note too), and none
+    once a folder this account reads is back."""
+    root = tmp_path / "Contoso Gamma"
+    (root / "Gamma Empty").mkdir(parents=True)
+    config = _synced(tmp_path, root)
+    config, box = ensure_inbox(config.config_path)
+    assert box is not None and run_cycle(config, mode=None).exit_code == 0
+    kept = config.docs_repo.parent / "inbox"
+    kept.rename(tmp_path / "inbox-moved")  # moved aside, never removed
+    locked = _put_entry(kept, entry)
+    note = (
+        f"note: the inbox ({box.id}) is not read: {loop._shown(kept)}: Permission denied; no later sync "
+        f"lists it until this account can read it again: the fix on the source.{box.id}.listable line says "
+        "what to do; it does not block the next step"
+    )
+    cfg = str(config.config_path)
+    try:
+        if os.access(locked[0], os.X_OK):
+            pytest.skip("this account searches a mode-0 folder")
+        capsys.readouterr()
+        with _bounded(120):
+            cli.main(["sync", "--config", cfg])
+            synced = capsys.readouterr().out.splitlines()
+            cli.main(["status", "--config", cfg])
+            status = capsys.readouterr().out.splitlines()
+            if entry == "unsearchable-folder":
+                kept.chmod(0o700)  # the folder this account reads again
+            else:
+                kept.rename(tmp_path / "link-moved")  # the link moved aside, a folder put back
+                kept.mkdir()
+            cli.main(["status", "--config", cfg])
+            again = capsys.readouterr().out.splitlines()
+    finally:
+        for folder in locked:
+            folder.chmod(0o700)
+    for out in (synced, status):
+        assert out.count(note) == 1, out
+        assert not any("was not fully listed" in ln for ln in out), out
+        assert not any("contoso-" in ln for ln in out if ln.startswith("note: ")), out
+    assert any(f"source.{box.id}.listable" in ln for ln in status), status  # the line the note points at
+    assert not any(ln.startswith(f"note: the inbox ({box.id}) ") for ln in again), again
+
+
 def _forget_kept_inbox_reads() -> None:
     """config.forget_kept_inbox_reads once the probe threads a held run abandoned have ended: the probe's
     ``call_with_timeout`` gives up first and leaves its thread waiting out kept_inbox_read's own limit, which
