@@ -14488,6 +14488,36 @@ def test_the_repeat_conversions_row_quotes_the_columns_and_the_re_screen_note() 
         assert said in source and said in row, said
 
 
+def test_the_guide_names_the_tilde_login_cut_and_its_quantity_words_c3430() -> None:
+    """B13 round 48 C3430 (lane RA's C3402 and C3406 words): round 47's C3224 cut a path written as ``~`` and
+    another account's login to ``~<user>/<path>`` in both reports' legend, but setup-feedback.md's ``<path>``
+    row and its uncounted list never named it; round 48 cuts a refused ``~name`` value's other paths whole and
+    spares a quantity word after a bare ``~``. The row and the list name both, held to the legend's clause,
+    and report_cuts.TILDE_QUANTITY_WORDS."""
+    from agentsync import report_cuts, setup_report  # noqa: PLC0415
+
+    legend = inspect.getsource(setup_report)
+    clause = (
+        "and a path written as ~ and another account's login, cut whole to ~<user>/<path> (~<user> with no "
+    )
+    assert clause in legend
+    words = report_cuts.TILDE_QUANTITY_WORDS
+    assert {"twenty", "ten"} <= words and "tenth" not in words
+    page = " ".join(_feedback_page().split())
+    assert (
+        "a path written as `~` and another account's login, `~dana/Kestrel Notes`, is cut whole to"
+        " `~<user>/<path>`, `~<user>` with no folder after it, as a `/Users/` path is;"
+    ) in page
+    assert (
+        "a bare `~` before a quantity word, `took ~twenty seconds` or `took ~ten.`, stays, the word in"
+        " `report_cuts.TILDE_QUANTITY_WORDS`"
+    ) in page
+    assert (
+        "nor a `~login/` path sources.toml does not hold, cut the same way (C3224; B13 round 48 C3430)"
+        in page
+    )
+
+
 def test_the_guide_names_both_private_only_causes_and_the_user_cut_c3281_c3293_c3250() -> None:
     """B13 round 47 C3281 with C3293 and C3250: section 2 named three Private-only causes, but the agentsync
     report prints two more, the unparsed sources.toml line (round 44 C2609; the shell report too) and the
