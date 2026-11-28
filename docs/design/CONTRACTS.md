@@ -49637,6 +49637,12 @@ link through a file or a link to a file (ELOOP, ENOENT, ENOTDIR, or a target tha
 (five link kinds, inbox and local), `test_arm_local.py::test_an_inbox_links_follow_is_held_past_the_roots_time_limit_c3511`
 and `test_loop.py::test_a_second_inbox_that_loops_reads_not_a_folder_in_the_walk_as_its_note_does_c3511` (a self-link
 and a two-link loop: the sync's alarm is a file's, the note agrees, no `is a symlink` or `Too many levels`).
+Amended 2026-11-28, §16.305 C3697 (by §16.298 C3511): the symlink alarm for a second inbox linked to a real folder is
+reached only when the root is still a link at walk time: under `~/Library/CloudStorage`, where
+`config.canonical_source_root` stops resolving, or a link made after the config loaded. Elsewhere load_config
+resolves an inbox source typed as a link to a real folder to its target, so it syncs in full as that folder with no
+alarm and doctor's listable row names the target, as §16.295 and §16.297 say (`a link to a real folder stays
+listable`). The typed path is not kept: the arm would skip that root on every pass.
 
 ### 16.299 Round 48: the prompt goes to v45 (the land gate's fix run once per page, step 1's stop only with no synced line, a chosen folder that came back paused, a failed step 2 outside the none), dated lines, and the guides (2026-11-27, wave B13 round 48 lane D)
 
@@ -50709,3 +50715,13 @@ key written as 0 whenever the run recorded a cache row. The stub keeps its text 
 the table takes a `cache_served` row and the 0-key sentence a dated line naming the exception, each in C3450's words
 (`(by §16.297 C3450)`). Lane B's C3649 and lane RA's C3638 with C3650 date their own words (ruling 243). Test:
 `tests/test_deploy_pack.py::test_c3450s_words_reach_the_manifest_stub_and_the_run_record_c3660`.
+
+**A second inbox on a link to a real folder resolves at load, so the walk's symlink alarm is not its answer** (C3697;
+ruling 237; makes worse True for keeping the typed path; amends §16.298 C3511). §16.298's C3511 paragraph and ruling
+226 said a second inbox linked to a real folder keeps the symlink alarm, while `load_config` runs every local and inbox
+path through `canonical_source_root`, which resolves links everywhere but inside `~/Library/CloudStorage`: the g11
+rehearsal's link synced in full as its target with no alarm, and status named the target. The verifiers' other course,
+keeping the typed path, makes things worse: the arm then skips that root on every pass (`source root is a symlink`,
+nothing enumerated) for a source that syncs today. No code moves; the paragraph and ruling 226 keep their words and
+take dated lines bounding the alarm to a root still a link at walk time. Test:
+`tests/test_deploy_pack.py::test_a_second_inbox_on_a_link_resolves_at_load_and_takes_no_symlink_alarm_c3697`.

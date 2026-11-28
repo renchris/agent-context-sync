@@ -2974,6 +2974,9 @@ Lane RA's _sort_doctor files those FAILs in the person's buckets by its own disk
 docs_not_a_folder keeps its inline probe and adds a dangling link at or above the path (C3466, makes worse True for
 calling docs_repo_state from an older build); lane B's docs_repo_state calls a dangling ancestor not a folder and
 ensure_repo raises a PublishError naming it.
+(2026-11-28) Ruling 237 amends this one: a link to a real folder keeps its symlink alarm only while the root is still
+a link at walk time, under ~/Library/CloudStorage or made after the config loaded; elsewhere load_config resolves a
+second inbox typed as a link to its target, which syncs in full with no alarm (round 49 C3697, CONTRACTS §16.305).
 (227) The report and status credit a route only from the attempt's own runs, completing ruling 213 (lanes RA, B, RB and
 D; C3437 with C3496 and C3512, C3508, C3438 with C3467 and C3503, C3497, C3498, C3546, C3505, C3424, C3423). _summary
 and _issue_link's fallback pass not_live through one helper _attempt_outcome shares, and the Items list names

@@ -1422,6 +1422,39 @@ def test_c3450s_words_reach_the_manifest_stub_and_the_run_record_c3660() -> None
     assert "the internal `cache_recorded` is never written |" in s28[row : row + 600]
 
 
+def test_a_second_inbox_on_a_link_resolves_at_load_and_takes_no_symlink_alarm_c3697(tmp_path: Path) -> None:
+    """B13 round 49 C3697 (ruling 237): §16.298's C3511 paragraph and ruling 226 said a second inbox linked to
+    a real folder keeps the walk's symlink alarm, while load_config resolves the link to its target outside
+    ~/Library/CloudStorage, so the source syncs in full with no alarm. No code moves; both take dated lines,
+    held to config's resolution at load."""
+    from agentsync import config  # noqa: PLC0415
+
+    real = tmp_path / "contoso-extra-real"
+    real.mkdir()
+    link = tmp_path / "contoso-extra"
+    link.symlink_to(real)
+    resolved = config.canonical_source_root(link)
+    assert resolved == real.resolve() and not resolved.is_symlink()
+    source = inspect.getsource(config)
+    assert "if kind in (SourceKind.LOCAL, SourceKind.INBOX):" in source
+    assert "path = canonical_source_root(_literal_path(" in source
+    paras = [" ".join(p.split()) for p in re.split(r"\n\s*\n", CONTRACTS.read_text(encoding="utf-8"))]
+    [para] = [
+        p for p in paras if p.startswith("**The walk calls a second inbox's link that leads to no folder")
+    ]
+    line = para.index("Amended 2026-11-28, §16.305 C3697 (by §16.298 C3511):")
+    assert "a link to a real folder keeps the symlink alarm and sets no `root_notdir`" in para[:line]
+    assert "reached only when the root is still a link at walk time: under `~/Library/CloudStorage`" in para
+    assert "The typed path is not kept: the arm would skip that root on every pass." in para[line:]
+    lanes = " ".join(_page("docs/lanes/COMMON.md").split())
+    dated = (
+        "(2026-11-28) Ruling 237 amends this one: a link to a real folder keeps its symlink alarm only while"
+    )
+    assert lanes.index("(226) ") < lanes.index("a link to a real folder keeping its symlink alarm (C3511)")
+    assert lanes.index("ensure_repo raises a PublishError naming it. " + dated) < lanes.index("(227) ")
+    assert "(round 49 C3697, CONTRACTS §16.305). (227) " in lanes
+
+
 def test_c3536s_lines_bound_the_repair_to_the_first_own_walk_entries_c3631_c3661() -> None:
     """B13 round 49 C3631 with C3661 (ruling 244): C3536's four lines said a page made 644 by hand is 600
     after any sync, but ``cycle._below`` stops at ``_OWN_WALK`` entries below each tree, ``mirror/``
