@@ -2945,6 +2945,9 @@ chain passes through (C3445). _tighten_own_paths walks mirror/ under _OWN_WALK, 
 status's fix names the sync, the C3226 paragraph amended by a dated line (C3536). A hand commit's trailer keeps moving
 the tag and the numbering, and the console names that commit and trailer, the E9 path left at DEBUG (C3540, makes worse
 True for changing either rule).
+(2026-11-28) Ruling 244 amends this one: _tighten_own_paths reaches only the first `_OWN_WALK` (2000) entries below
+mirror/, in the order status samples them, so a 644 page past them keeps its mode until a sync republishes it, and
+status's 500-entry sample does not name it (round 49 C3631, C3661, CONTRACTS §16.305).
 (225) Every reader of the kept inbox reads it once, bounded, and words its note from the live entry, and no command
 writes over a config link it cannot read (lane B; C3469 data integrity, C3414 with C3442, C3415, C3510, C3514).
 config.kept_inbox_read runs canonical_source_root and inbox_entry once under bounded_inbox_read, cached per process with

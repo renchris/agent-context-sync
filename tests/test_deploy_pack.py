@@ -1306,6 +1306,46 @@ def test_a_pptx_stub_keeps_its_older_noun_while_its_bytes_do_not_change_c3417() 
     assert "pptx's version stays 1.0.4." in own[c3417:]
 
 
+def test_c3536s_lines_bound_the_repair_to_the_first_own_walk_entries_c3631_c3661() -> None:
+    """B13 round 49 C3631 with C3661 (ruling 244): C3536's four lines said a page made 644 by hand is 600
+    after any sync, but ``cycle._below`` stops at ``_OWN_WALK`` entries below each tree, ``mirror/``
+    included, and status samples 500, so a page past the bound keeps its mode and status reads OK. Each line
+    keeps its words and its round 48 head, and a round 49 line right after it bounds the repair; ruling 224
+    takes one too."""
+    from agentsync import cycle  # noqa: PLC0415
+    from agentsync.ops import doctor  # noqa: PLC0415
+
+    assert cycle._OWN_WALK == 2000 and doctor._PERM_SAMPLE == 500
+    assert "mirror" in cycle._WALKED_TREES
+    head = "Amended 2026-11-27, §16.297 C3536:"
+    line = (
+        "Amended 2026-11-28, §16.305 C3631, C3661: that repair reaches only the first `_OWN_WALK`"
+        " (2000) entries below `mirror/`, in the order status samples them (`os.walk`'s); a page past"
+        " them keeps its mode until a sync republishes it (`Publisher._write_bytes`), and status, which"
+        " samples the first 500, does not name it."
+    )
+    text = " ".join(CONTRACTS.read_text(encoding="utf-8").split())
+    heads = [m.start() for m in re.finditer(re.escape(head), text)]
+    para = text.index("**A sync makes a page chmod 644 by hand owner-only** (C3536;")
+    starts = [*heads, para]
+    assert len(starts) == 4
+    kept = ("is 600 after any sync", "a page inside `mirror/` is cleared by the sync too")
+    for at in starts:
+        nxt = text.index(line, at)
+        assert any(words in text[at:nxt] for words in kept), text[at : at + 120]
+        assert text[at + 1 : nxt].count("Amended") == 0, text[at : at + 120]
+    assert text.count(line) == 4
+    lanes = " ".join(_page("docs/lanes/COMMON.md").split())
+    ruling = (
+        "(2026-11-28) Ruling 244 amends this one: _tighten_own_paths reaches only the first"
+        " `_OWN_WALK` (2000) entries below mirror/, in the order status samples them, so a 644 page"
+        " past them keeps its mode until a sync republishes it, and status's 500-entry sample does not"
+        " name it (round 49 C3631, C3661, CONTRACTS §16.305)."
+    )
+    assert lanes.index("(224) ") < lanes.index("so a 644 page is 600 after any sync") < lanes.index(ruling)
+    assert lanes.index(ruling) + len(ruling) + 1 == lanes.index("(225) ")
+
+
 def test_ruling_166_keeps_its_words_and_a_dated_line_records_call_5s_decline_c2673() -> None:
     """B13 round 44 C2673: ruling 166 still described C2470's v2 pass as built, and §16.273 said C2470 is not
     built "by the lead's ruling" with no record of it. As C2069 did for ruling 138, the ruling keeps its
@@ -10516,6 +10556,22 @@ _ROUND_48_D_PARAGRAPH_AMENDS = (
 """Round 48 lane D's dated lines at paragraphs that name no item: C3431's at §16.294's rulings paragraph, lane
 E's round 47 range running to 5262647cd (ruling 230); v45's at §16.294's v44 paragraph (C3420 with C3456 and
 C3464, C3433, C3500, C3458) and at §16.100's N25 quote (C3428 with C3463), ruling 231."""
+_ROUND_49_D_PARAGRAPH_AMENDS = (
+    (
+        "16.29",
+        "`mirror/` and `.git` are still not walked: the publisher writes pages 0600",
+        "§16.305 C3631, C3661",
+    ),
+    ("16.29", "`mirror/` not walked, and the chmod as the fix for what is left", "§16.305 C3631, C3661"),
+    (
+        "16.292",
+        "**A page the land gate tells you to put back stays owner-only** (C3226;",
+        "§16.305 C3631, C3661",
+    ),
+    ("16.297", "**A sync makes a page chmod 644 by hand owner-only** (C3536;", "§16.305 C3631, C3661"),
+)
+"""Round 49 lane D's dated lines no one claim holds alone: C3631's (with C3661) beside each of C3536's four
+lines, the repair bounded to the first ``_OWN_WALK`` entries below ``mirror/`` (ruling 244)."""
 _ROUND_48_B_PARAGRAPH_AMENDS = (
     ("15", "Amended 2026-11-27, §16.297 C3534: `commit_cycle` takes a keyword `accounted`", "§16.297 C3534"),
     ("16.29", "`mirror/` and `.git` are still not walked: the publisher writes pages 0600", "§16.297 C3536"),
@@ -10838,6 +10894,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_48_D_PARAGRAPH_AMENDS,
         *_ROUND_48_B_PARAGRAPH_AMENDS,
         *_ROUND_48_RA_PARAGRAPH_AMENDS,
+        *_ROUND_49_D_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")

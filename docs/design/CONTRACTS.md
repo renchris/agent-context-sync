@@ -9317,6 +9317,9 @@ at (`cycle._own_paths`):
   `add-source`. A docs repo from before that setting gets it there, with no command of its own.
   Amended 2026-11-27, §16.297 C3536: `mirror/` is walked now, under `_OWN_WALK` and never through a symlink, so a
   page made 644 by hand is 600 after any sync; `.git` is still not walked.
+  Amended 2026-11-28, §16.305 C3631, C3661: that repair reaches only the first `_OWN_WALK` (2000) entries
+  below `mirror/`, in the order status samples them (`os.walk`'s); a page past them keeps its mode until a sync
+  republishes it (`Publisher._write_bytes`), and status, which samples the first 500, does not name it.
 - A cache or log folder that is the home folder, or holds it, is left out: a config may name any folder
   there, and that one is not agentsync's alone. The check still reports it, with the chmod. The file system
   says which folder a path is, not its spelling (`cycle._holds_home`, private: the same device and inode as
@@ -9404,6 +9407,9 @@ modes, `core.sharedRepository` and every step's log line; then a page inside `mi
 the chmod, no sync, and the `_eval` folder still cleared).
 Amended 2026-11-27, §16.297 C3536: a page inside `mirror/` is cleared by the sync too, and status's fix for it names
 the sync, not a chmod.
+Amended 2026-11-28, §16.305 C3631, C3661: that repair reaches only the first `_OWN_WALK` (2000) entries
+below `mirror/`, in the order status samples them (`os.walk`'s); a page past them keeps its mode until a sync
+republishes it (`Publisher._write_bytes`), and status, which samples the first 500, does not name it.
 
 ### 16.30 Fixes from the second bring-back (2026-10-07)
 
@@ -48105,6 +48111,9 @@ Amended 2026-11-27, §16.297 C3448: the finding now reads ``restore it with `(um
 Amended 2026-11-27, §16.297 C3536: a sync clears group and other bits on mirror pages whether or not it publishes
 them (`cycle._tighten_own_paths` walks `mirror/` under `_OWN_WALK`), so a page chmod 644 by hand is 600 after any sync
 and status's fix names the sync, not a chmod.
+Amended 2026-11-28, §16.305 C3631, C3661: that repair reaches only the first `_OWN_WALK` (2000) entries
+below `mirror/`, in the order status samples them (`os.walk`'s); a page past them keeps its mode until a sync
+republishes it (`Publisher._write_bytes`), and status, which samples the first 500, does not name it.
 
 **A blocked sync says it was blocked, and an unreadable page names its chmod** (C3227; ruling 212; amends item 13
 of §14). A page the land gate could not read was `unreadable file`, the run line `commit none (no content change)`,
@@ -49375,6 +49384,9 @@ sync that did not write it, and status's docs_repo.permissions fix named a chmod
 status's fix names the sync; `.git` is still not walked. Its dated lines in §16.29's permission paragraphs are pinned.
 Tests: `test_a_page_chmod_644_by_hand_is_600_after_a_sync_that_does_not_write_it_c3536` and
 `test_tightening_follows_no_symlink_and_walks_the_mirror_c3536`.
+Amended 2026-11-28, §16.305 C3631, C3661: that repair reaches only the first `_OWN_WALK` (2000) entries
+below `mirror/`, in the order status samples them (`os.walk`'s); a page past them keeps its mode until a sync
+republishes it (`Publisher._write_bytes`), and status, which samples the first 500, does not name it.
 
 **A hand commit's run trailer is named** (C3540; ruling 224; makes worse True for changing either rule). A hand-made
 commit whose message keeps an `Agentsync-Run` trailer still moves the published tag and the run numbers (the trailer
@@ -50632,4 +50644,17 @@ Reserved for round 49 lane E of B13.
 
 ### 16.305 Round 49: the prompt goes to v46 (the gate's repairs keyed on the command, the no-folder and all-held branches, a file agentsync could not open), dated lines, the guides, and ci's test job in three parts (2026-11-28, wave B13 round 49 lane D)
 
-Reserved for round 49 lane D of B13.
+Round 49's lane D items (`docs/plans/bring-back-ocr.md`, "B13 round 49"; specs `round49/items/C<n>.md`, the verifier's
+corrected fix built, as the lead's rulings 232 to 245 settle it). A dated line this round writes reads
+`Amended 2026-11-28, §16.305 C<n>`, or `Amended 2026-11-28, §16.305 C<n> (by §16.NN C<m>)` where it records an
+earlier round's change.
+
+**C3536's lines bound the repair to the walk** (C3631 with C3661, one defect; ruling 244; amends §16.297 C3536,
+§16.292 C3226 and §16.29). C3536's four lines, two in §16.29's permission paragraphs, one in §16.292's C3226 paragraph
+and §16.297's own, said a page made 644 by hand is 600 after any sync, while `cycle._below` stops at `_OWN_WALK` (2000)
+entries below each tree, `mirror/` included: a page past them keeps its mode through every sync that does not
+republish it, and status's docs_repo.permissions, which samples 500 a tree (`doctor._PERM_SAMPLE`), reads OK. Each
+line keeps its words and its `Amended <date>, §16.297 C3536:` head (ruling 186, over the verifiers' edit in place)
+and takes a dated line bounding the repair to the first `_OWN_WALK` entries in the order status samples them;
+`docs/lanes/COMMON.md` takes one beside ruling 224, and cycle.py's docstring is lane B's. No code moves: the bound is
+deliberate. Test: `tests/test_deploy_pack.py::test_c3536s_lines_bound_the_repair_to_the_first_own_walk_entries_c3631_c3661`.
