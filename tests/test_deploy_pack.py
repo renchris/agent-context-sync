@@ -1355,6 +1355,33 @@ def test_section_15s_with_banner_stub_says_what_it_does_to_newlines_c3654() -> N
     assert stub == f'def with_banner(body: str) -> str:\n    """{first}"""', stub
 
 
+def test_the_guides_quantity_word_clause_names_the_set_quantity_end_reads_c3627() -> None:
+    """B13 round 49 C3627 (ruling 244): setup-feedback.md's ``<path>`` row said a quantity word after a bare
+    ``~`` stays only with the line's end after it, against its own ``took ~twenty seconds``: the report's
+    ``_QUANTITY_END`` keeps it with at most one period, then a blank, a line end or a stop character. The
+    clause names that set, its pinned prefix kept, held to ``_CUT_BYTES`` and to the cut's own answers."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    assert setup_report._CUT_BYTES["blank"] == " \t" and set(setup_report._CUT_BYTES["end"]) == set(
+        "\n\r\f\v"
+    )
+    assert set(setup_report._CUT_BYTES["stop"]) == set("\"'`()[]{},;")
+    assert "'blank', 'end', 'stop'" in inspect.getsource(setup_report).split("_QUANTITY_END = ", 1)[1][:80]
+    cut = re.compile(setup_report._other_login_re(["contosouser"]))
+    for kept in ("took ~twenty seconds", "took ~ten.", "took ~TEN, then", "took ~ten;", "took ~ten) ok"):
+        assert not cut.search(kept), kept
+    for gone in ("took ~ten/x", "took ~ten./x", "took ~ten.x", "took ~tenth"):
+        assert cut.search(gone), gone
+    page = " ".join(_feedback_page().split())
+    assert (
+        "a bare `~` before a quantity word, `took ~twenty seconds` or `took ~ten.`, stays, the word in"
+        " `report_cuts.TILDE_QUANTITY_WORDS`, in any case, with at most one period after it and then a"
+        " blank, a quote, a backtick, a bracket, a comma, a semicolon or the line's end, never a `/`, so"
+        " `~ten/x`, `~ten./x`, `~ten.x` and `~tenth` are still cut (C3406; B13 round 49 C3627)"
+    ) in page
+    assert "one period then the line's end after it" not in page
+
+
 def test_c3536s_lines_bound_the_repair_to_the_first_own_walk_entries_c3631_c3661() -> None:
     """B13 round 49 C3631 with C3661 (ruling 244): C3536's four lines said a page made 644 by hand is 600
     after any sync, but ``cycle._below`` stops at ``_OWN_WALK`` entries below each tree, ``mirror/``

@@ -50682,3 +50682,11 @@ bytes stay (a normalizing change would move BANNER_VERSION, a cache key, and bre
 for word, as C3453 moved has_banner's: `Return ``body`` with the banner as its first line, leading blank lines aside
 (idempotent).`; the docstring's next sentences say the rest, the caller owning the trailing newlines (`make_unit`
 leaves one). Test: `tests/test_deploy_pack.py::test_section_15s_with_banner_stub_says_what_it_does_to_newlines_c3654`.
+
+**The guide's quantity-word clause names the set `_QUANTITY_END` reads** (C3627; ruling 244;
+`docs/deploy/setup-feedback.md`). The `<path>` row said a quantity word after a bare `~` stays with nothing or one
+period then the line's end after it, against its own `took ~twenty seconds`: `setup_report._QUANTITY_END`, as
+install.sh's `tilde()` and `quantity()`, keeps the word in any case with at most one period and then a blank, a line
+end or a stop byte (a quote, a backtick, a bracket, a comma or a semicolon), never a `/`. The row keeps its pinned
+prefix and names that set in the guide's own words, so `~ten/x`, `~ten./x`, `~ten.x` and `~tenth` are still cut. Test:
+`tests/test_deploy_pack.py::test_the_guides_quantity_word_clause_names_the_set_quantity_end_reads_c3627`.
