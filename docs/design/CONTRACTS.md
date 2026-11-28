@@ -1994,6 +1994,11 @@ class Manifest:
         """Record the git tree sha of the commit that published the current manifest state."""
 ```
 
+Amended 2026-11-28, §16.305 C3660 (by §16.297 C3450): `record_cache` takes the keywords `served: bool = False` (the
+result came from the cache, `ConversionResult.from_cache`) and `stored: bool = False` (`_Cycle._stored_conversion`:
+this conversion is the one the cache holds, so its status, unit count and bytes replace the row's; an uncached answer
+never replaces them), and returns `bool`: True for a serve of a row an earlier run made, or of no row.
+
 ### `agentsync.classifier` — `src/agentsync/classifier.py` — owner: **manifest**
 
 The H0/H1/H2 multi-state change classifier (design 4.3) — pure functions, no I/O (owner: manifest).
@@ -8296,6 +8301,9 @@ integers under lower-case keys (`cycle._Cycle._run_tally`, written by `_after` t
 on every cycle, a failed one included). `converted` is always there, 0 included, so a record without it is
 one from before these counts. `ocr_ms` and `ocr_budget_s` are there whenever the cycle had an engine. Any
 other key that would be 0 is left out. No reader depended on the old content.
+Amended 2026-11-28, §16.305 C3660 (by §16.297 C3450): `cache_served` is the exception, written as 0 whenever the run
+recorded a cache row; a record without it does not mean no serve, and the report reads the cache index
+(`last_used_run > created_run`) for that run.
 
 | Key | What it counts |
 |---|---|
@@ -8316,6 +8324,7 @@ other key that would be 0 is left out. No reader depended on the old content.
 | `converted_unreadable` | (**Amended 2026-10-11, §16.45 R2:**) of those, conversions whose result is an UNREADABLE stub (encrypted, not the type its name says, no text): cached, kept and not tried again until the bytes change. Never in `converted_failed` |
 | `converted_seen` | of those, files whose own pages an earlier run had made from the same bytes: one of the file's output rows already carried the conversion's action key, and that key's cache row was last used by an earlier run (`_Cycle._converted_before`) |
 | `converted_again` | of those, when that row's `last_used_run` is this run's id less 1: the bytes were last converted in the run just before |
+| `cache_served` | **Amended 2026-11-28, §16.305 C3660 (by §16.297 C3450):** conversions served from the converter cache (`ConversionResult.from_cache`) whose cache row an earlier run made, or which had no row (`Manifest.record_cache`'s return); there, 0 included, whenever the run recorded a cache row, and absent when it recorded none or an earlier build wrote the record, the report then reading the cache index as before; the internal `cache_recorded` is never written |
 | `reread`, `reread_kept` | files read again for what their converter has gained (§16.27), and those of them whose page was kept because the conversion failed |
 | `reread_left` | files on this Mac still to read again when the cycle stopped looking, summed over the sources it looked at (`Manifest.reread_count` at the end of `_reread_source`: the files `reread_left` is true for, those given up left out). Left out at 0, which is a finished re-read |
 | `reread_for` | no count: the first 8 hex digits of `_Cycle._capabilities()` as an integer (`_reread_number`), which is what this run's re-read looked for. There when the run brought a source's re-read record up to date (`_reread_source`), so not in a `materialise PATH` run or one with Graph sources only |
@@ -50690,3 +50699,13 @@ install.sh's `tilde()` and `quantity()`, keeps the word in any case with at most
 end or a stop byte (a quote, a backtick, a bracket, a comma or a semicolon), never a `/`. The row keeps its pinned
 prefix and names that set in the guide's own words, so `~ten/x`, `~ten./x`, `~ten.x` and `~tenth` are still cut. Test:
 `tests/test_deploy_pack.py::test_the_guides_quantity_word_clause_names_the_set_quantity_end_reads_c3627`.
+
+**Round 48's C3450 words reach the manifest stub and §16.28's run record** (C3660; ruling 243; dated lines at §15 and
+§16.28). §16.297's C3450 paragraph said the §16.28 run-record table gains a `cache_served` row and the
+`Manifest.record_cache` stub its two keywords and its bool, by a dated line, and neither was written: the stub still
+returned `None`, the table had no row, and §16.28's "Any other key that would be 0 is left out" was false for the one
+key written as 0 whenever the run recorded a cache row. The stub keeps its text and a dated line after the
+`agentsync.manifest` block gives `served`, `stored` and the `bool`, as the C3534 line gives `commit_cycle`'s keyword;
+the table takes a `cache_served` row and the 0-key sentence a dated line naming the exception, each in C3450's words
+(`(by §16.297 C3450)`). Lane B's C3649 and lane RA's C3638 with C3650 date their own words (ruling 243). Test:
+`tests/test_deploy_pack.py::test_c3450s_words_reach_the_manifest_stub_and_the_run_record_c3660`.

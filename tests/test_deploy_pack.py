@@ -1382,6 +1382,46 @@ def test_the_guides_quantity_word_clause_names_the_set_quantity_end_reads_c3627(
     assert "one period then the line's end after it" not in page
 
 
+def test_c3450s_words_reach_the_manifest_stub_and_the_run_record_c3660() -> None:
+    """B13 round 49 C3660 (ruling 243): §16.297's C3450 paragraph said the §16.28 run-record table gains a
+    ``cache_served`` row and the ``Manifest.record_cache`` stub its keywords and bool, and neither was
+    written. Each takes a dated line in C3450's words, held to the manifest's signature and the cycle's
+    tally."""
+    from agentsync import cycle  # noqa: PLC0415
+    from agentsync.manifest import Manifest  # noqa: PLC0415
+
+    sig = inspect.signature(Manifest.record_cache)
+    assert sig.parameters["served"].default is False and sig.parameters["stored"].default is False
+    assert sig.return_annotation in (bool, "bool")
+    assert "cache_served" in cycle._ROW_TALLY_KEYS and "cache_recorded" in cycle._ROW_TALLY_KEYS
+    assert 'tally.pop("cache_recorded", None)' in inspect.getsource(cycle)
+    marker = "Amended 2026-11-28, §16.305 C3660 (by §16.297 C3450):"
+    text = CONTRACTS.read_text(encoding="utf-8")
+    manifest = text.index("### `agentsync.manifest`")
+    stub_end = text.index("\n```\n", text.index("def set_tree_sha(self, tree_sha: str) -> None:", manifest))
+    assert text.index(
+        '    ) -> None:\n        """Insert or touch (last_used_run) a cache index row.', manifest
+    )
+    after = " ".join(text[stub_end : text.index("### `agentsync.classifier`")].split())
+    assert after.startswith(f"``` {marker} `record_cache` takes the keywords `served: bool = False`"), after
+    assert "and returns `bool`: True for a serve of a row an earlier run made, or of no row." in after
+    s28 = " ".join(_contracts_section("### 16.28 ", "### 16.29 ").split())
+    zero = s28.index("other key that would be 0 is left out. No reader depended on the old content.")
+    assert (
+        s28[zero:]
+        .split(" | Key |")[0]
+        .endswith(
+            f"{marker} `cache_served` is the exception, written as 0 whenever the run recorded a cache row; a"
+            " record without it does not mean no serve, and the report reads the cache index"
+            " (`last_used_run > created_run`) for that run."
+        )
+    )
+    again = s28.index("| `converted_again` | of those,")
+    row = s28.index(f"| `cache_served` | **{marker}** conversions served from the converter cache")
+    assert again < row < s28.index("| `reread`, `reread_kept` |")
+    assert "the internal `cache_recorded` is never written |" in s28[row : row + 600]
+
+
 def test_c3536s_lines_bound_the_repair_to_the_first_own_walk_entries_c3631_c3661() -> None:
     """B13 round 49 C3631 with C3661 (ruling 244): C3536's four lines said a page made 644 by hand is 600
     after any sync, but ``cycle._below`` stops at ``_OWN_WALK`` entries below each tree, ``mirror/``
@@ -10645,9 +10685,13 @@ _ROUND_49_D_PARAGRAPH_AMENDS = (
         "§16.305 C3631, C3661",
     ),
     ("16.297", "**A sync makes a page chmod 644 by hand owner-only** (C3536;", "§16.305 C3631, C3661"),
+    ("15", "`record_cache` takes the keywords `served: bool = False`", "§16.305 C3660 (by §16.297 C3450)"),
+    ("16.28", "other key that would be 0 is left out.", "§16.305 C3660 (by §16.297 C3450)"),
+    ("16.28", "| `converted_again` | of those, when that row's", "§16.305 C3660 (by §16.297 C3450)"),
 )
 """Round 49 lane D's dated lines no one claim holds alone: C3631's (with C3661) beside each of C3536's four
-lines, the repair bounded to the first ``_OWN_WALK`` entries below ``mirror/`` (ruling 244)."""
+lines, the repair bounded to the first ``_OWN_WALK`` entries below ``mirror/`` (ruling 244); C3660's three in
+C3450's words, at §15's manifest stub, §16.28's 0-key sentence and its run-record table (ruling 243)."""
 _ROUND_48_B_PARAGRAPH_AMENDS = (
     ("15", "Amended 2026-11-27, §16.297 C3534: `commit_cycle` takes a keyword `accounted`", "§16.297 C3534"),
     ("16.29", "`mirror/` and `.git` are still not walked: the publisher writes pages 0600", "§16.297 C3536"),
