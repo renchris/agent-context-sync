@@ -49012,6 +49012,12 @@ EACCES inside a File Provider tree says no (an unreadable provider folder is sig
 `test_a_listable_fail_on_a_readable_folder_stays_unexpected_c3513`,
 `test_a_volume_fail_beside_a_folder_that_refuses_its_listing_stays_unexpected_c3513` and
 `test_each_entry_kind_at_a_source_root_is_bucketed_as_doctor_says_it_c3513` (ten entry kinds under a 20 s alarm).
+Amended 2026-11-28, §16.305 C3632 (by §16.297 C3515): with a file at the kept inbox's name (g1), doctor's volume
+row is `[ok] volume UUID not checked: <folder> is not a folder; the listable line above says what to do`, never a
+FAIL, so the bucket reads `... (1 check): source.inbox.listable FAIL (the person's; see Doctor)` and the old Doctor
+line's `unexpected 2` is `unexpected 0`; a volume FAIL is filed beside listable only for a source whose volume probe
+still FAILs, such as a local root that is a link through a file (ENOTDIR), while a file, a link to a file or a fifo at
+a plain source's root keeps a probed `[ok]` UUID.
 
 **C3245's loop pin and C3288's rows bite on their own fixes** (C3473; ruling 206 and ruling 208;
 `tests/test_report_redaction.py`). With ae8f777c7's install.sh hunk reversed, all 8 rows of `test_the_shell_report_cuts_a_looped_inbox_links_target_c3245`
@@ -50658,3 +50664,12 @@ line keeps its words and its `Amended <date>, §16.297 C3536:` head (ruling 186,
 and takes a dated line bounding the repair to the first `_OWN_WALK` entries in the order status samples them;
 `docs/lanes/COMMON.md` takes one beside ruling 224, and cycle.py's docstring is lane B's. No code moves: the bound is
 deliberate. Test: `tests/test_deploy_pack.py::test_c3536s_lines_bound_the_repair_to_the_first_own_walk_entries_c3631_c3661`.
+
+**§16.295's C3513 example takes lane B's `[ok]` volume row** (C3632; ruling 244; amends §16.295 C3513). The C3513
+paragraph said doctor FAILs the kept inbox's volume row beside listable when a file sits at its name, and filed g1 as
+`(2 checks)`, while round 48's C3515 (§16.297) made that row `[ok] volume UUID not checked: <folder> is not a folder;
+the listable line above says what to do`, so the bucket holds 1 check, as
+`test_a_file_at_the_kept_inbox_name_is_the_persons_not_unexpected_c3513` asserts. The paragraph keeps its words
+(ruling 186) and a dated line after it says so, a volume FAIL beside listable only for a source whose volume probe
+still FAILs (a local root that is a link through a file). Test:
+`tests/test_deploy_pack.py::test_c3513s_example_takes_the_kept_inboxs_ok_volume_row_c3632`.

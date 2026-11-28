@@ -1306,6 +1306,32 @@ def test_a_pptx_stub_keeps_its_older_noun_while_its_bytes_do_not_change_c3417() 
     assert "pptx's version stays 1.0.4." in own[c3417:]
 
 
+def test_c3513s_example_takes_the_kept_inboxs_ok_volume_row_c3632() -> None:
+    """B13 round 49 C3632 (ruling 244): §16.295's C3513 paragraph said a file at the kept inbox's name FAILs
+    its volume row beside listable and filed g1 as ``(2 checks)``, while round 48's C3515 made that row
+    ``[ok]``. The paragraph keeps its words, and a round 49 line after it quotes doctor's row and the 1-check
+    bucket, held to doctor's and the report's own words."""
+    from agentsync import setup_report  # noqa: PLC0415
+    from agentsync.ops import doctor  # noqa: PLC0415
+
+    row = "is not a folder; the listable line above says what to do"
+    assert row in inspect.getsource(doctor)
+    assert setup_report._SOURCE_ROOT_WORDS.startswith("from a [[source]] folder that is not a folder")
+    paras = [" ".join(p.split()) for p in re.split(r"\n\s*\n", CONTRACTS.read_text(encoding="utf-8"))]
+    [para] = [
+        p
+        for p in paras
+        if p.startswith("**A [[source]] root that is not a folder or refuses a search is the person's")
+    ]
+    line = para.index("Amended 2026-11-28, §16.305 C3632 (by §16.297 C3515):")
+    assert "or that this account cannot search (2 checks): source.inbox.listable FAIL" in para[:line]
+    tail = para[line:]
+    assert f"`[ok] volume UUID not checked: <folder> {row}`, never a FAIL" in tail
+    assert "(1 check): source.inbox.listable FAIL (the person's; see Doctor)` and the old Doctor" in tail
+    assert "`unexpected 2` is `unexpected 0`" in tail
+    assert "a local root that is a link through a file (ENOTDIR)" in tail
+
+
 def test_c3536s_lines_bound_the_repair_to_the_first_own_walk_entries_c3631_c3661() -> None:
     """B13 round 49 C3631 with C3661 (ruling 244): C3536's four lines said a page made 644 by hand is 600
     after any sync, but ``cycle._below`` stops at ``_OWN_WALK`` entries below each tree, ``mirror/``
