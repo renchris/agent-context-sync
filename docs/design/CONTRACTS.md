@@ -48636,6 +48636,10 @@ changes the job graph and doubles the macOS runner waits a run already pays; if 
 splits the step instead of raising the limit again. Older sentences keep the 112 they measured against. Tests:
 `tests/test_deploy_pack.py::test_claude_md_gives_cis_time_and_its_limit` and
 `::test_the_recording_tests_limit_names_cis_own_limit`.
+Amended 2026-11-28, §16.305 C3672: round 47's slowest was 104:35, under 110, and round 48's c594e04f ran 124:28
+(pytest's step 123:53), 32 seconds under the limit, so the rule fired in round 49, and not as a split step: two steps in
+one job keep the one 125-minute clock. ci's test job is a matrix of three jobs, balanced by measured time, each with
+`timeout-minutes` 125.
 
 **The guides name C3003's bare-run NEXT and its `not live:` clause** (C3270 with C3327, C3271; ruling 213;
 `docs/deploy/README.md`, `docs/deploy/setup-feedback.md`, `README.md`). The deploy guide said a re-run whose skill is
@@ -50725,3 +50729,20 @@ keeping the typed path, makes things worse: the arm then skips that root on ever
 nothing enumerated) for a source that syncs today. No code moves; the paragraph and ruling 226 keep their words and
 take dated lines bounding the alarm to a root still a link at walk time. Test:
 `tests/test_deploy_pack.py::test_a_second_inbox_on_a_link_resolves_at_load_and_takes_no_symlink_alarm_c3697`.
+
+**ci's test job runs as three jobs, balanced by measured time** (C3672; makes worse True for two steps in one job or an
+84/16 split; `.github/workflows/ci.yml`, `CLAUDE.md`, `docs/lanes/COMMON.md`; amends §16.294 C3286). §16.294's C3286
+paragraph said round 48 splits the pytest step if round 47's slowest passes 110; round 47's thirteen jobs (ad60663a to
+085abd81) took 62:55 to 104:35, and round 48's eight after caabd5b2 took 85:25 to 124:28, c594e04f's pytest step 123:53
+at 10938 tests, 32 seconds under the 125-minute limit, while f8420982's ran 102:09 at two tests fewer. `test` is now a
+matrix (`fail-fast: false`) of three jobs, one per part: `tests/test_report_redaction.py`, `tests/test_install_oneshot.py`
+and the rest by `--ignore` of both, so a new file always runs somewhere; by the newest local gate journal (10756 tests,
+20766 s) they hold about 39, 35 and 26 percent. Only the rest part runs ruff, the format check, mypy and a collect-only
+union check that the three parts collect the full set, each test once (probed here: 10990 of 10990, and an overlapping
+rest part fails it). The verifiers' other courses make things worse: two pytest steps in one job keep the one clock,
+since `timeout-minutes` is per job, and the report and installer files apart from the rest leave one job about 84
+percent of the time. ship-land.sh is unchanged: it reads the run's conclusion and walks every job for a lost runner.
+`timeout-minutes` stays 125 for each job until round 50 times the parts; CLAUDE.md's gate list keeps its one local
+pytest line and names the split, and both guides give the one job's times in the past tense, through 9092300a, round
+49's base, at 111:26. Tests: `tests/test_deploy_pack.py::test_cis_test_job_is_a_three_part_matrix_whose_parts_collect_the_full_set_c3672`
+and `::test_claude_md_gives_cis_time_and_its_limit`.

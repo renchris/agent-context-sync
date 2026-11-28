@@ -297,7 +297,11 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
     bracket and 006e48a6, round 46's base, at 80:39. B13 round 47 C3286: round 46's ten jobs (006e48a6 to
     42ca57e0) took 80:39 to 104:04, two past the head of 92, and fbbc2d07's 104:04 left 112 only 7:56, inside
     the 15-minute rule: the head is 105 in both guides, the limit 125, 20:56 above it, and both files add the
-    bracket, cb4cc114's 26:28 wait and 42ca57e0, round 47's base, at 92:44."""
+    bracket, cb4cc114's 26:28 wait and 42ca57e0, round 47's base, at 92:44. B13 round 49 C3672 (makes worse
+    True for two steps in one job or an 84/16 split): c594e04f's job ran 124:28, 32 seconds under the limit,
+    so §16.294's split rule fired: the suite runs as a three-part matrix of jobs, each with the one limit,
+    and the guides give the one job's times through 9092300a, round 49's base, in the past tense, with round
+    47's thirteen jobs, round 48's base and eight, and the 31:13 and 20:21 waits."""
     guide = " ".join((ROOT / "CLAUDE.md").read_text(encoding="utf-8").split())
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     [limit] = re.findall(r"^jobs:\n  test:\n(?:    .*\n)*?    timeout-minutes: (\d+)\n", ci, re.M)
@@ -310,10 +314,11 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
     assert "about 18 to 52 minutes" not in guide and "about 18 to 60 minutes" not in guide
     assert "about 18 to 62 minutes" not in guide and "about 18 to 67 minutes" not in guide
     assert "about 18 to 81 minutes" not in guide and "about 18 to 86 minutes" not in guide
-    assert "about 18 to 92 minutes" not in guide
+    assert "about 18 to 92 minutes" not in guide and "takes about 18 to 105 minutes" not in guide
     assert "(one waited 21 minutes, another 17)" not in guide
     assert (
-        "`ci` takes about 18 to 105 minutes once its job starts (measured October and November 2026; 24 at"
+        "`ci` took about 18 to 125 minutes once its job started while the suite ran as one job (measured"
+        " October and November 2026; 24 at"
         " 5120 tests, and the same tests and source ran 24 and then 21 minutes on two runs; the eight jobs"
         " from eaed1034 to fcafd734 took 18:05 to 28:34; the nine from fcafd734 to 7a54f938 took 19:29 to"
         " 31:21; the thirteen from ed901cd3 to b1f4a087 took 24:34 to 32:18; the ten from c93fcd96 to"
@@ -366,7 +371,12 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
         " rerun was green at 89:31; 006e48a6, round 46's base, took 80:39, 9699 tests and pytest's step"
         " 80:00; the eight after it, from 9e62806f to fbbc2d07, took 81:55 to 104:04, all past 80 and one"
         " past 100, all green on attempt 1, the slowest on fbbc2d07, 9904 tests and pytest's step 103:20;"
-        " 42ca57e0, round 47's base, took 92:44, 9904 tests and pytest's step 92:12;"
+        " 42ca57e0, round 47's base, took 92:44, 9904 tests and pytest's step 92:12; the thirteen after it,"
+        " from ad60663a to 085abd81, took 62:55 to 104:35, all green on attempt 1, the slowest on 9def3fb9,"
+        " 10148 tests and pytest's step 103:59; caabd5b2, round 48's base, took 97:28, 10554 tests and"
+        " pytest's step 96:53; the eight after it, from d6ccd774 to c594e04f, took 85:25 to 124:28, all green"
+        " on attempt 1, the slowest on c594e04f, 10938 tests and pytest's step 123:53; 9092300a, round 49's"
+        " base, took 111:26, 10938 tests and pytest's step 110:58;"
         " one run took 34 on a runner loaded 5 to 8 per core), plus any wait"
         " for a macOS runner, counted from the run appearing to its job starting (one waited 63 minutes, on"
         " ef12f28f, another 50, one 21, on d8385ef6, one 25, on 820c69dd, one 16, on 0c6b1207, one 38, on"
@@ -374,21 +384,27 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
         " 16, on c6d8227c, one 50, on 293c8081, one 39, on 4d3ba971's rerun, counted from the rerun's start,"
         " one 32, on 526fa1e2, one 52, on ffefbe0f, one 31, on 10845acb, one 29, on 4041089d's rerun, counted"
         " from the rerun's start, one 26, on c72c736b, one 25, on 60835dd7, one 55, on dea3fabc, one 16, on"
-        " bb3cf651, one 14, on 13b58a12's rerun, counted from the rerun's start, one 26, on cb4cc114, and"
-        " earlier ones 48 and 46);"
+        " bb3cf651, one 14, on 13b58a12's rerun, counted from the rerun's start, one 26, on cb4cc114, one 31,"
+        " on 28d52822, one 20, on b8208db8, and earlier ones 48 and 46);"
         " the"
         " job's limit is"
-        f" {limit} minutes (`timeout-minutes` in ci.yml), and a wait does not count against it."
+        f" {limit} minutes (`timeout-minutes` in ci.yml), and a wait does not count against it. Since round"
+        " 49 (C3672) the suite runs as three jobs at once, each with that limit and its own wait, so a run"
+        " takes about as long as its slowest part; round 50 times the parts."
     ) in guide
-    # about 20 minutes above the slowest (104:04), and at least 15 above the head (B13 round 40 C1866,
-    # round 45 C2878, round 46 C3060, round 47 C3286)
-    assert int(limit) - 105 >= 15 and int(limit) == 125
+    # the one job's 124:28 fired §16.294's rule: the limit stays 125 for each part until round 50 times
+    # them (B13 round 40 C1866, round 45 C2878, round 46 C3060, round 47 C3286, round 49 C3672)
+    assert int(limit) == 125
     lanes = _page("docs/lanes/COMMON.md")
     assert (
-        "CI takes 18 to 105 minutes a run (the slowest, 104:04, in round 46), and a run can wait over an"
-        " hour for a macOS runner first (63:27 in round 31); its limit is"
+        "CI took 18 to 125 minutes a run while the suite ran as one job (the slowest, 124:28, in round 48),"
+        " and a run can wait over an hour for a macOS runner first (63:27 in round 31); its limit is"
         f" {limit} "
     ) in lanes
+    assert (
+        " round 46 C3060, round 47 C3286), and since round 49 the suite runs as three jobs at once, each with"
+        " that limit, so a run takes about as long as its slowest part (C3672)."
+    ) in " ".join(lanes.split())
     assert (
         "about 48 minutes for a macOS runner" not in lanes
         and "(one waited 48 minutes, another 46)" not in guide
@@ -556,6 +572,18 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
         " counted from the run appearing), not counted against timeout-minutes (B13 round 47 C3286)."
         " 42ca57e0, round 47's base, took 92:44 (pytest's step 92:12 at 9904 tests)."
     ) in note
+    # B13 round 49 C3672: round 47's thirteen under 110, round 48's eight to 124:28, so the suite is split
+    assert (
+        "Round 47's thirteen jobs (ad60663a to 085abd81) took 62:55 to 104:35, all green on attempt 1 (the"
+        " slowest 9def3fb9, pytest's step 103:59 at 10148 tests), under the 110 that §16.294's rule names, so"
+        " 125 stayed; runner waits reached 31:13 (28d52822), not counted against timeout-minutes."
+    ) in note
+    assert (
+        "Round 48's eight jobs after it (d6ccd774 to c594e04f) took 85:25 to 124:28, all green on attempt 1,"
+        " and c594e04f's 124:28 (pytest's step 123:53 at 10938 tests) left 125 only 32 seconds"
+    ) in note
+    assert "9092300a, round 49's base, took 111:26 (pytest's step 110:58 at 10938 tests)." in note
+    assert "So the test job is a matrix of three jobs, one per part, balanced by measured time" in note
     assert "(measured October 2026;" not in guide
     assert "Round 24's ten jobs (c93fcd96 to 3ec66a92) took 30:06 to 36:24, all green on attempt 1" in note
     assert "which left 45 only 8:36 above them" in note
@@ -1453,6 +1481,63 @@ def test_a_second_inbox_on_a_link_resolves_at_load_and_takes_no_symlink_alarm_c3
     assert lanes.index("(226) ") < lanes.index("a link to a real folder keeping its symlink alarm (C3511)")
     assert lanes.index("ensure_repo raises a PublishError naming it. " + dated) < lanes.index("(227) ")
     assert "(round 49 C3697, CONTRACTS §16.305). (227) " in lanes
+
+
+def test_cis_test_job_is_a_three_part_matrix_whose_parts_collect_the_full_set_c3672() -> None:
+    """B13 round 49 C3672 (makes worse True for two steps in one job or an 84/16 split): c594e04f's one test
+    job ran 124:28 of its 125 minutes, so §16.294's rule fired. ``test`` is a matrix of three jobs balanced
+    by measured time, timeout-minutes being each job's own clock: test_report_redaction.py,
+    test_install_oneshot.py and the rest by ``--ignore`` of both, the statics and a collect-only union check
+    in the rest part only, fail-fast off; CLAUDE.md's gate list names it and keeps the one local pytest
+    line."""
+    import yaml  # noqa: PLC0415
+
+    ci = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    assert list(ci["jobs"]) == ["test"]
+    job = ci["jobs"]["test"]
+    assert job["timeout-minutes"] == 125 and job["strategy"]["fail-fast"] is False
+    parts = {row["part"]: row["args"] for row in job["strategy"]["matrix"]["include"]}
+    named = ["tests/test_report_redaction.py", "tests/test_install_oneshot.py"]
+    assert parts == {
+        "redaction": named[0],
+        "installer": named[1],
+        "rest": " ".join(f"--ignore={path}" for path in named),
+    }
+    assert all((ROOT / path).is_file() for path in named)
+    steps = {step.get("name"): step for step in job["steps"]}
+    pytest = "uv run --locked pytest -q -p no:cacheprovider -n auto"
+    assert steps["pytest"]["run"] == pytest + " ${{ matrix.args }}" and "if" not in steps["pytest"]
+    statics = ("ruff check", "ruff format --check", "mypy src", "collect-only union check")
+    for name in statics:
+        assert steps[name]["if"] == "matrix.part == 'rest'", name
+    union = steps["collect-only union check"]
+    assert union["shell"] == "bash"
+    for arg in parts.values():
+        assert f"\nids {arg} >" in "\n" + union["run"], arg
+    assert 'ids >"$RUNNER_TEMP/full.ids"' in union["run"]
+    assert "! cmp -s full.ids union.ids" in union["run"] and '"$((parts))" != "$((full))"' in union["run"]
+    assert '"$((full))" = 0' in union["run"], "an empty collect is not a union"
+    # the parts' measured shares: none above about two fifths of the whole, the 84/16 split not taken
+    note = " ".join(
+        line.lstrip("# ")
+        for line in (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8").splitlines()
+        if line.startswith("#")
+    )
+    shares = re.search(
+        r"test_report_redaction\.py \((\d+)%\), test_install_oneshot\.py \((\d+)%\), and the rest \((\d+)%\)",
+        note,
+    )
+    assert shares and sum(map(int, shares.groups())) == 100 and max(map(int, shares.groups())) <= 40
+    guide = " ".join((ROOT / "CLAUDE.md").read_text(encoding="utf-8").split())
+    gate = (ROOT / "CLAUDE.md").read_text(encoding="utf-8").split("### Gate", 1)[1].split("```", 2)[1]
+    assert f"\n{pytest}\n" in gate
+    assert (
+        "CI runs the same full test set as three jobs at once (ci.yml's `test` matrix, B13 round 49 C3672),"
+        " split by measured time: `tests/test_report_redaction.py` (about 39 percent of it),"
+        " `tests/test_install_oneshot.py` (35) and the rest (26), named by `--ignore` of those two so a new"
+        " test file always runs somewhere."
+    ) in guide
+    assert "(39%), test_install_oneshot.py (35%), and the rest (26%)" in note
 
 
 def test_c3536s_lines_bound_the_repair_to_the_first_own_walk_entries_c3631_c3661() -> None:

@@ -23,6 +23,12 @@ npm run diagrams:check
 make -C probes CFLAGS='-O2 -Wall -Wextra -Werror' && make -C probes check
 ```
 
+CI runs the same full test set as three jobs at once (ci.yml's `test` matrix, B13 round 49 C3672), split by
+measured time: `tests/test_report_redaction.py` (about 39 percent of it), `tests/test_install_oneshot.py` (35) and the
+rest (26), named by `--ignore` of those two so a new test file always runs somewhere. Only the rest part runs ruff,
+the format check, mypy and a collect-only check that the three parts collect the full set, each test once. Here the
+pytest line above runs the whole set in one command, and `scripts/gate.sh` in its own parts.
+
 `.github/workflows/download-hosts.yml` is not in this list: it follows the installer's live download redirects
 weekly, so the network, not a commit, decides its result.
 
@@ -81,59 +87,64 @@ for id in $(gh run list --commit "$(git rev-parse HEAD)" --json databaseId --jq 
 done
 ```
 
-The list can be empty for a few seconds after the push; retry. `ci` takes about 18 to 105 minutes once its job starts
-(measured October and November 2026; 24 at 5120 tests, and the same tests and source ran 24 and then 21 minutes on two
-runs; the eight jobs from eaed1034 to fcafd734 took 18:05 to 28:34; the nine from fcafd734 to 7a54f938 took 19:29 to
-31:21; the thirteen from ed901cd3 to b1f4a087 took 24:34 to 32:18; the ten from c93fcd96 to 3ec66a92 took 30:06 to
-36:24, 5685 tests on the slowest and pytest's step 35:46; the nine from f04c61db to d1f72d6f took 26:53 to 40:01 but
-one, 49:59 on d1f72d6f, a docs-only commit, 6050 tests and pytest's step 49:26; the seven after it, from 71388552 to
-b2724d9c, took 30:19 to 44:27, the slowest on 3f1dee54, 6191 tests and pytest's step 43:58; the nine after those, from
-673a72a0 to fa32c452, took 35:36 to 51:10, six past 45, the slowest on b2b88e5d, 6345 tests and pytest's step 50:28; the
-sixteen after those, from ccf696b7 to c8a4298b, took 37:56 to 59:43, four past 50, the slowest on 2919a7b9, 6468 tests
-and pytest's step 59:08, and one attempt lost its runner and its rerun was green; the twelve after those, from 7f132615
-to 357f6d5b, took 43:35 to 57:05, all green on attempt 1, the slowest on 76dc4e8f, 6631 tests and pytest's step 56:38;
-the fourteen after those, from 62b8a943 to 7a3be9af, took 41:28 to 58:25, all green on attempt 1, the slowest on
-9cb86828, 6706 tests and pytest's step 57:51; the eight after those, from 7b23a0a7 to 4e0e8604, took 43:16 to 57:17, all
-green on attempt 1, the slowest on b948dfa7, 7133 tests and pytest's step 56:47; the twelve after those, from 4288dd6a
-to 06ee4f6d, took 45:36 to 61:22, one past 60, the slowest on dacdf5ba, 7292 tests and pytest's step 60:36, and one
-attempt failed a test at 36:27 and its rerun was green at 46:36; the eleven after those, from d8385ef6 to b781e539, took
-44:12 to 59:43, nine past 50, all green on attempt 1, the slowest on d62ac148, 7580 tests and pytest's step 59:16; the
-eighteen after those, from 7c4f775e to e6577c15, took 41:17 to 66:14, sixteen past 50 and six past 60, all green on
-attempt 1, the slowest on 4b5ff40f, 7706 tests and pytest's step 65:38; the twenty-three after those, from feedd8ef to
-248e6a0a, took 50:20 to 75:09, twelve past 60 and three past 70, all green on attempt 1, the slowest on 1cc27a89, 8035
-tests and pytest's step 73:47; the fourteen after those, from 702fcff5 to f320bfcd, took 52:53 to 71:54, six past 60 and
-one past 70, the slowest on 9aed904c, 8147 tests and pytest's step 71:16, and two attempts failed a test, 4187a6fe's at
-69:46, whose rerun was green at 65:37, and 877a47ab's at 60:12, never rerun, the next commit's run green; the nineteen
-after those, from 853fab34 to 63deb83d, took 51:20 to 80:33, seventeen past 60 and six past 70, the slowest on b74445af,
-8513 tests and pytest's step 79:55, and one attempt failed at 62:55 when pandoc was stopped by SIGABRT in a conversion
-test, and its rerun was green at 66:15; 7253d365, round 40's base, took 77:50, 8513 tests and pytest's step 77:20; the
-eight after it, from 769dc49b to 7686c6eb, took 54:36 to 69:58, five past 60 and none past 70, all green on attempt 1,
-the slowest on 10845acb, 8562 tests and pytest's step 69:21; 5affe89c, round 41's base, took 59:54, 8618 tests and
-pytest's step 59:26; the ten attempts after it, from 4041089d to 74ceffac, took 63:35 to 79:45, all past 60 and seven
-past 70, the slowest green on af21e633, 8793 tests and pytest's step 78:07, and one attempt failed a test at 79:45,
-4041089d's first, and its rerun was green at 67:28; 1faa3f3a, round 42's base, took 74:47, 8791 tests and pytest's
-step 74:19; the seven after it, from 60835dd7 to 87ec6fee, took 59:30 to 78:52, six past 60 and five past 70, all green
-on attempt 1, the slowest on 62a72e6c, 8972 tests and pytest's step 78:19; bd65e0e1, round 43's base, took 72:55, 8973
-tests and pytest's step 72:23; the ten after it, from 7acb0255 to 5affa1ab, took 69:10 to 79:30, all past 60 and nine
-past 70, all green on attempt 1, the slowest on 5affa1ab, 9282 tests and pytest's step 79:07; d1b028b4, round 44's
-base, took 72:31, 9282 tests and pytest's step 72:26; the eight after it, from d6b9f61f to e9396380, took 67:09 to 85:06
-on their last attempts, all past 60, six past 70 and three past 80, the slowest on e9396380, 9502 tests and pytest's
-step 84:36, one attempt failed a test at 79:31, 13b58a12's first, and its rerun was green at 69:04, and one, 3aa3bfda's
-first, was cancelled at 46:25 and its rerun was green at 67:09; 2390257d, round 45's base, took 75:54, 9499 tests and
-pytest's step 75:28; the eight after it, from 0ad24fd7 to 6f4c436f, took 77:32 to 89:37 on their last attempts, all
-past 70, five past 80 and three past 86, the slowest green on 6f4c436f, 9699 tests and pytest's step 89:02, and one
-attempt failed a test at 91:40, d132a14c's first, and its rerun was green at 89:31; 006e48a6, round 46's base, took
-80:39, 9699 tests and pytest's step 80:00; the eight after it, from 9e62806f to fbbc2d07, took 81:55 to 104:04, all
-past 80 and one past 100, all green on attempt 1, the slowest on fbbc2d07, 9904 tests and pytest's step 103:20;
-42ca57e0, round 47's base, took 92:44, 9904 tests and pytest's step 92:12; one run took 34 on a runner loaded 5 to 8
+The list can be empty for a few seconds after the push; retry. `ci` took about 18 to 125 minutes once its job started
+while the suite ran as one job (measured October and November 2026; 24 at 5120 tests, and the same tests and source ran
+24 and then 21 minutes on two runs; the eight jobs from eaed1034 to fcafd734 took 18:05 to 28:34; the nine from fcafd734
+to 7a54f938 took 19:29 to 31:21; the thirteen from ed901cd3 to b1f4a087 took 24:34 to 32:18; the ten from c93fcd96 to
+3ec66a92 took 30:06 to 36:24, 5685 tests on the slowest and pytest's step 35:46; the nine from f04c61db to d1f72d6f took
+26:53 to 40:01 but one, 49:59 on d1f72d6f, a docs-only commit, 6050 tests and pytest's step 49:26; the seven after it,
+from 71388552 to b2724d9c, took 30:19 to 44:27, the slowest on 3f1dee54, 6191 tests and pytest's step 43:58; the nine
+after those, from 673a72a0 to fa32c452, took 35:36 to 51:10, six past 45, the slowest on b2b88e5d, 6345 tests and
+pytest's step 50:28; the sixteen after those, from ccf696b7 to c8a4298b, took 37:56 to 59:43, four past 50, the slowest
+on 2919a7b9, 6468 tests and pytest's step 59:08, and one attempt lost its runner and its rerun was green; the twelve
+after those, from 7f132615 to 357f6d5b, took 43:35 to 57:05, all green on attempt 1, the slowest on 76dc4e8f, 6631 tests
+and pytest's step 56:38; the fourteen after those, from 62b8a943 to 7a3be9af, took 41:28 to 58:25, all green on attempt
+1, the slowest on 9cb86828, 6706 tests and pytest's step 57:51; the eight after those, from 7b23a0a7 to 4e0e8604, took
+43:16 to 57:17, all green on attempt 1, the slowest on b948dfa7, 7133 tests and pytest's step 56:47; the twelve after
+those, from 4288dd6a to 06ee4f6d, took 45:36 to 61:22, one past 60, the slowest on dacdf5ba, 7292 tests and pytest's
+step 60:36, and one attempt failed a test at 36:27 and its rerun was green at 46:36; the eleven after those, from
+d8385ef6 to b781e539, took 44:12 to 59:43, nine past 50, all green on attempt 1, the slowest on d62ac148, 7580 tests and
+pytest's step 59:16; the eighteen after those, from 7c4f775e to e6577c15, took 41:17 to 66:14, sixteen past 50 and six
+past 60, all green on attempt 1, the slowest on 4b5ff40f, 7706 tests and pytest's step 65:38; the twenty-three after
+those, from feedd8ef to 248e6a0a, took 50:20 to 75:09, twelve past 60 and three past 70, all green on attempt 1, the
+slowest on 1cc27a89, 8035 tests and pytest's step 73:47; the fourteen after those, from 702fcff5 to f320bfcd, took 52:53
+to 71:54, six past 60 and one past 70, the slowest on 9aed904c, 8147 tests and pytest's step 71:16, and two attempts
+failed a test, 4187a6fe's at 69:46, whose rerun was green at 65:37, and 877a47ab's at 60:12, never rerun, the next
+commit's run green; the nineteen after those, from 853fab34 to 63deb83d, took 51:20 to 80:33, seventeen past 60 and six
+past 70, the slowest on b74445af, 8513 tests and pytest's step 79:55, and one attempt failed at 62:55 when pandoc was
+stopped by SIGABRT in a conversion test, and its rerun was green at 66:15; 7253d365, round 40's base, took 77:50, 8513
+tests and pytest's step 77:20; the eight after it, from 769dc49b to 7686c6eb, took 54:36 to 69:58, five past 60 and none
+past 70, all green on attempt 1, the slowest on 10845acb, 8562 tests and pytest's step 69:21; 5affe89c, round 41's base,
+took 59:54, 8618 tests and pytest's step 59:26; the ten attempts after it, from 4041089d to 74ceffac, took 63:35 to
+79:45, all past 60 and seven past 70, the slowest green on af21e633, 8793 tests and pytest's step 78:07, and one attempt
+failed a test at 79:45, 4041089d's first, and its rerun was green at 67:28; 1faa3f3a, round 42's base, took 74:47, 8791
+tests and pytest's step 74:19; the seven after it, from 60835dd7 to 87ec6fee, took 59:30 to 78:52, six past 60 and five
+past 70, all green on attempt 1, the slowest on 62a72e6c, 8972 tests and pytest's step 78:19; bd65e0e1, round 43's base,
+took 72:55, 8973 tests and pytest's step 72:23; the ten after it, from 7acb0255 to 5affa1ab, took 69:10 to 79:30, all
+past 60 and nine past 70, all green on attempt 1, the slowest on 5affa1ab, 9282 tests and pytest's step 79:07; d1b028b4,
+round 44's base, took 72:31, 9282 tests and pytest's step 72:26; the eight after it, from d6b9f61f to e9396380, took
+67:09 to 85:06 on their last attempts, all past 60, six past 70 and three past 80, the slowest on e9396380, 9502 tests
+and pytest's step 84:36, one attempt failed a test at 79:31, 13b58a12's first, and its rerun was green at 69:04, and
+one, 3aa3bfda's first, was cancelled at 46:25 and its rerun was green at 67:09; 2390257d, round 45's base, took 75:54,
+9499 tests and pytest's step 75:28; the eight after it, from 0ad24fd7 to 6f4c436f, took 77:32 to 89:37 on their last
+attempts, all past 70, five past 80 and three past 86, the slowest green on 6f4c436f, 9699 tests and pytest's step
+89:02, and one attempt failed a test at 91:40, d132a14c's first, and its rerun was green at 89:31; 006e48a6, round 46's
+base, took 80:39, 9699 tests and pytest's step 80:00; the eight after it, from 9e62806f to fbbc2d07, took 81:55 to
+104:04, all past 80 and one past 100, all green on attempt 1, the slowest on fbbc2d07, 9904 tests and pytest's step
+103:20; 42ca57e0, round 47's base, took 92:44, 9904 tests and pytest's step 92:12; the thirteen after it, from ad60663a
+to 085abd81, took 62:55 to 104:35, all green on attempt 1, the slowest on 9def3fb9, 10148 tests and pytest's step
+103:59; caabd5b2, round 48's base, took 97:28, 10554 tests and pytest's step 96:53; the eight after it, from d6ccd774 to
+c594e04f, took 85:25 to 124:28, all green on attempt 1, the slowest on c594e04f, 10938 tests and pytest's step 123:53;
+9092300a, round 49's base, took 111:26, 10938 tests and pytest's step 110:58; one run took 34 on a runner loaded 5 to 8
 per core), plus any wait for a macOS runner, counted from the run appearing to its job starting (one waited 63 minutes,
 on ef12f28f, another 50, one 21, on d8385ef6, one 25, on 820c69dd, one 16, on 0c6b1207, one 38, on 19b1f575, one 36, on
 63a12d0c, one 31, on c2ab2d12, one 22, on 877a47ab, one 17, on 5bf1911e, one 16, on c6d8227c, one 50, on 293c8081, one
 39, on 4d3ba971's rerun, counted from the rerun's start, one 32, on 526fa1e2, one 52, on ffefbe0f, one 31, on 10845acb,
 one 29, on 4041089d's rerun, counted from the rerun's start, one 26, on c72c736b, one 25, on 60835dd7, one 55, on
-dea3fabc, one 16, on bb3cf651, one 14, on 13b58a12's rerun, counted from the rerun's start, one 26, on cb4cc114, and
-earlier ones 48 and 46); the job's limit is 125 minutes (`timeout-minutes` in ci.yml), and a wait does not count
-against it.
+dea3fabc, one 16, on bb3cf651, one 14, on 13b58a12's rerun, counted from the rerun's start, one 26, on cb4cc114, one 31,
+on 28d52822, one 20, on b8208db8, and earlier ones 48 and 46); the job's limit is 125 minutes (`timeout-minutes` in
+ci.yml), and a wait does not count against it. Since round 49 (C3672) the suite runs as three jobs at once, each with
+that limit and its own wait, so a run takes about as long as its slowest part; round 50 times the parts.
 
 A loop that prints nothing has read nothing: an empty list is not green. If ship-land's line says `no CI run for
 <sha> after N s` (exit 9 after `LANDED`), wait, and check that `gh run list --commit <sha>` is still empty about 15

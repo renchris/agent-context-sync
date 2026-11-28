@@ -112,6 +112,21 @@ name: ci
 # which left 112 only 7:56 above it, inside the 15-minute rule, so it is 125: 20:56 above it, and the guides' head is
 # 105; runner waits reached 26:28 (cb4cc114, counted from the run appearing), not counted against timeout-minutes (B13
 # round 47 C3286). 42ca57e0, round 47's base, took 92:44 (pytest's step 92:12 at 9904 tests).
+# Round 47's thirteen jobs (ad60663a to 085abd81) took 62:55 to 104:35, all green on attempt 1 (the slowest 9def3fb9,
+# pytest's step 103:59 at 10148 tests), under the 110 that §16.294's rule names, so 125 stayed; runner waits reached
+# 31:13 (28d52822), not counted against timeout-minutes. caabd5b2, round 48's base, took 97:28 (pytest's step 96:53 at
+# 10554 tests). Round 48's eight jobs after it (d6ccd774 to c594e04f) took 85:25 to 124:28, all green on attempt 1, and
+# c594e04f's 124:28 (pytest's step 123:53 at 10938 tests) left 125 only 32 seconds, while f8420982's step ran 102:09
+# at two tests fewer: the runner's own spread alone can pass the limit. 9092300a, round 49's base, took 111:26
+# (pytest's step 110:58 at 10938 tests). Runner waits reached 20:21 (b8208db8). So the test job is a matrix of three
+# jobs, one per part, balanced by measured time (B13 round 49 C3672; the newest local gate journal, 10756 tests in
+# 20766 s): test_report_redaction.py (39%), test_install_oneshot.py (35%), and the rest (26%), the rest named by
+# --ignore of the other two, so a new test file always runs somewhere. timeout-minutes is each job's own clock, so two
+# pytest steps in one job would have kept the one clock at about 124 minutes, and the report-and-installer files apart
+# from the rest would have left one job about 84% of the time. The rest part also runs ruff, the format check, mypy
+# and a collect-only union check: the three parts collect the full set, each test once, as scripts/gate.sh's own
+# parts do. fail-fast is off, so a red part never cancels the others; ship-land reads the run's conclusion and walks
+# every job for a lost runner. The limit stays 125 per job until round 50 times the parts.
 on:
   workflow_dispatch:
   push:
@@ -129,6 +144,17 @@ jobs:
   test:
     runs-on: macos-15
     timeout-minutes: 125
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - part: redaction
+            args: tests/test_report_redaction.py
+          - part: installer
+            args: tests/test_install_oneshot.py
+          - part: rest
+            args: --ignore=tests/test_report_redaction.py --ignore=tests/test_install_oneshot.py
+    name: test (${{ matrix.part }})
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -139,10 +165,31 @@ jobs:
       - name: uv sync --locked
         run: uv sync --locked
       - name: ruff check
+        if: matrix.part == 'rest'
         run: uv run --locked ruff check src tests
       - name: ruff format --check
+        if: matrix.part == 'rest'
         run: uv run --locked ruff format --check src tests
       - name: mypy src
+        if: matrix.part == 'rest'
         run: uv run --locked mypy src
+      - name: collect-only union check
+        if: matrix.part == 'rest'
+        shell: bash
+        run: |
+          ids() { uv run --locked pytest -q -p no:cacheprovider --collect-only "$@" | LC_ALL=C grep '::' | LC_ALL=C sort; }
+          ids >"$RUNNER_TEMP/full.ids"
+          ids tests/test_report_redaction.py >"$RUNNER_TEMP/redaction.ids"
+          ids tests/test_install_oneshot.py >"$RUNNER_TEMP/installer.ids"
+          ids --ignore=tests/test_report_redaction.py --ignore=tests/test_install_oneshot.py >"$RUNNER_TEMP/rest.ids"
+          cd "$RUNNER_TEMP"
+          LC_ALL=C sort -u redaction.ids installer.ids rest.ids >union.ids
+          full=$(wc -l <full.ids) parts=$(cat redaction.ids installer.ids rest.ids | wc -l)
+          echo "collect: full $((full)), parts $((parts))"
+          if [ "$((full))" = 0 ] || ! cmp -s full.ids union.ids || [ "$((parts))" != "$((full))" ]; then
+            echo "the three parts do not collect the full set, each test once:" >&2
+            diff full.ids union.ids | head -20 >&2
+            exit 1
+          fi
       - name: pytest
-        run: uv run --locked pytest -q -p no:cacheprovider -n auto
+        run: uv run --locked pytest -q -p no:cacheprovider -n auto ${{ matrix.args }}
