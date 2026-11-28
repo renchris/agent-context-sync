@@ -849,8 +849,12 @@ def has_banner(body: str) -> bool:
 
 
 def with_banner(body: str) -> str:
-    """Return ``body`` with the banner as its first line (idempotent; keeps exactly one trailing newline).  A
-    banner kept is one already first (:func:`has_banner`), never a copy the source holds lower down."""
+    """Return ``body`` with the banner as its first line, leading blank lines aside (idempotent).  A body
+    without it gets the banner and an empty line above its text, loses its leading newlines and gains a
+    trailing newline only when it had none; a body whose first line is the banner already is returned
+    unchanged.  A banner kept is one already first (:func:`has_banner`), never a copy the source holds lower
+    down.  The caller owns the trailing newlines: ``make_unit`` leaves exactly one, and an empty body gives
+    the banner and one empty line."""
     if has_banner(body):
         return body
     text = body if body.endswith("\n") else body + "\n"

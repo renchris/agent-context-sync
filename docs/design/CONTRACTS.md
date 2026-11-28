@@ -4557,7 +4557,7 @@ def sniff_container(path: Path) -> ContainerKind:
     """Classify ``path`` by content, never by name; raises OSError when it cannot be read."""
 
 def with_banner(body: str) -> str:
-    """Return ``body`` with the banner as its first line (idempotent; keeps exactly one trailing newline)."""
+    """Return ``body`` with the banner as its first line, leading blank lines aside (idempotent)."""
 ```
 
 ### 16.7 Governance: purge, compaction, hold, remote policy, offboarding (C15 §7, reqs 36–42)
@@ -50673,3 +50673,12 @@ the listable line above says what to do`, so the bucket holds 1 check, as
 (ruling 186) and a dated line after it says so, a volume FAIL beside listable only for a source whose volume probe
 still FAILs (a local root that is a link through a file). Test:
 `tests/test_deploy_pack.py::test_c3513s_example_takes_the_kept_inboxs_ok_volume_row_c3632`.
+
+**with_banner's docstring and its §15 stub say what it does to newlines** (C3654; ruling 244; `agentsync.policy`, §15).
+Both said with_banner keeps exactly one trailing newline, while it returns a bannered body unchanged and otherwise only
+adds a newline a body lacks: `x\n\n\n` keeps its three and an empty body gives the banner and one empty line. The
+bytes stay (a normalizing change would move BANNER_VERSION, a cache key, and break the bannered no-op checks in
+`registry._bannered` and `publish._plan_unit`), and the docstring's first sentence and the stub move together, word
+for word, as C3453 moved has_banner's: `Return ``body`` with the banner as its first line, leading blank lines aside
+(idempotent).`; the docstring's next sentences say the rest, the caller owning the trailing newlines (`make_unit`
+leaves one). Test: `tests/test_deploy_pack.py::test_section_15s_with_banner_stub_says_what_it_does_to_newlines_c3654`.

@@ -1332,6 +1332,29 @@ def test_c3513s_example_takes_the_kept_inboxs_ok_volume_row_c3632() -> None:
     assert "a local root that is a link through a file (ENOTDIR)" in tail
 
 
+def test_section_15s_with_banner_stub_says_what_it_does_to_newlines_c3654() -> None:
+    """B13 round 49 C3654 (ruling 244): policy.with_banner's docstring and its §15 stub said it keeps exactly
+    one trailing newline, while it returns a bannered body unchanged and adds only a newline a body lacks. The
+    bytes stay; the docstring's first sentence and the stub move together, word for word, as C3453's did."""
+    from agentsync import policy  # noqa: PLC0415
+
+    banner = policy.UNTRUSTED_BANNER
+    assert policy.with_banner("x\n\n\n") == f"{banner}\n\nx\n\n\n"
+    assert policy.with_banner("") == f"{banner}\n\n"
+    assert policy.with_banner("\n\nx") == f"{banner}\n\nx\n"
+    assert policy.with_banner(f"{banner}\n\n\n") == f"{banner}\n\n\n"
+    doc = " ".join((policy.with_banner.__doc__ or "").split())
+    first = doc.split(".  ")[0].split(". ")[0] + "."
+    assert (
+        first == "Return ``body`` with the banner as its first line, leading blank lines aside (idempotent)."
+    )
+    assert "exactly one trailing newline" not in doc
+    assert "gains a trailing newline only when it had none" in doc
+    text = CONTRACTS.read_text(encoding="utf-8")
+    stub = text[text.index("def with_banner(body: str) -> str:\n") :].split("\n```", 1)[0]
+    assert stub == f'def with_banner(body: str) -> str:\n    """{first}"""', stub
+
+
 def test_c3536s_lines_bound_the_repair_to_the_first_own_walk_entries_c3631_c3661() -> None:
     """B13 round 49 C3631 with C3661 (ruling 244): C3536's four lines said a page made 644 by hand is 600
     after any sync, but ``cycle._below`` stops at ``_OWN_WALK`` entries below each tree, ``mirror/``
