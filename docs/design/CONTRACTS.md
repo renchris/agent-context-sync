@@ -50613,3 +50613,23 @@ reason, an impact and tests that a scan of tests/ finds.
 | R079 | Caller kept in U-B1a: the root help's `environment:` block names `AGENTSYNC_CONFIG` without "--config wins", because `--config` is pinned hidden from root help. | Root help does not say the option beats the variable. | `tests/test_cli.py::test_graph_verbs_it_request_and_config_are_hidden_but_parse` |
 | R019 | Caller kept in U-C5 (K12): the broker rung's deadline is not built, since it would move every default sign-in's broker call onto a background thread and the macOS broker dialog may need the main thread; only a run against a real broker could show that safe. | A broker dialog left open has no deadline of login's own; `--no-open` skips the broker. Pins: `--no-open` prints the URL only and skips the broker rung. | `tests/test_graph_auth.py::test_no_open_prints_the_url_only` |
 | R087 | Caller kept in U-C11 (K43): install.sh's short help opens with its one-line summary and then Usage, not Usage first, because the deploy-pack test pins help stdout's first line. | `--help` starts `agentsync installer`, with Usage on the lines after it. | `tests/test_deploy_pack.py::test_install_help_exits_zero` |
+
+### 16.301 Round 49: the report: every line a sync or install.sh prints cut in each form it takes, a configured name in every spelling its value can hold, an unread friction log called not read, each route decided once from the run's own record, and serves counted as serves (2026-11-28, wave B13 round 49 lane RA)
+
+Reserved for round 49 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 49").
+
+### 16.302 Round 49: the installer: every spelling a folder has had registered, a bare path inside a held folder refused, a status held only by the land gate lets the re-run sync, the logs read as the agentsync report reads them with no FIFO waited on, and C2060 waits on the operator's settings step (2026-11-28, wave B13 round 49 lane RB)
+
+Reserved for round 49 lane RB of B13.
+
+### 16.303 Round 49: a mirror page put back from the copy the run owns, a blocked or failed run stored whole with every finding and its command, git's own error, the person's entries answered in one set of words, and a cache serve counted only across runs (2026-11-28, wave B13 round 49 lane B)
+
+Reserved for round 49 lane B of B13.
+
+### 16.304 Round 49: the converters: every part of a message reaches its page as text or as an Attachments row, no control character in any field, a page published before C3532 and C3533 read again once (eml's emitter 1.1.6), and the speech seed on its own clock (2026-11-28, wave B13 round 49 lane E)
+
+Reserved for round 49 lane E of B13.
+
+### 16.305 Round 49: the prompt goes to v46 (the gate's repairs keyed on the command, the no-folder and all-held branches, a file agentsync could not open), dated lines, the guides, and ci's test job in three parts (2026-11-28, wave B13 round 49 lane D)
+
+Reserved for round 49 lane D of B13.
