@@ -2772,6 +2772,13 @@ C3003's install.sh form and setup_report.NOT_LIVE_CLAUSE, held by tests to insta
 none, a none with a step-3 friction line, a none then a --source-local run, role-h, V11, v40, v41 and v43 attempts,
 f-fail0-h, n-perm-h, a bare failed run, n-14 with and without a deviation, an earlier attempt untouched by today's
 config, and a completed none then status and sync.
+(2026-11-27) Ruling 227 amends this one: the report and status credit a route only from the attempt's own runs. Any
+last run without --no-folder (a bare or a --source-local one) that ended 0 and completed over a config with no live
+folder but the inbox worked with help, or stopped at step 1 when a step 1 deviation follows it; step 3's folder
+question is credited only to a run that looped, never one whose end line carries next=no-folder or whose config step
+logged kept=0 added=0; an unfinished --no-folder run's Loop line says its own sentence beside a Doctor [FAIL] too; and
+a completed none's step 2 WARNING says step 3 goes straight to its report (C3508 f4aa1ec49, C3438 a828f879d, C3497
+d0e568a51, C3498 569984d11, C3437 b33843330, a0b09dceb; round 48, CONTRACTS §16.295).
 (214) A paused or retired folder is shown as already in sources.toml and the person's to set live, never offered or
 asked about again (lanes RB, D and RA; turn C3332, turn C3269, C3203). Lane RB: synced_folders collects non-inbox
 sources that are not live, marks a listed row whose folder matches one by the synced set's key() and

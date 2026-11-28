@@ -6215,6 +6215,53 @@ def test_the_guides_loop_rule_reads_a_held_land_gate_as_status_does_c3422() -> N
     assert "(B13 round 48 C3422 with lane B's C3531, a828e1291; ruling 223)" in page
 
 
+def test_the_guide_reads_ruling_227s_routes_as_the_report_does_c3423_c3424_c3498() -> None:
+    """B13 round 48 C3423, C3424 and C3498's guide twin (lane RA's ruling 227 words): setup-feedback.md's Loop
+    rule named three NEXTs, each "the one install.sh closed on", and left out the unfinished none's sentence
+    and status's own completed-none step; section 4 never named the run over no live folder that worked with
+    help or stopped at step 1; and the stopped bullet said every step 1 stop "may still be waiting", a
+    completed none included. Each is named in the report's own words, held to setup_report's and loop's
+    constants."""
+    from agentsync import loop, setup_report  # noqa: PLC0415
+
+    page = " ".join(_feedback_page().split())
+    assert "Three more changes are the report's own, each only on its condition." in page
+    unfinished = setup_report.NO_FOLDER_UNFINISHED_NEXT.format(why="<cause>")
+    assert f"the Loop line reads `setup_report.NO_FOLDER_UNFINISHED_NEXT`, `{unfinished}`" in page
+    assert "beside a Doctor [FAIL] too when status's NEXT is the skill-missing one" in page
+    assert loop.NO_FOLDER_CHOSEN_LOOP_NEXT.startswith("the person chose no folder, ")
+    assert (
+        f'`{loop.BIN} add-source "<folder>"` for each, then `{loop.BIN} sync`'
+        in loop.NO_FOLDER_CHOSEN_LOOP_NEXT
+    )
+    assert "status's own `loop.NO_FOLDER_CHOSEN_LOOP_NEXT`" in page
+    assert f"the reason is `{setup_report.NO_LIVE_FOLDER_WHY}` (`setup_report.NO_LIVE_FOLDER_WHY`)" in page
+    clause = setup_report.NOT_LIVE_CLAUSE.format(folders="<id> (paused)")
+    assert f"followed by `{clause}`" in page
+    assert (
+        f"reads `stopped at step 1 ({setup_report.NO_FOLDER_UNANSWERED})`, and so does the latest attempt's"
+        in page
+    )
+    source = inspect.getsource(setup_report)
+    assert 'has no end line yet: the person chose no folder, so step "' in source
+    assert '"--report-only` closes the attempt and leaves the outcome as it is."' in source
+    warning = (
+        "the person chose no folder, so step 3 goes straight to its report; step 3's last command"
+        " ~/src/agent-context-sync/scripts/install.sh --report-only closes the attempt and leaves the outcome"
+        " as it is"
+    )
+    assert f"its WARNING reads `attempt <N> has no end line yet: {warning}`" in page
+    lanes = _page("docs/lanes/COMMON.md")
+    words = "config, and a completed none then status and sync."
+    line = "(2026-11-27) Ruling 227 amends this one: the report and status credit a route only from"
+    assert lanes.index("(213) ") < lanes.index(words) < lanes.index(line) < lanes.index("(214) ")
+    assert lanes.index(words) + len(words) + 1 == lanes.index(line)
+    dated = " ".join(lanes[lanes.index(line) : lanes.index("(214) ")].split())
+    assert "CONTRACTS §16.295)." in dated
+    for sha in ("f4aa1ec49", "a828f879d", "d0e568a51", "569984d11", "b33843330", "a0b09dceb"):
+        assert sha in dated, sha
+
+
 def test_the_guides_loop_paragraph_and_section_4_read_a_none_as_the_report_does_c2848_c2863() -> None:
     """B13 round 45 C2848 with C2863 (ruling 192, lane RA's words): the Loop-line paragraph said two changes
     were the report's own and left out the no-folder NEXT it puts in place of status's; it names three, the
